@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NATLAB GLP Data Integrity Portal</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #1a365d 0%, #2d5a87 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            max-width: 450px;
+            width: 100%;
+        }
+        h1 {
+            color: #1a365d;
+            margin-bottom: 10px;
+            font-size: 24px;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: bold;
+        }
+        input[type="email"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
+            margin-bottom: 20px;
+            transition: border-color 0.3s;
+        }
+        input[type="email"]:focus {
+            outline: none;
+            border-color: #2d5a87;
+        }
+        button {
+            width: 100%;
+            padding: 14px;
+            background: #2d5a87;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        button:hover { background: #1a365d; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        .message {
+            margin-top: 20px;
+            padding: 12px;
+            border-radius: 6px;
+            display: none;
+        }
+        .message.error {
+            background: #fee;
+            color: #c00;
+            border: 1px solid #fcc;
+            display: block;
+        }
+        .message.info {
+            background: #e6f3ff;
+            color: #0066cc;
+            border: 1px solid #b3d9ff;
+            display: block;
+        }
+        .logo {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .logo span {
+            font-size: 40px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo"><span>🔬</span></div>
+        <h1>NATLAB GLP Data Integrity Portal</h1>
+        <p class="subtitle">Enter your institution email to continue</p>
+
+        <form id="accessForm">
+            <label for="email">Institution Email</label>
+            <input type="email" id="email" name="email" placeholder="your.name@liu.se or your.name@unav.es" required>
+            <button type="submit" id="submitBtn">Continue</button>
+        </form>
+
+        <div id="message" class="message"></div>
+    </div>
+
+    <script>
+        const form = document.getElementById('accessForm');
+        const messageDiv = document.getElementById('message');
+        const submitBtn = document.getElementById('submitBtn');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('email').value.trim();
+
+            if (!email) return;
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Checking...';
+            messageDiv.className = 'message';
+            messageDiv.style.display = 'none';
+
+            try {
+                const response = await fetch('/api/di/access-check', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ institution_email: email })
+                });
+
+                const data = await response.json();
+
+                if (!data.allowed) {
+                    messageDiv.textContent = data.message || 'Access denied. Your email is not in the allowlist.';
+                    messageDiv.className = 'message error';
+                } else {
+                    // Store email for next page
+                    sessionStorage.setItem('di_email', email);
+                    sessionStorage.setItem('di_name', data.name);
+                    sessionStorage.setItem('di_affiliation', data.affiliation);
+
+                    // Redirect to register or login
+                    if (data.next === 'register') {
+                        window.location.href = 'register.html';
+                    } else {
+                        window.location.href = 'login.html';
+                    }
+                }
+            } catch (err) {
+                messageDiv.textContent = 'Connection error. Please try again.';
+                messageDiv.className = 'message error';
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Continue';
+            }
+        });
+    </script>
+</body>
+</html>
