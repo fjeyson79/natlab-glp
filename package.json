@@ -2,12 +2,25 @@
   "name": "natlab-glp",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "server.js",
   "scripts": {
+    "start": "node server.js",
+    "seed": "node db/seed.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs"
+  "type": "commonjs",
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "express-session": "^1.18.2",
+    "form-data": "^4.0.5",
+    "multer": "^2.0.2",
+    "node-fetch": "^2.7.0",
+    "pg": "^8.17.1",
+    "uuid": "^13.0.0"
+  }
 }

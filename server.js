@@ -22,15 +22,24 @@ const pool = new Pool({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Detect production environment
+const isProduction = process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT === 'production';
+
+// Trust proxy in production (Railway uses reverse proxy)
+if (isProduction) {
+    app.set('trust proxy', 1);
+}
+
 // Session configuration (in memory for V1)
 app.use(session({
     secret: process.env.SESSION_SECRET || 'fallback_secret_change_me',
     resave: false,
     saveUninitialized: false,
     cookie: {
-        secure: false, // set to true in production with HTTPS
+        secure: isProduction,
         httpOnly: true,
-        maxAge: 24 * 60 * 60 * 1000 // 24 hours
+        maxAge: 24 * 60 * 60 * 1000, // 24 hours
+        sameSite: isProduction ? 'none' : 'lax'
     }
 }));
 
