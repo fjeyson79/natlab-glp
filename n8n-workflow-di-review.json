@@ -19,6 +19,16 @@
     },
     {
       "parameters": {
+        "jsCode": "// Store API key and base URL as workflow constants\n// These are used throughout the workflow\nconst CONFIG = {\n  API_KEY: 'natlab_glp_api_k3y_2024_s3cur3',\n  N8N_BASE_URL: 'https://n8n-production-4d4f.up.railway.app',\n  BACKEND_URL: 'https://natlab-glp-production.up.railway.app'\n};\n\n// Pass through input with config attached\nconst items = $input.all();\nfor (const item of items) {\n  item.json._config = CONFIG;\n}\nreturn items;"
+      },
+      "id": "set-config",
+      "name": "Set Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [350, 300]
+    },
+    {
+      "parameters": {
         "jsCode": "// Normalize binary property name to 'data'\nconst items = $input.all();\n\nfor (const item of items) {\n  if (item.binary) {\n    // Find the binary property (could be 'file', 'data', or other)\n    const binaryKeys = Object.keys(item.binary);\n    if (binaryKeys.length > 0 && !item.binary.data) {\n      // Rename first binary property to 'data'\n      const originalKey = binaryKeys[0];\n      item.binary.data = item.binary[originalKey];\n      if (originalKey !== 'data') {\n        delete item.binary[originalKey];\n      }\n    }\n  }\n}\n\nreturn items;"
       },
       "id": "normalize-binary",
