@@ -542,6 +542,195 @@ app.patch('/api/di/submissions/:id', async (req, res) => {
     }
 });
 
+// GET /api/di/submissions/:id
+// Get single submission by ID
+app.get('/api/di/submissions/:id', async (req, res) => {
+    try {
+        const apiKey = req.headers['x-api-key'];
+        if (!apiKey || apiKey !== process.env.API_SECRET_KEY) {
+            return res.status(401).json({ error: 'Invalid or missing API key' });
+        }
+
+        const { id } = req.params;
+
+        const result = await pool.query(
+            'SELECT * FROM di_submissions WHERE submission_id = $1',
+            [id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Submission not found' });
+        }
+
+        res.json({
+            success: true,
+            submission: result.rows[0]
+        });
+
+    } catch (err) {
+        console.error('Get submission error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/di/extract-text
+// Extract text from a submission (placeholder for PDF/document parsing)
+app.post('/api/di/extract-text', async (req, res) => {
+    try {
+        const apiKey = req.headers['x-api-key'];
+        if (!apiKey || apiKey !== process.env.API_SECRET_KEY) {
+            return res.status(401).json({ error: 'Invalid or missing API key' });
+        }
+
+        const { submission_id } = req.body;
+
+        if (!submission_id) {
+            return res.status(400).json({ error: 'submission_id is required' });
+        }
+
+        // Get submission
+        const result = await pool.query(
+            'SELECT * FROM di_submissions WHERE submission_id = $1',
+            [submission_id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Submission not found' });
+        }
+
+        const submission = result.rows[0];
+
+        // Generate SHA256 hash placeholder (in production, compute from actual file)
+        const crypto = require('crypto');
+        const sha256 = crypto.createHash('sha256')
+            .update(submission_id + submission.original_filename)
+            .digest('hex');
+
+        // Placeholder text extraction (in production, use PDF parsing library)
+        const extracted_text = `Document: ${submission.original_filename}\n` +
+            `Type: ${submission.file_type}\n` +
+            `Researcher: ${submission.researcher_id}\n` +
+            `Affiliation: ${submission.affiliation}\n` +
+            `Submitted: ${submission.created_at}\n\n` +
+            `[Document content would be extracted here using PDF parsing library like pdf-parse]\n` +
+            `[For GLP compliance review, the AI will analyze structure, completeness, and data integrity]`;
+
+        res.json({
+            success: true,
+            submission_id: submission_id,
+            original_filename: submission.original_filename,
+            sha256: sha256,
+            extracted_text: extracted_text
+        });
+
+    } catch (err) {
+        console.error('Extract text error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/di/sign
+// Sign an approved submission
+app.post('/api/di/sign', async (req, res) => {
+    try {
+        const apiKey = req.headers['x-api-key'];
+        if (!apiKey || apiKey !== process.env.API_SECRET_KEY) {
+            return res.status(401).json({ error: 'Invalid or missing API key' });
+        }
+
+        const { submission_id, token } = req.body;
+
+        if (!submission_id) {
+            return res.status(400).json({ error: 'submission_id is required' });
+        }
+
+        // Validate token
+        const crypto = require('crypto');
+        const expectedToken = crypto.createHmac('sha256', process.env.API_SECRET_KEY)
+            .update(submission_id)
+            .digest('hex')
+            .substring(0, 32);
+
+        if (token !== expectedToken) {
+            return res.status(403).json({ error: 'Invalid token' });
+        }
+
+        // Get submission
+        const result = await pool.query(
+            'SELECT * FROM di_submissions WHERE submission_id = $1',
+            [submission_id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Submission not found' });
+        }
+
+        const submission = result.rows[0];
+
+        // Generate signed file URL (placeholder)
+        // In production, this would create a digitally signed PDF and upload to storage
+        const signedAt = new Date().toISOString();
+        const signedFileUrl = `https://natlab-glp-production.up.railway.app/api/di/download/${submission_id}?signed=true&t=${Date.now()}`;
+
+        // Update submission with signed status
+        await pool.query(
+            `UPDATE di_submissions SET
+                status = 'APPROVED',
+                signed_at = $1
+             WHERE submission_id = $2`,
+            [signedAt, submission_id]
+        );
+
+        res.json({
+            success: true,
+            submission_id: submission_id,
+            signed_at: signedAt,
+            signed_file_url: signedFileUrl,
+            original_filename: submission.original_filename,
+            message: 'Document signed successfully'
+        });
+
+    } catch (err) {
+        console.error('Sign error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/di/download/:id
+// Download a submission file (placeholder)
+app.get('/api/di/download/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { signed } = req.query;
+
+        // Get submission
+        const result = await pool.query(
+            'SELECT * FROM di_submissions WHERE submission_id = $1',
+            [id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Submission not found' });
+        }
+
+        const submission = result.rows[0];
+
+        // In production, this would retrieve the actual file from storage
+        // For now, return a placeholder response
+        res.json({
+            message: 'File download endpoint',
+            submission_id: id,
+            filename: submission.original_filename,
+            signed: signed === 'true',
+            note: 'In production, this would stream the actual file'
+        });
+
+    } catch (err) {
+        console.error('Download error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
 // POST /api/di/logout
 // Logout user
 app.post('/api/di/logout', (req, res) => {

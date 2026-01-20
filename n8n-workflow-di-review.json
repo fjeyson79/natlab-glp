@@ -1,0 +1,988 @@
+{
+  "name": "NATLAB GLP Data Integrity Review",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "di-intake",
+        "options": {
+          "rawBody": false
+        },
+        "responseMode": "responseNode"
+      },
+      "id": "webhook-intake",
+      "name": "Webhook Intake",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "di-intake"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalize binary property name to 'data'\nconst items = $input.all();\n\nfor (const item of items) {\n  if (item.binary) {\n    // Find the binary property (could be 'file', 'data', or other)\n    const binaryKeys = Object.keys(item.binary);\n    if (binaryKeys.length > 0 && !item.binary.data) {\n      // Rename first binary property to 'data'\n      const originalKey = binaryKeys[0];\n      item.binary.data = item.binary[originalKey];\n      if (originalKey !== 'data') {\n        delete item.binary[originalKey];\n      }\n    }\n  }\n}\n\nreturn items;"
+      },
+      "id": "normalize-binary",
+      "name": "Normalize Binary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://natlab-glp-production.up.railway.app/api/di/external-upload",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.NATLAB_GLP_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "researcher_id",
+              "value": "={{ $json.body.researcher_id }}"
+            },
+            {
+              "name": "affiliation",
+              "value": "={{ $json.body.affiliation }}"
+            },
+            {
+              "name": "fileType",
+              "value": "={{ $json.body.fileType }}"
+            }
+          ]
+        },
+        "sendBinaryData": true,
+        "binaryPropertyName": "data",
+        "options": {}
+      },
+      "id": "forward-upload",
+      "name": "Forward Upload",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate secure token and normalize response\nconst crypto = require('crypto');\n\nconst webhookData = $('Webhook Intake').first().json;\nconst uploadResponse = $input.first().json;\n\n// Generate HMAC token for this submission\nconst secret = $env.NATLAB_GLP_API_KEY || 'fallback-secret';\nconst submissionId = uploadResponse.submission_id;\nconst token = crypto.createHmac('sha256', secret)\n  .update(submissionId)\n  .digest('hex')\n  .substring(0, 32);\n\n// Build normalized data object\nconst normalized = {\n  submission_id: submissionId,\n  researcher_id: uploadResponse.researcher_id || webhookData.body?.researcher_id,\n  affiliation: uploadResponse.affiliation || webhookData.body?.affiliation,\n  fileType: uploadResponse.fileType || webhookData.body?.fileType,\n  original_filename: uploadResponse.original_filename || webhookData.body?.original_filename,\n  sender_email: webhookData.body?.sender_email || webhookData.body?.institution_email || 'unknown@unknown.com',\n  researcher_name: webhookData.body?.researcher_name || webhookData.body?.name || 'Unknown Researcher',\n  sha256: uploadResponse.sha256 || 'pending',\n  download_url: uploadResponse.download_url || `https://natlab-glp-production.up.railway.app/api/di/download/${submissionId}`,\n  extracted_text: uploadResponse.extracted_text || '',\n  token: token,\n  timestamp: new Date().toISOString()\n};\n\nreturn [{ json: normalized }];"
+      },
+      "id": "normalize-response",
+      "name": "Normalize Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://natlab-glp-production.up.railway.app/api/di/extract-text",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.NATLAB_GLP_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"submission_id\": \"{{ $json.submission_id }}\"\n}",
+        "options": {}
+      },
+      "id": "extract-text",
+      "name": "Extract Text",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge extracted text into normalized data\nconst normalized = $('Normalize Response').first().json;\nconst extractResponse = $input.first().json;\n\nnormalized.extracted_text = extractResponse.extracted_text || normalized.extracted_text || 'Text extraction not available';\nnormalized.sha256 = extractResponse.sha256 || normalized.sha256;\n\nreturn [{ json: normalized }];"
+      },
+      "id": "merge-text",
+      "name": "Merge Text",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a GLP (Good Laboratory Practice) compliance reviewer for NATLAB research submissions.\n\nYou are reviewing the following submission:\n\nSubmission ID: {{ $json.submission_id }}\nFile Type: {{ $json.fileType }}\nResearcher: {{ $json.researcher_name }} ({{ $json.researcher_id }})\nAffiliation: {{ $json.affiliation }}\nFilename: {{ $json.original_filename }}\n\nExtracted Document Content:\n---\n{{ $json.extracted_text }}\n---\n\nYour task:\n1. If fileType is SOP, perform SOP_REVIEW checking structure, clarity, versioning, approval signatures, step-by-step procedures.\n2. If fileType is DATA, perform ALCOA_DATA_REVIEW checking Attributable, Legible, Contemporaneous, Original, Accurate criteria.\n3. Evaluate overall quality and make a decision: APPROVE if compliant, REVISE if issues found.\n\nYou MUST respond with ONLY valid JSON matching this exact schema (no markdown, no explanation):\n\n{\n  \"metadata\": {\n    \"submission_id\": \"string\",\n    \"fileType\": \"SOP|DATA|UNKNOWN\",\n    \"researcher_id\": \"string\",\n    \"researcher_name\": \"string\",\n    \"affiliation\": \"string\",\n    \"filename\": \"string\",\n    \"file_hash_sha256\": \"string\",\n    \"download_url\": \"string\",\n    \"sender_email\": \"string\"\n  },\n  \"executive_summary\": {\n    \"short_summary\": \"string (2-3 sentences)\",\n    \"overall_quality\": \"HIGH|MEDIUM|LOW\",\n    \"primary_conclusion\": \"string\"\n  },\n  \"evaluation\": {\n    \"review_mode\": \"SOP_REVIEW|ALCOA_DATA_REVIEW\",\n    \"decision\": \"APPROVE|REVISE\",\n    \"confidence_score\": 0.0\n  },\n  \"checklist\": [\n    {\"category\":\"SOP|ALCOA\",\"item\":\"string\",\"status\":\"PASS|FAIL|UNKNOWN\",\"evidence\":\"string\",\"severity\":\"MINOR|MAJOR\"}\n  ],\n  \"missing_or_unclear_items\": [\"string\"],\n  \"suggested_revisions\": [\"string\"],\n  \"red_flags\": [\"string\"],\n  \"human_reviewer_guidance\": {\n    \"what_to_verify_in_original_file\": [\"string\"],\n    \"questions_for_researcher\": [\"string\"]\n  }\n}\n\nUse these values from the submission:\n- submission_id: {{ $json.submission_id }}\n- fileType: {{ $json.fileType }}\n- researcher_id: {{ $json.researcher_id }}\n- researcher_name: {{ $json.researcher_name }}\n- affiliation: {{ $json.affiliation }}\n- filename: {{ $json.original_filename }}\n- file_hash_sha256: {{ $json.sha256 }}\n- download_url: {{ $json.download_url }}\n- sender_email: {{ $json.sender_email }}\n\nRespond with ONLY the JSON object, no other text.",
+        "options": {
+          "temperature": 0.1
+        }
+      },
+      "id": "ai-agent",
+      "name": "AI Review Agent",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [1560, 300],
+      "credentials": {
+        "openAiApi": {
+          "id": "openai-credential",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse AI response and validate schema\nconst normalized = $('Merge Text').first().json;\nlet aiResponse = $input.first().json;\n\n// If the response is a string, parse it\nlet reviewData;\nif (typeof aiResponse === 'string') {\n  // Remove any markdown code blocks if present\n  let cleaned = aiResponse.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\n  reviewData = JSON.parse(cleaned);\n} else if (aiResponse.text) {\n  let cleaned = aiResponse.text.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\n  reviewData = JSON.parse(cleaned);\n} else if (aiResponse.message?.content) {\n  let cleaned = aiResponse.message.content.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\n  reviewData = JSON.parse(cleaned);\n} else {\n  reviewData = aiResponse;\n}\n\n// Ensure all required fields exist with defaults\nconst finalReview = {\n  metadata: {\n    submission_id: reviewData.metadata?.submission_id || normalized.submission_id,\n    fileType: reviewData.metadata?.fileType || normalized.fileType || 'UNKNOWN',\n    researcher_id: reviewData.metadata?.researcher_id || normalized.researcher_id,\n    researcher_name: reviewData.metadata?.researcher_name || normalized.researcher_name,\n    affiliation: reviewData.metadata?.affiliation || normalized.affiliation,\n    filename: reviewData.metadata?.filename || normalized.original_filename,\n    file_hash_sha256: reviewData.metadata?.file_hash_sha256 || normalized.sha256,\n    download_url: reviewData.metadata?.download_url || normalized.download_url,\n    sender_email: reviewData.metadata?.sender_email || normalized.sender_email\n  },\n  executive_summary: {\n    short_summary: reviewData.executive_summary?.short_summary || 'Review completed',\n    overall_quality: reviewData.executive_summary?.overall_quality || 'MEDIUM',\n    primary_conclusion: reviewData.executive_summary?.primary_conclusion || 'Manual review recommended'\n  },\n  evaluation: {\n    review_mode: reviewData.evaluation?.review_mode || 'SOP_REVIEW',\n    decision: reviewData.evaluation?.decision || 'REVISE',\n    confidence_score: reviewData.evaluation?.confidence_score || 0.5\n  },\n  checklist: reviewData.checklist || [],\n  missing_or_unclear_items: reviewData.missing_or_unclear_items || [],\n  suggested_revisions: reviewData.suggested_revisions || [],\n  red_flags: reviewData.red_flags || [],\n  human_reviewer_guidance: {\n    what_to_verify_in_original_file: reviewData.human_reviewer_guidance?.what_to_verify_in_original_file || [],\n    questions_for_researcher: reviewData.human_reviewer_guidance?.questions_for_researcher || []\n  },\n  // Add token for approval links\n  _token: normalized.token,\n  _timestamp: normalized.timestamp\n};\n\nreturn [{ json: finalReview }];"
+      },
+      "id": "parse-ai-response",
+      "name": "Parse AI Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://natlab-glp-production.up.railway.app/api/di/submissions/{{ $json.metadata.submission_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.NATLAB_GLP_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"status\": \"PENDING\",\n  \"ai_review\": {{ JSON.stringify($json) }}\n}",
+        "options": {}
+      },
+      "id": "save-review",
+      "name": "Save Review",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2000, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare email content\nconst review = $('Parse AI Response').first().json;\nconst baseUrl = $env.N8N_PUBLIC_BASE_URL || 'https://n8n-production-4d4f.up.railway.app';\n\nconst approveUrl = `${baseUrl}/webhook/di-approve?submission_id=${review.metadata.submission_id}&token=${review._token}`;\nconst reviseUrl = `${baseUrl}/webhook/di-revise?submission_id=${review.metadata.submission_id}&token=${review._token}`;\n\n// Build checklist HTML (top 10)\nlet checklistHtml = '<table style=\"border-collapse: collapse; width: 100%;\">';\nchecklistHtml += '<tr style=\"background: #f0f0f0;\"><th style=\"border: 1px solid #ddd; padding: 8px;\">Item</th><th style=\"border: 1px solid #ddd; padding: 8px;\">Status</th><th style=\"border: 1px solid #ddd; padding: 8px;\">Severity</th><th style=\"border: 1px solid #ddd; padding: 8px;\">Evidence</th></tr>';\nconst topChecklist = (review.checklist || []).slice(0, 10);\nfor (const item of topChecklist) {\n  const statusColor = item.status === 'PASS' ? '#28a745' : item.status === 'FAIL' ? '#dc3545' : '#ffc107';\n  checklistHtml += `<tr><td style=\"border: 1px solid #ddd; padding: 8px;\">${item.item}</td><td style=\"border: 1px solid #ddd; padding: 8px; color: ${statusColor}; font-weight: bold;\">${item.status}</td><td style=\"border: 1px solid #ddd; padding: 8px;\">${item.severity || '-'}</td><td style=\"border: 1px solid #ddd; padding: 8px;\">${item.evidence || '-'}</td></tr>`;\n}\nchecklistHtml += '</table>';\n\n// Build red flags list\nlet redFlagsHtml = '<ul>';\nfor (const flag of (review.red_flags || [])) {\n  redFlagsHtml += `<li style=\"color: #dc3545;\">${flag}</li>`;\n}\nredFlagsHtml += '</ul>';\nif ((review.red_flags || []).length === 0) redFlagsHtml = '<p style=\"color: #28a745;\">No red flags identified.</p>';\n\n// Build suggested revisions list\nlet revisionsHtml = '<ul>';\nfor (const rev of (review.suggested_revisions || [])) {\n  revisionsHtml += `<li>${rev}</li>`;\n}\nrevisionsHtml += '</ul>';\nif ((review.suggested_revisions || []).length === 0) revisionsHtml = '<p>No specific revisions suggested.</p>';\n\nconst decisionColor = review.evaluation.decision === 'APPROVE' ? '#28a745' : '#dc3545';\nconst qualityColor = review.executive_summary.overall_quality === 'HIGH' ? '#28a745' : review.executive_summary.overall_quality === 'MEDIUM' ? '#ffc107' : '#dc3545';\n\nconst emailHtml = `\n<!DOCTYPE html>\n<html>\n<head><style>body{font-family:Arial,sans-serif;line-height:1.6;color:#333;}.container{max-width:800px;margin:0 auto;padding:20px;}.header{background:#1a365d;color:white;padding:20px;text-align:center;}.section{margin:20px 0;padding:15px;background:#f9f9f9;border-radius:8px;}.btn{display:inline-block;padding:12px 24px;margin:10px;text-decoration:none;border-radius:6px;font-weight:bold;}.btn-approve{background:#28a745;color:white;}.btn-revise{background:#dc3545;color:white;}</style></head>\n<body>\n<div class=\"container\">\n  <div class=\"header\">\n    <h1>NATLAB GLP Review Required</h1>\n    <p>Submission ID: ${review.metadata.submission_id}</p>\n  </div>\n  \n  <div class=\"section\">\n    <h2>Submission Metadata</h2>\n    <table>\n      <tr><td><strong>Researcher:</strong></td><td>${review.metadata.researcher_name} (${review.metadata.researcher_id})</td></tr>\n      <tr><td><strong>Affiliation:</strong></td><td>${review.metadata.affiliation}</td></tr>\n      <tr><td><strong>File Type:</strong></td><td>${review.metadata.fileType}</td></tr>\n      <tr><td><strong>Filename:</strong></td><td>${review.metadata.filename}</td></tr>\n      <tr><td><strong>SHA256:</strong></td><td style=\"font-family:monospace;font-size:12px;\">${review.metadata.file_hash_sha256}</td></tr>\n      <tr><td><strong>Sender Email:</strong></td><td>${review.metadata.sender_email}</td></tr>\n    </table>\n    <p><a href=\"${review.metadata.download_url}\">Download Original File</a></p>\n  </div>\n  \n  <div class=\"section\">\n    <h2>AI Review Summary</h2>\n    <p><strong>Decision:</strong> <span style=\"color:${decisionColor};font-size:18px;font-weight:bold;\">${review.evaluation.decision}</span></p>\n    <p><strong>Confidence:</strong> ${(review.evaluation.confidence_score * 100).toFixed(0)}%</p>\n    <p><strong>Quality:</strong> <span style=\"color:${qualityColor};\">${review.executive_summary.overall_quality}</span></p>\n    <p><strong>Review Mode:</strong> ${review.evaluation.review_mode}</p>\n    <h3>Executive Summary</h3>\n    <p>${review.executive_summary.short_summary}</p>\n    <p><strong>Conclusion:</strong> ${review.executive_summary.primary_conclusion}</p>\n  </div>\n  \n  <div class=\"section\">\n    <h2>Checklist (Top 10)</h2>\n    ${checklistHtml}\n  </div>\n  \n  <div class=\"section\">\n    <h2>Red Flags</h2>\n    ${redFlagsHtml}\n  </div>\n  \n  <div class=\"section\">\n    <h2>Suggested Revisions</h2>\n    ${revisionsHtml}\n  </div>\n  \n  <div style=\"text-align:center;margin:30px 0;\">\n    <a href=\"${approveUrl}\" class=\"btn btn-approve\">APPROVE</a>\n    <a href=\"${reviseUrl}\" class=\"btn btn-revise\">REQUEST REVISION</a>\n  </div>\n  \n  <div class=\"section\" style=\"background:#fff3cd;\">\n    <h3>Human Reviewer Guidance</h3>\n    <p><strong>What to verify in original file:</strong></p>\n    <ul>${(review.human_reviewer_guidance.what_to_verify_in_original_file || []).map(v => `<li>${v}</li>`).join('')}</ul>\n    <p><strong>Questions for researcher:</strong></p>\n    <ul>${(review.human_reviewer_guidance.questions_for_researcher || []).map(q => `<li>${q}</li>`).join('')}</ul>\n  </div>\n</div>\n</body>\n</html>\n`;\n\nreturn [{\n  json: {\n    to: 'frank.hernandez@liu.se',\n    subject: `[NATLAB GLP] Review Required: ${review.metadata.filename} - ${review.evaluation.decision}`,\n    html: emailHtml,\n    review: review\n  }\n}];"
+      },
+      "id": "prepare-email",
+      "name": "Prepare Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2220, 300]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "html",
+        "message": "={{ $json.html }}",
+        "options": {}
+      },
+      "id": "send-review-email",
+      "name": "Send Review Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [2440, 300],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "gmail-credential",
+          "name": "Gmail account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, submission_id: $('Parse AI Response').first().json.metadata.submission_id, message: 'Submission received and review initiated' }) }}",
+        "options": {}
+      },
+      "id": "respond-intake",
+      "name": "Respond Intake",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [2660, 300]
+    },
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "di-approve",
+        "options": {},
+        "responseMode": "responseNode"
+      },
+      "id": "webhook-approve",
+      "name": "Webhook Approve",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 600],
+      "webhookId": "di-approve"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate token\nconst crypto = require('crypto');\nconst query = $input.first().json.query;\n\nconst submissionId = query.submission_id;\nconst providedToken = query.token;\n\nif (!submissionId || !providedToken) {\n  return [{ json: { valid: false, error: 'Missing submission_id or token' } }];\n}\n\nconst secret = $env.NATLAB_GLP_API_KEY || 'fallback-secret';\nconst expectedToken = crypto.createHmac('sha256', secret)\n  .update(submissionId)\n  .digest('hex')\n  .substring(0, 32);\n\nif (providedToken !== expectedToken) {\n  return [{ json: { valid: false, error: 'Invalid token' } }];\n}\n\nreturn [{ json: { valid: true, submission_id: submissionId, token: providedToken } }];"
+      },
+      "id": "validate-approve-token",
+      "name": "Validate Approve Token",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 600]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.valid }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "if-approve-valid",
+      "name": "If Valid",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [680, 600]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://natlab-glp-production.up.railway.app/api/di/sign",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.NATLAB_GLP_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"submission_id\": \"{{ $json.submission_id }}\",\n  \"token\": \"{{ $json.token }}\"\n}",
+        "options": {}
+      },
+      "id": "call-sign",
+      "name": "Call Sign Endpoint",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 540]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://natlab-glp-production.up.railway.app/api/di/submissions/{{ $('Validate Approve Token').first().json.submission_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.NATLAB_GLP_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"status\": \"APPROVED\"\n}",
+        "options": {}
+      },
+      "id": "update-status-approved",
+      "name": "Update Status Approved",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 540]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://natlab-glp-production.up.railway.app/api/di/submissions/{{ $('Validate Approve Token').first().json.submission_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.NATLAB_GLP_API_KEY }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "get-submission-approve",
+      "name": "Get Submission",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1340, 540]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare approval confirmation email\nconst submission = $input.first().json.submission || $input.first().json;\nconst signResponse = $('Call Sign Endpoint').first().json;\n\nconst signedUrl = signResponse.signed_file_url || signResponse.download_url || 'URL not available';\nconst senderEmail = submission.sender_email || submission.ai_review?.metadata?.sender_email || 'unknown@unknown.com';\nconst filename = submission.original_filename || submission.ai_review?.metadata?.filename || 'Unknown file';\nconst researcherName = submission.ai_review?.metadata?.researcher_name || 'Researcher';\n\nconst emailHtml = `\n<!DOCTYPE html>\n<html>\n<head><style>body{font-family:Arial,sans-serif;line-height:1.6;color:#333;}.container{max-width:600px;margin:0 auto;padding:20px;}.header{background:#28a745;color:white;padding:20px;text-align:center;border-radius:8px 8px 0 0;}.content{background:#f9f9f9;padding:20px;border-radius:0 0 8px 8px;}</style></head>\n<body>\n<div class=\"container\">\n  <div class=\"header\">\n    <h1>Submission Approved</h1>\n  </div>\n  <div class=\"content\">\n    <p>Dear ${researcherName},</p>\n    <p>Your submission has been reviewed and <strong style=\"color:#28a745;\">APPROVED</strong>.</p>\n    <h3>Submission Details</h3>\n    <ul>\n      <li><strong>Filename:</strong> ${filename}</li>\n      <li><strong>Submission ID:</strong> ${submission.submission_id}</li>\n      <li><strong>Status:</strong> APPROVED</li>\n    </ul>\n    <h3>Signed Document</h3>\n    <p>Your approved and signed document is available here:</p>\n    <p><a href=\"${signedUrl}\" style=\"background:#1a365d;color:white;padding:10px 20px;text-decoration:none;border-radius:4px;\">Download Signed Document</a></p>\n    <p style=\"margin-top:30px;\">Thank you for your submission to the NATLAB GLP Data Integrity Portal.</p>\n    <p>Best regards,<br>NATLAB GLP Review Team</p>\n  </div>\n</div>\n</body>\n</html>\n`;\n\nreturn [{\n  json: {\n    to: senderEmail,\n    subject: `[NATLAB GLP] Submission Approved: ${filename}`,\n    html: emailHtml\n  }\n}];"
+      },
+      "id": "prepare-approve-email",
+      "name": "Prepare Approve Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 540]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "html",
+        "message": "={{ $json.html }}",
+        "options": {}
+      },
+      "id": "send-approve-email",
+      "name": "Send Approve Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1780, 540],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "gmail-credential",
+          "name": "Gmail account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=<!DOCTYPE html><html><head><style>body{font-family:Arial,sans-serif;display:flex;justify-content:center;align-items:center;height:100vh;background:#f0f0f0;}.card{background:white;padding:40px;border-radius:10px;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,0.1);}.success{color:#28a745;font-size:48px;}</style></head><body><div class=\"card\"><div class=\"success\">✓</div><h1>Submission Approved</h1><p>The researcher has been notified via email.</p><p><a href=\"https://natlab-glp-production.up.railway.app/di/access.html\">Return to Portal</a></p></div></body></html>",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html"
+              }
+            ]
+          }
+        }
+      },
+      "id": "respond-approve-success",
+      "name": "Respond Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [2000, 540]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=<!DOCTYPE html><html><head><style>body{font-family:Arial,sans-serif;display:flex;justify-content:center;align-items:center;height:100vh;background:#f0f0f0;}.card{background:white;padding:40px;border-radius:10px;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,0.1);}.error{color:#dc3545;font-size:48px;}</style></head><body><div class=\"card\"><div class=\"error\">✗</div><h1>Invalid Request</h1><p>{{ $json.error || 'The approval link is invalid or has expired.' }}</p></div></body></html>",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html"
+              }
+            ]
+          },
+          "responseCode": 403
+        }
+      },
+      "id": "respond-approve-error",
+      "name": "Respond Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [900, 700]
+    },
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "di-revise",
+        "options": {},
+        "responseMode": "responseNode"
+      },
+      "id": "webhook-revise-form",
+      "name": "Webhook Revise Form",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 900],
+      "webhookId": "di-revise"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate token for revise form\nconst crypto = require('crypto');\nconst query = $input.first().json.query;\n\nconst submissionId = query.submission_id;\nconst providedToken = query.token;\n\nif (!submissionId || !providedToken) {\n  return [{ json: { valid: false, error: 'Missing submission_id or token' } }];\n}\n\nconst secret = $env.NATLAB_GLP_API_KEY || 'fallback-secret';\nconst expectedToken = crypto.createHmac('sha256', secret)\n  .update(submissionId)\n  .digest('hex')\n  .substring(0, 32);\n\nif (providedToken !== expectedToken) {\n  return [{ json: { valid: false, error: 'Invalid token' } }];\n}\n\nreturn [{ json: { valid: true, submission_id: submissionId, token: providedToken } }];"
+      },
+      "id": "validate-revise-token",
+      "name": "Validate Revise Token",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 900]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.valid }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "if-revise-valid",
+      "name": "If Valid",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [680, 900]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=<!DOCTYPE html>\n<html>\n<head>\n  <title>Request Revision - NATLAB GLP</title>\n  <style>\n    body { font-family: Arial, sans-serif; background: linear-gradient(135deg, #1a365d 0%, #2d5a87 100%); min-height: 100vh; display: flex; justify-content: center; align-items: center; padding: 20px; margin: 0; }\n    .container { background: white; padding: 40px; border-radius: 10px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); max-width: 600px; width: 100%; }\n    h1 { color: #1a365d; margin-bottom: 10px; }\n    .subtitle { color: #666; margin-bottom: 30px; }\n    label { display: block; margin-bottom: 8px; color: #333; font-weight: bold; }\n    textarea { width: 100%; padding: 12px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; min-height: 200px; resize: vertical; box-sizing: border-box; }\n    textarea:focus { outline: none; border-color: #2d5a87; }\n    button { width: 100%; padding: 14px; background: #dc3545; color: white; border: none; border-radius: 6px; font-size: 16px; cursor: pointer; margin-top: 20px; }\n    button:hover { background: #c82333; }\n    .info { background: #f8f9fa; padding: 15px; border-radius: 6px; margin-bottom: 20px; }\n  </style>\n</head>\n<body>\n  <div class=\"container\">\n    <h1>Request Revision</h1>\n    <p class=\"subtitle\">Submission ID: {{ $json.submission_id }}</p>\n    <div class=\"info\">\n      <p>Please provide your comments explaining what needs to be revised. The researcher will receive these comments along with instructions to resubmit.</p>\n    </div>\n    <form action=\"{{ $env.N8N_PUBLIC_BASE_URL || 'https://n8n-production-4d4f.up.railway.app' }}/webhook/di-revise-submit\" method=\"POST\">\n      <input type=\"hidden\" name=\"submission_id\" value=\"{{ $json.submission_id }}\">\n      <input type=\"hidden\" name=\"token\" value=\"{{ $json.token }}\">\n      <label for=\"comments\">Revision Comments</label>\n      <textarea name=\"comments\" id=\"comments\" placeholder=\"Enter your comments here...\" required></textarea>\n      <button type=\"submit\">Send Revision Request</button>\n    </form>\n  </div>\n</body>\n</html>",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html"
+              }
+            ]
+          }
+        }
+      },
+      "id": "respond-revise-form",
+      "name": "Show Revise Form",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [900, 840]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=<!DOCTYPE html><html><head><style>body{font-family:Arial,sans-serif;display:flex;justify-content:center;align-items:center;height:100vh;background:#f0f0f0;}.card{background:white;padding:40px;border-radius:10px;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,0.1);}.error{color:#dc3545;font-size:48px;}</style></head><body><div class=\"card\"><div class=\"error\">✗</div><h1>Invalid Request</h1><p>{{ $json.error || 'The revision link is invalid or has expired.' }}</p></div></body></html>",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html"
+              }
+            ]
+          },
+          "responseCode": 403
+        }
+      },
+      "id": "respond-revise-error",
+      "name": "Respond Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [900, 1000]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "di-revise-submit",
+        "options": {},
+        "responseMode": "responseNode"
+      },
+      "id": "webhook-revise-submit",
+      "name": "Webhook Revise Submit",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 1200],
+      "webhookId": "di-revise-submit"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate token for revise submit\nconst crypto = require('crypto');\nconst body = $input.first().json.body;\n\nconst submissionId = body.submission_id;\nconst providedToken = body.token;\nconst comments = body.comments;\n\nif (!submissionId || !providedToken) {\n  return [{ json: { valid: false, error: 'Missing submission_id or token' } }];\n}\n\nconst secret = $env.NATLAB_GLP_API_KEY || 'fallback-secret';\nconst expectedToken = crypto.createHmac('sha256', secret)\n  .update(submissionId)\n  .digest('hex')\n  .substring(0, 32);\n\nif (providedToken !== expectedToken) {\n  return [{ json: { valid: false, error: 'Invalid token' } }];\n}\n\nreturn [{ json: { valid: true, submission_id: submissionId, token: providedToken, comments: comments || 'No specific comments provided.' } }];"
+      },
+      "id": "validate-revise-submit-token",
+      "name": "Validate Submit Token",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 1200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.valid }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "if-submit-valid",
+      "name": "If Valid",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [680, 1200]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://natlab-glp-production.up.railway.app/api/di/submissions/{{ $json.submission_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.NATLAB_GLP_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"status\": \"REVISION_NEEDED\",\n  \"revision_comments\": \"{{ $json.comments.replace(/\"/g, '\\\\\"').replace(/\\n/g, '\\\\n') }}\"\n}",
+        "options": {}
+      },
+      "id": "update-status-revision",
+      "name": "Update Status Revision",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 1140]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://natlab-glp-production.up.railway.app/api/di/submissions/{{ $('Validate Submit Token').first().json.submission_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.NATLAB_GLP_API_KEY }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "get-submission-revise",
+      "name": "Get Submission",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 1140]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare revision request email\nconst tokenData = $('Validate Submit Token').first().json;\nconst submission = $input.first().json.submission || $input.first().json;\n\nconst senderEmail = submission.sender_email || submission.ai_review?.metadata?.sender_email || 'unknown@unknown.com';\nconst filename = submission.original_filename || submission.ai_review?.metadata?.filename || 'Unknown file';\nconst researcherName = submission.ai_review?.metadata?.researcher_name || 'Researcher';\nconst comments = tokenData.comments;\n\nconst emailHtml = `\n<!DOCTYPE html>\n<html>\n<head><style>body{font-family:Arial,sans-serif;line-height:1.6;color:#333;}.container{max-width:600px;margin:0 auto;padding:20px;}.header{background:#dc3545;color:white;padding:20px;text-align:center;border-radius:8px 8px 0 0;}.content{background:#f9f9f9;padding:20px;border-radius:0 0 8px 8px;}.comments{background:#fff3cd;padding:15px;border-radius:6px;border-left:4px solid #ffc107;margin:20px 0;}</style></head>\n<body>\n<div class=\"container\">\n  <div class=\"header\">\n    <h1>Revision Requested</h1>\n  </div>\n  <div class=\"content\">\n    <p>Dear ${researcherName},</p>\n    <p>Your submission requires revision before it can be approved.</p>\n    <h3>Submission Details</h3>\n    <ul>\n      <li><strong>Filename:</strong> ${filename}</li>\n      <li><strong>Submission ID:</strong> ${tokenData.submission_id}</li>\n      <li><strong>Status:</strong> REVISION NEEDED</li>\n    </ul>\n    <h3>Reviewer Comments</h3>\n    <div class=\"comments\">\n      <p>${comments.replace(/\\n/g, '<br>')}</p>\n    </div>\n    <h3>Next Steps</h3>\n    <p>Please address the comments above and resubmit your document through the portal:</p>\n    <p style=\"text-align:center;margin:20px 0;\">\n      <a href=\"https://natlab-glp-production.up.railway.app/di/access.html\" style=\"background:#1a365d;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;display:inline-block;\">Resubmit Document</a>\n    </p>\n    <p style=\"margin-top:30px;\">If you have questions about the requested revisions, please contact the reviewer.</p>\n    <p>Best regards,<br>NATLAB GLP Review Team</p>\n  </div>\n</div>\n</body>\n</html>\n`;\n\nreturn [{\n  json: {\n    to: senderEmail,\n    subject: `[NATLAB GLP] Revision Requested: ${filename}`,\n    html: emailHtml\n  }\n}];"
+      },
+      "id": "prepare-revise-email",
+      "name": "Prepare Revise Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 1140]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "html",
+        "message": "={{ $json.html }}",
+        "options": {}
+      },
+      "id": "send-revise-email",
+      "name": "Send Revise Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1560, 1140],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "gmail-credential",
+          "name": "Gmail account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=<!DOCTYPE html><html><head><style>body{font-family:Arial,sans-serif;display:flex;justify-content:center;align-items:center;height:100vh;background:#f0f0f0;}.card{background:white;padding:40px;border-radius:10px;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,0.1);}.success{color:#28a745;font-size:48px;}</style></head><body><div class=\"card\"><div class=\"success\">✓</div><h1>Revision Request Sent</h1><p>The researcher has been notified via email with your comments.</p><p><a href=\"https://natlab-glp-production.up.railway.app/di/access.html\">Return to Portal</a></p></div></body></html>",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html"
+              }
+            ]
+          }
+        }
+      },
+      "id": "respond-revise-success",
+      "name": "Respond Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1780, 1140]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=<!DOCTYPE html><html><head><style>body{font-family:Arial,sans-serif;display:flex;justify-content:center;align-items:center;height:100vh;background:#f0f0f0;}.card{background:white;padding:40px;border-radius:10px;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,0.1);}.error{color:#dc3545;font-size:48px;}</style></head><body><div class=\"card\"><div class=\"error\">✗</div><h1>Invalid Request</h1><p>{{ $json.error || 'The submission could not be processed.' }}</p></div></body></html>",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html"
+              }
+            ]
+          },
+          "responseCode": 403
+        }
+      },
+      "id": "respond-submit-error",
+      "name": "Respond Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [900, 1300]
+    }
+  ],
+  "connections": {
+    "Webhook Intake": {
+      "main": [
+        [
+          {
+            "node": "Normalize Binary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Binary": {
+      "main": [
+        [
+          {
+            "node": "Forward Upload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Forward Upload": {
+      "main": [
+        [
+          {
+            "node": "Normalize Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Response": {
+      "main": [
+        [
+          {
+            "node": "Extract Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Text": {
+      "main": [
+        [
+          {
+            "node": "Merge Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Text": {
+      "main": [
+        [
+          {
+            "node": "AI Review Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Review Agent": {
+      "main": [
+        [
+          {
+            "node": "Parse AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI Response": {
+      "main": [
+        [
+          {
+            "node": "Save Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Review": {
+      "main": [
+        [
+          {
+            "node": "Prepare Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Email": {
+      "main": [
+        [
+          {
+            "node": "Send Review Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Review Email": {
+      "main": [
+        [
+          {
+            "node": "Respond Intake",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Approve": {
+      "main": [
+        [
+          {
+            "node": "Validate Approve Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Approve Token": {
+      "main": [
+        [
+          {
+            "node": "If Valid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Valid": {
+      "main": [
+        [
+          {
+            "node": "Call Sign Endpoint",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Sign Endpoint": {
+      "main": [
+        [
+          {
+            "node": "Update Status Approved",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Status Approved": {
+      "main": [
+        [
+          {
+            "node": "Get Submission",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Submission": {
+      "main": [
+        [
+          {
+            "node": "Prepare Approve Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Approve Email": {
+      "main": [
+        [
+          {
+            "node": "Send Approve Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Approve Email": {
+      "main": [
+        [
+          {
+            "node": "Respond Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Revise Form": {
+      "main": [
+        [
+          {
+            "node": "Validate Revise Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Revise Token": {
+      "main": [
+        [
+          {
+            "node": "If Valid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Valid1": {
+      "main": [
+        [
+          {
+            "node": "Show Revise Form",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Revise Submit": {
+      "main": [
+        [
+          {
+            "node": "Validate Submit Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Submit Token": {
+      "main": [
+        [
+          {
+            "node": "If Valid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Valid2": {
+      "main": [
+        [
+          {
+            "node": "Update Status Revision",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Status Revision": {
+      "main": [
+        [
+          {
+            "node": "Get Submission",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Submission1": {
+      "main": [
+        [
+          {
+            "node": "Prepare Revise Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Revise Email": {
+      "main": [
+        [
+          {
+            "node": "Send Revise Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Revise Email": {
+      "main": [
+        [
+          {
+            "node": "Respond Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2024-01-20T00:00:00.000Z",
+  "versionId": "1"
+}

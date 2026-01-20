@@ -28,8 +28,18 @@ CREATE TABLE IF NOT EXISTS di_submissions (
     file_type VARCHAR(10) NOT NULL CHECK (file_type IN ('SOP', 'DATA')),
     original_filename VARCHAR(500) NOT NULL,
     status VARCHAR(20) DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'APPROVED', 'REVISION_NEEDED')),
+    sender_email VARCHAR(255),
+    ai_review JSONB,
+    revision_comments TEXT,
+    signed_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Migration: Add new columns if table already exists
+ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS sender_email VARCHAR(255);
+ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS ai_review JSONB;
+ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS revision_comments TEXT;
+ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS signed_at TIMESTAMP;
 
 -- Index for faster lookups
 CREATE INDEX IF NOT EXISTS idx_di_submissions_researcher ON di_submissions(researcher_id);
