@@ -339,6 +339,209 @@ app.post('/api/di/upload', requireAuth, upload.single('file'), async (req, res) 
     }
 });
 
+// POST /api/di/external-upload
+// API endpoint for n8n or external services to upload files
+// Requires API key authentication via header: x-api-key
+app.post('/api/di/external-upload', upload.single('file'), async (req, res) => {
+    try {
+        // Verify API key
+        const apiKey = req.headers['x-api-key'];
+        if (!apiKey || apiKey !== process.env.API_SECRET_KEY) {
+            return res.status(401).json({ error: 'Invalid or missing API key' });
+        }
+
+        const { researcher_id, affiliation, fileType } = req.body;
+        const file = req.file;
+
+        // Validate required fields
+        if (!researcher_id) {
+            return res.status(400).json({ error: 'researcher_id is required' });
+        }
+
+        if (!affiliation || !['LiU', 'UNAV'].includes(affiliation)) {
+            return res.status(400).json({ error: 'affiliation must be LiU or UNAV' });
+        }
+
+        if (!fileType || !['SOP', 'DATA'].includes(fileType)) {
+            return res.status(400).json({ error: 'fileType must be SOP or DATA' });
+        }
+
+        if (!file) {
+            return res.status(400).json({ error: 'No file uploaded' });
+        }
+
+        // Verify researcher exists in allowlist
+        const allowlistCheck = await pool.query(
+            'SELECT researcher_id, name FROM di_allowlist WHERE researcher_id = $1 AND active = true',
+            [researcher_id]
+        );
+
+        if (allowlistCheck.rows.length === 0) {
+            return res.status(403).json({ error: 'Researcher not found or inactive' });
+        }
+
+        // Record submission in database
+        const submissionResult = await pool.query(
+            `INSERT INTO di_submissions (researcher_id, affiliation, file_type, original_filename)
+             VALUES ($1, $2, $3, $4)
+             RETURNING submission_id`,
+            [researcher_id, affiliation, fileType, file.originalname]
+        );
+
+        const submissionId = submissionResult.rows[0].submission_id;
+
+        // Forward to n8n webhook as multipart form data
+        const webhookUrl = process.env.N8N_DI_WEBHOOK_URL;
+
+        if (webhookUrl) {
+            const formData = new FormData();
+            formData.append('researcher_id', researcher_id);
+            formData.append('affiliation', affiliation);
+            formData.append('fileType', fileType);
+            formData.append('original_filename', file.originalname);
+            formData.append('submission_id', submissionId);
+            formData.append('file', file.buffer, {
+                filename: file.originalname,
+                contentType: file.mimetype
+            });
+
+            try {
+                const webhookResponse = await fetch(webhookUrl, {
+                    method: 'POST',
+                    body: formData,
+                    headers: formData.getHeaders()
+                });
+
+                if (!webhookResponse.ok) {
+                    console.error('Webhook error:', webhookResponse.status);
+                }
+            } catch (webhookErr) {
+                console.error('Webhook call failed:', webhookErr.message);
+            }
+        }
+
+        res.json({
+            success: true,
+            submission_id: submissionId,
+            researcher_id: researcher_id,
+            affiliation: affiliation,
+            fileType: fileType,
+            original_filename: file.originalname,
+            message: 'File uploaded successfully'
+        });
+
+    } catch (err) {
+        console.error('External upload error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/di/researchers
+// Get list of researchers (for n8n to validate)
+app.get('/api/di/researchers', async (req, res) => {
+    try {
+        const apiKey = req.headers['x-api-key'];
+        if (!apiKey || apiKey !== process.env.API_SECRET_KEY) {
+            return res.status(401).json({ error: 'Invalid or missing API key' });
+        }
+
+        const result = await pool.query(
+            'SELECT researcher_id, name, institution_email, affiliation FROM di_allowlist WHERE active = true ORDER BY affiliation, name'
+        );
+
+        res.json({
+            success: true,
+            count: result.rows.length,
+            researchers: result.rows
+        });
+
+    } catch (err) {
+        console.error('Get researchers error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/di/submissions
+// Get submissions list (for n8n to check status)
+app.get('/api/di/submissions', async (req, res) => {
+    try {
+        const apiKey = req.headers['x-api-key'];
+        if (!apiKey || apiKey !== process.env.API_SECRET_KEY) {
+            return res.status(401).json({ error: 'Invalid or missing API key' });
+        }
+
+        const { researcher_id, status, limit } = req.query;
+
+        let query = 'SELECT * FROM di_submissions WHERE 1=1';
+        const params = [];
+
+        if (researcher_id) {
+            params.push(researcher_id);
+            query += ` AND researcher_id = $${params.length}`;
+        }
+
+        if (status) {
+            params.push(status);
+            query += ` AND status = $${params.length}`;
+        }
+
+        query += ' ORDER BY created_at DESC';
+
+        if (limit) {
+            params.push(parseInt(limit));
+            query += ` LIMIT $${params.length}`;
+        }
+
+        const result = await pool.query(query, params);
+
+        res.json({
+            success: true,
+            count: result.rows.length,
+            submissions: result.rows
+        });
+
+    } catch (err) {
+        console.error('Get submissions error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// PATCH /api/di/submissions/:id
+// Update submission status (for n8n to update after processing)
+app.patch('/api/di/submissions/:id', async (req, res) => {
+    try {
+        const apiKey = req.headers['x-api-key'];
+        if (!apiKey || apiKey !== process.env.API_SECRET_KEY) {
+            return res.status(401).json({ error: 'Invalid or missing API key' });
+        }
+
+        const { id } = req.params;
+        const { status } = req.body;
+
+        if (!status || !['PENDING', 'APPROVED', 'REVISION_NEEDED'].includes(status)) {
+            return res.status(400).json({ error: 'status must be PENDING, APPROVED, or REVISION_NEEDED' });
+        }
+
+        const result = await pool.query(
+            'UPDATE di_submissions SET status = $1 WHERE submission_id = $2 RETURNING *',
+            [status, id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Submission not found' });
+        }
+
+        res.json({
+            success: true,
+            submission: result.rows[0]
+        });
+
+    } catch (err) {
+        console.error('Update submission error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
 // POST /api/di/logout
 // Logout user
 app.post('/api/di/logout', (req, res) => {
