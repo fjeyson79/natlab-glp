@@ -731,6 +731,161 @@ app.get('/api/di/download/:id', async (req, res) => {
     }
 });
 
+// GET /api/di/approve/:id
+// Browser-based approval via email link (validates token from query string)
+app.get('/api/di/approve/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { token } = req.query;
+
+        if (!token) {
+            return res.status(400).send(renderHtmlPage('Error', 'Missing token parameter', 'error'));
+        }
+
+        // Validate token (base64 method matching n8n workflow)
+        const expectedToken = Buffer.from(id + '_glp_2024_sec').toString('base64').replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
+
+        if (token !== expectedToken) {
+            return res.status(403).send(renderHtmlPage('Invalid Token', 'The approval link is invalid or expired.', 'error'));
+        }
+
+        // Get submission
+        const result = await pool.query(
+            'SELECT * FROM di_submissions WHERE submission_id = $1',
+            [id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).send(renderHtmlPage('Not Found', 'Submission not found.', 'error'));
+        }
+
+        const submission = result.rows[0];
+
+        // Update submission with approved status
+        const signedAt = new Date().toISOString();
+        await pool.query(
+            `UPDATE di_submissions SET status = 'APPROVED', signed_at = $1 WHERE submission_id = $2`,
+            [signedAt, id]
+        );
+
+        res.send(renderHtmlPage(
+            'Document Approved',
+            `<p>Submission <strong>${id}</strong> has been approved and signed.</p>
+             <p>File: ${submission.original_filename}</p>
+             <p>Signed at: ${signedAt}</p>
+             <p><a href="/api/di/download/${id}?signed=true" style="color:#007bff;">Download Signed Document</a></p>`,
+            'success'
+        ));
+
+    } catch (err) {
+        console.error('Approve error:', err);
+        res.status(500).send(renderHtmlPage('Error', 'Server error occurred.', 'error'));
+    }
+});
+
+// GET /api/di/revise/:id
+// Browser-based revision request page
+app.get('/api/di/revise/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { token } = req.query;
+
+        if (!token) {
+            return res.status(400).send(renderHtmlPage('Error', 'Missing token parameter', 'error'));
+        }
+
+        // Validate token
+        const expectedToken = Buffer.from(id + '_glp_2024_sec').toString('base64').replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
+
+        if (token !== expectedToken) {
+            return res.status(403).send(renderHtmlPage('Invalid Token', 'The revision link is invalid or expired.', 'error'));
+        }
+
+        // Show revision form
+        res.send(`<!DOCTYPE html>
+<html>
+<head><title>Request Revision</title></head>
+<body style="font-family:Arial;background:linear-gradient(135deg,#1a365d,#2d5a87);min-height:100vh;display:flex;justify-content:center;align-items:center;margin:0;">
+<div style="background:white;padding:40px;border-radius:10px;max-width:500px;width:90%;">
+<h1 style="color:#1a365d;">Request Revision</h1>
+<p>Submission ID: <strong>${id}</strong></p>
+<form method="POST" action="/api/di/revise/${id}?token=${token}">
+<label style="display:block;margin-bottom:8px;font-weight:bold;">Revision Comments:</label>
+<textarea name="comments" required style="width:100%;height:150px;padding:10px;border:2px solid #ddd;border-radius:5px;box-sizing:border-box;" placeholder="Enter your comments for the researcher..."></textarea>
+<button type="submit" style="width:100%;padding:15px;background:#dc3545;color:white;border:none;border-radius:5px;cursor:pointer;margin-top:15px;font-size:16px;">Submit Revision Request</button>
+</form>
+</div>
+</body>
+</html>`);
+
+    } catch (err) {
+        console.error('Revise page error:', err);
+        res.status(500).send(renderHtmlPage('Error', 'Server error occurred.', 'error'));
+    }
+});
+
+// POST /api/di/revise/:id
+// Process revision request
+app.post('/api/di/revise/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { token } = req.query;
+        const { comments } = req.body;
+
+        if (!token) {
+            return res.status(400).send(renderHtmlPage('Error', 'Missing token parameter', 'error'));
+        }
+
+        // Validate token
+        const expectedToken = Buffer.from(id + '_glp_2024_sec').toString('base64').replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
+
+        if (token !== expectedToken) {
+            return res.status(403).send(renderHtmlPage('Invalid Token', 'The revision link is invalid or expired.', 'error'));
+        }
+
+        // Update submission status
+        await pool.query(
+            `UPDATE di_submissions SET status = 'REVISION_NEEDED' WHERE submission_id = $1`,
+            [id]
+        );
+
+        res.send(renderHtmlPage(
+            'Revision Requested',
+            `<p>Submission <strong>${id}</strong> has been marked for revision.</p>
+             <p>The researcher will be notified with your comments.</p>
+             ${comments ? `<p><strong>Your comments:</strong> ${comments}</p>` : ''}`,
+            'success'
+        ));
+
+    } catch (err) {
+        console.error('Revise submit error:', err);
+        res.status(500).send(renderHtmlPage('Error', 'Server error occurred.', 'error'));
+    }
+});
+
+// Helper function to render HTML pages
+function renderHtmlPage(title, content, type = 'info') {
+    const colors = {
+        success: { bg: '#d4edda', icon: '&#10003;', iconColor: '#28a745' },
+        error: { bg: '#f8d7da', icon: '&#10007;', iconColor: '#dc3545' },
+        info: { bg: '#e7f1ff', icon: '&#8505;', iconColor: '#0066cc' }
+    };
+    const c = colors[type] || colors.info;
+
+    return `<!DOCTYPE html>
+<html>
+<head><title>${title} - NATLAB GLP</title></head>
+<body style="font-family:Arial;display:flex;justify-content:center;align-items:center;height:100vh;background:#f0f0f0;margin:0;">
+<div style="background:white;padding:40px;border-radius:10px;text-align:center;max-width:500px;box-shadow:0 4px 20px rgba(0,0,0,0.1);">
+<div style="color:${c.iconColor};font-size:48px;margin-bottom:20px;">${c.icon}</div>
+<h1 style="color:#1a365d;">${title}</h1>
+<div style="text-align:left;margin-top:20px;">${content}</div>
+<p style="margin-top:30px;"><a href="/di/access.html" style="color:#007bff;">Return to Portal</a></p>
+</div>
+</body>
+</html>`;
+}
+
 // POST /api/di/logout
 // Logout user
 app.post('/api/di/logout', (req, res) => {
