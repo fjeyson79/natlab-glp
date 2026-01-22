@@ -183,6 +183,7 @@
         }
         .btn-view { background: #007bff; color: white; }
         .btn-download { background: #28a745; color: white; }
+        .btn-verify { background: #6f42c1; color: white; }
 
         .file-status {
             font-size: 10px;
@@ -332,7 +333,9 @@
         // Load user info
         async function loadUser() {
             try {
-                const response = await fetch('/api/di/me');
+                const response = await fetch('/api/di/me', {
+                    credentials: 'include'
+                });
                 if (!response.ok) {
                     window.location.href = 'access.html';
                     return;
@@ -362,7 +365,9 @@
             treeContainer.innerHTML = '<div class="loading"><div class="spinner"></div>Loading files...</div>';
 
             try {
-                const response = await fetch('/api/di/my-files');
+                const response = await fetch('/api/di/my-files', {
+                    credentials: 'include'
+                });
                 if (!response.ok) throw new Error('Failed to load files');
                 const data = await response.json();
 
@@ -408,14 +413,20 @@
         function renderTree(node, level = 0) {
             if (node.type === 'file') {
                 const statusClass = 'status-' + (node.status || 'PENDING');
+                const isApproved = node.status === 'APPROVED';
+                const signedBadge = isApproved && node.signedAt ? `<span style="background:#28a745;color:white;padding:1px 6px;border-radius:8px;font-size:9px;margin-left:5px;">SIGNED</span>` : '';
+                const verifyBtn = isApproved && node.verificationCode ? `<button class="btn-verify" onclick="verifyDocument('${node.verificationCode}')" title="Verify signature">Verify</button>` : '';
+
                 return `
                     <div class="tree-item tree-file" style="padding-left:${level * 20}px">
-                        <span class="icon">&#128196;</span>
+                        <span class="icon">${isApproved ? '&#9989;' : '&#128196;'}</span>
                         <span>${node.name}</span>
                         <span class="file-status ${statusClass}">${node.status || 'PENDING'}</span>
+                        ${signedBadge}
                         <div class="file-actions">
                             <button class="btn-view" onclick="viewFile('${node.id}')">View</button>
                             <button class="btn-download" onclick="downloadFile('${node.id}')">Download</button>
+                            ${verifyBtn}
                         </div>
                     </div>
                 `;
@@ -451,6 +462,10 @@
 
         function downloadFile(id) {
             window.location.href = `/api/di/download/${id}?download=true`;
+        }
+
+        function verifyDocument(code) {
+            window.open(`/api/di/verify/${code}`, '_blank');
         }
 
         // File upload handling
@@ -521,7 +536,8 @@
             try {
                 const response = await fetch('/api/di/upload', {
                     method: 'POST',
-                    body: formData
+                    body: formData,
+                    credentials: 'include'
                 });
 
                 const data = await response.json();
@@ -555,7 +571,10 @@
         // Logout
         document.getElementById('logoutBtn').addEventListener('click', async () => {
             try {
-                await fetch('/api/di/logout', { method: 'POST' });
+                await fetch('/api/di/logout', {
+                    method: 'POST',
+                    credentials: 'include'
+                });
             } catch (err) {}
             window.location.href = 'access.html';
         });

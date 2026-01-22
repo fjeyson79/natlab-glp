@@ -395,6 +395,7 @@ app.get('/api/di/my-files', requireAuth, async (req, res) => {
         // Get all submissions for this researcher
         const result = await pool.query(
             `SELECT submission_id, file_type, original_filename, status, created_at, signed_at,
+                    verification_code, ai_review_score, ai_review_decision,
                     EXTRACT(YEAR FROM created_at) as year
              FROM di_submissions
              WHERE researcher_id = $1
@@ -439,7 +440,10 @@ app.get('/api/di/my-files', requireAuth, async (req, res) => {
                 status: status,
                 fileType: file.file_type,
                 date: file.created_at,
-                signedAt: file.signed_at
+                signedAt: file.signed_at,
+                verificationCode: file.verification_code,
+                aiScore: file.ai_review_score,
+                aiDecision: file.ai_review_decision
             };
 
             // Place file in ONLY ONE folder based on status
@@ -863,7 +867,7 @@ app.post('/api/di/extract-text', async (req, res) => {
 });
 
 // POST /api/di/sign
-// Sign an approved submission
+// Sign an approved submission (API key auth for n8n)
 app.post('/api/di/sign', async (req, res) => {
     try {
         const apiKey = req.headers['x-api-key'];
@@ -871,21 +875,10 @@ app.post('/api/di/sign', async (req, res) => {
             return res.status(401).json({ error: 'Invalid or missing API key' });
         }
 
-        const { submission_id, token } = req.body;
+        const { submission_id, token, signer_name, signer_email, ai_score, ai_decision, doc_type } = req.body;
 
         if (!submission_id) {
             return res.status(400).json({ error: 'submission_id is required' });
-        }
-
-        // Validate token
-        const crypto = require('crypto');
-        const expectedToken = crypto.createHmac('sha256', process.env.API_SECRET_KEY)
-            .update(submission_id)
-            .digest('hex')
-            .substring(0, 32);
-
-        if (token !== expectedToken) {
-            return res.status(403).json({ error: 'Invalid token' });
         }
 
         // Get submission
@@ -900,32 +893,134 @@ app.post('/api/di/sign', async (req, res) => {
 
         const submission = result.rows[0];
 
-        // Generate signed file URL (placeholder)
-        // In production, this would create a digitally signed PDF and upload to storage
+        // Generate digital signature data
+        const crypto = require('crypto');
         const signedAt = new Date().toISOString();
-        const signedFileUrl = `https://natlab-glp-production.up.railway.app/api/di/download/${submission_id}?signed=true&t=${Date.now()}`;
 
-        // Update submission with signed status
+        // Create signature hash (combines submission data + timestamp + signer)
+        const signaturePayload = JSON.stringify({
+            submission_id,
+            original_filename: submission.original_filename,
+            researcher_id: submission.researcher_id,
+            file_type: submission.file_type,
+            signed_at: signedAt,
+            signer: signer_name || 'PI',
+            ai_score: ai_score || null,
+            ai_decision: ai_decision || null,
+            doc_type: doc_type || submission.file_type
+        });
+
+        const signatureHash = crypto.createHmac('sha256', process.env.API_SECRET_KEY || 'natlab_glp_secret')
+            .update(signaturePayload)
+            .digest('hex');
+
+        // Create verification code (short version for display)
+        const verificationCode = `NATLAB-${submission_id}-${signatureHash.substring(0, 8).toUpperCase()}`;
+
+        // Update submission with signed status and signature data
         await pool.query(
             `UPDATE di_submissions SET
                 status = 'APPROVED',
-                signed_at = $1
-             WHERE submission_id = $2`,
-            [signedAt, submission_id]
+                signed_at = $1,
+                signature_hash = $2,
+                verification_code = $3,
+                signer_name = $4,
+                signer_email = $5,
+                ai_review_score = $6,
+                ai_review_decision = $7
+             WHERE submission_id = $8`,
+            [signedAt, signatureHash, verificationCode, signer_name || 'Principal Investigator',
+             signer_email || 'pi@natlab.liu.se', ai_score || null, ai_decision || null, submission_id]
         );
+
+        const signedFileUrl = `https://natlab-glp-production.up.railway.app/api/di/download/${submission_id}?signed=true`;
 
         res.json({
             success: true,
             submission_id: submission_id,
             signed_at: signedAt,
+            signature_hash: signatureHash,
+            verification_code: verificationCode,
             signed_file_url: signedFileUrl,
             original_filename: submission.original_filename,
-            message: 'Document signed successfully'
+            signer: signer_name || 'Principal Investigator',
+            message: 'Document digitally signed successfully'
         });
 
     } catch (err) {
         console.error('Sign error:', err);
         res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/di/verify/:code
+// Verify a signed document using verification code
+app.get('/api/di/verify/:code', async (req, res) => {
+    try {
+        const { code } = req.params;
+
+        // Find submission by verification code
+        const result = await pool.query(
+            `SELECT submission_id, original_filename, researcher_id, affiliation,
+                    file_type, status, signed_at, signature_hash, verification_code,
+                    signer_name, ai_review_score, ai_review_decision, created_at
+             FROM di_submissions
+             WHERE verification_code = $1`,
+            [code]
+        );
+
+        if (result.rows.length === 0) {
+            return res.send(renderHtmlPage(
+                'Verification Failed',
+                `<p>No document found with verification code: <strong>${code}</strong></p>
+                 <p>Please check the code and try again.</p>`,
+                'error'
+            ));
+        }
+
+        const doc = result.rows[0];
+
+        if (doc.status !== 'APPROVED' || !doc.signed_at) {
+            return res.send(renderHtmlPage(
+                'Document Not Signed',
+                `<p>Document found but has not been signed yet.</p>
+                 <p>Status: ${doc.status}</p>`,
+                'error'
+            ));
+        }
+
+        // Document is valid and signed
+        res.send(renderHtmlPage(
+            'Document Verified',
+            `<div style="background:#d4edda;padding:20px;border-radius:8px;margin-bottom:20px;">
+                <h3 style="color:#155724;margin:0 0 10px 0;">&#10003; This document is authentic and digitally signed</h3>
+            </div>
+            <table style="width:100%;border-collapse:collapse;">
+                <tr><td style="padding:8px;color:#666;border-bottom:1px solid #eee;">Verification Code:</td>
+                    <td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">${doc.verification_code}</td></tr>
+                <tr><td style="padding:8px;color:#666;border-bottom:1px solid #eee;">Document:</td>
+                    <td style="padding:8px;border-bottom:1px solid #eee;">${doc.original_filename}</td></tr>
+                <tr><td style="padding:8px;color:#666;border-bottom:1px solid #eee;">Researcher:</td>
+                    <td style="padding:8px;border-bottom:1px solid #eee;">${doc.researcher_id}</td></tr>
+                <tr><td style="padding:8px;color:#666;border-bottom:1px solid #eee;">Affiliation:</td>
+                    <td style="padding:8px;border-bottom:1px solid #eee;">${doc.affiliation}</td></tr>
+                <tr><td style="padding:8px;color:#666;border-bottom:1px solid #eee;">Document Type:</td>
+                    <td style="padding:8px;border-bottom:1px solid #eee;">${doc.file_type}</td></tr>
+                <tr><td style="padding:8px;color:#666;border-bottom:1px solid #eee;">Signed By:</td>
+                    <td style="padding:8px;border-bottom:1px solid #eee;">${doc.signer_name || 'Principal Investigator'}</td></tr>
+                <tr><td style="padding:8px;color:#666;border-bottom:1px solid #eee;">Signed At:</td>
+                    <td style="padding:8px;border-bottom:1px solid #eee;">${new Date(doc.signed_at).toLocaleString()}</td></tr>
+                ${doc.ai_review_score ? `<tr><td style="padding:8px;color:#666;border-bottom:1px solid #eee;">AI Review Score:</td>
+                    <td style="padding:8px;border-bottom:1px solid #eee;">${doc.ai_review_score}/100</td></tr>` : ''}
+                <tr><td style="padding:8px;color:#666;">Signature Hash:</td>
+                    <td style="padding:8px;font-family:monospace;font-size:11px;word-break:break-all;">${doc.signature_hash}</td></tr>
+            </table>`,
+            'success'
+        ));
+
+    } catch (err) {
+        console.error('Verify error:', err);
+        res.status(500).send(renderHtmlPage('Error', 'Server error occurred.', 'error'));
     }
 });
 
