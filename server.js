@@ -57,6 +57,68 @@ app.get('/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Debug endpoint to check members (temporary - for troubleshooting)
+app.get('/api/di/debug-members', async (req, res) => {
+    try {
+        // Check session
+        const sessionInfo = {
+            hasSession: !!req.session,
+            hasUser: !!req.session?.user,
+            userRole: req.session?.user?.role || 'none',
+            userName: req.session?.user?.name || 'none'
+        };
+
+        // Check database connection
+        const dbTest = await pool.query('SELECT 1 as test');
+
+        // Check role column
+        const columnCheck = await pool.query(`
+            SELECT column_name FROM information_schema.columns
+            WHERE table_name = 'di_allowlist' AND column_name = 'role'
+        `);
+        const hasRoleColumn = columnCheck.rows.length > 0;
+
+        // Get all members
+        let members;
+        if (hasRoleColumn) {
+            members = await pool.query(
+                `SELECT researcher_id, name, institution_email, affiliation,
+                        COALESCE(role, 'researcher') as role, active
+                 FROM di_allowlist
+                 ORDER BY role DESC, name ASC`
+            );
+        } else {
+            members = await pool.query(
+                `SELECT researcher_id, name, institution_email, affiliation,
+                        'researcher' as role, active
+                 FROM di_allowlist
+                 ORDER BY name ASC`
+            );
+        }
+
+        res.json({
+            success: true,
+            session: sessionInfo,
+            database: {
+                connected: true,
+                hasRoleColumn: hasRoleColumn
+            },
+            members: {
+                total: members.rows.length,
+                active: members.rows.filter(m => m.active).length,
+                list: members.rows
+            }
+        });
+
+    } catch (err) {
+        res.status(500).json({
+            success: false,
+            error: err.message,
+            stack: err.stack
+        });
+    }
+});
+
 // AUTH MIDDLEWARE
 function requireAuth(req, res, next) {
     if (!req.session.user) {
