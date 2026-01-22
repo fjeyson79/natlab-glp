@@ -78,6 +78,32 @@ function requirePI(req, res, next) {
 
 // API ENDPOINTS
 
+// Helper function to check if role column exists
+let roleColumnExists = null;
+async function checkRoleColumn() {
+    if (roleColumnExists !== null) return roleColumnExists;
+    try {
+        const result = await pool.query(`
+            SELECT column_name FROM information_schema.columns
+            WHERE table_name = 'di_allowlist' AND column_name = 'role'
+        `);
+        roleColumnExists = result.rows.length > 0;
+    } catch (err) {
+        roleColumnExists = false;
+    }
+    return roleColumnExists;
+}
+
+// Helper to get allowlist query based on role column existence
+function getAllowlistQuery(hasRole) {
+    if (hasRole) {
+        return `SELECT researcher_id, name, institution_email, affiliation, active, COALESCE(role, 'researcher') as role
+                FROM di_allowlist WHERE LOWER(institution_email) = $1`;
+    }
+    return `SELECT researcher_id, name, institution_email, affiliation, active, 'researcher' as role
+            FROM di_allowlist WHERE LOWER(institution_email) = $1`;
+}
+
 // POST /api/di/access-check
 // Check if email is in allowlist and whether user exists
 app.post('/api/di/access-check', async (req, res) => {
@@ -90,12 +116,9 @@ app.post('/api/di/access-check', async (req, res) => {
 
         const emailLower = institution_email.toLowerCase().trim();
 
-        // Check allowlist (include role column)
-        const allowlistResult = await pool.query(
-            `SELECT researcher_id, name, affiliation, active, COALESCE(role, 'researcher') as role
-             FROM di_allowlist WHERE LOWER(institution_email) = $1`,
-            [emailLower]
-        );
+        // Check allowlist (handle missing role column)
+        const hasRole = await checkRoleColumn();
+        const allowlistResult = await pool.query(getAllowlistQuery(hasRole), [emailLower]);
 
         if (allowlistResult.rows.length === 0) {
             return res.json({ allowed: false, message: 'Email not in allowlist' });
@@ -145,12 +168,9 @@ app.post('/api/di/register', async (req, res) => {
 
         const emailLower = institution_email.toLowerCase().trim();
 
-        // Verify in allowlist (include role)
-        const allowlistResult = await pool.query(
-            `SELECT researcher_id, name, affiliation, active, COALESCE(role, 'researcher') as role
-             FROM di_allowlist WHERE LOWER(institution_email) = $1`,
-            [emailLower]
-        );
+        // Verify in allowlist (handle missing role column)
+        const hasRole = await checkRoleColumn();
+        const allowlistResult = await pool.query(getAllowlistQuery(hasRole), [emailLower]);
 
         if (allowlistResult.rows.length === 0) {
             return res.status(403).json({ error: 'Email not in allowlist' });
@@ -217,15 +237,21 @@ app.post('/api/di/login', async (req, res) => {
 
         const emailLower = institution_email.toLowerCase().trim();
 
-        // Get user with allowlist info (include role)
-        const result = await pool.query(
-            `SELECT u.institution_email, u.password_hash, u.researcher_id,
-                    a.name, a.affiliation, a.active, COALESCE(a.role, 'researcher') as role
-             FROM di_users u
-             JOIN di_allowlist a ON u.researcher_id = a.researcher_id
-             WHERE LOWER(u.institution_email) = $1`,
-            [emailLower]
-        );
+        // Get user with allowlist info (handle missing role column)
+        const hasRole = await checkRoleColumn();
+        const loginQuery = hasRole
+            ? `SELECT u.institution_email, u.password_hash, u.researcher_id,
+                      a.name, a.affiliation, a.active, COALESCE(a.role, 'researcher') as role
+               FROM di_users u
+               JOIN di_allowlist a ON u.researcher_id = a.researcher_id
+               WHERE LOWER(u.institution_email) = $1`
+            : `SELECT u.institution_email, u.password_hash, u.researcher_id,
+                      a.name, a.affiliation, a.active, 'researcher' as role
+               FROM di_users u
+               JOIN di_allowlist a ON u.researcher_id = a.researcher_id
+               WHERE LOWER(u.institution_email) = $1`;
+
+        const result = await pool.query(loginQuery, [emailLower]);
 
         if (result.rows.length === 0) {
             return res.status(401).json({ error: 'Invalid credentials' });
@@ -984,12 +1010,21 @@ app.post('/api/di/members', requirePI, async (req, res) => {
             return res.status(409).json({ error: 'Member with this ID or email already exists' });
         }
 
-        // Insert new member
-        await pool.query(
-            `INSERT INTO di_allowlist (researcher_id, name, institution_email, affiliation, role, active, created_at)
-             VALUES ($1, $2, $3, $4, $5, true, CURRENT_TIMESTAMP)`,
-            [researcher_id, name, emailLower, affiliation, memberRole]
-        );
+        // Insert new member (handle missing role column)
+        const hasRole = await checkRoleColumn();
+        if (hasRole) {
+            await pool.query(
+                `INSERT INTO di_allowlist (researcher_id, name, institution_email, affiliation, role, active, created_at)
+                 VALUES ($1, $2, $3, $4, $5, true, CURRENT_TIMESTAMP)`,
+                [researcher_id, name, emailLower, affiliation, memberRole]
+            );
+        } else {
+            await pool.query(
+                `INSERT INTO di_allowlist (researcher_id, name, institution_email, affiliation, active, created_at)
+                 VALUES ($1, $2, $3, $4, true, CURRENT_TIMESTAMP)`,
+                [researcher_id, name, emailLower, affiliation]
+            );
+        }
 
         res.json({
             success: true,

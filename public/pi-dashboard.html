@@ -171,6 +171,34 @@
         .btn-view { background: #007bff; color: white; }
         .btn-download { background: #28a745; color: white; }
         .btn-delete { background: #dc3545; color: white; }
+        .file-checkbox {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+            margin-right: 5px;
+        }
+        .bulk-actions {
+            display: flex;
+            gap: 10px;
+            padding: 10px;
+            background: #e3f2fd;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            align-items: center;
+        }
+        .bulk-actions.hidden { display: none; }
+        .bulk-actions span { font-size: 13px; color: #1a365d; font-weight: bold; }
+        .bulk-actions button {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .btn-bulk-download { background: #28a745; color: white; }
+        .btn-bulk-delete { background: #dc3545; color: white; }
+        .btn-select-all { background: #6c757d; color: white; }
+        .btn-clear-selection { background: #ffc107; color: #333; }
         .file-status {
             font-size: 10px;
             padding: 2px 6px;
@@ -365,6 +393,13 @@
                 <button onclick="loadDirectory()" style="padding:5px 10px;font-size:12px;cursor:pointer;border:1px solid #ddd;border-radius:4px;background:white;">Refresh</button>
             </div>
             <div class="panel-content">
+                <div id="bulkActions" class="bulk-actions hidden">
+                    <span id="selectedCount">0 selected</span>
+                    <button class="btn-select-all" onclick="selectAllFiles()">Select All</button>
+                    <button class="btn-clear-selection" onclick="clearSelection()">Clear</button>
+                    <button class="btn-bulk-download" onclick="bulkDownload()">Download Selected</button>
+                    <button class="btn-bulk-delete" onclick="bulkDelete()">Delete Selected</button>
+                </div>
                 <div id="directoryTree" class="directory-tree">
                     <div class="loading">
                         <div class="spinner"></div>
@@ -527,19 +562,25 @@
             }
         }
 
+        // Track selected files
+        let selectedFiles = new Set();
+        let allFileIds = [];
+
         function renderTree(node, level = 0) {
             if (node.type === 'file') {
                 const statusClass = node.status === 'APPROVED' ? 'status-approved' :
                                    node.status === 'REVISION_NEEDED' ? 'status-revision' : 'status-pending';
+                const escapedName = node.name.replace(/'/g, "\\'").replace(/"/g, '&quot;');
                 return `
-                    <div class="tree-item tree-file" style="padding-left:${level * 20}px">
+                    <div class="tree-item tree-file" style="padding-left:${level * 20}px" data-file-id="${node.id}">
+                        <input type="checkbox" class="file-checkbox" data-id="${node.id}" data-name="${escapedName}" onclick="toggleFileSelection(event, '${node.id}')">
                         <span class="icon">&#128196;</span>
                         <span>${node.name}</span>
                         <span class="file-status ${statusClass}">${node.status || 'PENDING'}</span>
                         <div class="file-actions">
                             <button class="btn-view" onclick="viewFile('${node.id}')">View</button>
                             <button class="btn-download" onclick="downloadFile('${node.id}')">Download</button>
-                            <button class="btn-delete" onclick="deleteFile('${node.id}', '${node.name.replace(/'/g, "\\'")}')">Delete</button>
+                            <button class="btn-delete" onclick="deleteFile('${node.id}', '${escapedName}')">Delete</button>
                         </div>
                     </div>
                 `;
@@ -565,6 +606,99 @@
             if (children && children.classList.contains('tree-children')) {
                 children.classList.toggle('collapsed');
             }
+        }
+
+        function toggleFileSelection(event, fileId) {
+            event.stopPropagation();
+            if (selectedFiles.has(fileId)) {
+                selectedFiles.delete(fileId);
+            } else {
+                selectedFiles.add(fileId);
+            }
+            updateBulkActionsBar();
+        }
+
+        function updateBulkActionsBar() {
+            const bulkActions = document.getElementById('bulkActions');
+            const selectedCount = document.getElementById('selectedCount');
+
+            if (selectedFiles.size > 0) {
+                bulkActions.classList.remove('hidden');
+                selectedCount.textContent = `${selectedFiles.size} selected`;
+            } else {
+                bulkActions.classList.add('hidden');
+            }
+        }
+
+        function selectAllFiles() {
+            const checkboxes = document.querySelectorAll('.file-checkbox');
+            checkboxes.forEach(cb => {
+                cb.checked = true;
+                selectedFiles.add(cb.dataset.id);
+            });
+            updateBulkActionsBar();
+        }
+
+        function clearSelection() {
+            const checkboxes = document.querySelectorAll('.file-checkbox');
+            checkboxes.forEach(cb => cb.checked = false);
+            selectedFiles.clear();
+            updateBulkActionsBar();
+        }
+
+        async function bulkDownload() {
+            if (selectedFiles.size === 0) {
+                alert('No files selected');
+                return;
+            }
+
+            // Download files one by one (browser limitation)
+            const ids = Array.from(selectedFiles);
+            for (let i = 0; i < ids.length; i++) {
+                setTimeout(() => {
+                    const link = document.createElement('a');
+                    link.href = `/api/di/download/${ids[i]}?download=true`;
+                    link.download = '';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                }, i * 500); // Stagger downloads to avoid browser blocking
+            }
+        }
+
+        async function bulkDelete() {
+            if (selectedFiles.size === 0) {
+                alert('No files selected');
+                return;
+            }
+
+            if (!confirm(`Are you sure you want to delete ${selectedFiles.size} file(s)? This action cannot be undone.`)) {
+                return;
+            }
+
+            const ids = Array.from(selectedFiles);
+            let successCount = 0;
+            let errorCount = 0;
+
+            for (const id of ids) {
+                try {
+                    const response = await fetch(`/api/di/submissions/${id}`, {
+                        method: 'DELETE'
+                    });
+                    if (response.ok) {
+                        successCount++;
+                    } else {
+                        errorCount++;
+                    }
+                } catch (err) {
+                    errorCount++;
+                }
+            }
+
+            alert(`Deleted ${successCount} file(s)${errorCount > 0 ? `, ${errorCount} failed` : ''}`);
+            selectedFiles.clear();
+            updateBulkActionsBar();
+            loadDirectory();
         }
 
         function viewFile(id) {
@@ -593,6 +727,8 @@
                 }
 
                 alert('File deleted successfully');
+                selectedFiles.delete(id);
+                updateBulkActionsBar();
                 loadDirectory();
 
             } catch (err) {
