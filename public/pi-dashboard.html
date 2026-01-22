@@ -440,7 +440,7 @@
                 // Load all data
                 loadMembers();
                 loadDirectory();
-                populateResearcherDropdown();
+                populateResearcherDropdown(user);
 
             } catch (err) {
                 window.location.href = 'access.html';
@@ -485,18 +485,30 @@
         }
 
         // Populate researcher dropdown
-        async function populateResearcherDropdown() {
+        async function populateResearcherDropdown(currentUser) {
+            const select = document.getElementById('uploadResearcher');
+
             try {
                 const response = await fetch('/api/di/members');
                 if (!response.ok) throw new Error('Failed to load');
                 const data = await response.json();
 
-                const select = document.getElementById('uploadResearcher');
-                select.innerHTML = '<option value="">Select researcher...</option>' +
-                    data.members.map(m => `<option value="${m.researcher_id}">${m.name} (${m.researcher_id})</option>`).join('');
+                if (data.members && data.members.length > 0) {
+                    select.innerHTML = '<option value="">Select researcher...</option>' +
+                        data.members.map(m => `<option value="${m.researcher_id}">${m.name} (${m.researcher_id}) - ${m.affiliation}</option>`).join('');
+                } else {
+                    // Fallback: add at least the current user
+                    select.innerHTML = `<option value="">Select researcher...</option>
+                        <option value="${currentUser.researcher_id}">${currentUser.name} (${currentUser.researcher_id})</option>`;
+                }
 
             } catch (err) {
                 console.error('Error loading researchers:', err);
+                // Fallback: add at least the current user so PI can upload
+                if (currentUser) {
+                    select.innerHTML = `<option value="">Select researcher...</option>
+                        <option value="${currentUser.researcher_id}">${currentUser.name} (${currentUser.researcher_id})</option>`;
+                }
             }
         }
 
