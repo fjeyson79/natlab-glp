@@ -913,13 +913,32 @@ function renderHtmlPage(title, content, type = 'info') {
 // Get all lab members (PI only)
 app.get('/api/di/members', requirePI, async (req, res) => {
     try {
-        const result = await pool.query(
-            `SELECT researcher_id, name, institution_email, affiliation,
-                    COALESCE(role, 'researcher') as role, active, created_at
-             FROM di_allowlist
-             WHERE active = true
-             ORDER BY role DESC, name ASC`
-        );
+        // Check if role column exists
+        const columnCheck = await pool.query(`
+            SELECT column_name FROM information_schema.columns
+            WHERE table_name = 'di_allowlist' AND column_name = 'role'
+        `);
+        const hasRoleColumn = columnCheck.rows.length > 0;
+
+        let result;
+        if (hasRoleColumn) {
+            result = await pool.query(
+                `SELECT researcher_id, name, institution_email, affiliation,
+                        COALESCE(role, 'researcher') as role, active, created_at
+                 FROM di_allowlist
+                 WHERE active = true
+                 ORDER BY role DESC, name ASC`
+            );
+        } else {
+            // Role column doesn't exist yet - return all as researchers
+            result = await pool.query(
+                `SELECT researcher_id, name, institution_email, affiliation,
+                        'researcher' as role, active, created_at
+                 FROM di_allowlist
+                 WHERE active = true
+                 ORDER BY name ASC`
+            );
+        }
 
         res.json({
             success: true,
@@ -1191,6 +1210,42 @@ app.post('/api/di/pi-upload', requirePI, upload.single('file'), async (req, res)
 
     } catch (err) {
         console.error('PI upload error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// DELETE /api/di/submissions/:id
+// Delete a submission (PI only)
+app.delete('/api/di/submissions/:id', requirePI, async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // Check if submission exists
+        const result = await pool.query(
+            'SELECT submission_id, original_filename FROM di_submissions WHERE submission_id = $1',
+            [id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Submission not found' });
+        }
+
+        const submission = result.rows[0];
+
+        // Delete the submission
+        await pool.query('DELETE FROM di_submissions WHERE submission_id = $1', [id]);
+
+        res.json({
+            success: true,
+            message: 'Submission deleted successfully',
+            deleted: {
+                submission_id: id,
+                filename: submission.original_filename
+            }
+        });
+
+    } catch (err) {
+        console.error('Delete submission error:', err);
         res.status(500).json({ error: 'Server error' });
     }
 });

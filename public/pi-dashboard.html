@@ -170,6 +170,7 @@
         }
         .btn-view { background: #007bff; color: white; }
         .btn-download { background: #28a745; color: white; }
+        .btn-delete { background: #dc3545; color: white; }
         .file-status {
             font-size: 10px;
             padding: 2px 6px;
@@ -526,6 +527,7 @@
                         <div class="file-actions">
                             <button class="btn-view" onclick="viewFile('${node.id}')">View</button>
                             <button class="btn-download" onclick="downloadFile('${node.id}')">Download</button>
+                            <button class="btn-delete" onclick="deleteFile('${node.id}', '${node.name.replace(/'/g, "\\'")}')">Delete</button>
                         </div>
                     </div>
                 `;
@@ -559,6 +561,31 @@
 
         function downloadFile(id) {
             window.location.href = `/api/di/download/${id}?download=true`;
+        }
+
+        async function deleteFile(id, filename) {
+            if (!confirm(`Are you sure you want to delete "${filename}"? This action cannot be undone.`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/di/submissions/${id}`, {
+                    method: 'DELETE'
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    alert(data.error || 'Failed to delete file');
+                    return;
+                }
+
+                alert('File deleted successfully');
+                loadDirectory();
+
+            } catch (err) {
+                alert('Error deleting file');
+            }
         }
 
         // Remove member
