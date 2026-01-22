@@ -457,7 +457,9 @@
         // Check authentication and PI role
         async function checkAuth() {
             try {
-                const response = await fetch('/api/di/me');
+                const response = await fetch('/api/di/me', {
+                    credentials: 'include'
+                });
                 if (!response.ok) {
                     window.location.href = 'access.html';
                     return;
@@ -487,7 +489,9 @@
         // Load members
         async function loadMembers() {
             try {
-                const response = await fetch('/api/di/members');
+                const response = await fetch('/api/di/members', {
+                    credentials: 'include'
+                });
                 if (!response.ok) throw new Error('Failed to load members');
                 const data = await response.json();
 
@@ -524,7 +528,9 @@
             const select = document.getElementById('uploadResearcher');
 
             try {
-                const response = await fetch('/api/di/members');
+                const response = await fetch('/api/di/members', {
+                    credentials: 'include'
+                });
                 if (!response.ok) throw new Error('Failed to load');
                 const data = await response.json();
 
@@ -550,7 +556,9 @@
         // Load directory structure
         async function loadDirectory() {
             try {
-                const response = await fetch('/api/di/directory');
+                const response = await fetch('/api/di/directory', {
+                    credentials: 'include'
+                });
                 if (!response.ok) throw new Error('Failed to load directory');
                 const data = await response.json();
 
@@ -683,7 +691,8 @@
             for (const id of ids) {
                 try {
                     const response = await fetch(`/api/di/submissions/${id}`, {
-                        method: 'DELETE'
+                        method: 'DELETE',
+                        credentials: 'include'
                     });
                     if (response.ok) {
                         successCount++;
@@ -716,7 +725,8 @@
 
             try {
                 const response = await fetch(`/api/di/submissions/${id}`, {
-                    method: 'DELETE'
+                    method: 'DELETE',
+                    credentials: 'include'
                 });
 
                 const data = await response.json();
@@ -744,7 +754,8 @@
 
             try {
                 const response = await fetch(`/api/di/members/${researcherId}`, {
-                    method: 'DELETE'
+                    method: 'DELETE',
+                    credentials: 'include'
                 });
 
                 const data = await response.json();
@@ -780,7 +791,8 @@
                 const response = await fetch('/api/di/members', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(memberData)
+                    body: JSON.stringify(memberData),
+                    credentials: 'include'
                 });
 
                 const data = await response.json();
@@ -861,7 +873,8 @@
             try {
                 const response = await fetch('/api/di/pi-upload', {
                     method: 'POST',
-                    body: formData
+                    body: formData,
+                    credentials: 'include'
                 });
 
                 const data = await response.json();
@@ -887,7 +900,7 @@
         // Logout
         document.getElementById('logoutBtn').addEventListener('click', async () => {
             try {
-                await fetch('/api/di/logout', { method: 'POST' });
+                await fetch('/api/di/logout', { method: 'POST', credentials: 'include' });
             } catch (err) {}
             window.location.href = 'access.html';
         });
