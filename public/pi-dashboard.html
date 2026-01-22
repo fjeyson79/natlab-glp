@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PI Dashboard: NATLAB GLP Portal</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: Arial, sans-serif;
+            background: #f0f2f5;
+            min-height: 100vh;
+        }
+        .header {
+            background: linear-gradient(135deg, #1a365d 0%, #2d5a87 100%);
+            color: white;
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .header h1 { font-size: 20px; }
+        .header-info { display: flex; align-items: center; gap: 20px; }
+        .user-badge {
+            background: rgba(255,255,255,0.2);
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 13px;
+        }
+        .pi-badge {
+            background: #ffc107;
+            color: #333;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: bold;
+        }
+        .logout-btn {
+            padding: 8px 16px;
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        .logout-btn:hover { background: rgba(255,255,255,0.3); }
+
+        .main-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 20px;
+            padding: 20px;
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        .panel {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            max-height: calc(100vh - 120px);
+        }
+        .panel-header {
+            background: #f8f9fa;
+            padding: 15px 20px;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .panel-header h2 {
+            font-size: 16px;
+            color: #1a365d;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .panel-header .icon {
+            font-size: 20px;
+        }
+        .panel-content {
+            padding: 20px;
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        /* Upload Panel */
+        .upload-form label {
+            display: block;
+            margin-bottom: 6px;
+            color: #333;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        .upload-form select, .upload-form input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            margin-bottom: 15px;
+        }
+        .upload-form select:focus, .upload-form input:focus {
+            outline: none;
+            border-color: #2d5a87;
+        }
+        .file-upload {
+            border: 2px dashed #ddd;
+            border-radius: 8px;
+            padding: 25px;
+            text-align: center;
+            margin-bottom: 15px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .file-upload:hover { border-color: #2d5a87; background: #f8f9fa; }
+        .file-upload.has-file { border-color: #28a745; background: #f0fff4; }
+        .file-upload input[type="file"] { display: none; }
+        .file-upload-text { color: #666; font-size: 13px; }
+        .file-upload-text strong { color: #2d5a87; }
+        .file-name { margin-top: 8px; color: #28a745; font-weight: bold; font-size: 13px; }
+        .upload-btn {
+            width: 100%;
+            padding: 12px;
+            background: #2d5a87;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        .upload-btn:hover { background: #1a365d; }
+        .upload-btn:disabled { background: #ccc; cursor: not-allowed; }
+
+        /* Directory Panel */
+        .directory-tree {
+            font-size: 13px;
+        }
+        .tree-item {
+            padding: 8px 10px;
+            cursor: pointer;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .tree-item:hover { background: #f0f2f5; }
+        .tree-item.selected { background: #e3f2fd; }
+        .tree-item .icon { font-size: 16px; }
+        .tree-folder { font-weight: bold; color: #1a365d; }
+        .tree-file { color: #333; padding-left: 20px; }
+        .tree-children { margin-left: 20px; border-left: 1px solid #e0e0e0; }
+        .tree-children.collapsed { display: none; }
+        .file-actions {
+            margin-left: auto;
+            display: flex;
+            gap: 5px;
+        }
+        .file-actions button {
+            padding: 4px 8px;
+            font-size: 11px;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .btn-view { background: #007bff; color: white; }
+        .btn-download { background: #28a745; color: white; }
+        .file-status {
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 10px;
+            margin-left: 8px;
+        }
+        .status-approved { background: #d4edda; color: #155724; }
+        .status-pending { background: #fff3cd; color: #856404; }
+        .status-revision { background: #f8d7da; color: #721c24; }
+
+        /* Members Panel */
+        .member-list {
+            margin-bottom: 20px;
+        }
+        .member-item {
+            display: flex;
+            align-items: center;
+            padding: 12px;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            margin-bottom: 10px;
+        }
+        .member-item:hover { background: #f8f9fa; }
+        .member-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: #2d5a87;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 14px;
+            margin-right: 12px;
+        }
+        .member-info { flex: 1; }
+        .member-name { font-weight: bold; color: #333; font-size: 14px; }
+        .member-email { color: #666; font-size: 12px; }
+        .member-id { color: #999; font-size: 11px; }
+        .member-affiliation {
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        .affiliation-LiU { background: #007bff; color: white; }
+        .affiliation-UNAV { background: #dc3545; color: white; }
+        .btn-remove {
+            padding: 6px 12px;
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .btn-remove:hover { background: #c82333; }
+
+        .add-member-form {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+        }
+        .add-member-form h3 {
+            font-size: 14px;
+            color: #1a365d;
+            margin-bottom: 12px;
+        }
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .form-row.full { grid-template-columns: 1fr; }
+        .add-member-form input, .add-member-form select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+        .btn-add {
+            width: 100%;
+            padding: 10px;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            margin-top: 10px;
+        }
+        .btn-add:hover { background: #218838; }
+
+        /* Messages */
+        .message {
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            font-size: 13px;
+            display: none;
+        }
+        .message.show { display: block; }
+        .message.success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .message.error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+
+        /* Loading */
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #2d5a87;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Responsive */
+        @media (max-width: 1200px) {
+            .main-container {
+                grid-template-columns: 1fr;
+            }
+            .panel {
+                max-height: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>NATLAB GLP Data Integrity Portal</h1>
+        <div class="header-info">
+            <span class="pi-badge">PRINCIPAL INVESTIGATOR</span>
+            <span class="user-badge" id="userName">Loading...</span>
+            <button class="logout-btn" id="logoutBtn">Logout</button>
+        </div>
+    </div>
+
+    <div class="main-container">
+        <!-- Panel 1: Upload -->
+        <div class="panel">
+            <div class="panel-header">
+                <h2><span class="icon">&#128194;</span> Upload Document</h2>
+            </div>
+            <div class="panel-content">
+                <div id="uploadMessage" class="message"></div>
+                <form id="uploadForm" class="upload-form">
+                    <label for="uploadResearcher">Upload for Researcher</label>
+                    <select id="uploadResearcher" required>
+                        <option value="">Select researcher...</option>
+                    </select>
+
+                    <label for="fileType">File Type</label>
+                    <select id="fileType" required>
+                        <option value="">Select file type...</option>
+                        <option value="SOP">SOP (Standard Operating Procedure)</option>
+                        <option value="DATA">DATA (Research Data)</option>
+                    </select>
+
+                    <label>File</label>
+                    <div class="file-upload" id="fileUploadArea">
+                        <input type="file" id="fileInput" required>
+                        <p class="file-upload-text">
+                            <strong>Click to select a file</strong><br>
+                            or drag and drop here
+                        </p>
+                        <p class="file-name" id="fileName"></p>
+                    </div>
+
+                    <button type="submit" class="upload-btn" id="uploadBtn">Upload File</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Panel 2: Directory Browser -->
+        <div class="panel">
+            <div class="panel-header">
+                <h2><span class="icon">&#128193;</span> Lab Directory</h2>
+                <button onclick="loadDirectory()" style="padding:5px 10px;font-size:12px;cursor:pointer;border:1px solid #ddd;border-radius:4px;background:white;">Refresh</button>
+            </div>
+            <div class="panel-content">
+                <div id="directoryTree" class="directory-tree">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        Loading directory...
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Panel 3: Members Management -->
+        <div class="panel">
+            <div class="panel-header">
+                <h2><span class="icon">&#128101;</span> Lab Members</h2>
+                <span id="memberCount" style="font-size:12px;color:#666;">0 members</span>
+            </div>
+            <div class="panel-content">
+                <div id="memberMessage" class="message"></div>
+                <div id="memberList" class="member-list">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        Loading members...
+                    </div>
+                </div>
+
+                <div class="add-member-form">
+                    <h3>Add New Member</h3>
+                    <form id="addMemberForm">
+                        <div class="form-row">
+                            <input type="text" id="newMemberName" placeholder="Full Name" required>
+                            <input type="text" id="newMemberId" placeholder="Researcher ID (e.g., LIU-001)" required>
+                        </div>
+                        <div class="form-row full">
+                            <input type="email" id="newMemberEmail" placeholder="Institution Email" required>
+                        </div>
+                        <div class="form-row">
+                            <select id="newMemberAffiliation" required>
+                                <option value="">Affiliation...</option>
+                                <option value="LiU">LiU</option>
+                                <option value="UNAV">UNAV</option>
+                            </select>
+                            <select id="newMemberRole" required>
+                                <option value="">Role...</option>
+                                <option value="researcher">Researcher</option>
+                                <option value="pi">Principal Investigator</option>
+                            </select>
+                        </div>
+                        <button type="submit" class="btn-add">Add Member</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Check authentication and PI role
+        async function checkAuth() {
+            try {
+                const response = await fetch('/api/di/me');
+                if (!response.ok) {
+                    window.location.href = 'access.html';
+                    return;
+                }
+                const user = await response.json();
+
+                // Check if user is PI
+                if (user.role !== 'pi') {
+                    window.location.href = 'upload.html';
+                    return;
+                }
+
+                document.getElementById('userName').textContent = user.name;
+
+                // Load all data
+                loadMembers();
+                loadDirectory();
+                populateResearcherDropdown();
+
+            } catch (err) {
+                window.location.href = 'access.html';
+            }
+        }
+
+        checkAuth();
+
+        // Load members
+        async function loadMembers() {
+            try {
+                const response = await fetch('/api/di/members');
+                if (!response.ok) throw new Error('Failed to load members');
+                const data = await response.json();
+
+                const memberList = document.getElementById('memberList');
+                const memberCount = document.getElementById('memberCount');
+
+                memberCount.textContent = `${data.members.length} members`;
+
+                if (data.members.length === 0) {
+                    memberList.innerHTML = '<p style="color:#666;text-align:center;">No members found</p>';
+                    return;
+                }
+
+                memberList.innerHTML = data.members.map(member => `
+                    <div class="member-item" data-id="${member.researcher_id}">
+                        <div class="member-avatar">${member.name.split(' ').map(n => n[0]).join('').substring(0,2)}</div>
+                        <div class="member-info">
+                            <div class="member-name">${member.name} ${member.role === 'pi' ? '<span style="color:#ffc107;font-size:11px;">(PI)</span>' : ''}</div>
+                            <div class="member-email">${member.institution_email}</div>
+                            <div class="member-id">${member.researcher_id}</div>
+                        </div>
+                        <span class="member-affiliation affiliation-${member.affiliation}">${member.affiliation}</span>
+                        ${member.role !== 'pi' ? `<button class="btn-remove" onclick="removeMember('${member.researcher_id}')">Remove</button>` : ''}
+                    </div>
+                `).join('');
+
+            } catch (err) {
+                document.getElementById('memberList').innerHTML = '<p style="color:#dc3545;">Error loading members</p>';
+            }
+        }
+
+        // Populate researcher dropdown
+        async function populateResearcherDropdown() {
+            try {
+                const response = await fetch('/api/di/members');
+                if (!response.ok) throw new Error('Failed to load');
+                const data = await response.json();
+
+                const select = document.getElementById('uploadResearcher');
+                select.innerHTML = '<option value="">Select researcher...</option>' +
+                    data.members.map(m => `<option value="${m.researcher_id}">${m.name} (${m.researcher_id})</option>`).join('');
+
+            } catch (err) {
+                console.error('Error loading researchers:', err);
+            }
+        }
+
+        // Load directory structure
+        async function loadDirectory() {
+            try {
+                const response = await fetch('/api/di/directory');
+                if (!response.ok) throw new Error('Failed to load directory');
+                const data = await response.json();
+
+                const treeContainer = document.getElementById('directoryTree');
+                treeContainer.innerHTML = renderTree(data.tree);
+
+            } catch (err) {
+                document.getElementById('directoryTree').innerHTML = '<p style="color:#dc3545;">Error loading directory</p>';
+            }
+        }
+
+        function renderTree(node, level = 0) {
+            if (node.type === 'file') {
+                const statusClass = node.status === 'APPROVED' ? 'status-approved' :
+                                   node.status === 'REVISION_NEEDED' ? 'status-revision' : 'status-pending';
+                return `
+                    <div class="tree-item tree-file" style="padding-left:${level * 20}px">
+                        <span class="icon">&#128196;</span>
+                        <span>${node.name}</span>
+                        <span class="file-status ${statusClass}">${node.status || 'PENDING'}</span>
+                        <div class="file-actions">
+                            <button class="btn-view" onclick="viewFile('${node.id}')">View</button>
+                            <button class="btn-download" onclick="downloadFile('${node.id}')">Download</button>
+                        </div>
+                    </div>
+                `;
+            }
+
+            const isRoot = level === 0;
+            const childrenHtml = node.children ? node.children.map(child => renderTree(child, level + 1)).join('') : '';
+
+            return `
+                <div class="tree-item tree-folder" style="padding-left:${level * 20}px" onclick="toggleFolder(this)">
+                    <span class="icon">&#128193;</span>
+                    <span>${node.name}</span>
+                    <span style="color:#999;font-size:11px;margin-left:8px;">${node.count || ''}</span>
+                </div>
+                <div class="tree-children ${isRoot ? '' : 'collapsed'}">
+                    ${childrenHtml || '<div style="padding:10px 10px 10px 30px;color:#999;font-size:12px;">No files</div>'}
+                </div>
+            `;
+        }
+
+        function toggleFolder(element) {
+            const children = element.nextElementSibling;
+            if (children && children.classList.contains('tree-children')) {
+                children.classList.toggle('collapsed');
+            }
+        }
+
+        function viewFile(id) {
+            window.open(`/api/di/download/${id}`, '_blank');
+        }
+
+        function downloadFile(id) {
+            window.location.href = `/api/di/download/${id}?download=true`;
+        }
+
+        // Remove member
+        async function removeMember(researcherId) {
+            if (!confirm(`Are you sure you want to remove this member? This will deactivate their account.`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/di/members/${researcherId}`, {
+                    method: 'DELETE'
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    showMessage('memberMessage', data.error || 'Failed to remove member', 'error');
+                    return;
+                }
+
+                showMessage('memberMessage', 'Member removed successfully', 'success');
+                loadMembers();
+                populateResearcherDropdown();
+                loadDirectory();
+
+            } catch (err) {
+                showMessage('memberMessage', 'Error removing member', 'error');
+            }
+        }
+
+        // Add member form
+        document.getElementById('addMemberForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const memberData = {
+                name: document.getElementById('newMemberName').value,
+                researcher_id: document.getElementById('newMemberId').value,
+                institution_email: document.getElementById('newMemberEmail').value,
+                affiliation: document.getElementById('newMemberAffiliation').value,
+                role: document.getElementById('newMemberRole').value
+            };
+
+            try {
+                const response = await fetch('/api/di/members', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(memberData)
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    showMessage('memberMessage', data.error || 'Failed to add member', 'error');
+                    return;
+                }
+
+                showMessage('memberMessage', 'Member added successfully', 'success');
+                document.getElementById('addMemberForm').reset();
+                loadMembers();
+                populateResearcherDropdown();
+
+            } catch (err) {
+                showMessage('memberMessage', 'Error adding member', 'error');
+            }
+        });
+
+        // File upload handling
+        const fileUploadArea = document.getElementById('fileUploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const fileNameDisplay = document.getElementById('fileName');
+
+        fileUploadArea.addEventListener('click', () => fileInput.click());
+
+        fileInput.addEventListener('change', () => {
+            if (fileInput.files.length > 0) {
+                fileNameDisplay.textContent = fileInput.files[0].name;
+                fileUploadArea.classList.add('has-file');
+            } else {
+                fileNameDisplay.textContent = '';
+                fileUploadArea.classList.remove('has-file');
+            }
+        });
+
+        fileUploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            fileUploadArea.style.borderColor = '#2d5a87';
+        });
+
+        fileUploadArea.addEventListener('dragleave', () => {
+            fileUploadArea.style.borderColor = '#ddd';
+        });
+
+        fileUploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            fileUploadArea.style.borderColor = '#ddd';
+            if (e.dataTransfer.files.length > 0) {
+                fileInput.files = e.dataTransfer.files;
+                fileNameDisplay.textContent = e.dataTransfer.files[0].name;
+                fileUploadArea.classList.add('has-file');
+            }
+        });
+
+        // Upload form submit
+        document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const researcherId = document.getElementById('uploadResearcher').value;
+            const fileType = document.getElementById('fileType').value;
+            const file = fileInput.files[0];
+
+            if (!researcherId || !fileType || !file) {
+                showMessage('uploadMessage', 'Please fill all fields', 'error');
+                return;
+            }
+
+            const uploadBtn = document.getElementById('uploadBtn');
+            uploadBtn.disabled = true;
+            uploadBtn.textContent = 'Uploading...';
+
+            const formData = new FormData();
+            formData.append('researcher_id', researcherId);
+            formData.append('fileType', fileType);
+            formData.append('file', file);
+
+            try {
+                const response = await fetch('/api/di/pi-upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    showMessage('uploadMessage', data.error || 'Upload failed', 'error');
+                } else {
+                    showMessage('uploadMessage', `File uploaded successfully! Submission ID: ${data.submission_id}`, 'success');
+                    document.getElementById('uploadForm').reset();
+                    fileNameDisplay.textContent = '';
+                    fileUploadArea.classList.remove('has-file');
+                    loadDirectory();
+                }
+
+            } catch (err) {
+                showMessage('uploadMessage', 'Connection error', 'error');
+            } finally {
+                uploadBtn.disabled = false;
+                uploadBtn.textContent = 'Upload File';
+            }
+        });
+
+        // Logout
+        document.getElementById('logoutBtn').addEventListener('click', async () => {
+            try {
+                await fetch('/api/di/logout', { method: 'POST' });
+            } catch (err) {}
+            window.location.href = 'access.html';
+        });
+
+        // Helper function
+        function showMessage(elementId, text, type) {
+            const el = document.getElementById(elementId);
+            el.textContent = text;
+            el.className = `message show ${type}`;
+            setTimeout(() => el.classList.remove('show'), 5000);
+        }
+    </script>
+</body>
+</html>

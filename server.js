@@ -65,6 +65,17 @@ function requireAuth(req, res, next) {
     next();
 }
 
+// PI MIDDLEWARE - requires user to be a Principal Investigator
+function requirePI(req, res, next) {
+    if (!req.session.user) {
+        return res.status(401).json({ error: 'Not authenticated' });
+    }
+    if (req.session.user.role !== 'pi') {
+        return res.status(403).json({ error: 'Access denied. PI role required.' });
+    }
+    next();
+}
+
 // API ENDPOINTS
 
 // POST /api/di/access-check
@@ -79,9 +90,10 @@ app.post('/api/di/access-check', async (req, res) => {
 
         const emailLower = institution_email.toLowerCase().trim();
 
-        // Check allowlist
+        // Check allowlist (include role column)
         const allowlistResult = await pool.query(
-            'SELECT researcher_id, name, affiliation, active FROM di_allowlist WHERE LOWER(institution_email) = $1',
+            `SELECT researcher_id, name, affiliation, active, COALESCE(role, 'researcher') as role
+             FROM di_allowlist WHERE LOWER(institution_email) = $1`,
             [emailLower]
         );
 
@@ -107,7 +119,8 @@ app.post('/api/di/access-check', async (req, res) => {
             allowed: true,
             next: isRegistered ? 'login' : 'register',
             name: allowlistEntry.name,
-            affiliation: allowlistEntry.affiliation
+            affiliation: allowlistEntry.affiliation,
+            role: allowlistEntry.role
         });
 
     } catch (err) {
@@ -132,9 +145,10 @@ app.post('/api/di/register', async (req, res) => {
 
         const emailLower = institution_email.toLowerCase().trim();
 
-        // Verify in allowlist
+        // Verify in allowlist (include role)
         const allowlistResult = await pool.query(
-            'SELECT researcher_id, name, affiliation, active FROM di_allowlist WHERE LOWER(institution_email) = $1',
+            `SELECT researcher_id, name, affiliation, active, COALESCE(role, 'researcher') as role
+             FROM di_allowlist WHERE LOWER(institution_email) = $1`,
             [emailLower]
         );
 
@@ -169,18 +183,20 @@ app.post('/api/di/register', async (req, res) => {
             [emailLower, personal_email || null, passwordHash, allowlistEntry.researcher_id]
         );
 
-        // Set session
+        // Set session with role
         req.session.user = {
             institution_email: emailLower,
             researcher_id: allowlistEntry.researcher_id,
             name: allowlistEntry.name,
-            affiliation: allowlistEntry.affiliation
+            affiliation: allowlistEntry.affiliation,
+            role: allowlistEntry.role
         };
 
         res.json({
             success: true,
             message: 'Registration successful',
-            user: req.session.user
+            user: req.session.user,
+            redirect: allowlistEntry.role === 'pi' ? 'pi-dashboard.html' : 'upload.html'
         });
 
     } catch (err) {
@@ -201,10 +217,10 @@ app.post('/api/di/login', async (req, res) => {
 
         const emailLower = institution_email.toLowerCase().trim();
 
-        // Get user with allowlist info
+        // Get user with allowlist info (include role)
         const result = await pool.query(
             `SELECT u.institution_email, u.password_hash, u.researcher_id,
-                    a.name, a.affiliation, a.active
+                    a.name, a.affiliation, a.active, COALESCE(a.role, 'researcher') as role
              FROM di_users u
              JOIN di_allowlist a ON u.researcher_id = a.researcher_id
              WHERE LOWER(u.institution_email) = $1`,
@@ -234,18 +250,20 @@ app.post('/api/di/login', async (req, res) => {
             [emailLower]
         );
 
-        // Set session
+        // Set session with role
         req.session.user = {
             institution_email: user.institution_email,
             researcher_id: user.researcher_id,
             name: user.name,
-            affiliation: user.affiliation
+            affiliation: user.affiliation,
+            role: user.role
         };
 
         res.json({
             success: true,
             message: 'Login successful',
-            user: req.session.user
+            user: req.session.user,
+            redirect: user.role === 'pi' ? 'pi-dashboard.html' : 'upload.html'
         });
 
     } catch (err) {
@@ -261,6 +279,7 @@ app.get('/api/di/me', requireAuth, (req, res) => {
         name: req.session.user.name,
         researcher_id: req.session.user.researcher_id,
         affiliation: req.session.user.affiliation,
+        role: req.session.user.role || 'researcher',
         institution_email: req.session.user.institution_email
     });
 });
@@ -885,6 +904,296 @@ function renderHtmlPage(title, content, type = 'info') {
 </body>
 </html>`;
 }
+
+// =====================================================
+// PI-SPECIFIC ENDPOINTS
+// =====================================================
+
+// GET /api/di/members
+// Get all lab members (PI only)
+app.get('/api/di/members', requirePI, async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT researcher_id, name, institution_email, affiliation,
+                    COALESCE(role, 'researcher') as role, active, created_at
+             FROM di_allowlist
+             WHERE active = true
+             ORDER BY role DESC, name ASC`
+        );
+
+        res.json({
+            success: true,
+            count: result.rows.length,
+            members: result.rows
+        });
+
+    } catch (err) {
+        console.error('Get members error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/di/members
+// Add a new lab member (PI only)
+app.post('/api/di/members', requirePI, async (req, res) => {
+    try {
+        const { name, researcher_id, institution_email, affiliation, role } = req.body;
+
+        // Validate required fields
+        if (!name || !researcher_id || !institution_email || !affiliation) {
+            return res.status(400).json({ error: 'All fields are required' });
+        }
+
+        if (!['LiU', 'UNAV'].includes(affiliation)) {
+            return res.status(400).json({ error: 'Affiliation must be LiU or UNAV' });
+        }
+
+        const memberRole = role || 'researcher';
+        if (!['researcher', 'pi'].includes(memberRole)) {
+            return res.status(400).json({ error: 'Role must be researcher or pi' });
+        }
+
+        const emailLower = institution_email.toLowerCase().trim();
+
+        // Check if already exists
+        const existing = await pool.query(
+            'SELECT researcher_id FROM di_allowlist WHERE researcher_id = $1 OR LOWER(institution_email) = $2',
+            [researcher_id, emailLower]
+        );
+
+        if (existing.rows.length > 0) {
+            return res.status(409).json({ error: 'Member with this ID or email already exists' });
+        }
+
+        // Insert new member
+        await pool.query(
+            `INSERT INTO di_allowlist (researcher_id, name, institution_email, affiliation, role, active, created_at)
+             VALUES ($1, $2, $3, $4, $5, true, CURRENT_TIMESTAMP)`,
+            [researcher_id, name, emailLower, affiliation, memberRole]
+        );
+
+        res.json({
+            success: true,
+            message: 'Member added successfully',
+            member: { researcher_id, name, institution_email: emailLower, affiliation, role: memberRole }
+        });
+
+    } catch (err) {
+        console.error('Add member error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// DELETE /api/di/members/:id
+// Remove (deactivate) a lab member (PI only)
+app.delete('/api/di/members/:id', requirePI, async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // Check if member exists and is not the current user
+        const member = await pool.query(
+            'SELECT researcher_id, role FROM di_allowlist WHERE researcher_id = $1',
+            [id]
+        );
+
+        if (member.rows.length === 0) {
+            return res.status(404).json({ error: 'Member not found' });
+        }
+
+        // Prevent PI from removing themselves
+        if (member.rows[0].researcher_id === req.session.user.researcher_id) {
+            return res.status(400).json({ error: 'Cannot remove yourself' });
+        }
+
+        // Deactivate member (soft delete)
+        await pool.query(
+            'UPDATE di_allowlist SET active = false WHERE researcher_id = $1',
+            [id]
+        );
+
+        res.json({
+            success: true,
+            message: 'Member removed successfully'
+        });
+
+    } catch (err) {
+        console.error('Remove member error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/di/directory
+// Get directory tree structure of all submissions (PI only)
+app.get('/api/di/directory', requirePI, async (req, res) => {
+    try {
+        // Get all members
+        const membersResult = await pool.query(
+            `SELECT researcher_id, name, affiliation FROM di_allowlist WHERE active = true ORDER BY name`
+        );
+
+        // Get all submissions
+        const submissionsResult = await pool.query(
+            `SELECT s.submission_id, s.researcher_id, s.affiliation, s.file_type,
+                    s.original_filename, s.status, s.created_at,
+                    EXTRACT(YEAR FROM s.created_at) as year
+             FROM di_submissions s
+             ORDER BY s.created_at DESC`
+        );
+
+        // Build tree structure: General Lab / Year / Researcher Name
+        const tree = {
+            name: 'General Lab',
+            type: 'folder',
+            children: []
+        };
+
+        // Group submissions by year, then by researcher
+        const yearMap = {};
+
+        for (const sub of submissionsResult.rows) {
+            const year = sub.year || new Date(sub.created_at).getFullYear();
+            const researcherName = membersResult.rows.find(m => m.researcher_id === sub.researcher_id)?.name || sub.researcher_id;
+
+            if (!yearMap[year]) {
+                yearMap[year] = { name: String(year), type: 'folder', children: [], researchers: {} };
+            }
+
+            if (!yearMap[year].researchers[sub.researcher_id]) {
+                yearMap[year].researchers[sub.researcher_id] = {
+                    name: researcherName,
+                    type: 'folder',
+                    children: [],
+                    count: 0
+                };
+            }
+
+            yearMap[year].researchers[sub.researcher_id].children.push({
+                name: sub.original_filename,
+                type: 'file',
+                id: sub.submission_id,
+                status: sub.status,
+                fileType: sub.file_type,
+                date: sub.created_at
+            });
+            yearMap[year].researchers[sub.researcher_id].count++;
+        }
+
+        // Convert map to array and sort
+        const years = Object.keys(yearMap).sort((a, b) => b - a);
+        for (const year of years) {
+            const yearNode = yearMap[year];
+            yearNode.children = Object.values(yearNode.researchers);
+            yearNode.count = `${yearNode.children.length} researchers`;
+            delete yearNode.researchers;
+            tree.children.push(yearNode);
+        }
+
+        // Add empty folders for members without submissions
+        const currentYear = new Date().getFullYear();
+        if (!yearMap[currentYear]) {
+            tree.children.unshift({
+                name: String(currentYear),
+                type: 'folder',
+                children: membersResult.rows.map(m => ({
+                    name: m.name,
+                    type: 'folder',
+                    children: [],
+                    count: 0
+                })),
+                count: `${membersResult.rows.length} researchers`
+            });
+        }
+
+        res.json({
+            success: true,
+            tree: tree
+        });
+
+    } catch (err) {
+        console.error('Directory error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/di/pi-upload
+// PI uploads file on behalf of a researcher
+app.post('/api/di/pi-upload', requirePI, upload.single('file'), async (req, res) => {
+    try {
+        const { researcher_id, fileType } = req.body;
+        const file = req.file;
+
+        if (!researcher_id) {
+            return res.status(400).json({ error: 'researcher_id is required' });
+        }
+
+        if (!fileType || !['SOP', 'DATA'].includes(fileType)) {
+            return res.status(400).json({ error: 'fileType must be SOP or DATA' });
+        }
+
+        if (!file) {
+            return res.status(400).json({ error: 'No file uploaded' });
+        }
+
+        // Verify researcher exists
+        const researcherResult = await pool.query(
+            'SELECT researcher_id, affiliation FROM di_allowlist WHERE researcher_id = $1 AND active = true',
+            [researcher_id]
+        );
+
+        if (researcherResult.rows.length === 0) {
+            return res.status(404).json({ error: 'Researcher not found' });
+        }
+
+        const researcher = researcherResult.rows[0];
+
+        // Record submission
+        const submissionResult = await pool.query(
+            `INSERT INTO di_submissions (researcher_id, affiliation, file_type, original_filename)
+             VALUES ($1, $2, $3, $4)
+             RETURNING submission_id`,
+            [researcher_id, researcher.affiliation, fileType, file.originalname]
+        );
+
+        const submissionId = submissionResult.rows[0].submission_id;
+
+        // Forward to n8n webhook if configured
+        const webhookUrl = process.env.N8N_DI_WEBHOOK_URL;
+        if (webhookUrl) {
+            const formData = new FormData();
+            formData.append('researcher_id', researcher_id);
+            formData.append('affiliation', researcher.affiliation);
+            formData.append('fileType', fileType);
+            formData.append('original_filename', file.originalname);
+            formData.append('submission_id', submissionId);
+            formData.append('uploaded_by_pi', req.session.user.researcher_id);
+            formData.append('file', file.buffer, {
+                filename: file.originalname,
+                contentType: file.mimetype
+            });
+
+            try {
+                await fetch(webhookUrl, {
+                    method: 'POST',
+                    body: formData,
+                    headers: formData.getHeaders()
+                });
+            } catch (webhookErr) {
+                console.error('Webhook error:', webhookErr.message);
+            }
+        }
+
+        res.json({
+            success: true,
+            submission_id: submissionId,
+            researcher_id: researcher_id,
+            message: 'File uploaded successfully'
+        });
+
+    } catch (err) {
+        console.error('PI upload error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
 
 // POST /api/di/logout
 // Logout user

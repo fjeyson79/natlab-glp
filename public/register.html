@@ -221,7 +221,8 @@
                     sessionStorage.removeItem('di_name');
                     sessionStorage.removeItem('di_affiliation');
                     setTimeout(() => {
-                        window.location.href = 'upload.html';
+                        // Redirect based on role
+                        window.location.href = data.redirect || 'upload.html';
                     }, 1500);
                 }
             } catch (err) {
