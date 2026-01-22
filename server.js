@@ -310,6 +310,107 @@ app.get('/api/di/me', requireAuth, (req, res) => {
     });
 });
 
+// GET /api/di/my-files
+// Get current researcher's files organized by year and status
+app.get('/api/di/my-files', requireAuth, async (req, res) => {
+    try {
+        const user = req.session.user;
+
+        // Get all submissions for this researcher
+        const result = await pool.query(
+            `SELECT submission_id, file_type, original_filename, status, created_at, signed_at,
+                    EXTRACT(YEAR FROM created_at) as year
+             FROM di_submissions
+             WHERE researcher_id = $1
+             ORDER BY created_at DESC`,
+            [user.researcher_id]
+        );
+
+        // Build tree structure: My Files / Year / Submitted|Approved
+        const tree = {
+            name: 'My Files',
+            type: 'folder',
+            children: []
+        };
+
+        // Group by year
+        const yearMap = {};
+
+        for (const file of result.rows) {
+            const year = file.year || new Date(file.created_at).getFullYear();
+            const isApproved = file.status === 'APPROVED';
+
+            if (!yearMap[year]) {
+                yearMap[year] = {
+                    name: String(year),
+                    type: 'folder',
+                    children: [
+                        { name: 'Submitted', type: 'folder', children: [], count: 0 },
+                        { name: 'Approved', type: 'folder', children: [], count: 0 }
+                    ]
+                };
+            }
+
+            const fileNode = {
+                name: file.original_filename,
+                type: 'file',
+                id: file.submission_id,
+                status: file.status || 'PENDING',
+                fileType: file.file_type,
+                date: file.created_at,
+                signedAt: file.signed_at
+            };
+
+            // Add to Submitted folder (all files go here)
+            yearMap[year].children[0].children.push(fileNode);
+            yearMap[year].children[0].count++;
+
+            // Also add to Approved folder if approved
+            if (isApproved) {
+                yearMap[year].children[1].children.push({
+                    ...fileNode,
+                    isApprovedCopy: true
+                });
+                yearMap[year].children[1].count++;
+            }
+        }
+
+        // Convert map to array and sort by year descending
+        const years = Object.keys(yearMap).sort((a, b) => b - a);
+        for (const year of years) {
+            const yearNode = yearMap[year];
+            // Update counts in folder names
+            yearNode.children[0].name = `Submitted (${yearNode.children[0].count})`;
+            yearNode.children[1].name = `Approved (${yearNode.children[1].count})`;
+            tree.children.push(yearNode);
+        }
+
+        // Add current year if no files yet
+        const currentYear = new Date().getFullYear();
+        if (!yearMap[currentYear]) {
+            tree.children.unshift({
+                name: String(currentYear),
+                type: 'folder',
+                children: [
+                    { name: 'Submitted (0)', type: 'folder', children: [], count: 0 },
+                    { name: 'Approved (0)', type: 'folder', children: [], count: 0 }
+                ]
+            });
+        }
+
+        res.json({
+            success: true,
+            tree: tree,
+            totalFiles: result.rows.length,
+            approvedCount: result.rows.filter(f => f.status === 'APPROVED').length
+        });
+
+    } catch (err) {
+        console.error('My files error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
 // POST /api/di/upload
 // Upload file and forward to n8n webhook
 app.post('/api/di/upload', requireAuth, upload.single('file'), async (req, res) => {

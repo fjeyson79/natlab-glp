@@ -8,78 +8,100 @@
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
             font-family: Arial, sans-serif;
-            background: linear-gradient(135deg, #1a365d 0%, #2d5a87 100%);
+            background: #f0f2f5;
             min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 20px;
-        }
-        .container {
-            background: white;
-            padding: 40px;
-            border-radius: 10px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-            max-width: 550px;
-            width: 100%;
         }
         .header {
+            background: linear-gradient(135deg, #1a365d 0%, #2d5a87 100%);
+            color: white;
+            padding: 15px 30px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
-        h1 {
-            color: #1a365d;
-            font-size: 24px;
-        }
-        .logout-btn {
-            padding: 8px 16px;
-            background: #f5f5f5;
-            color: #666;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-        }
-        .logout-btn:hover {
-            background: #eee;
-        }
-        .user-info {
-            background: #f8f9fa;
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 30px;
-        }
-        .user-info p {
-            margin: 8px 0;
-            color: #333;
-        }
-        .user-info strong {
-            color: #1a365d;
+        .header h1 { font-size: 20px; }
+        .header-info { display: flex; align-items: center; gap: 20px; }
+        .user-badge {
+            background: rgba(255,255,255,0.2);
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 13px;
         }
         .affiliation-badge {
-            display: inline-block;
             padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 12px;
+            border-radius: 12px;
+            font-size: 11px;
             font-weight: bold;
         }
         .affiliation-badge.LiU { background: #007bff; color: white; }
         .affiliation-badge.UNAV { background: #dc3545; color: white; }
+        .logout-btn {
+            padding: 8px 16px;
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        .logout-btn:hover { background: rgba(255,255,255,0.3); }
+
+        .main-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            padding: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .panel {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            max-height: calc(100vh - 120px);
+        }
+        .panel-header {
+            background: #f8f9fa;
+            padding: 15px 20px;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .panel-header h2 {
+            font-size: 16px;
+            color: #1a365d;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .panel-header .icon { font-size: 20px; }
+        .panel-content {
+            padding: 20px;
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        /* Upload Form Styles */
         label {
             display: block;
             margin-bottom: 8px;
             color: #333;
             font-weight: bold;
+            font-size: 14px;
         }
         select, input[type="text"] {
             width: 100%;
-            padding: 12px;
+            padding: 10px;
             border: 2px solid #ddd;
             border-radius: 6px;
-            font-size: 16px;
-            margin-bottom: 20px;
+            font-size: 14px;
+            margin-bottom: 15px;
             background: white;
         }
         select:focus, input:focus {
@@ -93,78 +115,106 @@
         .file-upload {
             border: 2px dashed #ddd;
             border-radius: 8px;
-            padding: 30px;
+            padding: 25px;
             text-align: center;
-            margin-bottom: 20px;
+            margin-bottom: 15px;
             cursor: pointer;
             transition: all 0.3s;
         }
-        .file-upload:hover {
-            border-color: #2d5a87;
-            background: #f8f9fa;
-        }
-        .file-upload.has-file {
-            border-color: #28a745;
-            background: #f0fff4;
-        }
-        .file-upload input[type="file"] {
-            display: none;
-        }
-        .file-upload-text {
-            color: #666;
-            font-size: 14px;
-        }
-        .file-upload-text strong {
-            color: #2d5a87;
-        }
-        .file-name {
-            margin-top: 10px;
-            color: #28a745;
-            font-weight: bold;
-        }
-        button[type="submit"] {
+        .file-upload:hover { border-color: #2d5a87; background: #f8f9fa; }
+        .file-upload.has-file { border-color: #28a745; background: #f0fff4; }
+        .file-upload input[type="file"] { display: none; }
+        .file-upload-text { color: #666; font-size: 13px; }
+        .file-upload-text strong { color: #2d5a87; }
+        .file-name { margin-top: 8px; color: #28a745; font-weight: bold; font-size: 13px; }
+        .upload-btn {
             width: 100%;
-            padding: 14px;
+            padding: 12px;
             background: #2d5a87;
             color: white;
             border: none;
             border-radius: 6px;
-            font-size: 16px;
+            font-size: 14px;
             cursor: pointer;
-            transition: background 0.3s;
         }
-        button[type="submit"]:hover { background: #1a365d; }
-        button[type="submit"]:disabled { background: #ccc; cursor: not-allowed; }
+        .upload-btn:hover { background: #1a365d; }
+        .upload-btn:disabled { background: #ccc; cursor: not-allowed; }
+
+        /* Message Styles */
         .message {
-            margin-top: 20px;
+            margin-top: 15px;
             padding: 12px;
             border-radius: 6px;
             display: none;
+            font-size: 13px;
         }
-        .message.error {
-            background: #fee;
-            color: #c00;
-            border: 1px solid #fcc;
-            display: block;
+        .message.show { display: block; }
+        .message.error { background: #fee; color: #c00; border: 1px solid #fcc; }
+        .message.success { background: #efe; color: #060; border: 1px solid #cfc; }
+
+        /* File Tree Styles */
+        .file-tree { font-size: 13px; }
+        .tree-item {
+            padding: 8px 10px;
+            cursor: pointer;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
-        .message.success {
-            background: #efe;
-            color: #060;
-            border: 1px solid #cfc;
-            display: block;
+        .tree-item:hover { background: #f0f2f5; }
+        .tree-item .icon { font-size: 16px; }
+        .tree-folder { font-weight: bold; color: #1a365d; }
+        .tree-file { color: #333; padding-left: 20px; }
+        .tree-children { margin-left: 20px; border-left: 1px solid #e0e0e0; }
+        .tree-children.collapsed { display: none; }
+
+        .file-actions {
+            margin-left: auto;
+            display: flex;
+            gap: 5px;
         }
+        .file-actions button {
+            padding: 4px 8px;
+            font-size: 11px;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .btn-view { background: #007bff; color: white; }
+        .btn-download { background: #28a745; color: white; }
+
+        .file-status {
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 10px;
+            margin-left: 8px;
+        }
+        .status-APPROVED { background: #d4edda; color: #155724; }
+        .status-PENDING { background: #fff3cd; color: #856404; }
+        .status-REVISION_NEEDED { background: #f8d7da; color: #721c24; }
+
+        .folder-submitted { color: #856404; }
+        .folder-approved { color: #155724; }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #666;
+        }
+        .empty-state .icon { font-size: 48px; margin-bottom: 15px; opacity: 0.5; }
+
         .loading {
-            display: none;
             text-align: center;
             padding: 20px;
+            color: #666;
         }
-        .loading.show { display: block; }
         .spinner {
             border: 3px solid #f3f3f3;
             border-top: 3px solid #2d5a87;
             border-radius: 50%;
-            width: 30px;
-            height: 30px;
+            width: 24px;
+            height: 24px;
             animation: spin 1s linear infinite;
             margin: 0 auto 10px;
         }
@@ -172,84 +222,130 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+
+        .stats-bar {
+            display: flex;
+            gap: 15px;
+            padding: 10px 15px;
+            background: #e3f2fd;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            font-size: 12px;
+        }
+        .stat-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .stat-value { font-weight: bold; color: #1a365d; }
+
+        /* Responsive */
+        @media (max-width: 900px) {
+            .main-container {
+                grid-template-columns: 1fr;
+            }
+            .panel {
+                max-height: none;
+            }
+        }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>Upload File</h1>
+    <div class="header">
+        <h1>NATLAB GLP Data Integrity Portal</h1>
+        <div class="header-info">
+            <span id="affiliationBadge" class="affiliation-badge">Loading...</span>
+            <span class="user-badge" id="userName">Loading...</span>
             <button class="logout-btn" id="logoutBtn">Logout</button>
         </div>
+    </div>
 
-        <div class="user-info" id="userInfo">
-            <p><strong>Name:</strong> <span id="userName">Loading...</span></p>
-            <p><strong>Researcher ID:</strong> <span id="researcherId">Loading...</span></p>
-            <p><strong>Affiliation:</strong> <span id="affiliationBadge" class="affiliation-badge">Loading...</span></p>
-        </div>
-
-        <form id="uploadForm">
-            <label for="affiliation">Affiliation</label>
-            <input type="text" id="affiliation" readonly>
-
-            <label for="fileType">File Type</label>
-            <select id="fileType" required>
-                <option value="">Select file type</option>
-                <option value="SOP">SOP (Standard Operating Procedure)</option>
-                <option value="DATA">DATA (Research Data)</option>
-            </select>
-
-            <label>File</label>
-            <div class="file-upload" id="fileUploadArea">
-                <input type="file" id="fileInput" required>
-                <p class="file-upload-text">
-                    <strong>Click to select a file</strong><br>
-                    or drag and drop here
-                </p>
-                <p class="file-name" id="fileName"></p>
+    <div class="main-container">
+        <!-- Panel 1: Upload -->
+        <div class="panel">
+            <div class="panel-header">
+                <h2><span class="icon">&#128194;</span> Upload Document</h2>
             </div>
+            <div class="panel-content">
+                <div id="uploadMessage" class="message"></div>
 
-            <button type="submit" id="submitBtn">Upload File</button>
-        </form>
+                <form id="uploadForm">
+                    <label for="fileType">File Type</label>
+                    <select id="fileType" required>
+                        <option value="">Select file type...</option>
+                        <option value="SOP">SOP (Standard Operating Procedure)</option>
+                        <option value="DATA">DATA (Research Data)</option>
+                    </select>
 
-        <div class="loading" id="loading">
-            <div class="spinner"></div>
-            <p>Uploading file...</p>
+                    <label>File</label>
+                    <div class="file-upload" id="fileUploadArea">
+                        <input type="file" id="fileInput" required>
+                        <p class="file-upload-text">
+                            <strong>Click to select a file</strong><br>
+                            or drag and drop here
+                        </p>
+                        <p class="file-name" id="fileName"></p>
+                    </div>
+
+                    <button type="submit" class="upload-btn" id="uploadBtn">Upload File</button>
+                </form>
+
+                <div class="loading" id="uploadLoading" style="display:none;">
+                    <div class="spinner"></div>
+                    <p>Uploading file...</p>
+                </div>
+            </div>
         </div>
 
-        <div id="message" class="message"></div>
+        <!-- Panel 2: My Files -->
+        <div class="panel">
+            <div class="panel-header">
+                <h2><span class="icon">&#128193;</span> My Files</h2>
+                <button onclick="loadMyFiles()" style="padding:5px 10px;font-size:12px;cursor:pointer;border:1px solid #ddd;border-radius:4px;background:white;">Refresh</button>
+            </div>
+            <div class="panel-content">
+                <div id="statsBar" class="stats-bar" style="display:none;">
+                    <div class="stat-item">
+                        <span>Total:</span>
+                        <span class="stat-value" id="statTotal">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span>Approved:</span>
+                        <span class="stat-value" style="color:#28a745;" id="statApproved">0</span>
+                    </div>
+                    <div class="stat-item">
+                        <span>Pending:</span>
+                        <span class="stat-value" style="color:#856404;" id="statPending">0</span>
+                    </div>
+                </div>
+                <div id="fileTree" class="file-tree">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        Loading files...
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
-        const userInfoDiv = document.getElementById('userInfo');
-        const form = document.getElementById('uploadForm');
-        const messageDiv = document.getElementById('message');
-        const submitBtn = document.getElementById('submitBtn');
-        const loadingDiv = document.getElementById('loading');
-        const fileInput = document.getElementById('fileInput');
-        const fileUploadArea = document.getElementById('fileUploadArea');
-        const fileNameDisplay = document.getElementById('fileName');
-
         // Load user info
         async function loadUser() {
             try {
                 const response = await fetch('/api/di/me');
-
                 if (!response.ok) {
-                    // Not authenticated, redirect to access
                     window.location.href = 'access.html';
                     return;
                 }
-
                 const user = await response.json();
 
                 document.getElementById('userName').textContent = user.name;
-                document.getElementById('researcherId').textContent = user.researcher_id;
-
                 const badge = document.getElementById('affiliationBadge');
                 badge.textContent = user.affiliation;
                 badge.classList.add(user.affiliation);
 
-                document.getElementById('affiliation').value = user.affiliation;
+                // Load files after user info
+                loadMyFiles();
 
             } catch (err) {
                 window.location.href = 'access.html';
@@ -258,12 +354,102 @@
 
         loadUser();
 
-        // File upload area click
-        fileUploadArea.addEventListener('click', () => {
-            fileInput.click();
-        });
+        // Load my files
+        async function loadMyFiles() {
+            const treeContainer = document.getElementById('fileTree');
+            const statsBar = document.getElementById('statsBar');
 
-        // File input change
+            treeContainer.innerHTML = '<div class="loading"><div class="spinner"></div>Loading files...</div>';
+
+            try {
+                const response = await fetch('/api/di/my-files');
+                if (!response.ok) throw new Error('Failed to load files');
+                const data = await response.json();
+
+                // Update stats
+                document.getElementById('statTotal').textContent = data.totalFiles;
+                document.getElementById('statApproved').textContent = data.approvedCount;
+                document.getElementById('statPending').textContent = data.totalFiles - data.approvedCount;
+                statsBar.style.display = 'flex';
+
+                if (data.totalFiles === 0) {
+                    treeContainer.innerHTML = `
+                        <div class="empty-state">
+                            <div class="icon">&#128196;</div>
+                            <p>No files uploaded yet</p>
+                            <p style="font-size:12px;margin-top:10px;">Upload your first document using the form on the left</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                treeContainer.innerHTML = renderTree(data.tree);
+
+            } catch (err) {
+                console.error('Error loading files:', err);
+                treeContainer.innerHTML = '<p style="color:#dc3545;text-align:center;">Error loading files</p>';
+            }
+        }
+
+        function renderTree(node, level = 0) {
+            if (node.type === 'file') {
+                const statusClass = 'status-' + (node.status || 'PENDING');
+                return `
+                    <div class="tree-item tree-file" style="padding-left:${level * 20}px">
+                        <span class="icon">&#128196;</span>
+                        <span>${node.name}</span>
+                        <span class="file-status ${statusClass}">${node.status || 'PENDING'}</span>
+                        <div class="file-actions">
+                            <button class="btn-view" onclick="viewFile('${node.id}')">View</button>
+                            <button class="btn-download" onclick="downloadFile('${node.id}')">Download</button>
+                        </div>
+                    </div>
+                `;
+            }
+
+            const isRoot = level === 0;
+            const isSubmitted = node.name.includes('Submitted');
+            const isApproved = node.name.includes('Approved');
+            const folderClass = isSubmitted ? 'folder-submitted' : (isApproved ? 'folder-approved' : '');
+            const childrenHtml = node.children ? node.children.map(child => renderTree(child, level + 1)).join('') : '';
+
+            return `
+                <div class="tree-item tree-folder ${folderClass}" style="padding-left:${level * 20}px" onclick="toggleFolder(this)">
+                    <span class="icon">${isApproved ? '&#9989;' : (isSubmitted ? '&#128203;' : '&#128193;')}</span>
+                    <span>${node.name}</span>
+                </div>
+                <div class="tree-children ${isRoot ? '' : 'collapsed'}">
+                    ${childrenHtml || '<div style="padding:10px 10px 10px 30px;color:#999;font-size:12px;">No files</div>'}
+                </div>
+            `;
+        }
+
+        function toggleFolder(element) {
+            const children = element.nextElementSibling;
+            if (children && children.classList.contains('tree-children')) {
+                children.classList.toggle('collapsed');
+            }
+        }
+
+        function viewFile(id) {
+            window.open(`/api/di/download/${id}`, '_blank');
+        }
+
+        function downloadFile(id) {
+            window.location.href = `/api/di/download/${id}?download=true`;
+        }
+
+        // File upload handling
+        const fileUploadArea = document.getElementById('fileUploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const fileNameDisplay = document.getElementById('fileName');
+        const uploadForm = document.getElementById('uploadForm');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const uploadLoading = document.getElementById('uploadLoading');
+        const uploadMessage = document.getElementById('uploadMessage');
+
+        fileUploadArea.addEventListener('click', () => fileInput.click());
+
         fileInput.addEventListener('change', () => {
             if (fileInput.files.length > 0) {
                 fileNameDisplay.textContent = fileInput.files[0].name;
@@ -274,7 +460,6 @@
             }
         });
 
-        // Drag and drop
         fileUploadArea.addEventListener('dragover', (e) => {
             e.preventDefault();
             fileUploadArea.style.borderColor = '#2d5a87';
@@ -294,30 +479,26 @@
             }
         });
 
-        // Form submit
-        form.addEventListener('submit', async (e) => {
+        uploadForm.addEventListener('submit', async (e) => {
             e.preventDefault();
 
             const fileType = document.getElementById('fileType').value;
             const file = fileInput.files[0];
 
             if (!fileType) {
-                messageDiv.textContent = 'Please select a file type.';
-                messageDiv.className = 'message error';
+                showMessage('uploadMessage', 'Please select a file type.', 'error');
                 return;
             }
 
             if (!file) {
-                messageDiv.textContent = 'Please select a file.';
-                messageDiv.className = 'message error';
+                showMessage('uploadMessage', 'Please select a file.', 'error');
                 return;
             }
 
-            submitBtn.disabled = true;
-            form.style.display = 'none';
-            loadingDiv.classList.add('show');
-            messageDiv.className = 'message';
-            messageDiv.style.display = 'none';
+            uploadBtn.disabled = true;
+            uploadForm.style.display = 'none';
+            uploadLoading.style.display = 'block';
+            uploadMessage.className = 'message';
 
             const formData = new FormData();
             formData.append('fileType', fileType);
@@ -331,32 +512,29 @@
 
                 const data = await response.json();
 
-                loadingDiv.classList.remove('show');
-                form.style.display = 'block';
+                uploadLoading.style.display = 'none';
+                uploadForm.style.display = 'block';
 
                 if (!response.ok) {
-                    messageDiv.textContent = data.error || 'Upload failed.';
-                    messageDiv.className = 'message error';
-                    submitBtn.disabled = false;
+                    showMessage('uploadMessage', data.error || 'Upload failed.', 'error');
+                    uploadBtn.disabled = false;
                 } else {
-                    messageDiv.innerHTML = 'File uploaded successfully!<br>Submission ID: <strong>' + data.submission_id + '</strong>';
-                    if (data.warning) {
-                        messageDiv.innerHTML += '<br><small>' + data.warning + '</small>';
-                    }
-                    messageDiv.className = 'message success';
+                    showMessage('uploadMessage', `File uploaded successfully! Submission ID: ${data.submission_id}`, 'success');
 
-                    // Reset form for next upload
-                    form.reset();
+                    // Reset form
+                    uploadForm.reset();
                     fileNameDisplay.textContent = '';
                     fileUploadArea.classList.remove('has-file');
-                    submitBtn.disabled = false;
+                    uploadBtn.disabled = false;
+
+                    // Refresh file list
+                    loadMyFiles();
                 }
             } catch (err) {
-                loadingDiv.classList.remove('show');
-                form.style.display = 'block';
-                messageDiv.textContent = 'Connection error. Please try again.';
-                messageDiv.className = 'message error';
-                submitBtn.disabled = false;
+                uploadLoading.style.display = 'none';
+                uploadForm.style.display = 'block';
+                showMessage('uploadMessage', 'Connection error. Please try again.', 'error');
+                uploadBtn.disabled = false;
             }
         });
 
@@ -364,11 +542,17 @@
         document.getElementById('logoutBtn').addEventListener('click', async () => {
             try {
                 await fetch('/api/di/logout', { method: 'POST' });
-            } catch (err) {
-                // Ignore errors
-            }
+            } catch (err) {}
             window.location.href = 'access.html';
         });
+
+        // Helper function
+        function showMessage(elementId, text, type) {
+            const el = document.getElementById(elementId);
+            el.textContent = text;
+            el.className = `message show ${type}`;
+            setTimeout(() => el.classList.remove('show'), 5000);
+        }
     </script>
 </body>
 </html>
