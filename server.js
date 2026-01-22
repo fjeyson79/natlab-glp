@@ -22,13 +22,15 @@ const pool = new Pool({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Detect production environment
-const isProduction = process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT === 'production';
+// Detect production environment (Railway sets RAILWAY_ENVIRONMENT or we check for DATABASE_URL)
+const isProduction = process.env.NODE_ENV === 'production' ||
+                     process.env.RAILWAY_ENVIRONMENT === 'production' ||
+                     !!process.env.DATABASE_URL;
+
+console.log('Environment:', { isProduction, NODE_ENV: process.env.NODE_ENV, RAILWAY: process.env.RAILWAY_ENVIRONMENT });
 
 // Trust proxy in production (Railway uses reverse proxy)
-if (isProduction) {
-    app.set('trust proxy', 1);
-}
+app.set('trust proxy', 1);
 
 // Session configuration (in memory for V1)
 app.use(session({
@@ -36,10 +38,10 @@ app.use(session({
     resave: false,
     saveUninitialized: false,
     cookie: {
-        secure: isProduction,
+        secure: true,
         httpOnly: true,
         maxAge: 24 * 60 * 60 * 1000, // 24 hours
-        sameSite: isProduction ? 'none' : 'lax'
+        sameSite: 'none'
     }
 }));
 
