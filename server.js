@@ -79,17 +79,25 @@ function requirePI(req, res, next) {
 // API ENDPOINTS
 
 // Helper function to check if role column exists
+// Re-checks every 60 seconds or when column is found to not exist (in case migration is run)
 let roleColumnExists = null;
+let roleColumnLastCheck = 0;
+const ROLE_COLUMN_CHECK_INTERVAL = 60000; // 60 seconds
+
 async function checkRoleColumn() {
-    if (roleColumnExists !== null) return roleColumnExists;
-    try {
-        const result = await pool.query(`
-            SELECT column_name FROM information_schema.columns
-            WHERE table_name = 'di_allowlist' AND column_name = 'role'
-        `);
-        roleColumnExists = result.rows.length > 0;
-    } catch (err) {
-        roleColumnExists = false;
+    const now = Date.now();
+    // Re-check if: never checked, column didn't exist last time, or cache expired
+    if (roleColumnExists === null || roleColumnExists === false || (now - roleColumnLastCheck > ROLE_COLUMN_CHECK_INTERVAL)) {
+        try {
+            const result = await pool.query(`
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'di_allowlist' AND column_name = 'role'
+            `);
+            roleColumnExists = result.rows.length > 0;
+            roleColumnLastCheck = now;
+        } catch (err) {
+            roleColumnExists = false;
+        }
     }
     return roleColumnExists;
 }
@@ -1055,12 +1063,9 @@ function renderHtmlPage(title, content, type = 'info') {
 // Get all lab members (PI only)
 app.get('/api/di/members', requirePI, async (req, res) => {
     try {
-        // Check if role column exists
-        const columnCheck = await pool.query(`
-            SELECT column_name FROM information_schema.columns
-            WHERE table_name = 'di_allowlist' AND column_name = 'role'
-        `);
-        const hasRoleColumn = columnCheck.rows.length > 0;
+        // Check if role column exists using the helper function
+        const hasRoleColumn = await checkRoleColumn();
+        console.log('Members endpoint - hasRoleColumn:', hasRoleColumn);
 
         let result;
         if (hasRoleColumn) {
@@ -1082,6 +1087,8 @@ app.get('/api/di/members', requirePI, async (req, res) => {
             );
         }
 
+        console.log('Members endpoint - found', result.rows.length, 'members');
+
         res.json({
             success: true,
             count: result.rows.length,
@@ -1090,7 +1097,8 @@ app.get('/api/di/members', requirePI, async (req, res) => {
 
     } catch (err) {
         console.error('Get members error:', err);
-        res.status(500).json({ error: 'Server error' });
+        console.error('Error details:', err.message);
+        res.status(500).json({ error: 'Server error: ' + err.message });
     }
 });
 
@@ -1160,11 +1168,13 @@ app.delete('/api/di/members/:id', requirePI, async (req, res) => {
     try {
         const { id } = req.params;
 
-        // Check if member exists and is not the current user
-        const member = await pool.query(
-            'SELECT researcher_id, role FROM di_allowlist WHERE researcher_id = $1',
-            [id]
-        );
+        // Check if member exists (handle missing role column)
+        const hasRole = await checkRoleColumn();
+        const memberQuery = hasRole
+            ? 'SELECT researcher_id, COALESCE(role, \'researcher\') as role FROM di_allowlist WHERE researcher_id = $1'
+            : 'SELECT researcher_id, \'researcher\' as role FROM di_allowlist WHERE researcher_id = $1';
+
+        const member = await pool.query(memberQuery, [id]);
 
         if (member.rows.length === 0) {
             return res.status(404).json({ error: 'Member not found' });
