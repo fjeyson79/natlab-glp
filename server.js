@@ -312,6 +312,10 @@ app.get('/api/di/me', requireAuth, (req, res) => {
 
 // GET /api/di/my-files
 // Get current researcher's files organized by year and status
+// Files appear in ONLY ONE folder based on status (no duplication to save storage)
+// - Submitted: files with status PENDING (under review)
+// - Approved: files with status APPROVED
+// - Files with REVISION_NEEDED are removed from Submitted (need to be re-uploaded)
 app.get('/api/di/my-files', requireAuth, async (req, res) => {
     try {
         const user = req.session.user;
@@ -336,9 +340,14 @@ app.get('/api/di/my-files', requireAuth, async (req, res) => {
         // Group by year
         const yearMap = {};
 
+        // Count stats
+        let pendingCount = 0;
+        let approvedCount = 0;
+        let revisionCount = 0;
+
         for (const file of result.rows) {
             const year = file.year || new Date(file.created_at).getFullYear();
-            const isApproved = file.status === 'APPROVED';
+            const status = file.status || 'PENDING';
 
             if (!yearMap[year]) {
                 yearMap[year] = {
@@ -355,23 +364,27 @@ app.get('/api/di/my-files', requireAuth, async (req, res) => {
                 name: file.original_filename,
                 type: 'file',
                 id: file.submission_id,
-                status: file.status || 'PENDING',
+                status: status,
                 fileType: file.file_type,
                 date: file.created_at,
                 signedAt: file.signed_at
             };
 
-            // Add to Submitted folder (all files go here)
-            yearMap[year].children[0].children.push(fileNode);
-            yearMap[year].children[0].count++;
-
-            // Also add to Approved folder if approved
-            if (isApproved) {
-                yearMap[year].children[1].children.push({
-                    ...fileNode,
-                    isApprovedCopy: true
-                });
+            // Place file in ONLY ONE folder based on status
+            if (status === 'APPROVED') {
+                // Approved files go to Approved folder only
+                yearMap[year].children[1].children.push(fileNode);
                 yearMap[year].children[1].count++;
+                approvedCount++;
+            } else if (status === 'PENDING') {
+                // Pending files (under review) go to Submitted folder
+                yearMap[year].children[0].children.push(fileNode);
+                yearMap[year].children[0].count++;
+                pendingCount++;
+            } else if (status === 'REVISION_NEEDED') {
+                // Revision needed files are NOT shown in Submitted
+                // They need to be re-uploaded, so they're effectively removed
+                revisionCount++;
             }
         }
 
@@ -402,7 +415,9 @@ app.get('/api/di/my-files', requireAuth, async (req, res) => {
             success: true,
             tree: tree,
             totalFiles: result.rows.length,
-            approvedCount: result.rows.filter(f => f.status === 'APPROVED').length
+            pendingCount: pendingCount,
+            approvedCount: approvedCount,
+            revisionCount: revisionCount
         });
 
     } catch (err) {

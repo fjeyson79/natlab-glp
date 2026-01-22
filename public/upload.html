@@ -306,16 +306,16 @@
             <div class="panel-content">
                 <div id="statsBar" class="stats-bar" style="display:none;">
                     <div class="stat-item">
-                        <span>Total:</span>
-                        <span class="stat-value" id="statTotal">0</span>
+                        <span>Under Review:</span>
+                        <span class="stat-value" style="color:#856404;" id="statPending">0</span>
                     </div>
                     <div class="stat-item">
                         <span>Approved:</span>
                         <span class="stat-value" style="color:#28a745;" id="statApproved">0</span>
                     </div>
                     <div class="stat-item">
-                        <span>Pending:</span>
-                        <span class="stat-value" style="color:#856404;" id="statPending">0</span>
+                        <span>Revision Needed:</span>
+                        <span class="stat-value" style="color:#dc3545;" id="statRevision">0</span>
                     </div>
                 </div>
                 <div id="fileTree" class="file-tree">
@@ -367,9 +367,9 @@
                 const data = await response.json();
 
                 // Update stats
-                document.getElementById('statTotal').textContent = data.totalFiles;
-                document.getElementById('statApproved').textContent = data.approvedCount;
-                document.getElementById('statPending').textContent = data.totalFiles - data.approvedCount;
+                document.getElementById('statPending').textContent = data.pendingCount || 0;
+                document.getElementById('statApproved').textContent = data.approvedCount || 0;
+                document.getElementById('statRevision').textContent = data.revisionCount || 0;
                 statsBar.style.display = 'flex';
 
                 if (data.totalFiles === 0) {
@@ -383,7 +383,21 @@
                     return;
                 }
 
-                treeContainer.innerHTML = renderTree(data.tree);
+                // Build content with optional revision notice
+                let content = '';
+
+                // Show revision notice if any files need revision
+                if (data.revisionCount > 0) {
+                    content += `
+                        <div style="background:#fff3cd;border:1px solid #ffc107;padding:10px 15px;border-radius:6px;margin-bottom:15px;font-size:12px;">
+                            <strong style="color:#856404;">&#9888; ${data.revisionCount} file(s) need revision</strong>
+                            <p style="margin:5px 0 0 0;color:#856404;">Please re-upload the revised documents.</p>
+                        </div>
+                    `;
+                }
+
+                content += renderTree(data.tree);
+                treeContainer.innerHTML = content;
 
             } catch (err) {
                 console.error('Error loading files:', err);
