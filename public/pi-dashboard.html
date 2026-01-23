@@ -49,10 +49,10 @@
 
         .main-container {
             display: grid;
-            grid-template-columns: 1fr 1fr 1fr;
+            grid-template-columns: 1fr 1fr;
             gap: 20px;
             padding: 20px;
-            max-width: 1600px;
+            max-width: 1200px;
             margin: 0 auto;
         }
 
@@ -209,94 +209,6 @@
         .status-pending { background: #fff3cd; color: #856404; }
         .status-revision { background: #f8d7da; color: #721c24; }
 
-        /* Members Panel */
-        .member-list {
-            margin-bottom: 20px;
-        }
-        .member-item {
-            display: flex;
-            align-items: center;
-            padding: 12px;
-            border: 1px solid #e0e0e0;
-            border-radius: 6px;
-            margin-bottom: 10px;
-        }
-        .member-item:hover { background: #f8f9fa; }
-        .member-avatar {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            background: #2d5a87;
-            color: white;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: bold;
-            font-size: 14px;
-            margin-right: 12px;
-        }
-        .member-info { flex: 1; }
-        .member-name { font-weight: bold; color: #333; font-size: 14px; }
-        .member-email { color: #666; font-size: 12px; }
-        .member-id { color: #999; font-size: 11px; }
-        .member-affiliation {
-            padding: 3px 10px;
-            border-radius: 12px;
-            font-size: 11px;
-            font-weight: bold;
-            margin-right: 10px;
-        }
-        .affiliation-LiU { background: #007bff; color: white; }
-        .affiliation-UNAV { background: #dc3545; color: white; }
-        .btn-remove {
-            padding: 6px 12px;
-            background: #dc3545;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 12px;
-        }
-        .btn-remove:hover { background: #c82333; }
-
-        .add-member-form {
-            background: #f8f9fa;
-            padding: 15px;
-            border-radius: 8px;
-            border: 1px solid #e0e0e0;
-        }
-        .add-member-form h3 {
-            font-size: 14px;
-            color: #1a365d;
-            margin-bottom: 12px;
-        }
-        .form-row {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-            margin-bottom: 10px;
-        }
-        .form-row.full { grid-template-columns: 1fr; }
-        .add-member-form input, .add-member-form select {
-            width: 100%;
-            padding: 8px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 13px;
-        }
-        .btn-add {
-            width: 100%;
-            padding: 10px;
-            background: #28a745;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 13px;
-            margin-top: 10px;
-        }
-        .btn-add:hover { background: #218838; }
-
         /* Messages */
         .message {
             padding: 10px;
@@ -409,48 +321,6 @@
             </div>
         </div>
 
-        <!-- Panel 3: Members Management -->
-        <div class="panel">
-            <div class="panel-header">
-                <h2><span class="icon">&#128101;</span> Lab Members</h2>
-                <span id="memberCount" style="font-size:12px;color:#666;">0 members</span>
-            </div>
-            <div class="panel-content">
-                <div id="memberMessage" class="message"></div>
-                <div id="memberList" class="member-list">
-                    <div class="loading">
-                        <div class="spinner"></div>
-                        Loading members...
-                    </div>
-                </div>
-
-                <div class="add-member-form">
-                    <h3>Add New Member</h3>
-                    <form id="addMemberForm">
-                        <div class="form-row">
-                            <input type="text" id="newMemberName" placeholder="Full Name" required>
-                            <input type="text" id="newMemberId" placeholder="Researcher ID (e.g., LIU-001)" required>
-                        </div>
-                        <div class="form-row full">
-                            <input type="email" id="newMemberEmail" placeholder="Institution Email" required>
-                        </div>
-                        <div class="form-row">
-                            <select id="newMemberAffiliation" required>
-                                <option value="">Affiliation...</option>
-                                <option value="LiU">LiU</option>
-                                <option value="UNAV">UNAV</option>
-                            </select>
-                            <select id="newMemberRole" required>
-                                <option value="">Role...</option>
-                                <option value="researcher">Researcher</option>
-                                <option value="pi">Principal Investigator</option>
-                            </select>
-                        </div>
-                        <button type="submit" class="btn-add">Add Member</button>
-                    </form>
-                </div>
-            </div>
-        </div>
     </div>
 
     <script>
@@ -475,7 +345,6 @@
                 document.getElementById('userName').textContent = user.name;
 
                 // Load all data
-                loadMembers();
                 loadDirectory();
                 populateResearcherDropdown(user);
 
@@ -485,43 +354,6 @@
         }
 
         checkAuth();
-
-        // Load members
-        async function loadMembers() {
-            try {
-                const response = await fetch('/api/di/members', {
-                    credentials: 'include'
-                });
-                if (!response.ok) throw new Error('Failed to load members');
-                const data = await response.json();
-
-                const memberList = document.getElementById('memberList');
-                const memberCount = document.getElementById('memberCount');
-
-                memberCount.textContent = `${data.members.length} members`;
-
-                if (data.members.length === 0) {
-                    memberList.innerHTML = '<p style="color:#666;text-align:center;">No members found</p>';
-                    return;
-                }
-
-                memberList.innerHTML = data.members.map(member => `
-                    <div class="member-item" data-id="${member.researcher_id}">
-                        <div class="member-avatar">${member.name.split(' ').map(n => n[0]).join('').substring(0,2)}</div>
-                        <div class="member-info">
-                            <div class="member-name">${member.name} ${member.role === 'pi' ? '<span style="color:#ffc107;font-size:11px;">(PI)</span>' : ''}</div>
-                            <div class="member-email">${member.institution_email}</div>
-                            <div class="member-id">${member.researcher_id}</div>
-                        </div>
-                        <span class="member-affiliation affiliation-${member.affiliation}">${member.affiliation}</span>
-                        ${member.role !== 'pi' ? `<button class="btn-remove" onclick="removeMember('${member.researcher_id}')">Remove</button>` : ''}
-                    </div>
-                `).join('');
-
-            } catch (err) {
-                document.getElementById('memberList').innerHTML = '<p style="color:#dc3545;">Error loading members</p>';
-            }
-        }
 
         // Populate researcher dropdown
         async function populateResearcherDropdown(currentUser) {
@@ -745,72 +577,6 @@
                 alert('Error deleting file');
             }
         }
-
-        // Remove member
-        async function removeMember(researcherId) {
-            if (!confirm(`Are you sure you want to remove this member? This will deactivate their account.`)) {
-                return;
-            }
-
-            try {
-                const response = await fetch(`/api/di/members/${researcherId}`, {
-                    method: 'DELETE',
-                    credentials: 'include'
-                });
-
-                const data = await response.json();
-
-                if (!response.ok) {
-                    showMessage('memberMessage', data.error || 'Failed to remove member', 'error');
-                    return;
-                }
-
-                showMessage('memberMessage', 'Member removed successfully', 'success');
-                loadMembers();
-                populateResearcherDropdown();
-                loadDirectory();
-
-            } catch (err) {
-                showMessage('memberMessage', 'Error removing member', 'error');
-            }
-        }
-
-        // Add member form
-        document.getElementById('addMemberForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-
-            const memberData = {
-                name: document.getElementById('newMemberName').value,
-                researcher_id: document.getElementById('newMemberId').value,
-                institution_email: document.getElementById('newMemberEmail').value,
-                affiliation: document.getElementById('newMemberAffiliation').value,
-                role: document.getElementById('newMemberRole').value
-            };
-
-            try {
-                const response = await fetch('/api/di/members', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(memberData),
-                    credentials: 'include'
-                });
-
-                const data = await response.json();
-
-                if (!response.ok) {
-                    showMessage('memberMessage', data.error || 'Failed to add member', 'error');
-                    return;
-                }
-
-                showMessage('memberMessage', 'Member added successfully', 'success');
-                document.getElementById('addMemberForm').reset();
-                loadMembers();
-                populateResearcherDropdown();
-
-            } catch (err) {
-                showMessage('memberMessage', 'Error adding member', 'error');
-            }
-        });
 
         // File upload handling
         const fileUploadArea = document.getElementById('fileUploadArea');
