@@ -2,3 +2,9 @@ node_modules/
 .env
 *.log
 .DS_Store
+# Local backup files
+*.bak
+*.bak-*
+
+# Local patch scripts
+patch-*.ps1
