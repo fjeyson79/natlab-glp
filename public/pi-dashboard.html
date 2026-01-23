@@ -411,15 +411,19 @@
                 const statusClass = node.status === 'APPROVED' ? 'status-approved' :
                                    node.status === 'REVISION_NEEDED' ? 'status-revision' : 'status-pending';
                 const escapedName = node.name.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                const viewUrl = node.viewUrl || `/api/di/download/${node.id}`;
+                const downloadUrl = node.downloadUrl || `/api/di/download/${node.id}?download=true`;
+                const hasFile = node.driveFileId || node.status === 'PENDING';
+
                 return `
                     <div class="tree-item tree-file" style="padding-left:${level * 20}px" data-file-id="${node.id}">
                         <input type="checkbox" class="file-checkbox" data-id="${node.id}" data-name="${escapedName}" onclick="toggleFileSelection(event, '${node.id}')">
-                        <span class="icon">&#128196;</span>
+                        <span class="icon">${node.status === 'APPROVED' ? '&#9989;' : '&#128196;'}</span>
                         <span>${node.name}</span>
                         <span class="file-status ${statusClass}">${node.status || 'PENDING'}</span>
                         <div class="file-actions">
-                            <button class="btn-view" onclick="viewFile('${node.id}')">View</button>
-                            <button class="btn-download" onclick="downloadFile('${node.id}')">Download</button>
+                            ${hasFile ? `<button class="btn-view" onclick="window.open('${viewUrl}', '_blank')">View</button>
+                            <button class="btn-download" onclick="window.location.href='${downloadUrl}'">Download</button>` : '<span style="color:#999;font-size:11px;">Removed</span>'}
                             <button class="btn-delete" onclick="deleteFile('${node.id}', '${escapedName}')">Delete</button>
                         </div>
                     </div>

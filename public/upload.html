@@ -417,6 +417,11 @@
                 const signedBadge = isApproved && node.signedAt ? `<span style="background:#28a745;color:white;padding:1px 6px;border-radius:8px;font-size:9px;margin-left:5px;">SIGNED</span>` : '';
                 const verifyBtn = isApproved && node.verificationCode ? `<button class="btn-verify" onclick="verifyDocument('${node.verificationCode}')" title="Verify signature">Verify</button>` : '';
 
+                // Use Drive URLs if available, otherwise fall back to API
+                const viewUrl = node.viewUrl || `/api/di/download/${node.id}`;
+                const downloadUrl = node.downloadUrl || `/api/di/download/${node.id}?download=true`;
+                const hasFile = node.driveFileId || node.status === 'PENDING';
+
                 return `
                     <div class="tree-item tree-file" style="padding-left:${level * 20}px">
                         <span class="icon">${isApproved ? '&#9989;' : '&#128196;'}</span>
@@ -424,8 +429,8 @@
                         <span class="file-status ${statusClass}">${node.status || 'PENDING'}</span>
                         ${signedBadge}
                         <div class="file-actions">
-                            <button class="btn-view" onclick="viewFile('${node.id}')">View</button>
-                            <button class="btn-download" onclick="downloadFile('${node.id}')">Download</button>
+                            ${hasFile ? `<button class="btn-view" onclick="window.open('${viewUrl}', '_blank')">View</button>
+                            <button class="btn-download" onclick="window.location.href='${downloadUrl}'">Download</button>` : '<span style="color:#999;font-size:11px;">File removed</span>'}
                             ${verifyBtn}
                         </div>
                     </div>

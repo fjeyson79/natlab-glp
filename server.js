@@ -8,6 +8,9 @@ const session = require('express-session');
 const path = require('path');
 const FormData = require('form-data');
 const fetch = require('node-fetch');
+const { google } = require('googleapis');
+const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
+const { Readable } = require('stream');
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -48,8 +51,159 @@ app.use(session({
 // Multer configuration for file uploads (memory storage)
 const upload = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: 50 * 1024 * 1024 } // 50MB limit
+    limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit for PDFs
+    fileFilter: (req, file, cb) => {
+        if (file.mimetype === 'application/pdf') {
+            cb(null, true);
+        } else {
+            cb(new Error('Only PDF files are accepted'), false);
+        }
+    }
 });
+
+// Google Drive Configuration
+const GOOGLE_DRIVE_ROOT_FOLDER = 'NATLAB-GLP';
+let driveClient = null;
+
+function getGoogleDriveClient() {
+    if (driveClient) return driveClient;
+
+    const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY || '{}');
+    const auth = new google.auth.GoogleAuth({
+        credentials,
+        scopes: ['https://www.googleapis.com/auth/drive.file']
+    });
+    driveClient = google.drive({ version: 'v3', auth });
+    return driveClient;
+}
+
+// Google Drive Helper Functions
+async function findOrCreateFolder(drive, name, parentId = null) {
+    const query = parentId
+        ? `name='${name}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`
+        : `name='${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+
+    const res = await drive.files.list({ q: query, fields: 'files(id, name)' });
+
+    if (res.data.files.length > 0) {
+        return res.data.files[0].id;
+    }
+
+    const folderMetadata = {
+        name,
+        mimeType: 'application/vnd.google-apps.folder',
+        ...(parentId && { parents: [parentId] })
+    };
+
+    const folder = await drive.files.create({
+        requestBody: folderMetadata,
+        fields: 'id'
+    });
+
+    return folder.data.id;
+}
+
+async function getSubmittedFolderId(drive, year, researcherId) {
+    const rootId = await findOrCreateFolder(drive, GOOGLE_DRIVE_ROOT_FOLDER);
+    const yearId = await findOrCreateFolder(drive, String(year), rootId);
+    const researcherFolderId = await findOrCreateFolder(drive, researcherId, yearId);
+    const submittedId = await findOrCreateFolder(drive, 'Submitted', researcherFolderId);
+    return submittedId;
+}
+
+async function getApprovedFolderId(drive, year, researcherId) {
+    const rootId = await findOrCreateFolder(drive, GOOGLE_DRIVE_ROOT_FOLDER);
+    const yearId = await findOrCreateFolder(drive, String(year), rootId);
+    const researcherFolderId = await findOrCreateFolder(drive, researcherId, yearId);
+    const approvedId = await findOrCreateFolder(drive, 'Approved', researcherFolderId);
+    return approvedId;
+}
+
+async function uploadFileToDrive(drive, buffer, filename, mimeType, folderId) {
+    const fileMetadata = {
+        name: filename,
+        parents: [folderId]
+    };
+
+    const media = {
+        mimeType,
+        body: Readable.from(buffer)
+    };
+
+    const file = await drive.files.create({
+        requestBody: fileMetadata,
+        media,
+        fields: 'id, webViewLink'
+    });
+
+    // Set public read permission
+    await drive.permissions.create({
+        fileId: file.data.id,
+        requestBody: {
+            role: 'reader',
+            type: 'anyone'
+        }
+    });
+
+    return file.data.id;
+}
+
+async function deleteFileFromDrive(drive, fileId) {
+    try {
+        await drive.files.delete({ fileId });
+        return true;
+    } catch (err) {
+        console.error('Drive delete error:', err.message);
+        return false;
+    }
+}
+
+async function downloadFileFromDrive(drive, fileId) {
+    const res = await drive.files.get(
+        { fileId, alt: 'media' },
+        { responseType: 'arraybuffer' }
+    );
+    return Buffer.from(res.data);
+}
+
+async function createStampedPdf(pdfBuffer, signerName, timestamp) {
+    const pdfDoc = await PDFDocument.load(pdfBuffer);
+    const pages = pdfDoc.getPages();
+    const firstPage = pages[0];
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+    const stampText = `Approved by PI (${signerName}) - ${timestamp}`;
+    const { width } = firstPage.getSize();
+
+    // Add stamp at bottom of first page
+    firstPage.drawText(stampText, {
+        x: 50,
+        y: 30,
+        size: 10,
+        font,
+        color: rgb(0.2, 0.4, 0.2)
+    });
+
+    // Add stamp border
+    firstPage.drawRectangle({
+        x: 45,
+        y: 25,
+        width: font.widthOfTextAtSize(stampText, 10) + 10,
+        height: 18,
+        borderColor: rgb(0.2, 0.4, 0.2),
+        borderWidth: 1
+    });
+
+    return await pdfDoc.save();
+}
+
+function getDriveViewUrl(fileId) {
+    return `https://drive.google.com/file/d/${fileId}/view`;
+}
+
+function getDriveDownloadUrl(fileId) {
+    return `https://drive.google.com/uc?export=download&id=${fileId}`;
+}
 
 // Serve static files from public folder under /di
 app.use('/di', express.static(path.join(__dirname, 'public')));
@@ -395,7 +549,7 @@ app.get('/api/di/my-files', requireAuth, async (req, res) => {
         // Get all submissions for this researcher
         const result = await pool.query(
             `SELECT submission_id, file_type, original_filename, status, created_at, signed_at,
-                    verification_code, ai_review_score, ai_review_decision,
+                    verification_code, ai_review_score, ai_review_decision, drive_file_id,
                     EXTRACT(YEAR FROM created_at) as year
              FROM di_submissions
              WHERE researcher_id = $1
@@ -443,7 +597,10 @@ app.get('/api/di/my-files', requireAuth, async (req, res) => {
                 signedAt: file.signed_at,
                 verificationCode: file.verification_code,
                 aiScore: file.ai_review_score,
-                aiDecision: file.ai_review_decision
+                aiDecision: file.ai_review_decision,
+                driveFileId: file.drive_file_id,
+                viewUrl: file.drive_file_id ? getDriveViewUrl(file.drive_file_id) : null,
+                downloadUrl: file.drive_file_id ? getDriveDownloadUrl(file.drive_file_id) : null
             };
 
             // Place file in ONLY ONE folder based on status
@@ -503,7 +660,7 @@ app.get('/api/di/my-files', requireAuth, async (req, res) => {
 });
 
 // POST /api/di/upload
-// Upload file and forward to n8n webhook
+// Upload PDF file to Google Drive and forward to n8n webhook
 app.post('/api/di/upload', requireAuth, upload.single('file'), async (req, res) => {
     try {
         const { fileType } = req.body;
@@ -514,64 +671,78 @@ app.post('/api/di/upload', requireAuth, upload.single('file'), async (req, res) 
         }
 
         if (!file) {
-            return res.status(400).json({ error: 'No file uploaded' });
+            return res.status(400).json({ error: 'No file uploaded. Only PDF files are accepted.' });
+        }
+
+        // Additional PDF validation
+        if (file.mimetype !== 'application/pdf') {
+            return res.status(400).json({ error: 'Only PDF files are accepted' });
+        }
+
+        if (file.size > 10 * 1024 * 1024) {
+            return res.status(400).json({ error: 'File exceeds 10MB limit' });
         }
 
         const user = req.session.user;
+        const year = new Date().getFullYear();
 
-        // Record submission in database
+        // Upload to Google Drive
+        const drive = getGoogleDriveClient();
+        const submittedFolderId = await getSubmittedFolderId(drive, year, user.researcher_id);
+        const driveFileId = await uploadFileToDrive(drive, file.buffer, file.originalname, 'application/pdf', submittedFolderId);
+
+        // Record submission in database with Drive file ID
         const submissionResult = await pool.query(
-            `INSERT INTO di_submissions (researcher_id, affiliation, file_type, original_filename)
-             VALUES ($1, $2, $3, $4)
+            `INSERT INTO di_submissions (researcher_id, affiliation, file_type, original_filename, drive_file_id)
+             VALUES ($1, $2, $3, $4, $5)
              RETURNING submission_id`,
-            [user.researcher_id, user.affiliation, fileType, file.originalname]
+            [user.researcher_id, user.affiliation, fileType, file.originalname, driveFileId]
         );
 
         const submissionId = submissionResult.rows[0].submission_id;
 
-        // Forward to n8n webhook as multipart form data
+        // Forward to n8n webhook
         const webhookUrl = process.env.N8N_DI_WEBHOOK_URL;
 
-        if (!webhookUrl) {
-            console.error('N8N_DI_WEBHOOK_URL not configured');
-            return res.status(500).json({ error: 'Webhook not configured' });
-        }
-
-        const formData = new FormData();
-        formData.append('researcher_id', user.researcher_id);
-        formData.append('affiliation', user.affiliation);
-        formData.append('fileType', fileType);
-        formData.append('original_filename', file.originalname);
-        formData.append('submission_id', submissionId);
-        formData.append('file', file.buffer, {
-            filename: file.originalname,
-            contentType: file.mimetype
-        });
-
-        const webhookResponse = await fetch(webhookUrl, {
-            method: 'POST',
-            body: formData,
-            headers: formData.getHeaders()
-        });
-
-        if (!webhookResponse.ok) {
-            console.error('Webhook error:', webhookResponse.status, await webhookResponse.text());
-            // Still return success to user since we recorded the submission
-            return res.json({
-                success: true,
-                submission_id: submissionId,
-                warning: 'File recorded but webhook delivery pending'
+        if (webhookUrl) {
+            const formData = new FormData();
+            formData.append('researcher_id', user.researcher_id);
+            formData.append('affiliation', user.affiliation);
+            formData.append('fileType', fileType);
+            formData.append('original_filename', file.originalname);
+            formData.append('submission_id', submissionId);
+            formData.append('drive_file_id', driveFileId);
+            formData.append('drive_view_url', getDriveViewUrl(driveFileId));
+            formData.append('drive_download_url', getDriveDownloadUrl(driveFileId));
+            formData.append('file', file.buffer, {
+                filename: file.originalname,
+                contentType: file.mimetype
             });
+
+            try {
+                await fetch(webhookUrl, {
+                    method: 'POST',
+                    body: formData,
+                    headers: formData.getHeaders()
+                });
+            } catch (webhookErr) {
+                console.error('Webhook error:', webhookErr.message);
+            }
         }
 
         res.json({
             success: true,
             submission_id: submissionId,
+            drive_file_id: driveFileId,
+            view_url: getDriveViewUrl(driveFileId),
             message: 'File uploaded successfully'
         });
 
     } catch (err) {
         console.error('Upload error:', err);
+        if (err.message === 'Only PDF files are accepted') {
+            return res.status(400).json({ error: err.message });
+        }
         res.status(500).json({ error: 'Server error' });
     }
 });
@@ -1025,15 +1196,15 @@ app.get('/api/di/verify/:code', async (req, res) => {
 });
 
 // GET /api/di/download/:id
-// Download a submission file (placeholder)
+// Redirect to Google Drive file
 app.get('/api/di/download/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { signed } = req.query;
+        const { download } = req.query;
 
         // Get submission
         const result = await pool.query(
-            'SELECT * FROM di_submissions WHERE submission_id = $1',
+            'SELECT drive_file_id, original_filename, status FROM di_submissions WHERE submission_id = $1',
             [id]
         );
 
@@ -1043,15 +1214,16 @@ app.get('/api/di/download/:id', async (req, res) => {
 
         const submission = result.rows[0];
 
-        // In production, this would retrieve the actual file from storage
-        // For now, return a placeholder response
-        res.json({
-            message: 'File download endpoint',
-            submission_id: id,
-            filename: submission.original_filename,
-            signed: signed === 'true',
-            note: 'In production, this would stream the actual file'
-        });
+        if (!submission.drive_file_id) {
+            return res.status(404).json({ error: 'File not available. It may have been removed for revision.' });
+        }
+
+        // Redirect to appropriate Google Drive URL
+        if (download === 'true') {
+            res.redirect(getDriveDownloadUrl(submission.drive_file_id));
+        } else {
+            res.redirect(getDriveViewUrl(submission.drive_file_id));
+        }
 
     } catch (err) {
         console.error('Download error:', err);
@@ -1061,6 +1233,7 @@ app.get('/api/di/download/:id', async (req, res) => {
 
 // GET /api/di/approve/:id
 // Browser-based approval via email link (validates token from query string)
+// Creates stamped PDF, uploads to Approved folder, deletes from Submitted
 app.get('/api/di/approve/:id', async (req, res) => {
     try {
         const { id } = req.params;
@@ -1089,25 +1262,87 @@ app.get('/api/di/approve/:id', async (req, res) => {
 
         const submission = result.rows[0];
 
-        // Update submission with approved status
+        if (!submission.drive_file_id) {
+            return res.status(400).send(renderHtmlPage('Error', 'No file associated with this submission.', 'error'));
+        }
+
+        if (submission.status === 'APPROVED') {
+            return res.send(renderHtmlPage('Already Approved', 'This submission has already been approved.', 'info'));
+        }
+
         const signedAt = new Date().toISOString();
+        const signerName = 'Frank J. Hernandez';
+        const drive = getGoogleDriveClient();
+
+        // Download original PDF from Drive
+        const originalPdfBuffer = await downloadFileFromDrive(drive, submission.drive_file_id);
+
+        // Create stamped PDF
+        const stampedPdfBuffer = await createStampedPdf(originalPdfBuffer, signerName, signedAt);
+
+        // Get Approved folder
+        const year = new Date(submission.created_at).getFullYear();
+        const approvedFolderId = await getApprovedFolderId(drive, year, submission.researcher_id);
+
+        // Upload stamped PDF to Approved folder
+        const stampedFilename = submission.original_filename.replace('.pdf', '_APPROVED.pdf');
+        const newDriveFileId = await uploadFileToDrive(drive, stampedPdfBuffer, stampedFilename, 'application/pdf', approvedFolderId);
+
+        // Delete original from Submitted
+        await deleteFileFromDrive(drive, submission.drive_file_id);
+
+        // Generate signature hash
+        const crypto = require('crypto');
+        const signaturePayload = JSON.stringify({
+            submission_id: id,
+            original_filename: submission.original_filename,
+            signed_at: signedAt,
+            signer: signerName
+        });
+        const signatureHash = crypto.createHmac('sha256', process.env.API_SECRET_KEY || 'natlab_glp_secret')
+            .update(signaturePayload).digest('hex');
+        const verificationCode = `NATLAB-${id}-${signatureHash.substring(0, 8).toUpperCase()}`;
+
+        // Update DB: point to stamped PDF only
         await pool.query(
-            `UPDATE di_submissions SET status = 'APPROVED', signed_at = $1 WHERE submission_id = $2`,
-            [signedAt, id]
+            `UPDATE di_submissions SET
+                status = 'APPROVED',
+                signed_at = $1,
+                signer_name = $2,
+                drive_file_id = $3,
+                signed_pdf_path = $3,
+                signature_hash = $4,
+                verification_code = $5
+             WHERE submission_id = $6`,
+            [signedAt, signerName, newDriveFileId, signatureHash, verificationCode, id]
         );
+
+        // Send email to researcher
+        const researcherResult = await pool.query(
+            'SELECT institution_email FROM di_allowlist WHERE researcher_id = $1',
+            [submission.researcher_id]
+        );
+
+        if (researcherResult.rows.length > 0) {
+            const researcherEmail = researcherResult.rows[0].institution_email;
+            // Email would be sent via n8n or nodemailer here
+            console.log(`Approval email should be sent to: ${researcherEmail}`);
+        }
 
         res.send(renderHtmlPage(
             'Document Approved',
             `<p>Submission <strong>${id}</strong> has been approved and signed.</p>
              <p>File: ${submission.original_filename}</p>
              <p>Signed at: ${signedAt}</p>
-             <p><a href="/api/di/download/${id}?signed=true" style="color:#007bff;">Download Signed Document</a></p>`,
+             <p>Verification Code: <strong>${verificationCode}</strong></p>
+             <p><a href="${getDriveViewUrl(newDriveFileId)}" target="_blank" style="color:#007bff;">View Signed Document</a></p>
+             <p><a href="${getDriveDownloadUrl(newDriveFileId)}" style="color:#28a745;">Download Signed Document</a></p>`,
             'success'
         ));
 
     } catch (err) {
         console.error('Approve error:', err);
-        res.status(500).send(renderHtmlPage('Error', 'Server error occurred.', 'error'));
+        res.status(500).send(renderHtmlPage('Error', 'Server error occurred: ' + err.message, 'error'));
     }
 });
 
@@ -1153,7 +1388,7 @@ app.get('/api/di/revise/:id', async (req, res) => {
 });
 
 // POST /api/di/revise/:id
-// Process revision request
+// Process revision request - deletes file from Drive, stores comments
 app.post('/api/di/revise/:id', async (req, res) => {
     try {
         const { id } = req.params;
@@ -1171,16 +1406,50 @@ app.post('/api/di/revise/:id', async (req, res) => {
             return res.status(403).send(renderHtmlPage('Invalid Token', 'The revision link is invalid or expired.', 'error'));
         }
 
-        // Update submission status
-        await pool.query(
-            `UPDATE di_submissions SET status = 'REVISION_NEEDED' WHERE submission_id = $1`,
+        // Get submission to find drive_file_id
+        const result = await pool.query(
+            'SELECT drive_file_id, researcher_id, original_filename FROM di_submissions WHERE submission_id = $1',
             [id]
         );
+
+        if (result.rows.length === 0) {
+            return res.status(404).send(renderHtmlPage('Not Found', 'Submission not found.', 'error'));
+        }
+
+        const submission = result.rows[0];
+
+        // Delete file from Google Drive (Submitted folder)
+        if (submission.drive_file_id) {
+            const drive = getGoogleDriveClient();
+            await deleteFileFromDrive(drive, submission.drive_file_id);
+        }
+
+        // Update submission status, clear drive_file_id, store comments
+        await pool.query(
+            `UPDATE di_submissions SET
+                status = 'REVISION_NEEDED',
+                drive_file_id = NULL,
+                revision_comments = $1
+             WHERE submission_id = $2`,
+            [comments || '', id]
+        );
+
+        // Get researcher email and send notification
+        const researcherResult = await pool.query(
+            'SELECT institution_email FROM di_allowlist WHERE researcher_id = $1',
+            [submission.researcher_id]
+        );
+
+        if (researcherResult.rows.length > 0) {
+            const researcherEmail = researcherResult.rows[0].institution_email;
+            console.log(`Revision email should be sent to: ${researcherEmail}`);
+            // Email content: Subject: Revision requested | Body: File "X" needs revision. Comments: Y
+        }
 
         res.send(renderHtmlPage(
             'Revision Requested',
             `<p>Submission <strong>${id}</strong> has been marked for revision.</p>
-             <p>The researcher will be notified with your comments.</p>
+             <p>The file has been removed. The researcher must upload a revised PDF.</p>
              ${comments ? `<p><strong>Your comments:</strong> ${comments}</p>` : ''}`,
             'success'
         ));
@@ -1373,7 +1642,7 @@ app.get('/api/di/directory', requirePI, async (req, res) => {
         // Get all submissions
         const submissionsResult = await pool.query(
             `SELECT s.submission_id, s.researcher_id, s.affiliation, s.file_type,
-                    s.original_filename, s.status, s.created_at,
+                    s.original_filename, s.status, s.created_at, s.drive_file_id,
                     EXTRACT(YEAR FROM s.created_at) as year
              FROM di_submissions s
              ORDER BY s.created_at DESC`
@@ -1412,7 +1681,10 @@ app.get('/api/di/directory', requirePI, async (req, res) => {
                 id: sub.submission_id,
                 status: sub.status,
                 fileType: sub.file_type,
-                date: sub.created_at
+                date: sub.created_at,
+                driveFileId: sub.drive_file_id,
+                viewUrl: sub.drive_file_id ? getDriveViewUrl(sub.drive_file_id) : null,
+                downloadUrl: sub.drive_file_id ? getDriveDownloadUrl(sub.drive_file_id) : null
             });
             yearMap[year].researchers[sub.researcher_id].count++;
         }
