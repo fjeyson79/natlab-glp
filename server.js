@@ -2126,3 +2126,6 @@ app.post('/api/di/pi-upload', requirePI, upload.single('file'), async (req, res)
         return res.status(500).json({ error: 'Server error' });
     }
 });
+
+// redeploy bump 2026-01-23T20:49:14
+
