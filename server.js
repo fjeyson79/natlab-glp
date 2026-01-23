@@ -64,17 +64,73 @@ const upload = multer({
 // Google Drive Configuration
 const GOOGLE_DRIVE_ROOT_FOLDER = 'NATLAB-GLP';
 let driveClient = null;
+let driveEnabled = false;
+let driveInitError = null;
+
+// Validate Drive config at startup
+function validateDriveConfig() {
+    const keyEnv = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
+    console.log('[DRIVE] Validating configuration...');
+    console.log('[DRIVE] GOOGLE_SERVICE_ACCOUNT_KEY present:', !!keyEnv);
+    console.log('[DRIVE] GOOGLE_SERVICE_ACCOUNT_KEY length:', keyEnv ? keyEnv.length : 0);
+
+    if (!keyEnv) {
+        console.error('[DRIVE] ERROR: GOOGLE_SERVICE_ACCOUNT_KEY env var is missing');
+        return { valid: false, error: 'GOOGLE_SERVICE_ACCOUNT_KEY not set' };
+    }
+
+    try {
+        const creds = JSON.parse(keyEnv);
+        const hasRequiredFields = creds.client_email && creds.private_key && creds.project_id;
+        console.log('[DRIVE] Credentials parsed successfully');
+        console.log('[DRIVE] Has client_email:', !!creds.client_email);
+        console.log('[DRIVE] Has private_key:', !!creds.private_key);
+        console.log('[DRIVE] Has project_id:', !!creds.project_id);
+        console.log('[DRIVE] Service account:', creds.client_email || 'MISSING');
+
+        if (!hasRequiredFields) {
+            return { valid: false, error: 'Missing required fields in service account JSON' };
+        }
+        return { valid: true, credentials: creds };
+    } catch (e) {
+        console.error('[DRIVE] ERROR: Failed to parse GOOGLE_SERVICE_ACCOUNT_KEY as JSON:', e.message);
+        return { valid: false, error: 'Invalid JSON in GOOGLE_SERVICE_ACCOUNT_KEY: ' + e.message };
+    }
+}
+
+function initializeDriveClient() {
+    const validation = validateDriveConfig();
+    if (!validation.valid) {
+        driveInitError = validation.error;
+        driveEnabled = false;
+        console.error('[DRIVE] Initialization FAILED:', driveInitError);
+        return null;
+    }
+
+    try {
+        const auth = new google.auth.GoogleAuth({
+            credentials: validation.credentials,
+            scopes: ['https://www.googleapis.com/auth/drive.file']
+        });
+        driveClient = google.drive({ version: 'v3', auth });
+        driveEnabled = true;
+        console.log('[DRIVE] Client initialized successfully');
+        return driveClient;
+    } catch (e) {
+        driveInitError = e.message;
+        driveEnabled = false;
+        console.error('[DRIVE] Initialization FAILED:', e.message);
+        return null;
+    }
+}
 
 function getGoogleDriveClient() {
     if (driveClient) return driveClient;
+    return initializeDriveClient();
+}
 
-    const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY || '{}');
-    const auth = new google.auth.GoogleAuth({
-        credentials,
-        scopes: ['https://www.googleapis.com/auth/drive.file']
-    });
-    driveClient = google.drive({ version: 'v3', auth });
-    return driveClient;
+function isDriveEnabled() {
+    return driveEnabled && driveClient !== null;
 }
 
 // Google Drive Helper Functions
@@ -208,9 +264,42 @@ function getDriveDownloadUrl(fileId) {
 // Serve static files from public folder under /di
 app.use('/di', express.static(path.join(__dirname, 'public')));
 
+// Initialize Drive at startup
+console.log('[STARTUP] Initializing Google Drive...');
+initializeDriveClient();
+console.log('[STARTUP] Drive enabled:', driveEnabled);
+if (driveInitError) {
+    console.error('[STARTUP] Drive init error:', driveInitError);
+}
+
 // Health check endpoint
 app.get('/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Drive debug endpoint
+app.get('/api/di/debug-drive', async (req, res) => {
+    const info = {
+        driveEnabled,
+        driveInitError,
+        envVarPresent: !!process.env.GOOGLE_SERVICE_ACCOUNT_KEY,
+        envVarLength: process.env.GOOGLE_SERVICE_ACCOUNT_KEY?.length || 0,
+        timestamp: new Date().toISOString()
+    };
+
+    // Try a simple Drive operation if enabled
+    if (driveEnabled && driveClient) {
+        try {
+            const aboutRes = await driveClient.about.get({ fields: 'user' });
+            info.driveUser = aboutRes.data.user?.emailAddress || 'unknown';
+            info.driveTestSuccess = true;
+        } catch (e) {
+            info.driveTestSuccess = false;
+            info.driveTestError = e.message;
+        }
+    }
+
+    res.json(info);
 });
 
 // Debug endpoint to check members (temporary - for troubleshooting)
@@ -686,10 +775,39 @@ app.post('/api/di/upload', requireAuth, upload.single('file'), async (req, res) 
         const user = req.session.user;
         const year = new Date().getFullYear();
 
+        console.log(`[UPLOAD] Starting upload for user=${user.researcher_id}, file=${file.originalname}, size=${file.size}`);
+
+        // Check if Drive is enabled
+        if (!driveEnabled) {
+            console.error('[UPLOAD] ERROR: Drive not enabled. driveInitError:', driveInitError);
+            return res.status(503).json({
+                error: 'DRIVE_NOT_CONFIGURED',
+                message: 'Google Drive is not configured. Contact administrator.',
+                driveInitError: driveInitError
+            });
+        }
+
         // Upload to Google Drive
-        const drive = getGoogleDriveClient();
-        const submittedFolderId = await getSubmittedFolderId(drive, year, user.researcher_id);
-        const driveFileId = await uploadFileToDrive(drive, file.buffer, file.originalname, 'application/pdf', submittedFolderId);
+        let driveFileId = null;
+        try {
+            console.log(`[UPLOAD] Getting Drive client...`);
+            const drive = getGoogleDriveClient();
+
+            console.log(`[UPLOAD] Creating folder structure: NATLAB-GLP/${year}/${user.researcher_id}/Submitted`);
+            const submittedFolderId = await getSubmittedFolderId(drive, year, user.researcher_id);
+            console.log(`[UPLOAD] Folder ID: ${submittedFolderId}`);
+
+            console.log(`[UPLOAD] Uploading file to Drive...`);
+            driveFileId = await uploadFileToDrive(drive, file.buffer, file.originalname, 'application/pdf', submittedFolderId);
+            console.log(`[UPLOAD] SUCCESS: Drive file ID = ${driveFileId}`);
+        } catch (driveErr) {
+            console.error(`[UPLOAD] DRIVE ERROR:`, driveErr.message);
+            console.error(`[UPLOAD] DRIVE ERROR STACK:`, driveErr.stack);
+            return res.status(500).json({
+                error: 'DRIVE_UPLOAD_FAILED',
+                message: 'Failed to upload file to Google Drive: ' + driveErr.message
+            });
+        }
 
         // Record submission in database with Drive file ID
         const submissionResult = await pool.query(
@@ -700,6 +818,7 @@ app.post('/api/di/upload', requireAuth, upload.single('file'), async (req, res) 
         );
 
         const submissionId = submissionResult.rows[0].submission_id;
+        console.log(`[UPLOAD] Submission recorded: submission_id=${submissionId}, drive_file_id=${driveFileId}`);
 
         // Forward to n8n webhook
         const webhookUrl = process.env.N8N_DI_WEBHOOK_URL;
@@ -1196,38 +1315,58 @@ app.get('/api/di/verify/:code', async (req, res) => {
 });
 
 // GET /api/di/download/:id
-// Redirect to Google Drive file
+// Redirect to Google Drive file or return appropriate error
 app.get('/api/di/download/:id', async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { download } = req.query;
+    const { id } = req.params;
+    const { download } = req.query;
 
+    console.log(`[DOWNLOAD] Request for submission_id=${id}, download=${download}`);
+
+    try {
         // Get submission
         const result = await pool.query(
-            'SELECT drive_file_id, original_filename, status FROM di_submissions WHERE submission_id = $1',
+            'SELECT drive_file_id, original_filename, status, signed_pdf_path FROM di_submissions WHERE submission_id = $1',
             [id]
         );
 
         if (result.rows.length === 0) {
-            return res.status(404).json({ error: 'Submission not found' });
+            console.log(`[DOWNLOAD] Submission ${id} not found in database`);
+            return res.status(404).json({ error: 'SUBMISSION_NOT_FOUND', message: 'Submission not found' });
         }
 
         const submission = result.rows[0];
+        console.log(`[DOWNLOAD] Found submission: status=${submission.status}, drive_file_id=${submission.drive_file_id || 'NULL'}, signed_pdf_path=${submission.signed_pdf_path || 'NULL'}`);
 
-        if (!submission.drive_file_id) {
-            return res.status(404).json({ error: 'File not available. It may have been removed for revision.' });
+        // Determine which file ID to use (prefer signed version if available)
+        const fileId = submission.signed_pdf_path || submission.drive_file_id;
+
+        if (!fileId) {
+            // File not ready - could be upload failed, or revision requested
+            console.log(`[DOWNLOAD] No file ID available for submission ${id}`);
+            return res.status(409).json({
+                error: 'FILE_NOT_READY',
+                message: 'File not available. Upload may have failed or file was removed for revision.',
+                status: submission.status,
+                driveEnabled: driveEnabled
+            });
         }
+
+        // Build Drive URLs
+        const viewUrl = getDriveViewUrl(fileId);
+        const downloadUrl = getDriveDownloadUrl(fileId);
+
+        console.log(`[DOWNLOAD] Redirecting to Drive: fileId=${fileId}`);
 
         // Redirect to appropriate Google Drive URL
         if (download === 'true') {
-            res.redirect(getDriveDownloadUrl(submission.drive_file_id));
+            res.redirect(downloadUrl);
         } else {
-            res.redirect(getDriveViewUrl(submission.drive_file_id));
+            res.redirect(viewUrl);
         }
 
     } catch (err) {
-        console.error('Download error:', err);
-        res.status(500).json({ error: 'Server error' });
+        console.error(`[DOWNLOAD] Error for submission ${id}:`, err);
+        res.status(500).json({ error: 'SERVER_ERROR', message: err.message });
     }
 });
 
