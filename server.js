@@ -1,4 +1,4 @@
-require('dotenv').config();
+﻿require('dotenv').config();
 
 const express = require('express');
 const multer = require('multer');
@@ -1867,7 +1867,7 @@ app.get('/api/di/directory', requirePI, async (req, res) => {
 
 // POST /api/di/pi-upload
 // PI uploads file on behalf of a researcher
-app.post('/api/di/pi-upload', requirePI, upload.single('file'), async (req, res) => {
+app.post('/api/di/pi-upload-old', requirePI, upload.single('file'), async (req, res) => {
     try {
         const { researcher_id, fileType } = req.body;
         const file = req.file;
@@ -1997,4 +1997,132 @@ app.post('/api/di/logout', (req, res) => {
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
     console.log(`Access the portal at http://localhost:${PORT}/di/access.html`);
+});
+
+
+/* ============================
+   Drive failure recorder
+============================ */
+async function recordDriveFailure(submissionId, err) {
+    const msg =
+        (err && err.message) ? err.message :
+        (typeof err === 'string') ? err :
+        JSON.stringify(err);
+
+    try {
+        await pool.query(
+            `UPDATE di_submissions
+             SET drive_error = $1,
+                 drive_last_attempt = NOW()
+             WHERE submission_id = $2`,
+            [msg, submissionId]
+        );
+    } catch (dbErr) {
+        console.error('[DRIVE] Failed to record drive_error in DB:', dbErr.message);
+    }
+}
+
+/* ============================
+   NEW PI Upload (with Drive)
+============================ */
+app.post('/api/di/pi-upload', requirePI, upload.single('file'), async (req, res) => {
+    try {
+        const { researcher_id, fileType } = req.body;
+        const file = req.file;
+
+        if (!researcher_id) return res.status(400).json({ error: 'researcher_id is required' });
+        if (!fileType || !['SOP', 'DATA'].includes(fileType)) return res.status(400).json({ error: 'fileType must be SOP or DATA' });
+        if (!file) return res.status(400).json({ error: 'No file uploaded. Only PDF files are accepted.' });
+
+        if (!driveEnabled) {
+            return res.status(503).json({
+                error: 'DRIVE_NOT_CONFIGURED',
+                message: 'Google Drive is not configured. Contact administrator.',
+                driveInitError
+            });
+        }
+
+        const researcherResult = await pool.query(
+            'SELECT researcher_id, affiliation FROM di_allowlist WHERE researcher_id = $1 AND active = true',
+            [researcher_id]
+        );
+        if (researcherResult.rows.length === 0) return res.status(404).json({ error: 'Researcher not found' });
+
+        const researcher = researcherResult.rows[0];
+        const year = new Date().getFullYear();
+
+        // Create submission row first (so we can log errors against it)
+        const submissionResult = await pool.query(
+            `INSERT INTO di_submissions (researcher_id, affiliation, file_type, original_filename, status)
+             VALUES ($1, $2, $3, $4, 'PENDING')
+             RETURNING submission_id`,
+            [researcher_id, researcher.affiliation, fileType, file.originalname]
+        );
+        const submissionId = submissionResult.rows[0].submission_id;
+
+        try {
+            const drive = getGoogleDriveClient();
+
+            console.log(`[PI-UPLOAD] Creating folder structure: NATLAB-GLP/${year}/${researcher_id}/Submitted`);
+            const submittedFolderId = await getSubmittedFolderId(drive, year, researcher_id);
+
+            console.log(`[PI-UPLOAD] Uploading file to Drive...`);
+            const driveFileId = await uploadFileToDrive(drive, file.buffer, file.originalname, 'application/pdf', submittedFolderId);
+
+            await pool.query(
+                `UPDATE di_submissions
+                 SET drive_file_id = $1,
+                     drive_error = NULL,
+                     drive_last_attempt = NOW()
+                 WHERE submission_id = $2`,
+                [driveFileId, submissionId]
+            );
+
+            const webhookUrl = process.env.N8N_DI_WEBHOOK_URL;
+            if (webhookUrl) {
+                const formData = new FormData();
+                formData.append('researcher_id', researcher_id);
+                formData.append('affiliation', researcher.affiliation);
+                formData.append('fileType', fileType);
+                formData.append('original_filename', file.originalname);
+                formData.append('submission_id', submissionId);
+                formData.append('drive_file_id', driveFileId);
+                formData.append('drive_view_url', getDriveViewUrl(driveFileId));
+                formData.append('drive_download_url', getDriveDownloadUrl(driveFileId));
+                formData.append('uploaded_by_pi', req.session.user.researcher_id);
+                formData.append('file', file.buffer, { filename: file.originalname, contentType: file.mimetype });
+
+                try {
+                    await fetch(webhookUrl, { method: 'POST', body: formData, headers: formData.getHeaders() });
+                } catch (webhookErr) {
+                    console.error('[PI-UPLOAD] Webhook error:', webhookErr.message);
+                }
+            }
+
+            return res.status(200).json({
+                success: true,
+                submission_id: submissionId,
+                drive_file_id: driveFileId,
+                view_url: getDriveViewUrl(driveFileId),
+                message: 'File uploaded successfully'
+            });
+
+        } catch (driveErr) {
+            console.error('[PI-UPLOAD] DRIVE ERROR:', driveErr.message);
+            await recordDriveFailure(submissionId, driveErr);
+
+            await pool.query(`UPDATE di_submissions SET status = 'FAILED' WHERE submission_id = $1`, [submissionId]);
+
+            return res.status(502).json({
+                error: 'DRIVE_UPLOAD_FAILED',
+                message: 'Drive upload failed.',
+                submission_id: submissionId,
+                details: driveErr.message
+            });
+        }
+
+    } catch (err) {
+        console.error('PI upload error:', err);
+        return res.status(500).json({ error: 'Server error' });
+    }
 });
