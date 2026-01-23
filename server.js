@@ -12,6 +12,8 @@ const { google } = require('googleapis');
 const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
 const { Readable } = require('stream');
 
+// R2 (S3-compatible) SDK
+const { S3Client, PutObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
 const app = express();
 const PORT = process.env.PORT || 8080;
 
@@ -60,6 +62,59 @@ const upload = multer({
         }
     }
 });
+
+
+// =====================================================
+// R2 STORAGE (S3-compatible) - minimal implementation
+// Stores object key in di_submissions.drive_file_id as: r2:<key>
+// Keeps Google Drive code as fallback.
+// =====================================================
+
+function r2Enabled() {
+  return !!(process.env.R2_ACCESS_KEY_ID && process.env.R2_SECRET_ACCESS_KEY && process.env.R2_ENDPOINT && process.env.R2_BUCKET);
+}
+
+let _r2Client = null;
+function getR2Client() {
+  if (_r2Client) return _r2Client;
+  _r2Client = new S3Client({
+    region: 'auto',
+    endpoint: process.env.R2_ENDPOINT,
+    credentials: {
+      accessKeyId: process.env.R2_ACCESS_KEY_ID,
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY
+    }
+  });
+  return _r2Client;
+}
+
+async function uploadToR2(buffer, key, contentType) {
+  const s3 = getR2Client();
+  await s3.send(new PutObjectCommand({
+    Bucket: process.env.R2_BUCKET,
+    Key: key,
+    Body: buffer,
+    ContentType: contentType || 'application/octet-stream'
+  }));
+  return 
+}
+
+async function downloadFromR2(key) {
+  const s3 = getR2Client();
+  const out = await s3.send(new GetObjectCommand({
+    Bucket: process.env.R2_BUCKET,
+    Key: key
+  }));
+  return out; // { Body stream, ContentType, ContentLength, Metadata, ... }
+}
+
+function isR2Id(value) {
+  return typeof value === 'string' && value.startsWith('r2:');
+}
+
+function r2KeyFromId(value) {
+  return value.replace(/^r2:/, '');
+}
 
 // Google Drive Configuration
 const GOOGLE_DRIVE_ROOT_FOLDER = 'NATLAB-GLP';
@@ -1340,6 +1395,35 @@ app.get('/api/di/download/:id', async (req, res) => {
         // Determine which file ID to use (prefer signed version if available)
         const fileId = submission.signed_pdf_path || submission.drive_file_id;
 
+// If stored in R2, stream it back (no public bucket needed)
+if (fileId && isR2Id(fileId)) {
+  if (!r2Enabled()) {
+    return res.status(503).json({ error: 'R2_NOT_CONFIGURED', message: 'R2 is not configured on the server.' });
+  }
+
+  const key = r2KeyFromId(fileId);
+  console.log(`[DOWNLOAD] Serving from R2: ${key}`);
+
+  try {
+    const obj = await downloadFromR2(key);
+
+    // Stream response
+    res.setHeader('Content-Type', obj.ContentType || 'application/pdf');
+
+    // Always download if query says download=true, else inline view in browser
+    const disposition = (download === 'true') ? 'attachment' : 'inline';
+    const safeName = submission.original_filename || 'document.pdf';
+    res.setHeader('Content-Disposition', `${disposition}; filename="${safeName}"`);
+
+    if (obj.ContentLength) res.setHeader('Content-Length', String(obj.ContentLength));
+
+    return obj.Body.pipe(res);
+  } catch (e) {
+    console.error('[DOWNLOAD] R2 error:', e.message);
+    return res.status(500).json({ error: 'R2_DOWNLOAD_FAILED', message: e.message });
+  }
+}
+
         if (!fileId) {
             // File not ready - could be upload failed, or revision requested
             console.log(`[DOWNLOAD] No file ID available for submission ${id}`);
@@ -2128,4 +2212,5 @@ app.post('/api/di/pi-upload', requirePI, upload.single('file'), async (req, res)
 });
 
 // redeploy bump 2026-01-23T20:49:14
+
 
