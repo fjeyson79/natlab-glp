@@ -785,9 +785,7 @@ app.get("/api/di/submissions/:id/text", requireAuthOrApiKey, async (req, res) =>
     const r = await pool.query(
       `SELECT submission_id, researcher_id, r2_object_key
        FROM di_submissions
-       WHERE submission_id = /* -----------------------------
-   Delete submission (PI/Admin)
------------------------------ */
+       WHERE submission_id = $1
        LIMIT 1`,
       [id]
     );
@@ -874,6 +872,7 @@ app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Access the portal at http://localhost:${PORT}/di/access.html`);
 });
+
 
 
 
