@@ -1,4 +1,4 @@
-﻿"use strict";
+"use strict";
 
 /*
   NATLAB-GLP Server (R2-only)
@@ -693,7 +693,7 @@ app.post("/api/di/external-upload", upload.single("file"), async (req, res) => {
 ----------------------------- */
 
 // GET /api/di/submissions/:id/file?download=true|false
-app.get("/api/di/submissions/:id/file", requireAuth, async (req, res) => {
+app.get("/api/di/submissions/:id/file", requireAuthOrApiKey, async (req, res) => {
   try {
     if (!r2Enabled()) {
       return res.status(503).json({ error: "R2_NOT_CONFIGURED", message: "R2 is not configured on the server." });
