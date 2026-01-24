@@ -21,6 +21,17 @@ const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } = re
 
 const app = express();
 
+
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+
+// Return clean 400 on invalid JSON instead of crashing the request pipeline
+app.use((err, req, res, next) => {
+  if (err && err.type === "entity.parse.failed") {
+    return res.status(400).json({ error: "Invalid JSON" });
+  }
+  return next(err);
+});
 /* -----------------------------
    Basic config
 ----------------------------- */
@@ -29,8 +40,6 @@ const PORT = process.env.PORT || 8080;
 
 app.set("trust proxy", 1); // Railway/proxy
 
-app.use(express.json({ limit: "2mb" }));
-app.use(express.urlencoded({ extended: true }));
 
 /* -----------------------------
    Sessions
@@ -649,5 +658,6 @@ app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Access the portal at http://localhost:${PORT}/di/access.html`);
 });
+
 
 
