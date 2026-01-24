@@ -340,9 +340,10 @@
                     window.location.href = 'access.html';
                     return;
                 }
-                const user = await response.json();
+                const data = await response.json();
+                const user = data.user;
 
-                document.getElementById('userName').textContent = user.name;
+                document.getElementById('userName').textContent = user.researcher_id;
                 const badge = document.getElementById('affiliationBadge');
                 badge.textContent = user.affiliation;
                 badge.classList.add(user.affiliation);
@@ -417,10 +418,10 @@
                 const signedBadge = isApproved && node.signedAt ? `<span style="background:#28a745;color:white;padding:1px 6px;border-radius:8px;font-size:9px;margin-left:5px;">SIGNED</span>` : '';
                 const verifyBtn = isApproved && node.verificationCode ? `<button class="btn-verify" onclick="verifyDocument('${node.verificationCode}')" title="Verify signature">Verify</button>` : '';
 
-                // Use Drive URLs if available, otherwise fall back to API
+                // Use provided URLs or fall back to API endpoint
                 const viewUrl = node.viewUrl || `/api/di/download/${node.id}`;
                 const downloadUrl = node.downloadUrl || `/api/di/download/${node.id}?download=true`;
-                const hasFile = node.driveFileId || node.status === 'PENDING';
+                const hasFile = node.r2ObjectKey || node.status === 'PENDING';
 
                 return `
                     <div class="tree-item tree-file" style="padding-left:${level * 20}px">

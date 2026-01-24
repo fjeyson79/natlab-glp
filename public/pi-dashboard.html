@@ -334,15 +334,17 @@
                     window.location.href = 'access.html';
                     return;
                 }
-                const user = await response.json();
+                const data = await response.json();
+                const user = data.user;
 
                 // Check if user is PI
-                if (user.role !== 'pi') {
+                const role = (user.role || "").toUpperCase();
+                if (role !== "PI" && role !== "ADMIN") {
                     window.location.href = 'upload.html';
                     return;
                 }
 
-                document.getElementById('userName').textContent = user.name;
+                document.getElementById('userName').textContent = user.researcher_id;
 
                 // Load all data
                 loadDirectory();
@@ -368,11 +370,11 @@
 
                 if (data.members && data.members.length > 0) {
                     select.innerHTML = '<option value="">Select researcher...</option>' +
-                        data.members.map(m => `<option value="${m.researcher_id}">${m.name} (${m.researcher_id}) - ${m.affiliation}</option>`).join('');
+                        data.members.map(m => `<option value="${m.researcher_id}">${m.researcher_id} - ${m.affiliation}</option>`).join('');
                 } else {
                     // Fallback: add at least the current user
                     select.innerHTML = `<option value="">Select researcher...</option>
-                        <option value="${currentUser.researcher_id}">${currentUser.name} (${currentUser.researcher_id})</option>`;
+                        <option value="${currentUser.researcher_id}">${currentUser.researcher_id}</option>`;
                 }
 
             } catch (err) {
@@ -380,7 +382,7 @@
                 // Fallback: add at least the current user so PI can upload
                 if (currentUser) {
                     select.innerHTML = `<option value="">Select researcher...</option>
-                        <option value="${currentUser.researcher_id}">${currentUser.name} (${currentUser.researcher_id})</option>`;
+                        <option value="${currentUser.researcher_id}">${currentUser.researcher_id}</option>`;
                 }
             }
         }
@@ -413,7 +415,7 @@
                 const escapedName = node.name.replace(/'/g, "\\'").replace(/"/g, '&quot;');
                 const viewUrl = node.viewUrl || `/api/di/download/${node.id}`;
                 const downloadUrl = node.downloadUrl || `/api/di/download/${node.id}?download=true`;
-                const hasFile = node.driveFileId || node.status === 'PENDING';
+                const hasFile = node.r2ObjectKey || node.status === 'PENDING';
 
                 return `
                     <div class="tree-item tree-file" style="padding-left:${level * 20}px" data-file-id="${node.id}">

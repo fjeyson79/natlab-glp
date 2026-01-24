@@ -106,14 +106,6 @@ function getR2Client() {
   return _r2Client;
 }
 
-function isR2Id(fileId) {
-  return typeof fileId === "string" && fileId.startsWith("r2:");
-}
-
-function r2KeyFromId(fileId) {
-  if (!isR2Id(fileId)) return null;
-  return fileId.slice(3);
-}
 
 async function uploadToR2(buffer, key, contentType) {
   const s3 = getR2Client();
@@ -314,35 +306,184 @@ app.get("/api/di/members", requireAuth, async (req, res) => {
 });
 
 // GET /api/di/directory
-app.get("/api/di/directory", requireAuth, async (req, res) => {
+// Returns tree structure for PI dashboard
+app.get("/api/di/directory", requirePI, async (req, res) => {
+  try {
+    // Get all members
+    const membersResult = await pool.query(
+      `SELECT researcher_id, affiliation, institution_email AS email,
+              COALESCE(role, 'USER') AS role
+       FROM di_allowlist WHERE active = true ORDER BY researcher_id`
+    );
+
+    // Get all submissions
+    const submissionsResult = await pool.query(
+      `SELECT submission_id, researcher_id, affiliation, file_type, original_filename,
+              status, created_at, r2_object_key, signed_pdf_path,
+              EXTRACT(YEAR FROM created_at) as year
+       FROM di_submissions
+       ORDER BY created_at DESC`
+    );
+
+    // Build tree: General Lab / Year / Researcher
+    const tree = { name: "General Lab", type: "folder", children: [] };
+    const yearMap = {};
+
+    for (const sub of submissionsResult.rows) {
+      const year = sub.year || new Date(sub.created_at).getFullYear();
+      const researcherName = sub.researcher_id;
+
+      if (!yearMap[year]) {
+        yearMap[year] = { name: String(year), type: "folder", children: [], researchers: {} };
+      }
+
+      if (!yearMap[year].researchers[sub.researcher_id]) {
+        yearMap[year].researchers[sub.researcher_id] = {
+          name: researcherName,
+          type: "folder",
+          children: [],
+          count: 0
+        };
+      }
+
+      yearMap[year].researchers[sub.researcher_id].children.push({
+        name: sub.original_filename,
+        type: "file",
+        id: sub.submission_id,
+        status: sub.status,
+        fileType: sub.file_type,
+        date: sub.created_at,
+        r2ObjectKey: sub.r2_object_key || sub.signed_pdf_path,
+        viewUrl: `/api/di/submissions/${sub.submission_id}/file`,
+        downloadUrl: `/api/di/submissions/${sub.submission_id}/file?download=true`
+      });
+      yearMap[year].researchers[sub.researcher_id].count++;
+    }
+
+    const years = Object.keys(yearMap).sort((a, b) => b - a);
+    for (const year of years) {
+      const yearNode = yearMap[year];
+      yearNode.children = Object.values(yearNode.researchers);
+      yearNode.count = `${yearNode.children.length} researchers`;
+      delete yearNode.researchers;
+      tree.children.push(yearNode);
+    }
+
+    const currentYear = new Date().getFullYear();
+    if (!yearMap[currentYear]) {
+      tree.children.unshift({
+        name: String(currentYear),
+        type: "folder",
+        children: membersResult.rows.map(m => ({
+          name: m.researcher_id,
+          type: "folder",
+          children: [],
+          count: 0
+        })),
+        count: `${membersResult.rows.length} researchers`
+      });
+    }
+
+    res.json({ success: true, tree: tree });
+  } catch (e) {
+    console.error("[DIRECTORY] error:", e.message);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// GET /api/di/my-files
+// Returns researcher's files as tree structure for upload.html
+app.get("/api/di/my-files", requireAuth, async (req, res) => {
   try {
     const user = req.session.user;
 
-    // If PI/Admin: see all. Else see own.
-    const role = (user.role || "").toUpperCase();
-    const isPI = role === "PI" || role === "ADMIN";
+    const result = await pool.query(
+      `SELECT submission_id, file_type, original_filename, status, created_at, signed_at,
+              verification_code, r2_object_key, signed_pdf_path,
+              EXTRACT(YEAR FROM created_at) as year
+       FROM di_submissions
+       WHERE researcher_id = $1
+       ORDER BY created_at DESC`,
+      [user.researcher_id]
+    );
 
-    const q = isPI
-      ? `
-        SELECT submission_id, researcher_id, affiliation, file_type, original_filename,
-               status, created_at, drive_file_id, signed_pdf_path, drive_error, updated_at
-        FROM di_submissions
-        ORDER BY created_at DESC
-        LIMIT 200
-      `
-      : `
-        SELECT submission_id, researcher_id, affiliation, file_type, original_filename,
-               status, created_at, drive_file_id, signed_pdf_path, drive_error, updated_at
-        FROM di_submissions
-        WHERE researcher_id = $1
-        ORDER BY created_at DESC
-        LIMIT 200
-      `;
+    // Build tree structure: My Files / Year / Submitted|Approved
+    const tree = { name: "My Files", type: "folder", children: [] };
+    const yearMap = {};
+    let pendingCount = 0, approvedCount = 0, revisionCount = 0;
 
-    const r = isPI ? await pool.query(q) : await pool.query(q, [user.researcher_id]);
-    res.json({ submissions: r.rows });
+    for (const file of result.rows) {
+      const year = file.year || new Date(file.created_at).getFullYear();
+      const status = file.status || "PENDING";
+
+      if (!yearMap[year]) {
+        yearMap[year] = {
+          name: String(year),
+          type: "folder",
+          children: [
+            { name: "Submitted", type: "folder", children: [], count: 0 },
+            { name: "Approved", type: "folder", children: [], count: 0 }
+          ]
+        };
+      }
+
+      const fileNode = {
+        name: file.original_filename,
+        type: "file",
+        id: file.submission_id,
+        status: status,
+        fileType: file.file_type,
+        date: file.created_at,
+        signedAt: file.signed_at,
+        verificationCode: file.verification_code,
+        r2ObjectKey: file.r2_object_key || file.signed_pdf_path,
+        viewUrl: `/api/di/submissions/${file.submission_id}/file`,
+        downloadUrl: `/api/di/submissions/${file.submission_id}/file?download=true`
+      };
+
+      if (status === "APPROVED") {
+        yearMap[year].children[1].children.push(fileNode);
+        yearMap[year].children[1].count++;
+        approvedCount++;
+      } else if (status === "PENDING") {
+        yearMap[year].children[0].children.push(fileNode);
+        yearMap[year].children[0].count++;
+        pendingCount++;
+      } else if (status === "REVISION_NEEDED") {
+        revisionCount++;
+      }
+    }
+
+    const years = Object.keys(yearMap).sort((a, b) => b - a);
+    for (const year of years) {
+      const yearNode = yearMap[year];
+      yearNode.children[0].name = `Submitted (${yearNode.children[0].count})`;
+      yearNode.children[1].name = `Approved (${yearNode.children[1].count})`;
+      tree.children.push(yearNode);
+    }
+
+    const currentYear = new Date().getFullYear();
+    if (!yearMap[currentYear]) {
+      tree.children.unshift({
+        name: String(currentYear),
+        type: "folder",
+        children: [
+          { name: "Submitted (0)", type: "folder", children: [], count: 0 },
+          { name: "Approved (0)", type: "folder", children: [], count: 0 }
+        ]
+      });
+    }
+
+    res.json({
+      success: true,
+      tree: tree,
+      totalFiles: result.rows.length,
+      pendingCount,
+      approvedCount,
+      revisionCount
+    });
   } catch (e) {
-    console.error("[DIRECTORY] error:", e.message);
+    console.error("[MY-FILES] error:", e.message);
     res.status(500).json({ error: "Server error" });
   }
 });
@@ -377,10 +518,10 @@ app.post("/api/di/upload", requireAuth, upload.single("file"), async (req, res) 
     console.log(`[UPLOAD] R2 put: ${key}`);
     await uploadToR2(file.buffer, key, file.mimetype);
 
-    const fileId = `r2:${key}`;
+    const fileId = key;
 
     const ins = await pool.query(
-      `INSERT INTO di_submissions (researcher_id, affiliation, file_type, original_filename, drive_file_id, status)
+      `INSERT INTO di_submissions (researcher_id, affiliation, file_type, original_filename, r2_object_key, status)
        VALUES ($1, $2, $3, $4, $5, 'PENDING')
        RETURNING submission_id`,
       [user.researcher_id, user.affiliation, fileType, file.originalname, fileId]
@@ -398,7 +539,7 @@ app.post("/api/di/upload", requireAuth, upload.single("file"), async (req, res) 
         form.append("fileType", fileType);
         form.append("original_filename", file.originalname);
         form.append("submission_id", String(submissionId));
-        form.append("drive_file_id", fileId);
+        form.append("r2_object_key", fileId);
 
         // file as Blob
         const blob = new Blob([file.buffer], { type: file.mimetype });
@@ -413,7 +554,7 @@ app.post("/api/di/upload", requireAuth, upload.single("file"), async (req, res) 
     return res.json({
       success: true,
       submission_id: submissionId,
-      drive_file_id: fileId,
+      r2_object_key: fileId,
       message: "File uploaded successfully"
     });
 
@@ -459,11 +600,11 @@ app.post("/api/di/pi-upload", requirePI, upload.single("file"), async (req, res)
     console.log(`[PI-UPLOAD] R2 put: ${key}`);
     await uploadToR2(file.buffer, key, file.mimetype);
 
-    const fileId = `r2:${key}`;
+    const fileId = key;
 
     await pool.query(
       `UPDATE di_submissions
-       SET drive_file_id = $1, drive_error = NULL, drive_last_attempt = NOW()
+       SET r2_object_key = $1, r2_error = NULL, r2_last_attempt = NOW()
        WHERE submission_id = $2`,
       [fileId, submissionId]
     );
@@ -477,7 +618,7 @@ app.post("/api/di/pi-upload", requirePI, upload.single("file"), async (req, res)
         form.append("fileType", fileType);
         form.append("original_filename", file.originalname);
         form.append("submission_id", String(submissionId));
-        form.append("drive_file_id", fileId);
+        form.append("r2_object_key", fileId);
         form.append("uploaded_by_pi", req.session.user.researcher_id);
 
         const blob = new Blob([file.buffer], { type: file.mimetype });
@@ -492,7 +633,7 @@ app.post("/api/di/pi-upload", requirePI, upload.single("file"), async (req, res)
     return res.json({
       success: true,
       submission_id: submissionId,
-      drive_file_id: fileId,
+      r2_object_key: fileId,
       message: "File uploaded successfully"
     });
 
@@ -531,16 +672,16 @@ app.post("/api/di/external-upload", upload.single("file"), async (req, res) => {
     console.log(`[EXTERNAL-UPLOAD] R2 put: ${key}`);
     await uploadToR2(file.buffer, key, file.mimetype);
 
-    const fileId = `r2:${key}`;
+    const fileId = key;
 
     const ins = await pool.query(
-      `INSERT INTO di_submissions (researcher_id, affiliation, file_type, original_filename, drive_file_id, status)
+      `INSERT INTO di_submissions (researcher_id, affiliation, file_type, original_filename, r2_object_key, status)
        VALUES ($1, $2, $3, $4, $5, 'PENDING')
        RETURNING submission_id`,
       [researcher_id, affiliation, fileType, file.originalname, fileId]
     );
 
-    return res.json({ success: true, submission_id: ins.rows[0].submission_id, drive_file_id: fileId });
+    return res.json({ success: true, submission_id: ins.rows[0].submission_id, r2_object_key: fileId });
   } catch (e) {
     console.error("[EXTERNAL-UPLOAD] error:", e.message);
     res.status(500).json({ error: "Server error" });
@@ -567,7 +708,7 @@ app.get("/api/di/submissions/:id/file", requireAuth, async (req, res) => {
 
     // Pull submission, enforce access
     const r = await pool.query(
-      `SELECT submission_id, researcher_id, original_filename, drive_file_id, signed_pdf_path
+      `SELECT submission_id, researcher_id, original_filename, r2_object_key, signed_pdf_path
        FROM di_submissions
        WHERE submission_id = $1
        LIMIT 1`,
@@ -581,12 +722,11 @@ app.get("/api/di/submissions/:id/file", requireAuth, async (req, res) => {
       return res.status(403).json({ error: "FORBIDDEN" });
     }
 
-    const fileId = submission.signed_pdf_path || submission.drive_file_id;
-    if (!fileId || !isR2Id(fileId)) {
-      return res.status(409).json({ error: "FILE_NOT_READY", message: "No R2 file id available for this submission." });
+    const key = submission.signed_pdf_path || submission.r2_object_key;
+    if (!key) {
+      return res.status(409).json({ error: "FILE_NOT_READY", message: "No R2 file available for this submission." });
     }
 
-    const key = r2KeyFromId(fileId);
     console.log(`[DOWNLOAD] R2 get: ${key}`);
 
     const obj = await downloadFromR2(key);
@@ -616,7 +756,7 @@ app.delete("/api/di/submissions/:id", requirePI, async (req, res) => {
     const id = req.params.id;
 
     const r = await pool.query(
-      `SELECT submission_id, drive_file_id, signed_pdf_path
+      `SELECT submission_id, r2_object_key, signed_pdf_path
        FROM di_submissions
        WHERE submission_id = $1
        LIMIT 1`,
@@ -629,9 +769,8 @@ app.delete("/api/di/submissions/:id", requirePI, async (req, res) => {
 
     // Best effort: delete R2 objects if present
     if (r2Enabled()) {
-      for (const fid of [sub.signed_pdf_path, sub.drive_file_id]) {
-        if (isR2Id(fid)) {
-          const key = r2KeyFromId(fid);
+      for (const key of [sub.signed_pdf_path, sub.r2_object_key]) {
+        if (key) {
           try { await deleteFromR2(key); } catch (_) {}
         }
       }
