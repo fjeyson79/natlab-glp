@@ -1,7 +1,7 @@
 "use strict";
 
 
-const pdfParse = require("pdf-parse");
+const pdfParse = require("pdf-parse").default || require("pdf-parse");
 /*
   NATLAB-GLP Server (R2-only)
   - Storage: Cloudflare R2 via AWS SDK S3 client
@@ -872,6 +872,7 @@ app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Access the portal at http://localhost:${PORT}/di/access.html`);
 });
+
 
 
 
