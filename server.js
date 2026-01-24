@@ -1,5 +1,7 @@
 "use strict";
 
+
+const pdfParse = require("pdf-parse");
 /*
   NATLAB-GLP Server (R2-only)
   - Storage: Cloudflare R2 via AWS SDK S3 client
@@ -764,9 +766,67 @@ app.get("/api/di/submissions/:id/file", requireAuthOrApiKey, async (req, res) =>
   }
 });
 
+// GET /api/di/submissions/:id/text
+app.get("/api/di/submissions/:id/text", requireAuthOrApiKey, async (req, res) => {
+  try {
+    if (!r2Enabled()) {
+      return res.status(503).json({ error: "R2_NOT_CONFIGURED" });
+    }
+
+    const id = req.params.id;
+
+    const apiKey = req.headers["x-api-key"];
+    const hasApiKey = !!(apiKey && process.env.API_SECRET_KEY && apiKey === process.env.API_SECRET_KEY);
+
+    const user = (req.session && req.session.user) ? req.session.user : null;
+    const role = user ? ((user.role || "").toUpperCase()) : "";
+    const isPI = hasApiKey || role === "PI" || role === "ADMIN";
+
+    const r = await pool.query(
+      `SELECT submission_id, researcher_id, r2_object_key
+       FROM di_submissions
+       WHERE submission_id = /* -----------------------------
+   Delete submission (PI/Admin)
+----------------------------- */
+       LIMIT 1`,
+      [id]
+    );
+
+    if (r.rows.length === 0) {
+      return res.status(404).json({ error: "NOT_FOUND" });
+    }
+
+    const submission = r.rows[0];
+    if (!isPI && user && submission.researcher_id !== user.researcher_id) {
+      return res.status(403).json({ error: "FORBIDDEN" });
+    }
+
+    const key = submission.r2_object_key;
+    if (!key) {
+      return res.status(409).json({ error: "FILE_NOT_READY" });
+    }
+
+    const obj = await downloadFromR2(key);
+    const buffer = await obj.Body.transformToByteArray();
+
+    const parsed = await pdfParse(Buffer.from(buffer));
+
+    return res.json({
+      extracted_text: (parsed.text || "").trim(),
+      page_count: parsed.numpages || null,
+      char_count: parsed.text ? parsed.text.length : 0
+    });
+
+  } catch (e) {
+    console.error("[TEXT-EXTRACT] error:", e.message);
+    return res.status(500).json({ error: "TEXT_EXTRACTION_FAILED", message: e.message });
+  }
+});
+
 /* -----------------------------
    Delete submission (PI/Admin)
 ----------------------------- */
+
 
 app.delete("/api/di/submissions/:id", requirePI, async (req, res) => {
   try {
@@ -814,6 +874,8 @@ app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Access the portal at http://localhost:${PORT}/di/access.html`);
 });
+
+
 
 
 
