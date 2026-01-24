@@ -197,9 +197,9 @@ async function getAllowlistByEmail(email) {
   const q = `
     SELECT researcher_id, affiliation,
            COALESCE(role, 'USER') AS role,
-           email, active
+           institution_email AS email, active
     FROM di_allowlist
-    WHERE lower(email) = lower($1) AND active = true
+    WHERE lower(institution_email) = lower($1) AND active = true
     LIMIT 1
   `;
   const r = await pool.query(q, [email]);
@@ -210,7 +210,7 @@ async function getAllowlistByResearcherId(researcherId) {
   const q = `
     SELECT researcher_id, affiliation,
            COALESCE(role, 'USER') AS role,
-           email, active
+           institution_email AS email, active
     FROM di_allowlist
     WHERE researcher_id = $1 AND active = true
     LIMIT 1
@@ -299,7 +299,7 @@ app.get("/api/di/members", requireAuth, async (req, res) => {
   try {
     // Return active allowlist rows. Include role if present.
     const q = `
-      SELECT researcher_id, affiliation, email, active,
+      SELECT researcher_id, affiliation, institution_email AS email, active,
              COALESCE(role, 'USER') AS role
       FROM di_allowlist
       WHERE active = true
@@ -658,6 +658,8 @@ app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Access the portal at http://localhost:${PORT}/di/access.html`);
 });
+
+
 
 
 
