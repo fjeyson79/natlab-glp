@@ -771,6 +771,20 @@ app.get("/api/di/submissions/:id/file", requireAuthOrApiKey, async (req, res) =>
   }
 });
 
+// GET /api/di/debug/pdfparse
+app.get("/api/di/debug/pdfparse", requireAuthOrApiKey, async (req, res) => {
+  try {
+    const mod = require("pdf-parse");
+    return res.json({
+      typeof_module: typeof mod,
+      keys: (mod && typeof mod === "object") ? Object.keys(mod) : [],
+      typeof_default: (mod && mod.default) ? typeof mod.default : null
+    });
+  } catch (e) {
+    return res.status(500).json({ error: "PDFPARSE_DEBUG_FAILED", message: e.message });
+  }
+});
+
 // GET /api/di/submissions/:id/text
 app.get("/api/di/submissions/:id/text", requireAuthOrApiKey, async (req, res) => {
   try {
@@ -881,6 +895,7 @@ app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Access the portal at http://localhost:${PORT}/di/access.html`);
 });
+
 
 
 
