@@ -1,7 +1,12 @@
 "use strict";
 
 
-const pdfParse = require("pdf-parse").default || require("pdf-parse");
+const pdfParseModule = require("pdf-parse");
+const pdfParse =
+  (typeof pdfParseModule === "function") ? pdfParseModule :
+  (pdfParseModule && typeof pdfParseModule.default === "function") ? pdfParseModule.default :
+  (pdfParseModule && typeof pdfParseModule.pdfParse === "function") ? pdfParseModule.pdfParse :
+  null;
 /*
   NATLAB-GLP Server (R2-only)
   - Storage: Cloudflare R2 via AWS SDK S3 client
@@ -807,6 +812,10 @@ app.get("/api/di/submissions/:id/text", requireAuthOrApiKey, async (req, res) =>
     const obj = await downloadFromR2(key);
     const buffer = await obj.Body.transformToByteArray();
 
+    if (!pdfParse) {
+      return res.status(500).json({ error: "TEXT_EXTRACTION_FAILED", message: "pdf-parse module did not load as a function" });
+    }
+
     const parsed = await pdfParse(Buffer.from(buffer));
 
     return res.json({
@@ -872,6 +881,8 @@ app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Access the portal at http://localhost:${PORT}/di/access.html`);
 });
+
+
 
 
 
