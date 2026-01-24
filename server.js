@@ -716,9 +716,12 @@ app.get("/api/di/submissions/:id/file", requireAuthOrApiKey, async (req, res) =>
     const id = req.params.id;
     const download = String(req.query.download || "false");
 
-    const user = req.session.user;
-    const role = (user.role || "").toUpperCase();
-    const isPI = role === "PI" || role === "ADMIN";
+    const apiKey = req.headers["x-api-key"];
+    const hasApiKey = !!(apiKey && process.env.API_SECRET_KEY && apiKey === process.env.API_SECRET_KEY);
+
+    const user = (req.session && req.session.user) ? req.session.user : null;
+    const role = user ? ((user.role || "").toUpperCase()) : "";
+    const isPI = hasApiKey || role === "PI" || role === "ADMIN";
 
     // Pull submission, enforce access
     const r = await pool.query(
@@ -811,6 +814,7 @@ app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Access the portal at http://localhost:${PORT}/di/access.html`);
 });
+
 
 
 
