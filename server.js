@@ -154,6 +154,20 @@ function requireAuth(req, res, next) {
   next();
 }
 
+function requireAuthOrApiKey(req, res, next) {
+  // Allow session-based auth
+  if (req.session && req.session.user) {
+    return next();
+  }
+
+  // Allow API key (for n8n / system access)
+  const apiKey = req.headers["x-api-key"];
+  if (apiKey && process.env.API_SECRET_KEY && apiKey === process.env.API_SECRET_KEY) {
+    return next();
+  }
+
+  return res.status(401).json({ error: "NOT_AUTHENTICATED" });
+}
 function requirePI(req, res, next) {
   if (!req.session || !req.session.user) {
     return res.status(401).json({ error: "NOT_AUTHENTICATED" });
@@ -797,6 +811,7 @@ app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Access the portal at http://localhost:${PORT}/di/access.html`);
 });
+
 
 
 
