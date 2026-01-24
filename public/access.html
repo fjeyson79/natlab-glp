@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -94,7 +94,7 @@
 </head>
 <body>
     <div class="container">
-        <div class="logo"><span>🔬</span></div>
+        <div class="logo"><span>ðŸ”¬</span></div>
         <h1>NATLAB GLP Data Integrity Portal</h1>
         <p class="subtitle">Enter your institution email to continue</p>
 
@@ -126,6 +126,7 @@
             try {
                 const response = await fetch('/api/di/access-check', {
                     method: 'POST',
+      credentials: 'same-origin',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ institution_email: email })
                 });
@@ -159,3 +160,4 @@
     </script>
 </body>
 </html>
+
