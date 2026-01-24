@@ -137,16 +137,20 @@
                     messageDiv.textContent = data.message || 'Access denied. Your email is not in the allowlist.';
                     messageDiv.className = 'message error';
                 } else {
-                    // Store email for next page
-                    sessionStorage.setItem('di_email', email);
-                    sessionStorage.setItem('di_name', data.name);
-                    sessionStorage.setItem('di_affiliation', data.affiliation);
+                    // Immediately create session (sets cookie), then go to upload portal
+                    const loginResp = await fetch('/api/di/login', {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email: email })
+                    });
 
-                    // Redirect to register or login
-                    if (data.next === 'register') {
-                        window.location.href = 'register.html';
+                    const loginData = await loginResp.json();
+                    if (!loginResp.ok || !loginData.success) {
+                        messageDiv.textContent = (loginData && loginData.error) ? ('Login failed: ' + loginData.error) : 'Login failed.';
+                        messageDiv.className = 'message error';
                     } else {
-                        window.location.href = 'login.html';
+                        window.location.href = 'upload.html';
                     }
                 }
             } catch (err) {
@@ -160,5 +164,6 @@
     </script>
 </body>
 </html>
+
 
 
