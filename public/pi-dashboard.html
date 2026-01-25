@@ -330,7 +330,7 @@
                 const response = await fetch('/api/di/me', { credentials: 'include' });
                 if (response.status === 401) { window.location.href = 'access.html'; return; }
                 const data = await response.json();
-                const user = data.user;
+                const user = data.user || data;
 
                 // Check if user is PI
                 const role = (user.role || "").toUpperCase();
