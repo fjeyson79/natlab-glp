@@ -2109,3 +2109,13 @@ app.delete('/api/di/submissions/:id', requirePI, async (req, res) => {
 
 
 
+
+//
+// Server start
+//
+app.listen(PORT, () => {
+  console.log("[STARTUP] Server listening on port ");
+});
+
+
+
