@@ -836,25 +836,23 @@ app.post('/api/di/upload', requireAuth, upload.single('file'), async (req, res) 
         if (!driveEnabled) {
             console.error('[UPLOAD] ERROR: Drive not enabled. driveInitError:', driveInitError);
 }        // Upload to R2 (Google Drive removed)
-        const safeOriginal = (file.originalname || 'upload.pdf').replace(/[^\w.\-]+/g, '_');
-        const key = di///Submitted/-;
+const safeOriginal = (file.originalname || 'upload.pdf').replace(/[^\w.\-]+/g, '_');
+const dateStamp = new Date().toISOString().slice(0,10); // YYYY-MM-DD
+const key = `di/${user.affiliation}/Submitted/${year}/${dateStamp}_${user.researcher_id}_${safeOriginal}`;
 
-        console.log([UPLOAD] Uploading file to R2: );
-        await uploadToR2(file.buffer, key, file.mimetype);
+console.log(`[UPLOAD] Uploading file to R2: key=${key}`);
+await uploadToR2(file.buffer, key, file.mimetype);
 
-        const fileId = 
-2:;);
-        }
+// Use the R2 object key as the stored file identifier
+const fileId = key;
 
-        // Record submission in database with Drive file ID
-        const submissionResult = await pool.query(
-            `INSERT INTO di_submissions (researcher_id, affiliation, file_type, original_filename, drive_file_id)
-             VALUES ($1, $2, $3, $4, $5)
-             RETURNING submission_id`,
-            [user.researcher_id, user.affiliation, fileType, file.originalname, fileId]
-        );
-
-        const submissionId = submissionResult.rows[0].submission_id;
+// Record submission in database (store R2 key in drive_file_id for backward compatibility)
+const submissionResult = await pool.query(
+  `INSERT INTO di_submissions (researcher_id, affiliation, file_type, original_filename, drive_file_id)
+   VALUES ($1, $2, $3, $4, $5)
+   RETURNING submission_id`,
+  [user.researcher_id, user.affiliation, fileType, file.originalname, fileId]
+);const submissionId = submissionResult.rows[0].submission_id;
         console.log(`[UPLOAD] Submission recorded: submission_id=${submissionId}, drive_file_id=${driveFileId}`);
 
         // Forward to n8n webhook
@@ -2064,10 +2062,42 @@ app.post('/api/di/pi-upload-old', requirePI, upload.single('file'), async (req, 
 
 // DELETE /api/di/submissions/:id
 // Delete a submission (PI only)
-app.delete('/api/di/submissions/:id', requirePI, async (req, res) => {node --check .\server.js
+app.delete('/api/di/submissions/:id', requirePI, async (req, res) => {
+  try {
+    const submissionId = req.params.id;
 
+    // Fetch stored key (drive_file_id is used as storage key for backward compatibility)
+    const existing = await pool.query(
+      'SELECT drive_file_id FROM di_submissions WHERE submission_id = ',
+      [submissionId]
+    );
+
+    // Delete DB record
+    const del = await pool.query(
+      'DELETE FROM di_submissions WHERE submission_id =  RETURNING submission_id',
+      [submissionId]
+    );
+
+    if (del.rowCount === 0) return res.status(404).json({ error: 'Not found' });
+
+    // Best-effort delete from R2 if helper exists
+    const key = existing.rows?.[0]?.drive_file_id;
+    if (key && typeof deleteFromR2 === 'function') {
+      try { await deleteFromR2(key); }
+      catch (e) { console.warn('[R2] delete failed:', e?.message || e); }
+    }
+
+    res.json({ ok: true, submission_id: del.rows[0].submission_id });
+  } catch (err) {
+    console.error('Delete submission error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
 
 // redeploy bump 2026-01-23T20:49:14
+
+
+
 
 
 
