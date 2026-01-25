@@ -860,9 +860,7 @@ app.post('/api/di/upload', requireAuth, upload.single('file'), async (req, res) 
         const fileId = 'r2:' + key;
 
         const submissionResult = await pool.query(
-            'INSERT INTO di_submissions (researcher_id, affiliation, file_type, original_filename, drive_file_id) ' +
-            'VALUES (, , , , ) ' +
-            'RETURNING submission_id',
+            'INSERT INTO di_submissions (researcher_id, affiliation, file_type, original_filename, drive_file_id) VALUES ($1, $2, $3, $4, $5) RETURNING submission_id',
             [user.researcher_id, user.affiliation, normalizedType, file.originalname, fileId]
         );
 
@@ -2118,6 +2116,7 @@ app.delete('/api/di/submissions/:id', requirePI, async (req, res) => {
 app.listen(PORT, () => {
   console.log("[STARTUP] Server listening on port ");
 });
+
 
 
 
