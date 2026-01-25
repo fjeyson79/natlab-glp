@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -542,8 +542,7 @@
             try {
                 const response = await fetch('/api/di/upload', {
                     method: 'POST',
-                    credentials: 'same-origin',
-                    body: formData,
+body: formData,
                     credentials: 'include'
                 });
 
@@ -580,8 +579,7 @@
             try {
                 await fetch('/api/di/logout', {
                     method: 'POST',
-                    credentials: 'same-origin',
-                    credentials: 'include'
+credentials: 'include'
                 });
             } catch (err) {}
             window.location.href = 'access.html';

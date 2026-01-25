@@ -199,6 +199,7 @@
             try {
                 const response = await fetch('/api/di/register', {
                     method: 'POST',
+                    credentials: 'include',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         institution_email: email,
