@@ -1,4 +1,4 @@
-﻿require('dotenv').config();
+require('dotenv').config();
 
 const express = require('express');
 const multer = require('multer');
@@ -329,7 +329,16 @@ if (driveInitError) {
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    service: 'natlab-glp',
+    storage: 'r2',
+    git: {
+      sha: process.env.RAILWAY_GIT_COMMIT_SHA || null,
+      branch: process.env.RAILWAY_GIT_BRANCH || null
+    }
+  });
 });
 
 // Drive debug endpoint
@@ -810,15 +819,15 @@ app.post('/api/di/upload', requireAuth, upload.single('file'), async (req, res) 
         const { fileType } = req.body;
         const file = req.file;
 
-        if (!fileType || !['SOP', 'DATA'].includes(fileType)) {
+        const normalizedType = String(fileType || '').trim().toUpperCase();
+        if (!normalizedType || !['SOP', 'DATA'].includes(normalizedType)) {
             return res.status(400).json({ error: 'fileType must be SOP or DATA' });
         }
 
         if (!file) {
-            return res.status(400).json({ error: 'No file uploaded. Only PDF files are accepted.' });
+            return res.status(400).json({ error: 'No file uploaded' });
         }
 
-        // Additional PDF validation
         if (file.mimetype !== 'application/pdf') {
             return res.status(400).json({ error: 'Only PDF files are accepted' });
         }
@@ -830,76 +839,65 @@ app.post('/api/di/upload', requireAuth, upload.single('file'), async (req, res) 
         const user = req.session.user;
         const year = new Date().getFullYear();
 
-        console.log(`[UPLOAD] Starting upload for user=${user.researcher_id}, file=${file.originalname}, size=${file.size}`);
+        console.log('[UPLOAD] Starting upload for user=' + user.researcher_id + ', file=' + file.originalname + ', size=' + file.size);
 
-        // Check if Drive is enabled
-        if (!driveEnabled) {
-            console.error('[UPLOAD] ERROR: Drive not enabled. driveInitError:', driveInitError);
-}        // Upload to R2 (Google Drive removed)
-const safeOriginal = (file.originalname || 'upload.pdf').replace(/[^\w.\-]+/g, '_');
-const dateStamp = new Date().toISOString().slice(0,10); // YYYY-MM-DD
-const key = `di/${user.affiliation}/Submitted/${year}/${dateStamp}_${user.researcher_id}_${safeOriginal}`;
+        if (!r2Enabled()) {
+            console.error('[UPLOAD] R2 not configured, missing env vars');
+            return res.status(503).json({ error: 'R2 storage not configured' });
+        }
 
-console.log(`[UPLOAD] Uploading file to R2: key=${key}`);
-await uploadToR2(file.buffer, key, file.mimetype);
+        const safeOriginal = (file.originalname || 'upload.pdf').replace(/[^\w.\-]+/g, '_');
+        const dateStamp = new Date().toISOString().slice(0, 10);
+        const key = 'di/' + user.affiliation + '/Submitted/' + year + '/' + dateStamp + '_' + user.researcher_id + '_' + safeOriginal;
 
-// Use the R2 object key as the stored file identifier
-const fileId = key;
+        console.log('[UPLOAD] Uploading file to R2: key=' + key);
+        await uploadToR2(file.buffer, key, file.mimetype);
 
-// Record submission in database (store R2 key in drive_file_id for backward compatibility)
-const submissionResult = await pool.query(
-  `INSERT INTO di_submissions (researcher_id, affiliation, file_type, original_filename, drive_file_id)
-   VALUES ($1, $2, $3, $4, $5)
-   RETURNING submission_id`,
-  [user.researcher_id, user.affiliation, fileType, file.originalname, fileId]
-);const submissionId = submissionResult.rows[0].submission_id;
-        console.log(`[UPLOAD] Submission recorded: submission_id=${submissionId}, drive_file_id=${driveFileId}`);
+        const fileId = 'r2:' + key;
 
-        // Forward to n8n webhook
+        const submissionResult = await pool.query(
+            'INSERT INTO di_submissions (researcher_id, affiliation, file_type, original_filename, drive_file_id) ' +
+            'VALUES (, , , , ) ' +
+            'RETURNING submission_id',
+            [user.researcher_id, user.affiliation, normalizedType, file.originalname, fileId]
+        );
+
+        const submissionId = submissionResult.rows[0].submission_id;
+        console.log('[UPLOAD] Submission recorded: submission_id=' + submissionId + ', drive_file_id=' + fileId);
+
         const webhookUrl = process.env.N8N_DI_WEBHOOK_URL;
-
         if (webhookUrl) {
-            const formData = new FormData();
-            formData.append('researcher_id', user.researcher_id);
-            formData.append('affiliation', user.affiliation);
-            formData.append('fileType', fileType);
-            formData.append('original_filename', file.originalname);
-            formData.append('submission_id', submissionId);
-            formData.append('drive_file_id', driveFileId);
-            formData.append('file', file.buffer, {
-                filename: file.originalname,
-                contentType: file.mimetype
-            });
-
             try {
-                await fetch(webhookUrl, {
-                    method: 'POST',
-                    body: formData,
-                    headers: formData.getHeaders()
-                });
+                const formData = new FormData();
+                formData.append('researcher_id', user.researcher_id);
+                formData.append('affiliation', user.affiliation);
+                formData.append('fileType', normalizedType);
+                formData.append('original_filename', file.originalname);
+                formData.append('submission_id', submissionId);
+                formData.append('drive_file_id', fileId);
+                formData.append('file', file.buffer, { filename: file.originalname, contentType: file.mimetype });
+
+                await fetch(webhookUrl, { method: 'POST', body: formData, headers: formData.getHeaders() });
             } catch (webhookErr) {
-                console.error('Webhook error:', webhookErr.message);
+                console.error('[UPLOAD] Webhook error:', webhookErr.message);
             }
         }
 
-        res.json({
+        return res.json({
             success: true,
             submission_id: submissionId,
-            drive_file_id: driveFileId,
-            view_url: getDriveViewUrl(driveFileId),
+            drive_file_id: fileId,
+            view_url: '/api/di/download/' + submissionId,
+            download_url: '/api/di/download/' + submissionId + '?download=true',
             message: 'File uploaded successfully'
         });
 
     } catch (err) {
-        console.error('Upload error:', err);
-        if (err.message === 'Only PDF files are accepted') {
-            return res.status(400).json({ error: err.message });
-        }
-        res.status(500).json({ error: 'Server error' });
+        console.error('[UPLOAD] Upload error:', err);
+        return res.status(500).json({ error: 'UPLOAD_FAILED', message: err.message });
     }
 });
 
-// POST /api/di/external-upload
 // API endpoint for n8n or external services to upload files
 // Requires API key authentication via header: x-api-key
 app.post('/api/di/external-upload', upload.single('file'), async (req, res) => {
@@ -2116,6 +2114,8 @@ app.delete('/api/di/submissions/:id', requirePI, async (req, res) => {
 app.listen(PORT, () => {
   console.log("[STARTUP] Server listening on port ");
 });
+
+
 
 
 
