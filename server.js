@@ -55,11 +55,15 @@ const upload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit for PDFs
     fileFilter: (req, file, cb) => {
-        if (file.mimetype === 'application/pdf') {
-            cb(null, true);
-        } else {
-            cb(new Error('Only PDF files are accepted'), false);
+        const name = (file.originalname || '').toLowerCase();
+        const isPdfName = name.endsWith('.pdf');
+        const mt = (file.mimetype || '').toLowerCase();
+        const isPdfMime = (mt === 'application/pdf');
+        const isOctet = (mt === 'application/octet-stream' || mt === 'binary/octet-stream');
+        if (isPdfMime || (isOctet && isPdfName) || isPdfName) {
+            return cb(null, true);
         }
+        return cb(new Error('Only PDF files are accepted'), false);
     }
 });
 
