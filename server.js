@@ -1076,15 +1076,15 @@ app.patch('/api/di/submissions/:id', async (req, res) => {
         }
 
         const { id } = req.params;
-        const { status } = req.body;
+        const { status, ai_review, revision_comments } = req.body;
 
         if (!status || !['PENDING', 'APPROVED', 'REVISION_NEEDED'].includes(status)) {
             return res.status(400).json({ error: 'status must be PENDING, APPROVED, or REVISION_NEEDED' });
         }
 
         const result = await pool.query(
-            'UPDATE di_submissions SET status = $1 WHERE submission_id = $2 RETURNING *',
-            [status, id]
+            'UPDATE di_submissions SET status = $1, ai_review = $2, revision_comments = $3 WHERE submission_id = $4 RETURNING *',
+            [status, ai_review || null, revision_comments || null, id]
         );
 
         if (result.rows.length === 0) {
@@ -2126,6 +2126,9 @@ app.delete('/api/di/submissions/:id', requirePI, async (req, res) => {
 app.listen(PORT, () => {
   console.log("[STARTUP] Server listening on port ");
 });
+
+
+
 
 
 
