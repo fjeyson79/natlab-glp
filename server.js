@@ -13,7 +13,7 @@ const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
 const { Readable } = require('stream');
 
 // R2 (S3-compatible) SDK
-const { S3Client, PutObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
+const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
 const app = express();
 const PORT = process.env.PORT || 8080;
 
@@ -110,6 +110,23 @@ async function downloadFromR2(key) {
     Key: key
   }));
   return out; // { Body stream, ContentType, ContentLength, Metadata, ... }
+}
+
+async function deleteFromR2(key) {
+  const s3 = getR2Client();
+  await s3.send(new DeleteObjectCommand({
+    Bucket: process.env.R2_BUCKET,
+    Key: key
+  }));
+  return true;
+}
+
+async function streamToBuffer(stream) {
+  const chunks = [];
+  for await (const chunk of stream) {
+    chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
+  }
+  return Buffer.concat(chunks);
 }
 
 function isR2Id(value) {
@@ -1551,24 +1568,87 @@ app.get('/api/di/approve/:id', async (req, res) => {
 
         const signedAt = new Date().toISOString();
         const signerName = 'Frank J. Hernandez';
-        const drive = getGoogleDriveClient();
+        const fileId = submission.drive_file_id;
+        let newFileId;
+        let originalPdfBuffer;
 
-        // Download original PDF from Drive
-        const originalPdfBuffer = await downloadFileFromDrive(drive, submission.drive_file_id);
+        console.log(`[APPROVE] Processing submission ${id}, fileId=${fileId}, isR2=${isR2Id(fileId)}`);
 
-        // Create stamped PDF
-        const stampedPdfBuffer = await createStampedPdf(originalPdfBuffer, signerName, signedAt);
+        // Check if file is stored in R2
+        if (isR2Id(fileId)) {
+            if (!r2Enabled()) {
+                return res.status(503).send(renderHtmlPage('Error', 'R2 storage is not configured.', 'error'));
+            }
 
-        // Get Approved folder
-        const year = new Date(submission.created_at).getFullYear();
-        const approvedFolderId = await getApprovedFolderId(drive, year, submission.researcher_id);
+            const originalKey = r2KeyFromId(fileId);
+            console.log(`[APPROVE] Downloading original from R2: ${originalKey}`);
 
-        // Upload stamped PDF to Approved folder
-        const stampedFilename = submission.original_filename.replace('.pdf', '_APPROVED.pdf');
-        const newDriveFileId = await uploadFileToDrive(drive, stampedPdfBuffer, stampedFilename, 'application/pdf', approvedFolderId);
+            // Download original PDF from R2
+            try {
+                const r2Obj = await downloadFromR2(originalKey);
+                originalPdfBuffer = await streamToBuffer(r2Obj.Body);
+                console.log(`[APPROVE] Downloaded PDF, size: ${originalPdfBuffer.length} bytes`);
+            } catch (downloadErr) {
+                console.error(`[APPROVE] Failed to download from R2:`, downloadErr);
+                return res.status(500).send(renderHtmlPage('Error', 'Failed to download original file: ' + downloadErr.message, 'error'));
+            }
 
-        // Delete original from Submitted
-        await deleteFileFromDrive(drive, submission.drive_file_id);
+            // Create stamped PDF
+            let stampedPdfBuffer;
+            try {
+                stampedPdfBuffer = await createStampedPdf(originalPdfBuffer, signerName, signedAt);
+                console.log(`[APPROVE] Created stamped PDF, size: ${stampedPdfBuffer.length} bytes`);
+            } catch (stampErr) {
+                console.error(`[APPROVE] Failed to stamp PDF:`, stampErr);
+                return res.status(500).send(renderHtmlPage('Error', 'Failed to create stamped PDF: ' + stampErr.message, 'error'));
+            }
+
+            // Build Approved folder key (change Submitted to Approved in path)
+            const safeFilename = submission.original_filename.replace('.pdf', '_APPROVED.pdf').replace(/[^\w.\-]+/g, '_');
+            const approvedKey = originalKey.replace('/Submitted/', '/Approved/').replace(/[^/]+$/, safeFilename);
+            console.log(`[APPROVE] Uploading stamped PDF to R2: ${approvedKey}`);
+
+            // Upload stamped PDF to Approved folder
+            try {
+                await uploadToR2(stampedPdfBuffer, approvedKey, 'application/pdf');
+                newFileId = 'r2:' + approvedKey;
+                console.log(`[APPROVE] Uploaded stamped PDF successfully`);
+            } catch (uploadErr) {
+                console.error(`[APPROVE] Failed to upload to R2:`, uploadErr);
+                return res.status(500).send(renderHtmlPage('Error', 'Failed to upload stamped PDF: ' + uploadErr.message, 'error'));
+            }
+
+            // Delete original from Submitted
+            try {
+                console.log(`[APPROVE] Deleting original from R2: ${originalKey}`);
+                await deleteFromR2(originalKey);
+                console.log(`[APPROVE] Deleted original successfully`);
+            } catch (deleteErr) {
+                console.error(`[APPROVE] Warning - failed to delete original:`, deleteErr);
+                // Continue anyway, the approval succeeded
+            }
+
+        } else {
+            // Fallback to Google Drive
+            const drive = getGoogleDriveClient();
+
+            // Download original PDF from Drive
+            originalPdfBuffer = await downloadFileFromDrive(drive, fileId);
+
+            // Create stamped PDF
+            const stampedPdfBuffer = await createStampedPdf(originalPdfBuffer, signerName, signedAt);
+
+            // Get Approved folder
+            const year = new Date(submission.created_at).getFullYear();
+            const approvedFolderId = await getApprovedFolderId(drive, year, submission.researcher_id);
+
+            // Upload stamped PDF to Approved folder
+            const stampedFilename = submission.original_filename.replace('.pdf', '_APPROVED.pdf');
+            newFileId = await uploadFileToDrive(drive, stampedPdfBuffer, stampedFilename, 'application/pdf', approvedFolderId);
+
+            // Delete original from Submitted
+            await deleteFileFromDrive(drive, fileId);
+        }
 
         // Generate signature hash
         const crypto = require('crypto');
@@ -1593,7 +1673,7 @@ app.get('/api/di/approve/:id', async (req, res) => {
                 signature_hash = $4,
                 verification_code = $5
              WHERE submission_id = $6`,
-            [signedAt, signerName, newDriveFileId, signatureHash, verificationCode, id]
+            [signedAt, signerName, newFileId, signatureHash, verificationCode, id]
         );
 
         // Send email to researcher
@@ -1614,8 +1694,8 @@ app.get('/api/di/approve/:id', async (req, res) => {
              <p>File: ${submission.original_filename}</p>
              <p>Signed at: ${signedAt}</p>
              <p>Verification Code: <strong>${verificationCode}</strong></p>
-             <p><a href="${getDriveViewUrl(newDriveFileId)}" target="_blank" style="color:#007bff;">View Signed Document</a></p>
-             <p><a href="${getDriveDownloadUrl(newDriveFileId)}" style="color:#28a745;">Download Signed Document</a></p>`,
+             <p><a href="/api/di/download/${id}" target="_blank" style="color:#007bff;">View Signed Document</a></p>
+             <p><a href="/api/di/download/${id}?download=true" style="color:#28a745;">Download Signed Document</a></p>`,
             'success'
         ));
 
