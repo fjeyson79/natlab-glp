@@ -1527,181 +1527,69 @@ if (fileId && isR2Id(fileId)) {
     }
 });
 
-// GET /api/di/approve/:id
-// Browser-based approval via email link (validates token from query string)
-// Creates stamped PDF, uploads to Approved folder, deletes from Submitted
+// GET /api/di/approve/:id - R2 only, no Drive
 app.get('/api/di/approve/:id', async (req, res) => {
+    const { id } = req.params;
+    const { token } = req.query;
     try {
-        const { id } = req.params;
-        const { token } = req.query;
-
-        if (!token) {
-            return res.status(400).send(renderHtmlPage('Error', 'Missing token parameter', 'error'));
-        }
-
-        // Validate token (base64 method matching n8n workflow)
+        if (!token) return res.status(400).send(renderHtmlPage('Error', 'Missing token', 'error'));
         const expectedToken = Buffer.from(id + '_glp_2024_sec').toString('base64').replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
+        if (token !== expectedToken) return res.status(403).send(renderHtmlPage('Invalid Token', 'Link invalid or expired.', 'error'));
 
-        if (token !== expectedToken) {
-            return res.status(403).send(renderHtmlPage('Invalid Token', 'The approval link is invalid or expired.', 'error'));
-        }
-
-        // Get submission
-        const result = await pool.query(
-            'SELECT * FROM di_submissions WHERE submission_id = $1',
-            [id]
-        );
-
-        if (result.rows.length === 0) {
-            return res.status(404).send(renderHtmlPage('Not Found', 'Submission not found.', 'error'));
-        }
+        const result = await pool.query('SELECT * FROM di_submissions WHERE submission_id = $1', [id]);
+        if (result.rows.length === 0) return res.status(404).send(renderHtmlPage('Not Found', 'Submission not found.', 'error'));
 
         const submission = result.rows[0];
+        const fileId = (submission.drive_file_id || '').trim();
+        const isR2 = fileId.startsWith('r2:');
+        console.log(`[APPROVE] id=${id} fileId=${fileId} isR2=${isR2}`);
 
-        if (!submission.drive_file_id) {
-            return res.status(400).send(renderHtmlPage('Error', 'No file associated with this submission.', 'error'));
-        }
-
-        if (submission.status === 'APPROVED') {
-            return res.send(renderHtmlPage('Already Approved', 'This submission has already been approved.', 'info'));
-        }
+        if (!isR2) return res.status(400).send(renderHtmlPage('Error', 'Drive not configured. Only R2 supported.', 'error'));
+        if (!fileId) return res.status(400).send(renderHtmlPage('Error', 'No file associated.', 'error'));
+        if (submission.status === 'APPROVED') return res.send(renderHtmlPage('Already Approved', 'Already approved.', 'info'));
 
         const signedAt = new Date().toISOString();
         const signerName = 'Frank J. Hernandez';
-        const fileId = submission.drive_file_id;
-        let newFileId;
-        let originalPdfBuffer;
+        const originalKey = fileId.replace(/^r2:/, '');
 
-        console.log(`[APPROVE] Processing submission ${id}, fileId=${fileId}, isR2=${isR2Id(fileId)}`);
+        // Download from R2
+        const r2Obj = await downloadFromR2(originalKey);
+        const chunks = []; for await (const c of r2Obj.Body) chunks.push(c);
+        const pdfBuffer = Buffer.concat(chunks);
 
-        // Check if file is stored in R2
-        if (isR2Id(fileId)) {
-            if (!r2Enabled()) {
-                return res.status(503).send(renderHtmlPage('Error', 'R2 storage is not configured.', 'error'));
-            }
+        // Stamp PDF
+        const stampedBuffer = await createStampedPdf(pdfBuffer, signerName, signedAt);
 
-            const originalKey = r2KeyFromId(fileId);
-            console.log(`[APPROVE] Downloading original from R2: ${originalKey}`);
+        // Upload to Approved folder
+        const safeFilename = submission.original_filename.replace('.pdf', '_APPROVED.pdf').replace(/[^\w.\-]+/g, '_');
+        const approvedKey = originalKey.replace('/Submitted/', '/Approved/').replace(/[^/]+$/, safeFilename);
+        await uploadToR2(stampedBuffer, approvedKey, 'application/pdf');
+        const newFileId = 'r2:' + approvedKey;
 
-            // Download original PDF from R2
-            try {
-                const r2Obj = await downloadFromR2(originalKey);
-                originalPdfBuffer = await streamToBuffer(r2Obj.Body);
-                console.log(`[APPROVE] Downloaded PDF, size: ${originalPdfBuffer.length} bytes`);
-            } catch (downloadErr) {
-                console.error(`[APPROVE] Failed to download from R2:`, downloadErr);
-                return res.status(500).send(renderHtmlPage('Error', 'Failed to download original file: ' + downloadErr.message, 'error'));
-            }
+        // Delete original (best effort)
+        try { await deleteFromR2(originalKey); } catch (e) { console.warn('[APPROVE] Delete warning:', e.message); }
 
-            // Create stamped PDF
-            let stampedPdfBuffer;
-            try {
-                stampedPdfBuffer = await createStampedPdf(originalPdfBuffer, signerName, signedAt);
-                console.log(`[APPROVE] Created stamped PDF, size: ${stampedPdfBuffer.length} bytes`);
-            } catch (stampErr) {
-                console.error(`[APPROVE] Failed to stamp PDF:`, stampErr);
-                return res.status(500).send(renderHtmlPage('Error', 'Failed to create stamped PDF: ' + stampErr.message, 'error'));
-            }
-
-            // Build Approved folder key (change Submitted to Approved in path)
-            const safeFilename = submission.original_filename.replace('.pdf', '_APPROVED.pdf').replace(/[^\w.\-]+/g, '_');
-            const approvedKey = originalKey.replace('/Submitted/', '/Approved/').replace(/[^/]+$/, safeFilename);
-            console.log(`[APPROVE] Uploading stamped PDF to R2: ${approvedKey}`);
-
-            // Upload stamped PDF to Approved folder
-            try {
-                await uploadToR2(stampedPdfBuffer, approvedKey, 'application/pdf');
-                newFileId = 'r2:' + approvedKey;
-                console.log(`[APPROVE] Uploaded stamped PDF successfully`);
-            } catch (uploadErr) {
-                console.error(`[APPROVE] Failed to upload to R2:`, uploadErr);
-                return res.status(500).send(renderHtmlPage('Error', 'Failed to upload stamped PDF: ' + uploadErr.message, 'error'));
-            }
-
-            // Delete original from Submitted
-            try {
-                console.log(`[APPROVE] Deleting original from R2: ${originalKey}`);
-                await deleteFromR2(originalKey);
-                console.log(`[APPROVE] Deleted original successfully`);
-            } catch (deleteErr) {
-                console.error(`[APPROVE] Warning - failed to delete original:`, deleteErr);
-                // Continue anyway, the approval succeeded
-            }
-
-        } else {
-            // Fallback to Google Drive
-            const drive = getGoogleDriveClient();
-
-            // Download original PDF from Drive
-            originalPdfBuffer = await downloadFileFromDrive(drive, fileId);
-
-            // Create stamped PDF
-            const stampedPdfBuffer = await createStampedPdf(originalPdfBuffer, signerName, signedAt);
-
-            // Get Approved folder
-            const year = new Date(submission.created_at).getFullYear();
-            const approvedFolderId = await getApprovedFolderId(drive, year, submission.researcher_id);
-
-            // Upload stamped PDF to Approved folder
-            const stampedFilename = submission.original_filename.replace('.pdf', '_APPROVED.pdf');
-            newFileId = await uploadFileToDrive(drive, stampedPdfBuffer, stampedFilename, 'application/pdf', approvedFolderId);
-
-            // Delete original from Submitted
-            await deleteFileFromDrive(drive, fileId);
-        }
-
-        // Generate signature hash
+        // Signature hash
         const crypto = require('crypto');
-        const signaturePayload = JSON.stringify({
-            submission_id: id,
-            original_filename: submission.original_filename,
-            signed_at: signedAt,
-            signer: signerName
-        });
         const signatureHash = crypto.createHmac('sha256', process.env.API_SECRET_KEY || 'natlab_glp_secret')
-            .update(signaturePayload).digest('hex');
+            .update(JSON.stringify({ submission_id: id, original_filename: submission.original_filename, signed_at: signedAt, signer: signerName }))
+            .digest('hex');
         const verificationCode = `NATLAB-${id}-${signatureHash.substring(0, 8).toUpperCase()}`;
 
-        // Update DB: point to stamped PDF only
+        // Update DB
         await pool.query(
-            `UPDATE di_submissions SET
-                status = 'APPROVED',
-                signed_at = $1,
-                signer_name = $2,
-                drive_file_id = $3,
-                signed_pdf_path = $3,
-                signature_hash = $4,
-                verification_code = $5
-             WHERE submission_id = $6`,
+            `UPDATE di_submissions SET status='APPROVED', signed_at=$1, signer_name=$2, drive_file_id=$3, signed_pdf_path=$3, signature_hash=$4, verification_code=$5 WHERE submission_id=$6`,
             [signedAt, signerName, newFileId, signatureHash, verificationCode, id]
         );
 
-        // Send email to researcher
-        const researcherResult = await pool.query(
-            'SELECT institution_email FROM di_allowlist WHERE researcher_id = $1',
-            [submission.researcher_id]
-        );
-
-        if (researcherResult.rows.length > 0) {
-            const researcherEmail = researcherResult.rows[0].institution_email;
-            // Email would be sent via n8n or nodemailer here
-            console.log(`Approval email should be sent to: ${researcherEmail}`);
-        }
-
-        res.send(renderHtmlPage(
-            'Document Approved',
-            `<p>Submission <strong>${id}</strong> has been approved and signed.</p>
-             <p>File: ${submission.original_filename}</p>
-             <p>Signed at: ${signedAt}</p>
-             <p>Verification Code: <strong>${verificationCode}</strong></p>
-             <p><a href="/api/di/download/${id}" target="_blank" style="color:#007bff;">View Signed Document</a></p>
-             <p><a href="/api/di/download/${id}?download=true" style="color:#28a745;">Download Signed Document</a></p>`,
-            'success'
-        ));
-
+        console.log(`[APPROVE] Success: ${id} -> ${newFileId}`);
+        res.send(renderHtmlPage('Document Approved',
+            `<p><strong>${submission.original_filename}</strong> approved and signed.</p>
+             <p>Verification: <strong>${verificationCode}</strong></p>
+             <p><a href="/api/di/download/${id}">View</a> | <a href="/api/di/download/${id}?download=true">Download</a></p>`, 'success'));
     } catch (err) {
-        console.error('Approve error:', err);
-        res.status(500).send(renderHtmlPage('Error', 'Server error occurred: ' + err.message, 'error'));
+        console.error('[APPROVE] Error:', err);
+        res.status(500).send(renderHtmlPage('Error', err.message, 'error'));
     }
 });
 
@@ -1746,76 +1634,45 @@ app.get('/api/di/revise/:id', async (req, res) => {
     }
 });
 
-// POST /api/di/revise/:id
-// Process revision request - deletes file from Drive, stores comments
+// POST /api/di/revise/:id - R2 only, no Drive
 app.post('/api/di/revise/:id', async (req, res) => {
+    const { id } = req.params;
+    const { token } = req.query;
+    const { comments } = req.body;
     try {
-        const { id } = req.params;
-        const { token } = req.query;
-        const { comments } = req.body;
-
-        if (!token) {
-            return res.status(400).send(renderHtmlPage('Error', 'Missing token parameter', 'error'));
-        }
-
-        // Validate token
+        if (!token) return res.status(400).send(renderHtmlPage('Error', 'Missing token', 'error'));
         const expectedToken = Buffer.from(id + '_glp_2024_sec').toString('base64').replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
+        if (token !== expectedToken) return res.status(403).send(renderHtmlPage('Invalid Token', 'Link invalid or expired.', 'error'));
 
-        if (token !== expectedToken) {
-            return res.status(403).send(renderHtmlPage('Invalid Token', 'The revision link is invalid or expired.', 'error'));
-        }
-
-        // Get submission to find drive_file_id
-        const result = await pool.query(
-            'SELECT drive_file_id, researcher_id, original_filename FROM di_submissions WHERE submission_id = $1',
-            [id]
-        );
-
-        if (result.rows.length === 0) {
-            return res.status(404).send(renderHtmlPage('Not Found', 'Submission not found.', 'error'));
-        }
+        const result = await pool.query('SELECT drive_file_id, researcher_id, original_filename FROM di_submissions WHERE submission_id = $1', [id]);
+        if (result.rows.length === 0) return res.status(404).send(renderHtmlPage('Not Found', 'Submission not found.', 'error'));
 
         const submission = result.rows[0];
+        const fileId = (submission.drive_file_id || '').trim();
+        const isR2 = fileId.startsWith('r2:');
+        console.log(`[REVISE] id=${id} fileId=${fileId} isR2=${isR2}`);
 
-        // Delete file from Google Drive (Submitted folder)
-        if (submission.drive_file_id) {
-            const drive = getGoogleDriveClient();
-            await deleteFileFromDrive(drive, submission.drive_file_id);
+        if (!isR2 && fileId) return res.status(400).send(renderHtmlPage('Error', 'Drive not configured. Only R2 supported.', 'error'));
+
+        // Delete from R2 (best effort)
+        if (isR2) {
+            try { await deleteFromR2(fileId.replace(/^r2:/, '')); } catch (e) { console.warn('[REVISE] Delete warning:', e.message); }
         }
 
-        // Update submission status, clear drive_file_id, store comments
+        // Update DB
         await pool.query(
-            `UPDATE di_submissions SET
-                status = 'REVISION_NEEDED',
-                drive_file_id = NULL,
-                revision_comments = $1
-             WHERE submission_id = $2`,
+            `UPDATE di_submissions SET status='REVISION_NEEDED', drive_file_id=NULL, revision_comments=$1 WHERE submission_id=$2`,
             [comments || '', id]
         );
 
-        // Get researcher email and send notification
-        const researcherResult = await pool.query(
-            'SELECT institution_email FROM di_allowlist WHERE researcher_id = $1',
-            [submission.researcher_id]
-        );
-
-        if (researcherResult.rows.length > 0) {
-            const researcherEmail = researcherResult.rows[0].institution_email;
-            console.log(`Revision email should be sent to: ${researcherEmail}`);
-            // Email content: Subject: Revision requested | Body: File "X" needs revision. Comments: Y
-        }
-
-        res.send(renderHtmlPage(
-            'Revision Requested',
-            `<p>Submission <strong>${id}</strong> has been marked for revision.</p>
-             <p>The file has been removed. The researcher must upload a revised PDF.</p>
-             ${comments ? `<p><strong>Your comments:</strong> ${comments}</p>` : ''}`,
-            'success'
-        ));
-
+        console.log(`[REVISE] Success: ${id} marked for revision`);
+        res.send(renderHtmlPage('Revision Requested',
+            `<p><strong>${submission.original_filename}</strong> marked for revision.</p>
+             <p>Researcher must upload a revised PDF.</p>
+             ${comments ? `<p><strong>Comments:</strong> ${comments}</p>` : ''}`, 'success'));
     } catch (err) {
-        console.error('Revise submit error:', err);
-        res.status(500).send(renderHtmlPage('Error', 'Server error occurred.', 'error'));
+        console.error('[REVISE] Error:', err);
+        res.status(500).send(renderHtmlPage('Error', err.message, 'error'));
     }
 });
 
