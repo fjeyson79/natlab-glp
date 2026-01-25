@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NATLAB GLP Data Integrity Portal</title>
+    <title>NAT-Lab GLP Data Management System</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -25,13 +25,21 @@
         }
         h1 {
             color: #1a365d;
-            margin-bottom: 10px;
-            font-size: 24px;
+            margin-bottom: 5px;
+            font-size: 22px;
+            line-height: 1.3;
+        }
+        h2 {
+            color: #2d5a87;
+            margin-bottom: 15px;
+            font-size: 16px;
+            font-weight: normal;
         }
         .subtitle {
             color: #666;
             margin-bottom: 30px;
-            font-size: 14px;
+            font-size: 13px;
+            line-height: 1.5;
         }
         label {
             display: block;
@@ -87,16 +95,19 @@
             text-align: center;
             margin-bottom: 20px;
         }
-        .logo span {
-            font-size: 40px;
+        .logo img {
+            max-width: 120px;
+            height: auto;
         }
     </style>
 </head>
 <body>
+<!-- ACCESS_HTML_PUBLIC_MARKER_2026_01_25 -->
     <div class="container">
-        <div class="logo"><span>ðŸ”¬</span></div>
-        <h1>NATLAB GLP Data Integrity Portal</h1>
-        <p class="subtitle">Enter your institution email to continue</p>
+        <div class="logo"><img src="images/natlab-logo.png" alt="NAT-Lab Logo" onerror="this.style.display='none'"></div>
+        <h1>Nucleic Acids Technology Laboratory (NAT-Lab)</h1>
+        <h2>GLP Data Management System</h2>
+        <p class="subtitle">Secure access to validated experimental data, SOP-aligned workflows, and data integrity</p>
 
         <form id="accessForm">
             <label for="email">Institution Email</label>
@@ -126,9 +137,9 @@
             try {
                 const response = await fetch('/api/di/access-check', {
                     method: 'POST',
-      credentials: 'same-origin',
+                    credentials: 'same-origin',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email: email })
+                    body: JSON.stringify({ institution_email: email })
                 });
 
                 const data = await response.json();
@@ -137,20 +148,17 @@
                     messageDiv.textContent = data.message || 'Access denied. Your email is not in the allowlist.';
                     messageDiv.className = 'message error';
                 } else {
-                    // Immediately create session (sets cookie), then go to upload portal
-                    const loginResp = await fetch('/api/di/login', {
-                        method: 'POST',
-                        credentials: 'same-origin',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ email: email })
-                    });
+                    // Store user info for login/register pages
+                    sessionStorage.setItem('di_email', email);
+                    sessionStorage.setItem('di_name', data.name || '');
+                    sessionStorage.setItem('di_affiliation', data.affiliation || '');
+                    sessionStorage.setItem('di_role', data.role || 'researcher');
 
-                    const loginData = await loginResp.json();
-                    if (!loginResp.ok || !loginData.success) {
-                        messageDiv.textContent = (loginData && loginData.error) ? ('Login failed: ' + loginData.error) : 'Login failed.';
-                        messageDiv.className = 'message error';
+                    // Redirect based on whether user needs to login or register
+                    if (data.next === 'register') {
+                        window.location.href = 'register.html';
                     } else {
-                        window.location.href = 'upload.html';
+                        window.location.href = 'login.html';
                     }
                 }
             } catch (err) {
@@ -164,6 +172,8 @@
     </script>
 </body>
 </html>
+
+
 
 
 
