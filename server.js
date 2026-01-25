@@ -1,13 +1,7 @@
 "use strict";
 
 
-const pdfParseModule = require("pdf-parse");
-const pdfParse =
-  (typeof pdfParseModule === "function") ? pdfParseModule :
-  (pdfParseModule && typeof pdfParseModule.default === "function") ? pdfParseModule.default :
-  (pdfParseModule && typeof pdfParseModule.pdfParse === "function") ? pdfParseModule.pdfParse :
-  (pdfParseModule && typeof pdfParseModule.PDFParse === "function") ? pdfParseModule.PDFParse :
-  null;
+const pdfParse = require("pdf-parse");
 /*
   NATLAB-GLP Server (R2-only)
   - Storage: Cloudflare R2 via AWS SDK S3 client
@@ -882,6 +876,7 @@ app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Access the portal at http://localhost:${PORT}/di/access.html`);
 });
+
 
 
 
