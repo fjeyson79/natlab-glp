@@ -327,13 +327,8 @@
         // Check authentication and PI role
         async function checkAuth() {
             try {
-                const response = await fetch('/api/di/me', {
-                    credentials: 'include'
-                });
-                if (!response.ok) {
-                    window.location.href = 'access.html';
-                    return;
-                }
+                const response = await fetch('/api/di/me', { credentials: 'include' });
+                if (response.status === 401) { window.location.href = 'access.html'; return; }
                 const data = await response.json();
                 const user = data.user;
 
