@@ -1,4 +1,4 @@
-require('dotenv').config();
+﻿require('dotenv').config();
 
 const express = require('express');
 const multer = require('multer');
@@ -905,8 +905,8 @@ app.post('/api/di/upload', requireAuth, upload.single('file'), async (req, res) 
 app.post('/api/di/external-upload', upload.single('file'), async (req, res) => {
     try {
         // Verify API key
-        const apiKey = req.headers['x-api-key'];
-        if (!apiKey || apiKey !== process.env.API_SECRET_KEY) {
+        const apiKey = (req.headers['x-api-key'] || '').toString().trim();
+        if (!apiKey || apiKey !== ((process.env.API_SECRET_KEY || '').toString().trim())) {
             return res.status(401).json({ error: 'Invalid or missing API key' });
         }
 
@@ -1000,8 +1000,8 @@ app.post('/api/di/external-upload', upload.single('file'), async (req, res) => {
 // Get list of researchers (for n8n to validate)
 app.get('/api/di/researchers', async (req, res) => {
     try {
-        const apiKey = req.headers['x-api-key'];
-        if (!apiKey || apiKey !== process.env.API_SECRET_KEY) {
+        const apiKey = (req.headers['x-api-key'] || '').toString().trim();
+        if (!apiKey || apiKey !== ((process.env.API_SECRET_KEY || '').toString().trim())) {
             return res.status(401).json({ error: 'Invalid or missing API key' });
         }
 
@@ -1025,8 +1025,8 @@ app.get('/api/di/researchers', async (req, res) => {
 // Get submissions list (for n8n to check status)
 app.get('/api/di/submissions', async (req, res) => {
     try {
-        const apiKey = req.headers['x-api-key'];
-        if (!apiKey || apiKey !== process.env.API_SECRET_KEY) {
+        const apiKey = (req.headers['x-api-key'] || '').toString().trim();
+        if (!apiKey || apiKey !== ((process.env.API_SECRET_KEY || '').toString().trim())) {
             return res.status(401).json({ error: 'Invalid or missing API key' });
         }
 
@@ -1070,8 +1070,8 @@ app.get('/api/di/submissions', async (req, res) => {
 // Update submission status (for n8n to update after processing)
 app.patch('/api/di/submissions/:id', async (req, res) => {
     try {
-        const apiKey = req.headers['x-api-key'];
-        if (!apiKey || apiKey !== process.env.API_SECRET_KEY) {
+        const apiKey = (req.headers['x-api-key'] || '').toString().trim();
+        if (!apiKey || apiKey !== ((process.env.API_SECRET_KEY || '').toString().trim())) {
             return res.status(401).json({ error: 'Invalid or missing API key' });
         }
 
@@ -1106,8 +1106,8 @@ app.patch('/api/di/submissions/:id', async (req, res) => {
 // Get single submission by ID
 app.get('/api/di/submissions/:id', async (req, res) => {
     try {
-        const apiKey = req.headers['x-api-key'];
-        if (!apiKey || apiKey !== process.env.API_SECRET_KEY) {
+        const apiKey = (req.headers['x-api-key'] || '').toString().trim();
+        if (!apiKey || apiKey !== ((process.env.API_SECRET_KEY || '').toString().trim())) {
             return res.status(401).json({ error: 'Invalid or missing API key' });
         }
 
@@ -1133,12 +1133,22 @@ app.get('/api/di/submissions/:id', async (req, res) => {
     }
 });
 
+// POST /api/di/api-key-check
+// Lightweight API key validation endpoint for n8n and automations
+app.post('/api/di/api-key-check', (req, res) => {
+    const apiKey = (req.headers['x-api-key'] || '').toString().trim();
+    const expected = ((process.env.API_SECRET_KEY || '').toString().trim());
+    if (!apiKey || !expected || apiKey !== expected) {
+        return res.status(401).json({ error: 'Invalid or missing API key' });
+    }
+    return res.json({ ok: true, timestamp: new Date().toISOString() });
+});
 // POST /api/di/extract-text
 // Extract text from a submission PDF stored in R2
 app.post('/api/di/extract-text', async (req, res) => {
     try {
-        const apiKey = req.headers['x-api-key'];
-        if (!apiKey || apiKey !== process.env.API_SECRET_KEY) {
+        const apiKey = (req.headers['x-api-key'] || '').toString().trim();
+        if (!apiKey || apiKey !== ((process.env.API_SECRET_KEY || '').toString().trim())) {
             return res.status(401).json({ error: 'Invalid or missing API key' });
         }
 
@@ -1246,8 +1256,8 @@ app.post('/api/di/extract-text', async (req, res) => {
 // Sign an approved submission (API key auth for n8n)
 app.post('/api/di/sign', async (req, res) => {
     try {
-        const apiKey = req.headers['x-api-key'];
-        if (!apiKey || apiKey !== process.env.API_SECRET_KEY) {
+        const apiKey = (req.headers['x-api-key'] || '').toString().trim();
+        if (!apiKey || apiKey !== ((process.env.API_SECRET_KEY || '').toString().trim())) {
             return res.status(401).json({ error: 'Invalid or missing API key' });
         }
 
@@ -2116,6 +2126,7 @@ app.delete('/api/di/submissions/:id', requirePI, async (req, res) => {
 app.listen(PORT, () => {
   console.log("[STARTUP] Server listening on port ");
 });
+
 
 
 
