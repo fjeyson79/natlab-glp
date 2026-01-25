@@ -638,7 +638,7 @@
             formData.append('file', file);
 
             try {
-                const response = await fetch('/api/di/pi-upload', {
+                const response = await fetch('/api/di/upload', {
                     method: 'POST',
                     body: formData,
                     credentials: 'include'
@@ -682,3 +682,4 @@
     </script>
 </body>
 </html>
+
