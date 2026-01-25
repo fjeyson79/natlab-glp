@@ -1077,14 +1077,29 @@ app.patch('/api/di/submissions/:id', async (req, res) => {
 
         const { id } = req.params;
         const { status, ai_review, revision_comments } = req.body;
+        // Normalize ai_review for jsonb column: accept object/array, JSON string, or plain string
+        let aiReviewJson = null;
+        if (ai_review !== undefined) {
+            if (ai_review === null) {
+                aiReviewJson = null;
+            } else if (typeof ai_review === 'string') {
+                try {
+                    aiReviewJson = JSON.parse(ai_review);
+                } catch {
+                    aiReviewJson = { text: ai_review };
+                }
+            } else {
+                aiReviewJson = ai_review;
+            }
+        }
 
         if (!status || !['PENDING', 'APPROVED', 'REVISION_NEEDED'].includes(status)) {
             return res.status(400).json({ error: 'status must be PENDING, APPROVED, or REVISION_NEEDED' });
         }
 
         const result = await pool.query(
-            'UPDATE di_submissions SET status = $1, ai_review = $2, revision_comments = $3 WHERE submission_id = $4 RETURNING *',
-            [status, ai_review || null, revision_comments || null, id]
+            'UPDATE di_submissions SET status = $1, ai_review = $2::jsonb, revision_comments = $3 WHERE submission_id = $4 RETURNING *',
+            [status, (aiReviewJson === null ? null : JSON.stringify(aiReviewJson)), revision_comments || null, id]
         );
 
         if (result.rows.length === 0) {
@@ -2126,6 +2141,7 @@ app.delete('/api/di/submissions/:id', requirePI, async (req, res) => {
 app.listen(PORT, () => {
   console.log("[STARTUP] Server listening on port ");
 });
+
 
 
 
