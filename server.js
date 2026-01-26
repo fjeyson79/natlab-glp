@@ -1622,7 +1622,7 @@ app.get('/api/di/approve/:id', async (req, res) => {
         }
 
         console.log(`[APPROVE] Success: ${id} -> ${newFileId}`);
-        res.redirect(`/action-success.html?action=approved&file=${encodeURIComponent(submission.original_filename)}&id=${id}`);
+        res.redirect(`/di/action-success.html?action=approved&file=${encodeURIComponent(submission.original_filename)}&id=${id}`);
     } catch (err) {
         console.error('[APPROVE] Error:', err);
         res.status(500).send(renderHtmlPage('Error', err.message, 'error'));
@@ -1720,7 +1720,7 @@ app.post('/api/di/revise/:id', async (req, res) => {
         }
 
         console.log(`[REVISE] Success: ${id} marked for revision`);
-        res.redirect(`/action-success.html?action=revision&file=${encodeURIComponent(submission.original_filename)}&id=${id}`);
+        res.redirect(`/di/action-success.html?action=revision&file=${encodeURIComponent(submission.original_filename)}&id=${id}`);
     } catch (err) {
         console.error('[REVISE] Error:', err);
         res.status(500).send(renderHtmlPage('Error', err.message, 'error'));
