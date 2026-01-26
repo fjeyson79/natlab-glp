@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Action Completed - NATLAB GLP</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #1a365d, #2d5a87);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .card {
+            background: white;
+            padding: 40px;
+            border-radius: 12px;
+            text-align: center;
+            max-width: 450px;
+            width: 90%;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+        }
+        .icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+        }
+        .icon.approved { color: #28a745; }
+        .icon.revision { color: #ffc107; }
+        h1 {
+            color: #1a365d;
+            margin-bottom: 15px;
+            font-size: 24px;
+        }
+        p {
+            color: #555;
+            margin-bottom: 10px;
+            line-height: 1.5;
+        }
+        .file-name {
+            background: #f8f9fa;
+            padding: 10px 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+            word-break: break-all;
+            font-family: monospace;
+            font-size: 13px;
+        }
+        .links {
+            margin-top: 20px;
+        }
+        .links a {
+            display: inline-block;
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 5px;
+            text-decoration: none;
+            font-weight: bold;
+        }
+        .links a.view { background: #007bff; color: white; }
+        .links a.download { background: #28a745; color: white; }
+        .note {
+            margin-top: 20px;
+            padding: 15px;
+            background: #e7f3ff;
+            border-radius: 6px;
+            font-size: 13px;
+            color: #0066cc;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="icon" id="icon"></div>
+        <h1 id="title">Action Completed</h1>
+        <p id="message"></p>
+        <div class="file-name" id="filename"></div>
+        <div class="links" id="links"></div>
+        <div class="note" id="note"></div>
+    </div>
+    <script>
+        const params = new URLSearchParams(window.location.search);
+        const action = params.get('action');
+        const file = params.get('file') || 'document.pdf';
+        const id = params.get('id');
+
+        const icon = document.getElementById('icon');
+        const title = document.getElementById('title');
+        const message = document.getElementById('message');
+        const filename = document.getElementById('filename');
+        const links = document.getElementById('links');
+        const note = document.getElementById('note');
+
+        filename.textContent = file;
+
+        if (action === 'approved') {
+            icon.className = 'icon approved';
+            icon.innerHTML = '&#10003;';
+            title.textContent = 'Document Approved';
+            message.textContent = 'The document has been signed and moved to the Approved folder.';
+            if (id) {
+                links.innerHTML = `
+                    <a href="/api/di/download/${id}" class="view" target="_blank">View Signed PDF</a>
+                    <a href="/api/di/download/${id}?download=true" class="download">Download</a>
+                `;
+            }
+            note.textContent = 'The researcher has been notified of the approval.';
+        } else if (action === 'revision') {
+            icon.className = 'icon revision';
+            icon.innerHTML = '&#9998;';
+            title.textContent = 'Revision Requested';
+            message.textContent = 'The document has been removed and the researcher must resubmit.';
+            links.style.display = 'none';
+            note.textContent = 'The researcher has been notified with your revision comments.';
+        } else {
+            icon.innerHTML = '&#8505;';
+            title.textContent = 'Action Completed';
+            message.textContent = 'The requested action has been processed.';
+            links.style.display = 'none';
+            note.style.display = 'none';
+        }
+    </script>
+</body>
+</html>

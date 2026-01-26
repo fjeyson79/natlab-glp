@@ -137,6 +137,25 @@ function r2KeyFromId(value) {
   return value.replace(/^r2:/, '');
 }
 
+// Notify researcher of PI decision (fire-and-forget)
+async function notifyResearcher(payload) {
+  const webhookUrl = process.env.N8N_NOTIFY_WEBHOOK_URL;
+  if (!webhookUrl) {
+    console.warn('[NOTIFY] N8N_NOTIFY_WEBHOOK_URL not configured, skipping notification');
+    return;
+  }
+  try {
+    const res = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    console.log(`[NOTIFY] Sent to researcher: ${payload.researcher_email}, status=${res.status}`);
+  } catch (err) {
+    console.error('[NOTIFY] Failed (non-blocking):', err.message);
+  }
+}
+
 // Google Drive Configuration
 const GOOGLE_DRIVE_ROOT_FOLDER = 'NATLAB-GLP';
 let driveClient = null;
@@ -1582,11 +1601,28 @@ app.get('/api/di/approve/:id', async (req, res) => {
             [signedAt, signerName, newFileId, signatureHash, verificationCode, id]
         );
 
+        // Get researcher info and notify (fire-and-forget)
+        const researcherResult = await pool.query(
+            'SELECT institution_email, researcher_id FROM di_allowlist WHERE researcher_id = $1',
+            [submission.researcher_id]
+        );
+        if (researcherResult.rows.length > 0) {
+            const researcher = researcherResult.rows[0];
+            notifyResearcher({
+                submission_id: id,
+                decision: 'APPROVED',
+                researcher_email: researcher.institution_email,
+                researcher_name: researcher.researcher_id,
+                file_name: submission.original_filename,
+                affiliation: submission.affiliation,
+                view_url: `https://natlab-glp-production.up.railway.app/api/di/download/${id}`,
+                download_url: `https://natlab-glp-production.up.railway.app/api/di/download/${id}?download=true`,
+                verification_code: verificationCode
+            });
+        }
+
         console.log(`[APPROVE] Success: ${id} -> ${newFileId}`);
-        res.send(renderHtmlPage('Document Approved',
-            `<p><strong>${submission.original_filename}</strong> approved and signed.</p>
-             <p>Verification: <strong>${verificationCode}</strong></p>
-             <p><a href="/api/di/download/${id}">View</a> | <a href="/api/di/download/${id}?download=true">Download</a></p>`, 'success'));
+        res.redirect(`/action-success.html?action=approved&file=${encodeURIComponent(submission.original_filename)}&id=${id}`);
     } catch (err) {
         console.error('[APPROVE] Error:', err);
         res.status(500).send(renderHtmlPage('Error', err.message, 'error'));
@@ -1644,7 +1680,7 @@ app.post('/api/di/revise/:id', async (req, res) => {
         const expectedToken = Buffer.from(id + '_glp_2024_sec').toString('base64').replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
         if (token !== expectedToken) return res.status(403).send(renderHtmlPage('Invalid Token', 'Link invalid or expired.', 'error'));
 
-        const result = await pool.query('SELECT drive_file_id, researcher_id, original_filename FROM di_submissions WHERE submission_id = $1', [id]);
+        const result = await pool.query('SELECT drive_file_id, researcher_id, original_filename, affiliation FROM di_submissions WHERE submission_id = $1', [id]);
         if (result.rows.length === 0) return res.status(404).send(renderHtmlPage('Not Found', 'Submission not found.', 'error'));
 
         const submission = result.rows[0];
@@ -1665,11 +1701,26 @@ app.post('/api/di/revise/:id', async (req, res) => {
             [comments || '', id]
         );
 
+        // Get researcher info and notify (fire-and-forget)
+        const researcherResult = await pool.query(
+            'SELECT institution_email, researcher_id FROM di_allowlist WHERE researcher_id = $1',
+            [submission.researcher_id]
+        );
+        if (researcherResult.rows.length > 0) {
+            const researcher = researcherResult.rows[0];
+            notifyResearcher({
+                submission_id: id,
+                decision: 'REVISION_NEEDED',
+                researcher_email: researcher.institution_email,
+                researcher_name: researcher.researcher_id,
+                file_name: submission.original_filename,
+                affiliation: submission.affiliation,
+                pi_comments: comments || ''
+            });
+        }
+
         console.log(`[REVISE] Success: ${id} marked for revision`);
-        res.send(renderHtmlPage('Revision Requested',
-            `<p><strong>${submission.original_filename}</strong> marked for revision.</p>
-             <p>Researcher must upload a revised PDF.</p>
-             ${comments ? `<p><strong>Comments:</strong> ${comments}</p>` : ''}`, 'success'));
+        res.redirect(`/action-success.html?action=revision&file=${encodeURIComponent(submission.original_filename)}&id=${id}`);
     } catch (err) {
         console.error('[REVISE] Error:', err);
         res.status(500).send(renderHtmlPage('Error', err.message, 'error'));

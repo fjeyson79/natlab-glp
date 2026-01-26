@@ -1,0 +1,81 @@
+{
+  "name": "DI Notify Researcher Decision",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "di-notify-researcher",
+        "options": {},
+        "responseMode": "onReceived",
+        "responseData": "allEntries"
+      },
+      "id": "webhook-notify",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 400],
+      "webhookId": "di-notify-researcher"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json.body || $input.first().json;\n\nconst isApproved = data.decision === 'APPROVED';\nconst subject = isApproved\n  ? `GLP Submission Approved: ${data.file_name}`\n  : `Revision Requested: ${data.file_name}`;\n\nlet body = '';\nif (isApproved) {\n  body = `\n<html><body style=\"font-family:Arial;max-width:600px;margin:0 auto;\">\n<div style=\"background:#28a745;color:white;padding:20px;text-align:center;border-radius:8px 8px 0 0;\">\n  <h1 style=\"margin:0;\">Submission Approved</h1>\n</div>\n<div style=\"padding:25px;background:#f8f9fa;\">\n  <p>Your GLP submission has been <strong style=\"color:#28a745;\">approved and signed</strong> by the Principal Investigator.</p>\n  \n  <table style=\"width:100%;border-collapse:collapse;margin:20px 0;\">\n    <tr><td style=\"padding:8px;color:#666;\">Submission ID:</td><td style=\"padding:8px;font-weight:bold;\">${data.submission_id}</td></tr>\n    <tr><td style=\"padding:8px;color:#666;\">File:</td><td style=\"padding:8px;\">${data.file_name}</td></tr>\n    <tr><td style=\"padding:8px;color:#666;\">Affiliation:</td><td style=\"padding:8px;\">${data.affiliation}</td></tr>\n    ${data.verification_code ? `<tr><td style=\"padding:8px;color:#666;\">Verification:</td><td style=\"padding:8px;font-family:monospace;\">${data.verification_code}</td></tr>` : ''}\n  </table>\n  \n  <div style=\"text-align:center;margin:25px 0;\">\n    <a href=\"${data.view_url}\" style=\"display:inline-block;padding:12px 25px;background:#007bff;color:white;text-decoration:none;border-radius:5px;margin:5px;\">View Signed PDF</a>\n    <a href=\"${data.download_url}\" style=\"display:inline-block;padding:12px 25px;background:#28a745;color:white;text-decoration:none;border-radius:5px;margin:5px;\">Download</a>\n  </div>\n  \n  <p style=\"color:#666;font-size:13px;\">The signed document is now stored in the Approved folder for compliance records.</p>\n</div>\n<div style=\"padding:15px;text-align:center;font-size:12px;color:#999;\">\n  NATLAB GLP Data Integrity Portal\n</div>\n</body></html>\n`;\n} else {\n  body = `\n<html><body style=\"font-family:Arial;max-width:600px;margin:0 auto;\">\n<div style=\"background:#ffc107;color:#333;padding:20px;text-align:center;border-radius:8px 8px 0 0;\">\n  <h1 style=\"margin:0;\">Revision Requested</h1>\n</div>\n<div style=\"padding:25px;background:#f8f9fa;\">\n  <p>Your GLP submission requires <strong style=\"color:#dc3545;\">revision</strong> before it can be approved.</p>\n  \n  <table style=\"width:100%;border-collapse:collapse;margin:20px 0;\">\n    <tr><td style=\"padding:8px;color:#666;\">Submission ID:</td><td style=\"padding:8px;font-weight:bold;\">${data.submission_id}</td></tr>\n    <tr><td style=\"padding:8px;color:#666;\">File:</td><td style=\"padding:8px;\">${data.file_name}</td></tr>\n    <tr><td style=\"padding:8px;color:#666;\">Affiliation:</td><td style=\"padding:8px;\">${data.affiliation}</td></tr>\n  </table>\n  \n  ${data.pi_comments ? `\n  <div style=\"background:#fff3cd;border-left:4px solid #ffc107;padding:15px;margin:20px 0;\">\n    <strong>PI Comments:</strong>\n    <p style=\"margin:10px 0 0 0;\">${data.pi_comments}</p>\n  </div>\n  ` : ''}\n  \n  <div style=\"background:#f8d7da;border-radius:6px;padding:15px;margin:20px 0;\">\n    <strong>Action Required:</strong>\n    <p style=\"margin:10px 0 0 0;\">Please address the comments above and resubmit your document through the GLP portal.</p>\n  </div>\n  \n  <div style=\"text-align:center;margin:25px 0;\">\n    <a href=\"https://natlab-glp-production.up.railway.app/upload.html\" style=\"display:inline-block;padding:12px 25px;background:#007bff;color:white;text-decoration:none;border-radius:5px;\">Go to Upload Portal</a>\n  </div>\n</div>\n<div style=\"padding:15px;text-align:center;font-size:12px;color:#999;\">\n  NATLAB GLP Data Integrity Portal\n</div>\n</body></html>\n`;\n}\n\nreturn [{\n  json: {\n    to: data.researcher_email,\n    subject: subject,\n    body: body,\n    decision: data.decision,\n    submission_id: data.submission_id\n  }\n}];"
+      },
+      "id": "build-email",
+      "name": "Build Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 400]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "html",
+        "message": "={{ $json.body }}",
+        "options": {}
+      },
+      "id": "send-email",
+      "name": "Send Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [680, 400],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "gmail-credential",
+          "name": "Gmail account 2"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Build Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Email": {
+      "main": [
+        [
+          {
+            "node": "Send Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "versionId": "v1-notify"
+}
