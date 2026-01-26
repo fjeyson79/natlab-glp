@@ -1608,7 +1608,7 @@ app.get('/api/di/approve/:id', async (req, res) => {
         );
         if (researcherResult.rows.length > 0) {
             const researcher = researcherResult.rows[0];
-            notifyResearcher({
+            await notifyResearcher({
                 submission_id: id,
                 decision: 'APPROVED',
                 researcher_email: researcher.institution_email,
@@ -1708,7 +1708,7 @@ app.post('/api/di/revise/:id', async (req, res) => {
         );
         if (researcherResult.rows.length > 0) {
             const researcher = researcherResult.rows[0];
-            notifyResearcher({
+            await notifyResearcher({
                 submission_id: id,
                 decision: 'REVISION_NEEDED',
                 researcher_email: researcher.institution_email,
