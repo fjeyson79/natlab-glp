@@ -893,6 +893,7 @@ app.post('/api/di/upload', requireAuth, upload.single('file'), async (req, res) 
 
         const webhookUrl = process.env.N8N_DI_WEBHOOK_URL;
         if (webhookUrl) {
+            console.log('[UPLOAD] Calling n8n webhook for PI notification...');
             try {
                 const formData = new FormData();
                 formData.append('researcher_id', user.researcher_id);
@@ -903,10 +904,13 @@ app.post('/api/di/upload', requireAuth, upload.single('file'), async (req, res) 
                 formData.append('drive_file_id', fileId);
                 formData.append('file', file.buffer, { filename: file.originalname, contentType: file.mimetype });
 
-                await fetch(webhookUrl, { method: 'POST', body: formData, headers: formData.getHeaders() });
+                const webhookRes = await fetch(webhookUrl, { method: 'POST', body: formData, headers: formData.getHeaders() });
+                console.log('[UPLOAD] Webhook response status:', webhookRes.status);
             } catch (webhookErr) {
                 console.error('[UPLOAD] Webhook error:', webhookErr.message);
             }
+        } else {
+            console.warn('[UPLOAD] N8N_DI_WEBHOOK_URL not configured, PI notification skipped');
         }
 
         return res.json({
