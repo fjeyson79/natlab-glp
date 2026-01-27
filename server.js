@@ -735,8 +735,13 @@ app.get('/api/di/me', requireAuth, (req, res) => {
 // - Approved: files with status APPROVED
 // Researchers can only view/download, not delete
 app.get('/api/di/my-files', requireAuth, async (req, res) => {
+    console.log('[MY-FILES] Endpoint called');
     try {
         const user = req.session.user;
+        if (!user || !user.researcher_id) {
+            console.log('[MY-FILES] No user or researcher_id in session');
+            return res.status(400).json({ error: 'Invalid session', message: 'No researcher_id found' });
+        }
         console.log('[MY-FILES] Loading files for researcher:', user.researcher_id);
 
         // Get all submissions for this researcher
