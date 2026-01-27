@@ -17,6 +17,10 @@ async function migrate() {
             `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS ai_review JSONB`,
             `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS revision_comments TEXT`,
             `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS signed_at TIMESTAMP`,
+            `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS signer_name VARCHAR(255)`,
+            `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS signature_hash VARCHAR(255)`,
+            `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS verification_code VARCHAR(100)`,
+            `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS signed_pdf_path VARCHAR(1000)`,
 
             // Group Documents table for shared lab documents (PI managed)
             `CREATE TABLE IF NOT EXISTS di_group_documents (
