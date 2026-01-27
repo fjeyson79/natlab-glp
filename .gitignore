@@ -8,3 +8,5 @@ node_modules/
 
 # Local patch scripts
 patch-*.ps1
+
+nul
