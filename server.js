@@ -11,6 +11,7 @@ const fetch = require('node-fetch');
 const { google } = require('googleapis');
 const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
 const { Readable } = require('stream');
+const archiver = require('archiver');
 
 // R2 (S3-compatible) SDK
 const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
@@ -2149,7 +2150,8 @@ function getFileTypeFromName(filename) {
 app.get('/api/di/group-documents', requireAuth, async (req, res) => {
     try {
         const result = await pool.query(
-            `SELECT id, title, category, description, filename, file_type, created_at, uploaded_by
+            `SELECT id, title, category, description, filename, file_type, created_at, uploaded_by,
+                    COALESCE(can_download, true) as can_download
              FROM di_group_documents
              WHERE is_active = true
              ORDER BY category, title`
@@ -2175,9 +2177,11 @@ app.get('/api/di/group-documents', requireAuth, async (req, res) => {
 app.get('/api/di/group-documents/:id/download', requireAuth, async (req, res) => {
     try {
         const { id } = req.params;
+        const user = req.session.user;
+        const isPI = user.role === 'pi' || user.role === 'PI';
 
         const result = await pool.query(
-            'SELECT filename, r2_object_key FROM di_group_documents WHERE id = $1 AND is_active = true',
+            'SELECT filename, r2_object_key, COALESCE(can_download, true) as can_download FROM di_group_documents WHERE id = $1 AND is_active = true',
             [id]
         );
 
@@ -2186,6 +2190,11 @@ app.get('/api/di/group-documents/:id/download', requireAuth, async (req, res) =>
         }
 
         const doc = result.rows[0];
+
+        // Check download permission (PI can always download)
+        if (!isPI && !doc.can_download) {
+            return res.status(403).json({ error: 'This document is view-only. Download not permitted.' });
+        }
 
         if (!r2Enabled()) {
             return res.status(503).json({ error: 'R2 storage not configured' });
@@ -2215,6 +2224,7 @@ app.get('/api/di/group-documents/:id/download', requireAuth, async (req, res) =>
 app.post('/api/di/group-documents', requirePI, groupDocUpload.single('file'), async (req, res) => {
     try {
         const { title, category, description } = req.body;
+        const canDownload = req.body.can_download !== 'false' && req.body.can_download !== false;
         const file = req.file;
 
         if (!title || !category) {
@@ -2240,10 +2250,10 @@ app.post('/api/di/group-documents', requirePI, groupDocUpload.single('file'), as
         await uploadToR2(file.buffer, key, file.mimetype);
 
         const result = await pool.query(
-            `INSERT INTO di_group_documents (title, category, description, filename, file_type, r2_object_key, uploaded_by)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)
-             RETURNING id, title, category, description, filename, file_type, created_at`,
-            [title, category, description || null, file.originalname, fileType, key, user.researcher_id]
+            `INSERT INTO di_group_documents (title, category, description, filename, file_type, r2_object_key, uploaded_by, can_download)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+             RETURNING id, title, category, description, filename, file_type, created_at, can_download`,
+            [title, category, description || null, file.originalname, fileType, key, user.researcher_id, canDownload]
         );
 
         res.json({
@@ -2266,18 +2276,20 @@ app.post('/api/di/group-documents', requirePI, groupDocUpload.single('file'), as
 app.put('/api/di/group-documents/:id', requirePI, async (req, res) => {
     try {
         const { id } = req.params;
-        const { title, category, description } = req.body;
+        const { title, category, description, can_download } = req.body;
 
         if (!title || !category) {
             return res.status(400).json({ error: 'Title and category are required' });
         }
 
+        const canDownloadValue = can_download !== false && can_download !== 'false';
+
         const result = await pool.query(
             `UPDATE di_group_documents
-             SET title = $1, category = $2, description = $3, updated_at = CURRENT_TIMESTAMP
-             WHERE id = $4 AND is_active = true
-             RETURNING id, title, category, description, filename, file_type, created_at, updated_at`,
-            [title, category, description || null, id]
+             SET title = $1, category = $2, description = $3, can_download = $4, updated_at = CURRENT_TIMESTAMP
+             WHERE id = $5 AND is_active = true
+             RETURNING id, title, category, description, filename, file_type, created_at, updated_at, can_download`,
+            [title, category, description || null, canDownloadValue, id]
         );
 
         if (result.rows.length === 0) {
@@ -2335,6 +2347,364 @@ app.delete('/api/di/group-documents/:id', requirePI, async (req, res) => {
 
     } catch (err) {
         console.error('Delete group document error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// =====================================================
+// PI PORTAL ENDPOINTS
+// =====================================================
+
+// GET /api/di/pending-approvals
+// List pending submissions for PI review
+app.get('/api/di/pending-approvals', requirePI, async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT s.submission_id, s.researcher_id, s.original_filename, s.file_type,
+                    s.status, s.created_at, s.ai_review,
+                    a.name as researcher_name
+             FROM di_submissions s
+             LEFT JOIN di_allowlist a ON s.researcher_id = a.researcher_id
+             WHERE s.status = 'PENDING'
+             ORDER BY s.created_at DESC`
+        );
+
+        res.json({
+            success: true,
+            count: result.rows.length,
+            submissions: result.rows
+        });
+
+    } catch (err) {
+        console.error('Get pending approvals error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/di/lab-files
+// Get all submissions as flat list for Laboratory Files tab
+app.get('/api/di/lab-files', requirePI, async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT s.submission_id, s.researcher_id, s.original_filename, s.file_type,
+                    s.status, s.created_at, s.signed_at, s.drive_file_id,
+                    COALESCE(s.drive_file_id, s.signed_pdf_path) as r2_object_key,
+                    a.name as researcher_name
+             FROM di_submissions s
+             LEFT JOIN di_allowlist a ON s.researcher_id = a.researcher_id
+             ORDER BY s.created_at DESC`
+        );
+
+        res.json({
+            success: true,
+            count: result.rows.length,
+            files: result.rows
+        });
+
+    } catch (err) {
+        console.error('Get lab files error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/di/bulk-download
+// Download multiple files as ZIP
+app.post('/api/di/bulk-download', requirePI, async (req, res) => {
+    try {
+        const { submission_ids } = req.body;
+
+        if (!Array.isArray(submission_ids) || submission_ids.length === 0) {
+            return res.status(400).json({ error: 'No files selected' });
+        }
+
+        if (!r2Enabled()) {
+            return res.status(503).json({ error: 'R2 storage not configured' });
+        }
+
+        // Fetch file metadata
+        const result = await pool.query(
+            `SELECT submission_id, original_filename, drive_file_id, signed_pdf_path
+             FROM di_submissions
+             WHERE submission_id = ANY($1::uuid[])`,
+            [submission_ids]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'No files found' });
+        }
+
+        // Set response headers for ZIP
+        res.setHeader('Content-Type', 'application/zip');
+        res.setHeader('Content-Disposition', 'attachment; filename="lab-files.zip"');
+
+        // Create archive
+        const archive = archiver('zip', { zlib: { level: 5 } });
+
+        archive.on('error', (err) => {
+            console.error('[BULK-DOWNLOAD] Archive error:', err);
+            if (!res.headersSent) {
+                res.status(500).json({ error: 'Archive creation failed' });
+            }
+        });
+
+        archive.pipe(res);
+
+        // Add files from R2
+        for (const file of result.rows) {
+            const fileId = file.signed_pdf_path || file.drive_file_id;
+            if (!fileId) continue;
+
+            const key = fileId.replace(/^r2:/, '');
+            try {
+                const obj = await downloadFromR2(key);
+                const buffer = await streamToBuffer(obj.Body);
+                archive.append(buffer, { name: file.original_filename });
+            } catch (e) {
+                console.warn(`[BULK-DOWNLOAD] Skipping file ${file.submission_id}:`, e.message);
+            }
+        }
+
+        await archive.finalize();
+
+    } catch (err) {
+        console.error('Bulk download error:', err);
+        if (!res.headersSent) {
+            res.status(500).json({ error: 'Server error' });
+        }
+    }
+});
+
+// GET /api/di/all-members
+// Get all members including inactive (for User Management)
+app.get('/api/di/all-members', requirePI, async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT a.researcher_id, a.name, a.institution_email, a.affiliation,
+                    a.active, COALESCE(a.role, 'researcher') as role,
+                    a.created_at, a.deactivated_at, a.deactivated_by,
+                    u.last_login,
+                    (SELECT COUNT(*) FROM di_submissions s WHERE s.researcher_id = a.researcher_id) as submission_count
+             FROM di_allowlist a
+             LEFT JOIN di_users u ON a.institution_email = u.institution_email
+             ORDER BY a.active DESC, a.name`
+        );
+
+        res.json({
+            success: true,
+            count: result.rows.length,
+            members: result.rows
+        });
+
+    } catch (err) {
+        console.error('Get all members error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// PUT /api/di/members/:id/deactivate
+// Deactivate a user (soft delete)
+app.put('/api/di/members/:id/deactivate', requirePI, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const piUser = req.session.user;
+
+        // Prevent PI from deactivating themselves
+        if (id === piUser.researcher_id) {
+            return res.status(400).json({ error: 'Cannot deactivate yourself' });
+        }
+
+        const result = await pool.query(
+            `UPDATE di_allowlist
+             SET active = false, deactivated_at = CURRENT_TIMESTAMP, deactivated_by = $1
+             WHERE researcher_id = $2
+             RETURNING researcher_id, name, active`,
+            [piUser.researcher_id, id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        res.json({
+            success: true,
+            message: 'User deactivated successfully',
+            member: result.rows[0]
+        });
+
+    } catch (err) {
+        console.error('Deactivate user error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// PUT /api/di/members/:id/reactivate
+// Reactivate a user
+app.put('/api/di/members/:id/reactivate', requirePI, async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const result = await pool.query(
+            `UPDATE di_allowlist
+             SET active = true, deactivated_at = NULL, deactivated_by = NULL
+             WHERE researcher_id = $1
+             RETURNING researcher_id, name, active`,
+            [id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        res.json({
+            success: true,
+            message: 'User reactivated successfully',
+            member: result.rows[0]
+        });
+
+    } catch (err) {
+        console.error('Reactivate user error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/di/metrics
+// Dashboard metrics for PI portal
+app.get('/api/di/metrics', requirePI, async (req, res) => {
+    try {
+        // Get submissions by status
+        const statusResult = await pool.query(
+            `SELECT status, COUNT(*)::int as count
+             FROM di_submissions
+             GROUP BY status`
+        );
+
+        const byStatus = {};
+        let total = 0;
+        statusResult.rows.forEach(row => {
+            byStatus[row.status] = row.count;
+            total += row.count;
+        });
+
+        // Get submissions by researcher
+        const researcherResult = await pool.query(
+            `SELECT researcher_id,
+                    COUNT(*)::int as total,
+                    COUNT(CASE WHEN status = 'APPROVED' THEN 1 END)::int as approved
+             FROM di_submissions
+             GROUP BY researcher_id
+             ORDER BY total DESC
+             LIMIT 10`
+        );
+
+        // Get total active researchers
+        const activeResearchers = await pool.query(
+            `SELECT COUNT(*)::int as count FROM di_allowlist WHERE active = true`
+        );
+
+        // Get this month submissions
+        const thisMonthResult = await pool.query(
+            `SELECT COUNT(*)::int as count
+             FROM di_submissions
+             WHERE created_at >= date_trunc('month', CURRENT_DATE)`
+        );
+
+        res.json({
+            success: true,
+            total,
+            byStatus,
+            byResearcher: researcherResult.rows,
+            totalResearchers: activeResearchers.rows[0]?.count || 0,
+            thisMonth: thisMonthResult.rows[0]?.count || 0
+        });
+
+    } catch (err) {
+        console.error('Get metrics error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/di/reports/export
+// Export submissions as CSV
+app.get('/api/di/reports/export', requirePI, async (req, res) => {
+    try {
+        const { from, to, status, format } = req.query;
+
+        let query = `
+            SELECT s.submission_id, s.researcher_id, s.original_filename, s.file_type,
+                   s.status, s.created_at, s.signed_at, s.signer_name,
+                   s.verification_code, s.revision_comments,
+                   a.name as researcher_name, a.affiliation
+            FROM di_submissions s
+            LEFT JOIN di_allowlist a ON s.researcher_id = a.researcher_id
+            WHERE 1=1
+        `;
+        const params = [];
+        let paramIndex = 1;
+
+        if (status) {
+            params.push(status);
+            query += ` AND s.status = $${paramIndex}`;
+            paramIndex++;
+        }
+
+        if (from) {
+            params.push(from);
+            query += ` AND s.created_at >= $${paramIndex}`;
+            paramIndex++;
+        }
+
+        if (to) {
+            params.push(to);
+            query += ` AND s.created_at <= $${paramIndex}::date + interval '1 day'`;
+            paramIndex++;
+        }
+
+        query += ` ORDER BY s.created_at DESC`;
+
+        const result = await pool.query(query, params);
+
+        if (format === 'csv') {
+            // Generate CSV
+            const headers = [
+                'Submission ID', 'Researcher ID', 'Researcher Name', 'Affiliation',
+                'Filename', 'File Type', 'Status', 'Created At', 'Signed At',
+                'Signer Name', 'Verification Code', 'Revision Comments'
+            ];
+
+            const rows = result.rows.map(r => [
+                r.submission_id,
+                r.researcher_id,
+                r.researcher_name || '',
+                r.affiliation || '',
+                r.original_filename,
+                r.file_type,
+                r.status,
+                r.created_at ? new Date(r.created_at).toISOString() : '',
+                r.signed_at ? new Date(r.signed_at).toISOString() : '',
+                r.signer_name || '',
+                r.verification_code || '',
+                (r.revision_comments || '').replace(/"/g, '""')
+            ]);
+
+            const csv = [
+                headers.join(','),
+                ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+            ].join('\n');
+
+            res.setHeader('Content-Type', 'text/csv');
+            res.setHeader('Content-Disposition', `attachment; filename="submissions-export-${new Date().toISOString().split('T')[0]}.csv"`);
+            return res.send(csv);
+        }
+
+        // Default: return JSON
+        res.json({
+            success: true,
+            count: result.rows.length,
+            submissions: result.rows
+        });
+
+    } catch (err) {
+        console.error('Export error:', err);
         res.status(500).json({ error: 'Server error' });
     }
 });

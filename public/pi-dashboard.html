@@ -47,27 +47,51 @@
         }
         .logout-btn:hover { background: rgba(255,255,255,0.3); }
 
-        .main-container {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-            padding: 20px;
-            max-width: 1400px;
-            margin: 0 auto;
+        /* Tab Navigation */
+        .tab-nav {
+            background: white;
+            border-bottom: 2px solid #e0e0e0;
+            display: flex;
+            padding: 0 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .tab-btn {
+            padding: 15px 25px;
+            cursor: pointer;
+            border: none;
+            background: none;
+            font-size: 14px;
+            font-weight: 500;
+            color: #666;
+            border-bottom: 3px solid transparent;
+            margin-bottom: -2px;
+            transition: all 0.2s;
+        }
+        .tab-btn:hover { color: #1a365d; background: #f8f9fa; }
+        .tab-btn.active {
+            color: #1a365d;
+            border-bottom-color: #1a365d;
+        }
+        .tab-btn .badge {
+            background: #dc3545;
+            color: white;
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 10px;
+            margin-left: 6px;
         }
 
-        .full-width-panel {
-            grid-column: 1 / -1;
-        }
+        /* Tab Content */
+        .tab-content { display: none; padding: 20px; max-width: 1600px; margin: 0 auto; }
+        .tab-content.active { display: block; }
 
+        /* Panels */
         .panel {
             background: white;
             border-radius: 10px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.08);
             overflow: hidden;
-            display: flex;
-            flex-direction: column;
-            max-height: calc(100vh - 120px);
+            margin-bottom: 20px;
         }
         .panel-header {
             background: #f8f9fa;
@@ -84,41 +108,93 @@
             align-items: center;
             gap: 10px;
         }
-        .panel-header .icon {
-            font-size: 20px;
-        }
-        .panel-content {
-            padding: 20px;
-            flex: 1;
-            overflow-y: auto;
-        }
+        .panel-header .icon { font-size: 20px; }
+        .panel-content { padding: 20px; }
 
-        /* Upload Panel */
-        .upload-form label {
+        /* Stats Cards */
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+            text-align: center;
+        }
+        .stat-card .stat-value {
+            font-size: 36px;
+            font-weight: bold;
+            color: #1a365d;
+        }
+        .stat-card .stat-label {
+            font-size: 13px;
+            color: #666;
+            margin-top: 5px;
+        }
+        .stat-card.pending .stat-value { color: #ffc107; }
+        .stat-card.approved .stat-value { color: #28a745; }
+        .stat-card.revision .stat-value { color: #dc3545; }
+
+        /* Grid Layouts */
+        .two-column { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .upload-column { max-width: 500px; }
+
+        /* Forms */
+        .form-group { margin-bottom: 15px; }
+        .form-group label {
             display: block;
             margin-bottom: 6px;
             color: #333;
             font-weight: bold;
             font-size: 14px;
         }
-        .upload-form select, .upload-form input[type="text"] {
+        .form-group input, .form-group select, .form-group textarea {
             width: 100%;
             padding: 10px;
             border: 2px solid #ddd;
             border-radius: 6px;
             font-size: 14px;
-            margin-bottom: 15px;
         }
-        .upload-form select:focus, .upload-form input:focus {
+        .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
             outline: none;
             border-color: #2d5a87;
         }
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+        .form-group.full-width { grid-column: 1 / -1; }
+        .form-group textarea { resize: vertical; min-height: 60px; }
+
+        /* Checkbox Group */
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 8px;
+        }
+        .checkbox-group input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+        .checkbox-group label {
+            margin: 0;
+            font-weight: normal;
+            cursor: pointer;
+        }
+
+        /* File Upload */
         .file-upload {
             border: 2px dashed #ddd;
             border-radius: 8px;
             padding: 25px;
             text-align: center;
-            margin-bottom: 15px;
             cursor: pointer;
             transition: all 0.3s;
         }
@@ -128,23 +204,139 @@
         .file-upload-text { color: #666; font-size: 13px; }
         .file-upload-text strong { color: #2d5a87; }
         .file-name { margin-top: 8px; color: #28a745; font-weight: bold; font-size: 13px; }
-        .upload-btn {
-            width: 100%;
-            padding: 12px;
-            background: #2d5a87;
-            color: white;
+
+        /* Buttons */
+        .btn {
+            padding: 10px 20px;
             border: none;
             border-radius: 6px;
             font-size: 14px;
             cursor: pointer;
+            transition: all 0.2s;
         }
-        .upload-btn:hover { background: #1a365d; }
-        .upload-btn:disabled { background: #ccc; cursor: not-allowed; }
+        .btn-primary { background: #2d5a87; color: white; }
+        .btn-primary:hover { background: #1a365d; }
+        .btn-primary:disabled { background: #ccc; cursor: not-allowed; }
+        .btn-success { background: #28a745; color: white; }
+        .btn-success:hover { background: #218838; }
+        .btn-danger { background: #dc3545; color: white; }
+        .btn-danger:hover { background: #c82333; }
+        .btn-warning { background: #ffc107; color: #333; }
+        .btn-warning:hover { background: #e0a800; }
+        .btn-secondary { background: #6c757d; color: white; }
+        .btn-secondary:hover { background: #5a6268; }
+        .btn-sm { padding: 4px 8px; font-size: 11px; }
+        .btn-full { width: 100%; }
 
-        /* Directory Panel */
-        .directory-tree {
+        /* Tables */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
             font-size: 13px;
         }
+        .data-table th {
+            background: #f8f9fa;
+            padding: 12px;
+            text-align: left;
+            border-bottom: 2px solid #e0e0e0;
+            font-size: 12px;
+            color: #666;
+            font-weight: 600;
+        }
+        .data-table td {
+            padding: 12px;
+            border-bottom: 1px solid #e0e0e0;
+            vertical-align: middle;
+        }
+        .data-table tr:hover { background: #f8f9fa; }
+
+        /* Status Badges */
+        .status-badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: bold;
+        }
+        .status-pending { background: #fff3cd; color: #856404; }
+        .status-approved { background: #d4edda; color: #155724; }
+        .status-revision { background: #f8d7da; color: #721c24; }
+        .status-active { background: #d4edda; color: #155724; }
+        .status-inactive { background: #e2e3e5; color: #6c757d; }
+
+        /* Type Badges */
+        .type-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 10px;
+            font-weight: bold;
+        }
+        .type-badge.pdf { background: #fee; color: #c00; }
+        .type-badge.excel { background: #efe; color: #060; }
+        .type-badge.word { background: #eef; color: #00c; }
+        .type-badge.powerpoint { background: #fef3e0; color: #e65100; }
+        .type-badge.sop { background: #e3f2fd; color: #1565c0; }
+        .type-badge.data { background: #fff3e0; color: #e65100; }
+
+        /* Role Badge */
+        .role-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 10px;
+            font-weight: bold;
+        }
+        .role-badge.pi { background: #ffc107; color: #333; }
+        .role-badge.researcher { background: #e0e0e0; color: #333; }
+
+        /* Actions */
+        .actions { display: flex; gap: 5px; }
+
+        /* Filter Bar */
+        .filter-bar {
+            display: flex;
+            gap: 15px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            align-items: flex-end;
+        }
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .filter-group label {
+            font-size: 11px;
+            font-weight: bold;
+            color: #666;
+        }
+        .filter-group select, .filter-group input {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 13px;
+            min-width: 150px;
+        }
+
+        /* Bulk Actions Bar */
+        .bulk-actions {
+            display: flex;
+            gap: 10px;
+            padding: 10px 15px;
+            background: #e3f2fd;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            align-items: center;
+        }
+        .bulk-actions.hidden { display: none; }
+        .bulk-actions span { font-size: 13px; color: #1a365d; font-weight: bold; }
+
+        /* Tree View */
+        .directory-tree { font-size: 13px; }
         .tree-item {
             padding: 8px 10px;
             cursor: pointer;
@@ -154,68 +346,17 @@
             gap: 8px;
         }
         .tree-item:hover { background: #f0f2f5; }
-        .tree-item.selected { background: #e3f2fd; }
         .tree-item .icon { font-size: 16px; }
         .tree-folder { font-weight: bold; color: #1a365d; }
         .tree-file { color: #333; padding-left: 20px; }
         .tree-children { margin-left: 20px; border-left: 1px solid #e0e0e0; }
         .tree-children.collapsed { display: none; }
-        .file-actions {
-            margin-left: auto;
-            display: flex;
-            gap: 5px;
-        }
-        .file-actions button {
-            padding: 4px 8px;
-            font-size: 11px;
-            border: none;
-            border-radius: 3px;
-            cursor: pointer;
-        }
-        .btn-view { background: #007bff; color: white; }
-        .btn-download { background: #28a745; color: white; }
-        .btn-delete { background: #dc3545; color: white; }
-        .file-checkbox {
-            width: 16px;
-            height: 16px;
-            cursor: pointer;
-            margin-right: 5px;
-        }
-        .bulk-actions {
-            display: flex;
-            gap: 10px;
-            padding: 10px;
-            background: #e3f2fd;
-            border-radius: 6px;
-            margin-bottom: 15px;
-            align-items: center;
-        }
-        .bulk-actions.hidden { display: none; }
-        .bulk-actions span { font-size: 13px; color: #1a365d; font-weight: bold; }
-        .bulk-actions button {
-            padding: 6px 12px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 12px;
-        }
-        .btn-bulk-download { background: #28a745; color: white; }
-        .btn-bulk-delete { background: #dc3545; color: white; }
-        .btn-select-all { background: #6c757d; color: white; }
-        .btn-clear-selection { background: #ffc107; color: #333; }
-        .file-status {
-            font-size: 10px;
-            padding: 2px 6px;
-            border-radius: 10px;
-            margin-left: 8px;
-        }
-        .status-approved { background: #d4edda; color: #155724; }
-        .status-pending { background: #fff3cd; color: #856404; }
-        .status-revision { background: #f8d7da; color: #721c24; }
+        .file-checkbox { width: 16px; height: 16px; cursor: pointer; }
+        .file-actions { margin-left: auto; display: flex; gap: 5px; }
 
         /* Messages */
         .message {
-            padding: 10px;
+            padding: 12px 15px;
             border-radius: 6px;
             margin-bottom: 15px;
             font-size: 13px;
@@ -224,13 +365,10 @@
         .message.show { display: block; }
         .message.success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
         .message.error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .message.info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
 
         /* Loading */
-        .loading {
-            text-align: center;
-            padding: 20px;
-            color: #666;
-        }
+        .loading { text-align: center; padding: 30px; color: #666; }
         .spinner {
             border: 3px solid #f3f3f3;
             border-top: 3px solid #2d5a87;
@@ -245,123 +383,38 @@
             100% { transform: rotate(360deg); }
         }
 
-        /* Group Documents Management */
-        .group-doc-form {
-            background: #f8f9fa;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-        }
-
-        .group-doc-form h3 {
-            font-size: 14px;
-            color: #1a365d;
-            margin-bottom: 15px;
-        }
-
-        .form-row {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px;
-            margin-bottom: 15px;
-        }
-
-        .form-group {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .form-group.full-width {
-            grid-column: 1 / -1;
-        }
-
-        .form-group label {
-            font-size: 12px;
-            font-weight: bold;
-            color: #333;
-            margin-bottom: 5px;
-        }
-
-        .form-group input,
-        .form-group select,
-        .form-group textarea {
-            padding: 8px 10px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 13px;
-        }
-
-        .form-group textarea {
-            resize: vertical;
-            min-height: 60px;
-        }
-
-        .doc-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 13px;
-        }
-
-        .doc-table th {
-            background: #f8f9fa;
-            padding: 10px;
-            text-align: left;
-            border-bottom: 2px solid #e0e0e0;
+        /* AI Review Summary */
+        .ai-summary {
             font-size: 12px;
             color: #666;
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
-
-        .doc-table td {
-            padding: 10px;
-            border-bottom: 1px solid #e0e0e0;
-            vertical-align: middle;
-        }
-
-        .doc-table tr:hover {
-            background: #f8f9fa;
-        }
-
-        .doc-type-badge {
+        .ai-score {
             display: inline-block;
-            padding: 2px 8px;
-            border-radius: 10px;
+            padding: 2px 6px;
+            border-radius: 4px;
             font-size: 10px;
             font-weight: bold;
         }
-
-        .doc-type-badge.pdf { background: #fee; color: #c00; }
-        .doc-type-badge.excel { background: #efe; color: #060; }
-        .doc-type-badge.word { background: #eef; color: #00c; }
-        .doc-type-badge.powerpoint { background: #fef3e0; color: #e65100; }
-
-        .doc-actions {
-            display: flex;
-            gap: 5px;
-        }
-
-        .doc-actions button {
-            padding: 4px 8px;
-            font-size: 11px;
-            border: none;
-            border-radius: 3px;
-            cursor: pointer;
-        }
-
-        .btn-edit { background: #ffc107; color: #333; }
-        .btn-delete-doc { background: #dc3545; color: white; }
-        .btn-download-doc { background: #28a745; color: white; }
+        .ai-score.high { background: #d4edda; color: #155724; }
+        .ai-score.medium { background: #fff3cd; color: #856404; }
+        .ai-score.low { background: #f8d7da; color: #721c24; }
 
         /* Responsive */
         @media (max-width: 1200px) {
-            .main-container {
-                grid-template-columns: 1fr;
-            }
-            .panel {
-                max-height: none;
-            }
-            .form-row {
-                grid-template-columns: 1fr;
-            }
+            .two-column { grid-template-columns: 1fr; }
+            .form-row { grid-template-columns: 1fr; }
+            .tab-nav { overflow-x: auto; }
+        }
+        @media (max-width: 768px) {
+            .tab-btn { padding: 12px 15px; font-size: 12px; }
+            .stats-row { grid-template-columns: 1fr 1fr; }
+            .filter-bar { flex-direction: column; }
+            .filter-group { width: 100%; }
+            .filter-group select, .filter-group input { width: 100%; }
         }
     </style>
 </head>
@@ -375,75 +428,156 @@
         </div>
     </div>
 
-    <div class="main-container">
-        <!-- Panel 1: Upload -->
-        <div class="panel">
-            <div class="panel-header">
-                <h2><span class="icon">&#128194;</span> Upload Document</h2>
+    <!-- Tab Navigation -->
+    <div class="tab-nav">
+        <button class="tab-btn active" data-tab="dashboard">Dashboard <span class="badge" id="pendingBadge" style="display:none;">0</span></button>
+        <button class="tab-btn" data-tab="lab-files">Laboratory Files</button>
+        <button class="tab-btn" data-tab="group-docs">Group Documents</button>
+        <button class="tab-btn" data-tab="user-mgmt">User Management</button>
+        <button class="tab-btn" data-tab="reports">Reports</button>
+    </div>
+
+    <!-- ==================== DASHBOARD TAB ==================== -->
+    <div class="tab-content active" id="tab-dashboard">
+        <!-- Stats Row -->
+        <div class="stats-row">
+            <div class="stat-card pending">
+                <div class="stat-value" id="statPending">-</div>
+                <div class="stat-label">Pending Review</div>
             </div>
-            <div class="panel-content">
-                <div id="uploadMessage" class="message"></div>
-                <form id="uploadForm" class="upload-form">
-                    <label for="uploadResearcher">Upload for Researcher</label>
-                    <select id="uploadResearcher" required>
-                        <option value="">Select researcher...</option>
-                    </select>
-
-                    <label for="fileType">File Type</label>
-                    <select id="fileType" required>
-                        <option value="">Select file type...</option>
-                        <option value="SOP">SOP (Standard Operating Procedure)</option>
-                        <option value="DATA">DATA (Research Data)</option>
-                    </select>
-
-                    <label>File</label>
-                    <div class="file-upload" id="fileUploadArea">
-                        <input type="file" id="fileInput" required>
-                        <p class="file-upload-text">
-                            <strong>Click to select a file</strong><br>
-                            or drag and drop here
-                        </p>
-                        <p class="file-name" id="fileName"></p>
-                    </div>
-
-                    <button type="submit" class="upload-btn" id="uploadBtn">Upload File</button>
-                </form>
+            <div class="stat-card approved">
+                <div class="stat-value" id="statApproved">-</div>
+                <div class="stat-label">Approved</div>
+            </div>
+            <div class="stat-card revision">
+                <div class="stat-value" id="statRevision">-</div>
+                <div class="stat-label">Revision Needed</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="statTotal">-</div>
+                <div class="stat-label">Total Submissions</div>
             </div>
         </div>
 
-        <!-- Panel 2: Directory Browser -->
-        <div class="panel">
-            <div class="panel-header">
-                <h2><span class="icon">&#128193;</span> Lab Directory</h2>
-                <button onclick="loadDirectory()" style="padding:5px 10px;font-size:12px;cursor:pointer;border:1px solid #ddd;border-radius:4px;background:white;">Refresh</button>
-            </div>
-            <div class="panel-content">
-                <div id="bulkActions" class="bulk-actions hidden">
-                    <span id="selectedCount">0 selected</span>
-                    <button class="btn-select-all" onclick="selectAllFiles()">Select All</button>
-                    <button class="btn-clear-selection" onclick="clearSelection()">Clear</button>
-                    <button class="btn-bulk-download" onclick="bulkDownload()">Download Selected</button>
-                    <button class="btn-bulk-delete" onclick="bulkDelete()">Delete Selected</button>
+        <div class="two-column">
+            <!-- Pending Approvals -->
+            <div class="panel">
+                <div class="panel-header">
+                    <h2><span class="icon">&#128203;</span> Pending Approvals</h2>
+                    <button class="btn btn-sm btn-secondary" onclick="loadPendingApprovals()">Refresh</button>
                 </div>
-                <div id="directoryTree" class="directory-tree">
-                    <div class="loading">
-                        <div class="spinner"></div>
-                        Loading directory...
+                <div class="panel-content" style="max-height: 500px; overflow-y: auto;">
+                    <div id="pendingApprovalsContainer">
+                        <div class="loading"><div class="spinner"></div>Loading...</div>
                     </div>
                 </div>
             </div>
-        </div>
 
-        <!-- Panel 3: Group Documents Management (Full Width) -->
-        <div class="panel full-width-panel">
+            <!-- Quick Upload -->
+            <div class="panel upload-column">
+                <div class="panel-header">
+                    <h2><span class="icon">&#128194;</span> Quick Upload</h2>
+                </div>
+                <div class="panel-content">
+                    <div id="uploadMessage" class="message"></div>
+                    <form id="uploadForm">
+                        <div class="form-group">
+                            <label for="uploadResearcher">Upload for Researcher</label>
+                            <select id="uploadResearcher" required>
+                                <option value="">Select researcher...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="fileType">File Type</label>
+                            <select id="fileType" required>
+                                <option value="">Select file type...</option>
+                                <option value="SOP">SOP (Standard Operating Procedure)</option>
+                                <option value="DATA">DATA (Research Data)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>File</label>
+                            <div class="file-upload" id="fileUploadArea">
+                                <input type="file" id="fileInput" accept=".pdf" required>
+                                <p class="file-upload-text">
+                                    <strong>Click to select a file</strong><br>
+                                    or drag and drop here
+                                </p>
+                                <p class="file-name" id="fileName"></p>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-full" id="uploadBtn">Upload File</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== LABORATORY FILES TAB ==================== -->
+    <div class="tab-content" id="tab-lab-files">
+        <div class="panel">
+            <div class="panel-header">
+                <h2><span class="icon">&#128193;</span> Laboratory Files</h2>
+                <button class="btn btn-sm btn-secondary" onclick="loadLabFiles()">Refresh</button>
+            </div>
+            <div class="panel-content">
+                <!-- Filters -->
+                <div class="filter-bar">
+                    <div class="filter-group">
+                        <label>Status</label>
+                        <select id="filterStatus" onchange="applyFilters()">
+                            <option value="">All Statuses</option>
+                            <option value="PENDING">Pending</option>
+                            <option value="APPROVED">Approved</option>
+                            <option value="REVISION_NEEDED">Revision Needed</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>Year</label>
+                        <select id="filterYear" onchange="applyFilters()">
+                            <option value="">All Years</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>Researcher</label>
+                        <select id="filterResearcher" onchange="applyFilters()">
+                            <option value="">All Researchers</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>Search</label>
+                        <input type="text" id="filterSearch" placeholder="Search filename..." oninput="applyFilters()">
+                    </div>
+                </div>
+
+                <!-- Bulk Actions -->
+                <div id="labBulkActions" class="bulk-actions hidden">
+                    <span id="labSelectedCount">0 selected</span>
+                    <button class="btn btn-sm btn-secondary" onclick="selectAllLabFiles()">Select All</button>
+                    <button class="btn btn-sm btn-warning" onclick="clearLabSelection()">Clear</button>
+                    <button class="btn btn-sm btn-success" onclick="bulkDownloadLab()">Download Selected</button>
+                    <button class="btn btn-sm btn-danger" onclick="bulkDeleteLab()">Delete Selected</button>
+                </div>
+
+                <!-- Tree View -->
+                <div id="labFilesTree" class="directory-tree">
+                    <div class="loading"><div class="spinner"></div>Loading files...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== GROUP DOCUMENTS TAB ==================== -->
+    <div class="tab-content" id="tab-group-docs">
+        <div class="panel">
             <div class="panel-header">
                 <h2><span class="icon">&#128218;</span> Group Documents</h2>
-                <button onclick="loadGroupDocuments()" style="padding:5px 10px;font-size:12px;cursor:pointer;border:1px solid #ddd;border-radius:4px;background:white;">Refresh</button>
+                <button class="btn btn-sm btn-secondary" onclick="loadGroupDocuments()">Refresh</button>
             </div>
             <div class="panel-content">
                 <!-- Upload Form -->
-                <div class="group-doc-form">
-                    <h3>Upload New Document</h3>
+                <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+                    <h3 style="font-size: 14px; color: #1a365d; margin-bottom: 15px;">Upload New Document</h3>
                     <div id="groupDocMessage" class="message"></div>
                     <form id="groupDocForm">
                         <div class="form-row">
@@ -473,73 +607,271 @@
                         <div class="form-row">
                             <div class="form-group">
                                 <label>File * (PDF, Word, Excel, PowerPoint)</label>
-                                <div class="file-upload" id="groupDocUploadArea" style="padding:15px;">
+                                <div class="file-upload" id="groupDocUploadArea" style="padding: 15px;">
                                     <input type="file" id="groupDocFile" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx">
-                                    <p class="file-upload-text" style="margin:0;">
+                                    <p class="file-upload-text" style="margin: 0;">
                                         <strong>Click to select</strong> or drag and drop
                                     </p>
-                                    <p class="file-name" id="groupDocFileName" style="margin:5px 0 0 0;"></p>
+                                    <p class="file-name" id="groupDocFileName" style="margin: 5px 0 0 0;"></p>
                                 </div>
                             </div>
-                            <div class="form-group" style="justify-content:flex-end;">
-                                <button type="submit" class="upload-btn" id="groupDocSubmitBtn" style="height:50px;">
-                                    Upload Document
-                                </button>
+                            <div class="form-group">
+                                <label>Permissions</label>
+                                <div class="checkbox-group">
+                                    <input type="checkbox" id="docCanDownload" checked>
+                                    <label for="docCanDownload">Allow researchers to download</label>
+                                </div>
+                                <p style="font-size: 11px; color: #666; margin-top: 5px;">If unchecked, researchers can only view online</p>
                             </div>
                         </div>
+                        <button type="submit" class="btn btn-primary" id="groupDocSubmitBtn">Upload Document</button>
                     </form>
                 </div>
 
                 <!-- Documents Table -->
-                <table class="doc-table">
+                <table class="data-table">
                     <thead>
                         <tr>
                             <th>Title</th>
                             <th>Category</th>
                             <th>Type</th>
-                            <th>Filename</th>
+                            <th>Download</th>
                             <th>Uploaded</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody id="groupDocsTableBody">
-                        <tr>
-                            <td colspan="6" style="text-align:center;padding:20px;color:#666;">
-                                <div class="loading">
-                                    <div class="spinner"></div>
-                                    Loading documents...
-                                </div>
-                            </td>
-                        </tr>
+                        <tr><td colspan="6"><div class="loading"><div class="spinner"></div>Loading...</div></td></tr>
                     </tbody>
                 </table>
             </div>
         </div>
+    </div>
 
+    <!-- ==================== USER MANAGEMENT TAB ==================== -->
+    <div class="tab-content" id="tab-user-mgmt">
+        <div class="two-column">
+            <!-- Add User Form -->
+            <div class="panel">
+                <div class="panel-header">
+                    <h2><span class="icon">&#128100;</span> Add New User</h2>
+                </div>
+                <div class="panel-content">
+                    <div id="addUserMessage" class="message"></div>
+                    <form id="addUserForm">
+                        <div class="form-group">
+                            <label for="newUserName">Full Name *</label>
+                            <input type="text" id="newUserName" required placeholder="John Doe">
+                        </div>
+                        <div class="form-group">
+                            <label for="newUserEmail">Institution Email *</label>
+                            <input type="email" id="newUserEmail" required placeholder="john.doe@liu.se">
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="newUserAffiliation">Affiliation *</label>
+                                <select id="newUserAffiliation" required>
+                                    <option value="">Select...</option>
+                                    <option value="LiU">LiU</option>
+                                    <option value="UNAV">UNAV</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="newUserRole">Role *</label>
+                                <select id="newUserRole" required>
+                                    <option value="researcher">Researcher</option>
+                                    <option value="pi">Principal Investigator</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-full" id="addUserBtn">Add User</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- User Info -->
+            <div class="panel">
+                <div class="panel-header">
+                    <h2><span class="icon">&#128712;</span> User Management Info</h2>
+                </div>
+                <div class="panel-content">
+                    <div class="message info show">
+                        <strong>Deactivation Policy:</strong><br><br>
+                        When a user is deactivated:
+                        <ul style="margin: 10px 0 0 20px;">
+                            <li>They cannot log in or use the system</li>
+                            <li>All their historical data remains intact</li>
+                            <li>Their submissions are preserved</li>
+                        </ul>
+                        <br>
+                        When reactivated:
+                        <ul style="margin: 10px 0 0 20px;">
+                            <li>All previous data, roles, and submissions are restored</li>
+                            <li>They can log in again with the same credentials</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Users Table -->
+        <div class="panel">
+            <div class="panel-header">
+                <h2><span class="icon">&#128101;</span> All Users</h2>
+                <button class="btn btn-sm btn-secondary" onclick="loadAllUsers()">Refresh</button>
+            </div>
+            <div class="panel-content">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Email</th>
+                            <th>Researcher ID</th>
+                            <th>Affiliation</th>
+                            <th>Role</th>
+                            <th>Status</th>
+                            <th>Submissions</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="usersTableBody">
+                        <tr><td colspan="8"><div class="loading"><div class="spinner"></div>Loading...</div></td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== REPORTS TAB ==================== -->
+    <div class="tab-content" id="tab-reports">
+        <div class="stats-row">
+            <div class="stat-card">
+                <div class="stat-value" id="reportTotalSubmissions">-</div>
+                <div class="stat-label">Total Submissions</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="reportTotalResearchers">-</div>
+                <div class="stat-label">Active Researchers</div>
+            </div>
+            <div class="stat-card approved">
+                <div class="stat-value" id="reportApprovalRate">-</div>
+                <div class="stat-label">Approval Rate</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="reportThisMonth">-</div>
+                <div class="stat-label">This Month</div>
+            </div>
+        </div>
+
+        <div class="two-column">
+            <!-- Submissions by Status -->
+            <div class="panel">
+                <div class="panel-header">
+                    <h2><span class="icon">&#128202;</span> Submissions by Status</h2>
+                </div>
+                <div class="panel-content">
+                    <table class="data-table" id="statusBreakdownTable">
+                        <thead>
+                            <tr>
+                                <th>Status</th>
+                                <th>Count</th>
+                                <th>Percentage</th>
+                            </tr>
+                        </thead>
+                        <tbody id="statusBreakdownBody">
+                            <tr><td colspan="3"><div class="loading"><div class="spinner"></div>Loading...</div></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Submissions by Researcher -->
+            <div class="panel">
+                <div class="panel-header">
+                    <h2><span class="icon">&#128100;</span> Top Researchers</h2>
+                </div>
+                <div class="panel-content">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Researcher</th>
+                                <th>Submissions</th>
+                                <th>Approved</th>
+                            </tr>
+                        </thead>
+                        <tbody id="researcherBreakdownBody">
+                            <tr><td colspan="3"><div class="loading"><div class="spinner"></div>Loading...</div></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Export Section -->
+        <div class="panel">
+            <div class="panel-header">
+                <h2><span class="icon">&#128190;</span> Export Data</h2>
+            </div>
+            <div class="panel-content">
+                <div class="filter-bar">
+                    <div class="filter-group">
+                        <label>From Date</label>
+                        <input type="date" id="exportFromDate">
+                    </div>
+                    <div class="filter-group">
+                        <label>To Date</label>
+                        <input type="date" id="exportToDate">
+                    </div>
+                    <div class="filter-group">
+                        <label>Status</label>
+                        <select id="exportStatus">
+                            <option value="">All Statuses</option>
+                            <option value="PENDING">Pending</option>
+                            <option value="APPROVED">Approved</option>
+                            <option value="REVISION_NEEDED">Revision Needed</option>
+                        </select>
+                    </div>
+                    <div class="filter-group" style="justify-content: flex-end;">
+                        <label>&nbsp;</label>
+                        <button class="btn btn-success" onclick="exportToCSV()">Export to CSV</button>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
+        // =====================================================
+        // GLOBAL STATE & INIT
+        // =====================================================
+        let currentUser = null;
+        let allMembers = [];
+        let labFilesData = [];
+        let selectedLabFiles = new Set();
+
         // Check authentication and PI role
         async function checkAuth() {
             try {
                 const response = await fetch('/api/di/me', { credentials: 'include' });
                 if (response.status === 401) { window.location.href = 'access.html'; return; }
                 const data = await response.json();
-                const user = data.user || data;
+                currentUser = data.user || data;
 
                 // Check if user is PI
-                const role = (user.role || "").toUpperCase();
+                const role = (currentUser.role || "").toUpperCase();
                 if (role !== "PI" && role !== "ADMIN") {
                     window.location.href = 'upload.html';
                     return;
                 }
 
-                document.getElementById('userName').textContent = user.researcher_id;
+                document.getElementById('userName').textContent = currentUser.researcher_id;
 
-                // Load all data
-                loadDirectory();
-                populateResearcherDropdown(user);
+                // Load initial data
+                loadDashboardData();
+                populateResearcherDropdown();
                 loadGroupDocuments();
+                loadAllUsers();
+                loadReportsData();
 
             } catch (err) {
                 window.location.href = 'access.html';
@@ -548,230 +880,183 @@
 
         checkAuth();
 
-        // Populate researcher dropdown
-        async function populateResearcherDropdown(currentUser) {
-            const select = document.getElementById('uploadResearcher');
+        // =====================================================
+        // TAB NAVIGATION
+        // =====================================================
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                // Update active tab button
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+
+                // Update active tab content
+                const tabId = btn.dataset.tab;
+                document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+                document.getElementById('tab-' + tabId).classList.add('active');
+
+                // Load tab-specific data
+                if (tabId === 'lab-files') loadLabFiles();
+                if (tabId === 'reports') loadReportsData();
+            });
+        });
+
+        // =====================================================
+        // DASHBOARD TAB
+        // =====================================================
+        async function loadDashboardData() {
+            loadPendingApprovals();
+            loadStats();
+        }
+
+        async function loadStats() {
+            try {
+                const response = await fetch('/api/di/metrics', { credentials: 'include' });
+                if (response.ok) {
+                    const data = await response.json();
+                    document.getElementById('statPending').textContent = data.byStatus?.PENDING || 0;
+                    document.getElementById('statApproved').textContent = data.byStatus?.APPROVED || 0;
+                    document.getElementById('statRevision').textContent = data.byStatus?.REVISION_NEEDED || 0;
+                    document.getElementById('statTotal').textContent = data.total || 0;
+
+                    // Update badge
+                    const pending = data.byStatus?.PENDING || 0;
+                    const badge = document.getElementById('pendingBadge');
+                    if (pending > 0) {
+                        badge.textContent = pending;
+                        badge.style.display = 'inline';
+                    } else {
+                        badge.style.display = 'none';
+                    }
+                }
+            } catch (err) {
+                console.error('Error loading stats:', err);
+            }
+        }
+
+        async function loadPendingApprovals() {
+            const container = document.getElementById('pendingApprovalsContainer');
+            container.innerHTML = '<div class="loading"><div class="spinner"></div>Loading...</div>';
 
             try {
-                const response = await fetch('/api/di/members', {
-                    credentials: 'include'
-                });
+                const response = await fetch('/api/di/pending-approvals', { credentials: 'include' });
                 if (!response.ok) throw new Error('Failed to load');
                 const data = await response.json();
 
-                if (data.members && data.members.length > 0) {
-                    select.innerHTML = '<option value="">Select researcher...</option>' +
-                        data.members.map(m => `<option value="${m.researcher_id}">${m.researcher_id} - ${m.affiliation}</option>`).join('');
-                } else {
-                    // Fallback: add at least the current user
-                    select.innerHTML = `<option value="">Select researcher...</option>
-                        <option value="${currentUser.researcher_id}">${currentUser.researcher_id}</option>`;
+                if (!data.submissions || data.submissions.length === 0) {
+                    container.innerHTML = '<p style="text-align:center;color:#666;padding:20px;">No pending approvals</p>';
+                    return;
                 }
 
-            } catch (err) {
-                console.error('Error loading researchers:', err);
-                // Fallback: add at least the current user so PI can upload
-                if (currentUser) {
-                    select.innerHTML = `<option value="">Select researcher...</option>
-                        <option value="${currentUser.researcher_id}">${currentUser.researcher_id}</option>`;
-                }
-            }
-        }
-
-        // Load directory structure
-        async function loadDirectory() {
-            try {
-                const response = await fetch('/api/di/directory', {
-                    credentials: 'include'
-                });
-                if (!response.ok) throw new Error('Failed to load directory');
-                const data = await response.json();
-
-                const treeContainer = document.getElementById('directoryTree');
-                treeContainer.innerHTML = renderTree(data.tree);
-
-            } catch (err) {
-                document.getElementById('directoryTree').innerHTML = '<p style="color:#dc3545;">Error loading directory</p>';
-            }
-        }
-
-        // Track selected files
-        let selectedFiles = new Set();
-        let allFileIds = [];
-
-        function renderTree(node, level = 0) {
-            if (node.type === 'file') {
-                const statusClass = node.status === 'APPROVED' ? 'status-approved' :
-                                   node.status === 'REVISION_NEEDED' ? 'status-revision' : 'status-pending';
-                const escapedName = node.name.replace(/'/g, "\\'").replace(/"/g, '&quot;');
-                const viewUrl = node.viewUrl || `/api/di/download/${node.id}`;
-                const downloadUrl = node.downloadUrl || `/api/di/download/${node.id}?download=true`;
-                const hasFile = node.r2ObjectKey || node.status === 'PENDING';
-
-                return `
-                    <div class="tree-item tree-file" style="padding-left:${level * 20}px" data-file-id="${node.id}">
-                        <input type="checkbox" class="file-checkbox" data-id="${node.id}" data-name="${escapedName}" onclick="toggleFileSelection(event, '${node.id}')">
-                        <span class="icon">${node.status === 'APPROVED' ? '&#9989;' : '&#128196;'}</span>
-                        <span>${node.name}</span>
-                        <span class="file-status ${statusClass}">${node.status || 'PENDING'}</span>
-                        <div class="file-actions">
-                            ${hasFile ? `<button class="btn-view" onclick="window.open('${viewUrl}', '_blank')">View</button>
-                            <button class="btn-download" onclick="window.location.href='${downloadUrl}'">Download</button>` : '<span style="color:#999;font-size:11px;">Removed</span>'}
-                            <button class="btn-delete" onclick="deleteFile('${node.id}', '${escapedName}')">Delete</button>
-                        </div>
-                    </div>
+                container.innerHTML = `
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>File</th>
+                                <th>Researcher</th>
+                                <th>Type</th>
+                                <th>Uploaded</th>
+                                <th>AI Review</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${data.submissions.map(s => {
+                                const aiScore = s.ai_review?.score;
+                                const aiClass = aiScore >= 80 ? 'high' : aiScore >= 50 ? 'medium' : 'low';
+                                const date = new Date(s.created_at).toLocaleDateString();
+                                return `
+                                    <tr>
+                                        <td title="${escapeHtml(s.original_filename)}" style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(s.original_filename)}</td>
+                                        <td>${escapeHtml(s.researcher_id)}</td>
+                                        <td><span class="type-badge ${s.file_type?.toLowerCase()}">${s.file_type}</span></td>
+                                        <td>${date}</td>
+                                        <td>${aiScore !== undefined ? `<span class="ai-score ${aiClass}">${aiScore}%</span>` : '<span style="color:#999;">-</span>'}</td>
+                                        <td>
+                                            <div class="actions">
+                                                <button class="btn btn-sm btn-primary" onclick="viewFile('${s.submission_id}')">View</button>
+                                                <button class="btn btn-sm btn-success" onclick="quickApprove('${s.submission_id}')">Approve</button>
+                                                <button class="btn btn-sm btn-warning" onclick="quickRevise('${s.submission_id}')">Revise</button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
                 `;
+            } catch (err) {
+                container.innerHTML = '<p style="color:#dc3545;text-align:center;">Error loading pending approvals</p>';
             }
-
-            const isRoot = level === 0;
-            const childrenHtml = node.children ? node.children.map(child => renderTree(child, level + 1)).join('') : '';
-
-            return `
-                <div class="tree-item tree-folder" style="padding-left:${level * 20}px" onclick="toggleFolder(this)">
-                    <span class="icon">&#128193;</span>
-                    <span>${node.name}</span>
-                    <span style="color:#999;font-size:11px;margin-left:8px;">${node.count || ''}</span>
-                </div>
-                <div class="tree-children ${isRoot ? '' : 'collapsed'}">
-                    ${childrenHtml || '<div style="padding:10px 10px 10px 30px;color:#999;font-size:12px;">No files</div>'}
-                </div>
-            `;
-        }
-
-        function toggleFolder(element) {
-            const children = element.nextElementSibling;
-            if (children && children.classList.contains('tree-children')) {
-                children.classList.toggle('collapsed');
-            }
-        }
-
-        function toggleFileSelection(event, fileId) {
-            event.stopPropagation();
-            if (selectedFiles.has(fileId)) {
-                selectedFiles.delete(fileId);
-            } else {
-                selectedFiles.add(fileId);
-            }
-            updateBulkActionsBar();
-        }
-
-        function updateBulkActionsBar() {
-            const bulkActions = document.getElementById('bulkActions');
-            const selectedCount = document.getElementById('selectedCount');
-
-            if (selectedFiles.size > 0) {
-                bulkActions.classList.remove('hidden');
-                selectedCount.textContent = `${selectedFiles.size} selected`;
-            } else {
-                bulkActions.classList.add('hidden');
-            }
-        }
-
-        function selectAllFiles() {
-            const checkboxes = document.querySelectorAll('.file-checkbox');
-            checkboxes.forEach(cb => {
-                cb.checked = true;
-                selectedFiles.add(cb.dataset.id);
-            });
-            updateBulkActionsBar();
-        }
-
-        function clearSelection() {
-            const checkboxes = document.querySelectorAll('.file-checkbox');
-            checkboxes.forEach(cb => cb.checked = false);
-            selectedFiles.clear();
-            updateBulkActionsBar();
-        }
-
-        async function bulkDownload() {
-            if (selectedFiles.size === 0) {
-                alert('No files selected');
-                return;
-            }
-
-            // Download files one by one (browser limitation)
-            const ids = Array.from(selectedFiles);
-            for (let i = 0; i < ids.length; i++) {
-                setTimeout(() => {
-                    const link = document.createElement('a');
-                    link.href = `/api/di/download/${ids[i]}?download=true`;
-                    link.download = '';
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                }, i * 500); // Stagger downloads to avoid browser blocking
-            }
-        }
-
-        async function bulkDelete() {
-            if (selectedFiles.size === 0) {
-                alert('No files selected');
-                return;
-            }
-
-            if (!confirm(`Are you sure you want to delete ${selectedFiles.size} file(s)? This action cannot be undone.`)) {
-                return;
-            }
-
-            const ids = Array.from(selectedFiles);
-            let successCount = 0;
-            let errorCount = 0;
-
-            for (const id of ids) {
-                try {
-                    const response = await fetch(`/api/di/submissions/${id}`, {
-                        method: 'DELETE',
-                        credentials: 'include'
-                    });
-                    if (response.ok) {
-                        successCount++;
-                    } else {
-                        errorCount++;
-                    }
-                } catch (err) {
-                    errorCount++;
-                }
-            }
-
-            alert(`Deleted ${successCount} file(s)${errorCount > 0 ? `, ${errorCount} failed` : ''}`);
-            selectedFiles.clear();
-            updateBulkActionsBar();
-            loadDirectory();
         }
 
         function viewFile(id) {
             window.open(`/api/di/download/${id}`, '_blank');
         }
 
-        function downloadFile(id) {
-            window.location.href = `/api/di/download/${id}?download=true`;
-        }
-
-        async function deleteFile(id, filename) {
-            if (!confirm(`Are you sure you want to delete "${filename}"? This action cannot be undone.`)) {
-                return;
-            }
+        async function quickApprove(id) {
+            if (!confirm('Are you sure you want to approve this submission?')) return;
 
             try {
-                const response = await fetch(`/api/di/submissions/${id}`, {
-                    method: 'DELETE',
+                // Generate token for approval link
+                const token = btoa(id + '_glp_2024_sec').replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
+                window.open(`/api/di/approve/${id}?token=${token}`, '_blank');
+                setTimeout(() => {
+                    loadPendingApprovals();
+                    loadStats();
+                }, 2000);
+            } catch (err) {
+                alert('Error approving submission');
+            }
+        }
+
+        async function quickRevise(id) {
+            const comments = prompt('Enter revision comments:');
+            if (comments === null) return;
+
+            try {
+                const token = btoa(id + '_glp_2024_sec').replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
+                const response = await fetch(`/api/di/revise/${id}?token=${token}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ comments }),
                     credentials: 'include'
                 });
 
-                const data = await response.json();
-
-                if (!response.ok) {
-                    alert(data.error || 'Failed to delete file');
-                    return;
+                if (response.ok) {
+                    alert('Revision requested');
+                    loadPendingApprovals();
+                    loadStats();
+                } else {
+                    alert('Failed to request revision');
                 }
-
-                alert('File deleted successfully');
-                selectedFiles.delete(id);
-                updateBulkActionsBar();
-                loadDirectory();
-
             } catch (err) {
-                alert('Error deleting file');
+                alert('Error requesting revision');
+            }
+        }
+
+        // =====================================================
+        // UPLOAD FUNCTIONALITY
+        // =====================================================
+        async function populateResearcherDropdown() {
+            const select = document.getElementById('uploadResearcher');
+            const filterSelect = document.getElementById('filterResearcher');
+
+            try {
+                const response = await fetch('/api/di/members', { credentials: 'include' });
+                if (!response.ok) throw new Error('Failed to load');
+                const data = await response.json();
+                allMembers = data.members || [];
+
+                const options = allMembers.map(m =>
+                    `<option value="${m.researcher_id}">${m.researcher_id} - ${m.name || ''} (${m.affiliation})</option>`
+                ).join('');
+
+                select.innerHTML = '<option value="">Select researcher...</option>' + options;
+                if (filterSelect) {
+                    filterSelect.innerHTML = '<option value="">All Researchers</option>' + options;
+                }
+            } catch (err) {
+                console.error('Error loading researchers:', err);
             }
         }
 
@@ -781,7 +1066,6 @@
         const fileNameDisplay = document.getElementById('fileName');
 
         fileUploadArea.addEventListener('click', () => fileInput.click());
-
         fileInput.addEventListener('change', () => {
             if (fileInput.files.length > 0) {
                 fileNameDisplay.textContent = fileInput.files[0].name;
@@ -792,15 +1076,8 @@
             }
         });
 
-        fileUploadArea.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            fileUploadArea.style.borderColor = '#2d5a87';
-        });
-
-        fileUploadArea.addEventListener('dragleave', () => {
-            fileUploadArea.style.borderColor = '#ddd';
-        });
-
+        fileUploadArea.addEventListener('dragover', (e) => { e.preventDefault(); fileUploadArea.style.borderColor = '#2d5a87'; });
+        fileUploadArea.addEventListener('dragleave', () => { fileUploadArea.style.borderColor = '#ddd'; });
         fileUploadArea.addEventListener('drop', (e) => {
             e.preventDefault();
             fileUploadArea.style.borderColor = '#ddd';
@@ -811,7 +1088,6 @@
             }
         });
 
-        // Upload form submit
         document.getElementById('uploadForm').addEventListener('submit', async (e) => {
             e.preventDefault();
 
@@ -845,13 +1121,13 @@
                 if (!response.ok) {
                     showMessage('uploadMessage', data.error || 'Upload failed', 'error');
                 } else {
-                    showMessage('uploadMessage', `File uploaded successfully! Submission ID: ${data.submission_id}`, 'success');
+                    showMessage('uploadMessage', `File uploaded: ${file.name}`, 'success');
                     document.getElementById('uploadForm').reset();
                     fileNameDisplay.textContent = '';
                     fileUploadArea.classList.remove('has-file');
-                    loadDirectory();
+                    loadPendingApprovals();
+                    loadStats();
                 }
-
             } catch (err) {
                 showMessage('uploadMessage', 'Connection error', 'error');
             } finally {
@@ -860,81 +1136,321 @@
             }
         });
 
-        // Logout
-        document.getElementById('logoutBtn').addEventListener('click', async () => {
-            try {
-                await fetch('/api/di/logout', { method: 'POST', credentials: 'include' });
-            } catch (err) {}
-            window.location.href = 'access.html';
-        });
+        // =====================================================
+        // LABORATORY FILES TAB
+        // =====================================================
+        async function loadLabFiles() {
+            const container = document.getElementById('labFilesTree');
+            container.innerHTML = '<div class="loading"><div class="spinner"></div>Loading files...</div>';
 
-        // Helper function
-        function showMessage(elementId, text, type) {
-            const el = document.getElementById(elementId);
-            el.textContent = text;
-            el.className = `message show ${type}`;
-            setTimeout(() => el.classList.remove('show'), 5000);
+            try {
+                const response = await fetch('/api/di/lab-files', { credentials: 'include' });
+                if (!response.ok) throw new Error('Failed to load');
+                const data = await response.json();
+
+                labFilesData = data.files || [];
+
+                // Populate year filter
+                const years = [...new Set(labFilesData.map(f => new Date(f.created_at).getFullYear()))].sort((a, b) => b - a);
+                document.getElementById('filterYear').innerHTML = '<option value="">All Years</option>' +
+                    years.map(y => `<option value="${y}">${y}</option>`).join('');
+
+                applyFilters();
+            } catch (err) {
+                container.innerHTML = '<p style="color:#dc3545;">Error loading files</p>';
+            }
+        }
+
+        function applyFilters() {
+            const status = document.getElementById('filterStatus').value;
+            const year = document.getElementById('filterYear').value;
+            const researcher = document.getElementById('filterResearcher').value;
+            const search = document.getElementById('filterSearch').value.toLowerCase();
+
+            let filtered = labFilesData.filter(f => {
+                if (status && f.status !== status) return false;
+                if (year && new Date(f.created_at).getFullYear() !== parseInt(year)) return false;
+                if (researcher && f.researcher_id !== researcher) return false;
+                if (search && !f.original_filename.toLowerCase().includes(search)) return false;
+                return true;
+            });
+
+            renderLabFilesTree(filtered);
+        }
+
+        function renderLabFilesTree(files) {
+            const container = document.getElementById('labFilesTree');
+
+            if (files.length === 0) {
+                container.innerHTML = '<p style="text-align:center;color:#666;padding:20px;">No files match the filters</p>';
+                return;
+            }
+
+            // Group by status, then year, then researcher
+            const grouped = {};
+            files.forEach(f => {
+                const status = f.status || 'PENDING';
+                const year = new Date(f.created_at).getFullYear();
+                const researcher = f.researcher_id;
+
+                if (!grouped[status]) grouped[status] = {};
+                if (!grouped[status][year]) grouped[status][year] = {};
+                if (!grouped[status][year][researcher]) grouped[status][year][researcher] = [];
+                grouped[status][year][researcher].push(f);
+            });
+
+            let html = '';
+            const statusOrder = ['PENDING', 'APPROVED', 'REVISION_NEEDED'];
+
+            statusOrder.forEach(status => {
+                if (!grouped[status]) return;
+                const statusLabel = status === 'REVISION_NEEDED' ? 'Revision Needed' : status.charAt(0) + status.slice(1).toLowerCase();
+                const statusClass = status === 'APPROVED' ? 'status-approved' : status === 'REVISION_NEEDED' ? 'status-revision' : 'status-pending';
+
+                html += `
+                    <div class="tree-item tree-folder" onclick="toggleFolder(this)">
+                        <span class="icon">&#128193;</span>
+                        <span>${statusLabel}</span>
+                        <span class="status-badge ${statusClass}" style="margin-left:8px;">${Object.values(grouped[status]).reduce((a, y) => a + Object.values(y).reduce((b, r) => b + r.length, 0), 0)}</span>
+                    </div>
+                    <div class="tree-children">
+                `;
+
+                Object.keys(grouped[status]).sort((a, b) => b - a).forEach(year => {
+                    html += `
+                        <div class="tree-item tree-folder" onclick="toggleFolder(this)" style="padding-left:20px;">
+                            <span class="icon">&#128197;</span>
+                            <span>${year}</span>
+                        </div>
+                        <div class="tree-children collapsed">
+                    `;
+
+                    Object.keys(grouped[status][year]).sort().forEach(researcher => {
+                        const researcherFiles = grouped[status][year][researcher];
+                        html += `
+                            <div class="tree-item tree-folder" onclick="toggleFolder(this)" style="padding-left:40px;">
+                                <span class="icon">&#128100;</span>
+                                <span>${researcher}</span>
+                                <span style="color:#999;font-size:11px;margin-left:8px;">(${researcherFiles.length})</span>
+                            </div>
+                            <div class="tree-children collapsed">
+                        `;
+
+                        researcherFiles.forEach(f => {
+                            const hasFile = f.r2_object_key || f.drive_file_id;
+                            html += `
+                                <div class="tree-item tree-file" style="padding-left:60px;" data-file-id="${f.submission_id}">
+                                    <input type="checkbox" class="file-checkbox" data-id="${f.submission_id}" onclick="toggleLabFileSelection(event, '${f.submission_id}')">
+                                    <span class="icon">${f.status === 'APPROVED' ? '&#9989;' : '&#128196;'}</span>
+                                    <span title="${escapeHtml(f.original_filename)}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(f.original_filename)}</span>
+                                    <div class="file-actions">
+                                        ${hasFile ? `
+                                            <button class="btn btn-sm btn-primary" onclick="viewFile('${f.submission_id}')">View</button>
+                                            <button class="btn btn-sm btn-success" onclick="downloadFile('${f.submission_id}')">Download</button>
+                                        ` : '<span style="color:#999;font-size:11px;">No file</span>'}
+                                        <button class="btn btn-sm btn-danger" onclick="deleteFile('${f.submission_id}', '${escapeHtml(f.original_filename)}')">Delete</button>
+                                    </div>
+                                </div>
+                            `;
+                        });
+
+                        html += '</div>';
+                    });
+
+                    html += '</div>';
+                });
+
+                html += '</div>';
+            });
+
+            container.innerHTML = html;
+        }
+
+        function toggleFolder(element) {
+            const children = element.nextElementSibling;
+            if (children && children.classList.contains('tree-children')) {
+                children.classList.toggle('collapsed');
+            }
+        }
+
+        function toggleLabFileSelection(event, fileId) {
+            event.stopPropagation();
+            if (selectedLabFiles.has(fileId)) {
+                selectedLabFiles.delete(fileId);
+            } else {
+                selectedLabFiles.add(fileId);
+            }
+            updateLabBulkActions();
+        }
+
+        function updateLabBulkActions() {
+            const bar = document.getElementById('labBulkActions');
+            const count = document.getElementById('labSelectedCount');
+            if (selectedLabFiles.size > 0) {
+                bar.classList.remove('hidden');
+                count.textContent = `${selectedLabFiles.size} selected`;
+            } else {
+                bar.classList.add('hidden');
+            }
+        }
+
+        function selectAllLabFiles() {
+            document.querySelectorAll('#labFilesTree .file-checkbox').forEach(cb => {
+                cb.checked = true;
+                selectedLabFiles.add(cb.dataset.id);
+            });
+            updateLabBulkActions();
+        }
+
+        function clearLabSelection() {
+            document.querySelectorAll('#labFilesTree .file-checkbox').forEach(cb => cb.checked = false);
+            selectedLabFiles.clear();
+            updateLabBulkActions();
+        }
+
+        async function bulkDownloadLab() {
+            if (selectedLabFiles.size === 0) { alert('No files selected'); return; }
+
+            try {
+                const response = await fetch('/api/di/bulk-download', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ submission_ids: Array.from(selectedLabFiles) }),
+                    credentials: 'include'
+                });
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'lab-files.zip';
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    a.remove();
+                } else {
+                    // Fallback to individual downloads
+                    const ids = Array.from(selectedLabFiles);
+                    for (let i = 0; i < ids.length; i++) {
+                        setTimeout(() => {
+                            const link = document.createElement('a');
+                            link.href = `/api/di/download/${ids[i]}?download=true`;
+                            link.download = '';
+                            document.body.appendChild(link);
+                            link.click();
+                            document.body.removeChild(link);
+                        }, i * 500);
+                    }
+                }
+            } catch (err) {
+                alert('Error downloading files');
+            }
+        }
+
+        async function bulkDeleteLab() {
+            if (selectedLabFiles.size === 0) { alert('No files selected'); return; }
+            if (!confirm(`Delete ${selectedLabFiles.size} file(s)? This cannot be undone.`)) return;
+
+            let success = 0, fail = 0;
+            for (const id of selectedLabFiles) {
+                try {
+                    const response = await fetch(`/api/di/submissions/${id}`, {
+                        method: 'DELETE',
+                        credentials: 'include'
+                    });
+                    if (response.ok) success++;
+                    else fail++;
+                } catch { fail++; }
+            }
+
+            alert(`Deleted ${success} file(s)${fail > 0 ? `, ${fail} failed` : ''}`);
+            selectedLabFiles.clear();
+            updateLabBulkActions();
+            loadLabFiles();
+            loadStats();
+        }
+
+        function downloadFile(id) {
+            window.location.href = `/api/di/download/${id}?download=true`;
+        }
+
+        async function deleteFile(id, filename) {
+            if (!confirm(`Delete "${filename}"? This cannot be undone.`)) return;
+
+            try {
+                const response = await fetch(`/api/di/submissions/${id}`, {
+                    method: 'DELETE',
+                    credentials: 'include'
+                });
+
+                if (response.ok) {
+                    alert('File deleted');
+                    selectedLabFiles.delete(id);
+                    updateLabBulkActions();
+                    loadLabFiles();
+                    loadStats();
+                } else {
+                    const data = await response.json();
+                    alert(data.error || 'Failed to delete file');
+                }
+            } catch (err) {
+                alert('Error deleting file');
+            }
         }
 
         // =====================================================
-        // GROUP DOCUMENTS MANAGEMENT
+        // GROUP DOCUMENTS TAB
         // =====================================================
-
-        // Load group documents
         async function loadGroupDocuments() {
             const tbody = document.getElementById('groupDocsTableBody');
-            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;"><div class="loading"><div class="spinner"></div>Loading...</div></td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6"><div class="loading"><div class="spinner"></div>Loading...</div></td></tr>';
 
             try {
                 const response = await fetch('/api/di/group-documents', { credentials: 'include' });
-                if (!response.ok) throw new Error('Failed to load documents');
+                if (!response.ok) throw new Error('Failed to load');
                 const data = await response.json();
 
                 if (!data.documents || data.documents.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:#666;">No group documents yet. Upload one above.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#666;padding:20px;">No documents yet</td></tr>';
                     return;
                 }
 
                 tbody.innerHTML = data.documents.map(doc => {
                     const typeClass = doc.file_type.toLowerCase();
                     const date = new Date(doc.created_at).toLocaleDateString();
+                    const canDownload = doc.can_download !== false;
                     return `
                         <tr>
-                            <td><strong>${escapeHtml(doc.title)}</strong>${doc.description ? '<br><small style="color:#666;">' + escapeHtml(doc.description) + '</small>' : ''}</td>
+                            <td>
+                                <strong>${escapeHtml(doc.title)}</strong>
+                                ${doc.description ? '<br><small style="color:#666;">' + escapeHtml(doc.description) + '</small>' : ''}
+                            </td>
                             <td>${escapeHtml(doc.category)}</td>
-                            <td><span class="doc-type-badge ${typeClass}">${doc.file_type}</span></td>
-                            <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(doc.filename)}">${escapeHtml(doc.filename)}</td>
+                            <td><span class="type-badge ${typeClass}">${doc.file_type}</span></td>
+                            <td>${canDownload ? '<span style="color:#28a745;">Yes</span>' : '<span style="color:#999;">View only</span>'}</td>
                             <td>${date}</td>
                             <td>
-                                <div class="doc-actions">
-                                    <button class="btn-download-doc" onclick="window.location.href='${doc.downloadUrl}'">Download</button>
-                                    <button class="btn-edit" onclick="editGroupDoc('${doc.id}', '${escapeHtml(doc.title)}', '${escapeHtml(doc.category)}', '${escapeHtml(doc.description || '')}')">Edit</button>
-                                    <button class="btn-delete-doc" onclick="deleteGroupDoc('${doc.id}', '${escapeHtml(doc.title)}')">Delete</button>
+                                <div class="actions">
+                                    <button class="btn btn-sm btn-success" onclick="window.location.href='${doc.downloadUrl}'">Download</button>
+                                    <button class="btn btn-sm btn-warning" onclick="editGroupDoc('${doc.id}', '${escapeHtml(doc.title)}', '${escapeHtml(doc.category)}', '${escapeHtml(doc.description || '')}', ${canDownload})">Edit</button>
+                                    <button class="btn btn-sm btn-danger" onclick="deleteGroupDoc('${doc.id}', '${escapeHtml(doc.title)}')">Delete</button>
                                 </div>
                             </td>
                         </tr>
                     `;
                 }).join('');
-
             } catch (err) {
-                console.error('Error loading group documents:', err);
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:#dc3545;">Error loading documents</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6" style="color:#dc3545;text-align:center;">Error loading documents</td></tr>';
             }
         }
 
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text || '';
-            return div.innerHTML;
-        }
-
-        // Group document file upload handling
+        // Group document file upload
         const groupDocUploadArea = document.getElementById('groupDocUploadArea');
         const groupDocFileInput = document.getElementById('groupDocFile');
         const groupDocFileName = document.getElementById('groupDocFileName');
 
         groupDocUploadArea.addEventListener('click', () => groupDocFileInput.click());
-
         groupDocFileInput.addEventListener('change', () => {
             if (groupDocFileInput.files.length > 0) {
                 groupDocFileName.textContent = groupDocFileInput.files[0].name;
@@ -945,15 +1461,8 @@
             }
         });
 
-        groupDocUploadArea.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            groupDocUploadArea.style.borderColor = '#2d5a87';
-        });
-
-        groupDocUploadArea.addEventListener('dragleave', () => {
-            groupDocUploadArea.style.borderColor = '#ddd';
-        });
-
+        groupDocUploadArea.addEventListener('dragover', (e) => { e.preventDefault(); groupDocUploadArea.style.borderColor = '#2d5a87'; });
+        groupDocUploadArea.addEventListener('dragleave', () => { groupDocUploadArea.style.borderColor = '#ddd'; });
         groupDocUploadArea.addEventListener('drop', (e) => {
             e.preventDefault();
             groupDocUploadArea.style.borderColor = '#ddd';
@@ -964,17 +1473,17 @@
             }
         });
 
-        // Group document form submit
         document.getElementById('groupDocForm').addEventListener('submit', async (e) => {
             e.preventDefault();
 
             const title = document.getElementById('docTitle').value.trim();
             const category = document.getElementById('docCategory').value;
             const description = document.getElementById('docDescription').value.trim();
+            const canDownload = document.getElementById('docCanDownload').checked;
             const file = groupDocFileInput.files[0];
 
             if (!title || !category || !file) {
-                showMessage('groupDocMessage', 'Please fill all required fields and select a file', 'error');
+                showMessage('groupDocMessage', 'Please fill all required fields', 'error');
                 return;
             }
 
@@ -986,6 +1495,7 @@
             formData.append('title', title);
             formData.append('category', category);
             formData.append('description', description);
+            formData.append('can_download', canDownload);
             formData.append('file', file);
 
             try {
@@ -1000,13 +1510,12 @@
                 if (!response.ok) {
                     showMessage('groupDocMessage', data.error || 'Upload failed', 'error');
                 } else {
-                    showMessage('groupDocMessage', 'Document uploaded successfully!', 'success');
+                    showMessage('groupDocMessage', 'Document uploaded!', 'success');
                     document.getElementById('groupDocForm').reset();
                     groupDocFileName.textContent = '';
                     groupDocUploadArea.classList.remove('has-file');
                     loadGroupDocuments();
                 }
-
             } catch (err) {
                 showMessage('groupDocMessage', 'Connection error', 'error');
             } finally {
@@ -1015,8 +1524,7 @@
             }
         });
 
-        // Edit group document
-        async function editGroupDoc(id, title, category, description) {
+        async function editGroupDoc(id, title, category, description, canDownload) {
             const newTitle = prompt('Edit title:', title);
             if (newTitle === null) return;
 
@@ -1026,6 +1534,8 @@
             const newDescription = prompt('Edit description:', description);
             if (newDescription === null) return;
 
+            const newCanDownload = confirm('Allow researchers to download this document?');
+
             try {
                 const response = await fetch(`/api/di/group-documents/${id}`, {
                     method: 'PUT',
@@ -1033,30 +1543,26 @@
                     body: JSON.stringify({
                         title: newTitle,
                         category: newCategory,
-                        description: newDescription
+                        description: newDescription,
+                        can_download: newCanDownload
                     }),
                     credentials: 'include'
                 });
 
-                const data = await response.json();
-
-                if (!response.ok) {
-                    alert(data.error || 'Update failed');
-                } else {
-                    alert('Document updated successfully');
+                if (response.ok) {
+                    alert('Document updated');
                     loadGroupDocuments();
+                } else {
+                    const data = await response.json();
+                    alert(data.error || 'Update failed');
                 }
-
             } catch (err) {
                 alert('Error updating document');
             }
         }
 
-        // Delete group document
         async function deleteGroupDoc(id, title) {
-            if (!confirm(`Are you sure you want to delete "${title}"? This action cannot be undone.`)) {
-                return;
-            }
+            if (!confirm(`Delete "${title}"? This cannot be undone.`)) return;
 
             try {
                 const response = await fetch(`/api/di/group-documents/${id}`, {
@@ -1064,25 +1570,234 @@
                     credentials: 'include'
                 });
 
-                const data = await response.json();
-
-                if (!response.ok) {
-                    alert(data.error || 'Delete failed');
-                } else {
-                    alert('Document deleted successfully');
+                if (response.ok) {
+                    alert('Document deleted');
                     loadGroupDocuments();
+                } else {
+                    const data = await response.json();
+                    alert(data.error || 'Delete failed');
                 }
-
             } catch (err) {
                 alert('Error deleting document');
             }
         }
 
-        // Load group documents on page load
-        document.addEventListener('DOMContentLoaded', () => {
-            // Will be called after auth check
+        // =====================================================
+        // USER MANAGEMENT TAB
+        // =====================================================
+        async function loadAllUsers() {
+            const tbody = document.getElementById('usersTableBody');
+            tbody.innerHTML = '<tr><td colspan="8"><div class="loading"><div class="spinner"></div>Loading...</div></td></tr>';
+
+            try {
+                const response = await fetch('/api/di/all-members', { credentials: 'include' });
+                if (!response.ok) throw new Error('Failed to load');
+                const data = await response.json();
+
+                if (!data.members || data.members.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#666;">No users found</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = data.members.map(u => {
+                    const roleClass = u.role === 'pi' ? 'pi' : 'researcher';
+                    const statusClass = u.active ? 'status-active' : 'status-inactive';
+                    return `
+                        <tr>
+                            <td>${escapeHtml(u.name || '-')}</td>
+                            <td>${escapeHtml(u.institution_email || '-')}</td>
+                            <td>${escapeHtml(u.researcher_id)}</td>
+                            <td>${escapeHtml(u.affiliation)}</td>
+                            <td><span class="role-badge ${roleClass}">${(u.role || 'researcher').toUpperCase()}</span></td>
+                            <td><span class="status-badge ${statusClass}">${u.active ? 'Active' : 'Inactive'}</span></td>
+                            <td>${u.submission_count || 0}</td>
+                            <td>
+                                <div class="actions">
+                                    ${u.active ?
+                                        `<button class="btn btn-sm btn-danger" onclick="deactivateUser('${u.researcher_id}', '${escapeHtml(u.name || u.researcher_id)}')">Deactivate</button>` :
+                                        `<button class="btn btn-sm btn-success" onclick="reactivateUser('${u.researcher_id}', '${escapeHtml(u.name || u.researcher_id)}')">Reactivate</button>`
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            } catch (err) {
+                tbody.innerHTML = '<tr><td colspan="8" style="color:#dc3545;text-align:center;">Error loading users</td></tr>';
+            }
+        }
+
+        document.getElementById('addUserForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const name = document.getElementById('newUserName').value.trim();
+            const email = document.getElementById('newUserEmail').value.trim().toLowerCase();
+            const affiliation = document.getElementById('newUserAffiliation').value;
+            const role = document.getElementById('newUserRole').value;
+
+            if (!name || !email || !affiliation || !role) {
+                showMessage('addUserMessage', 'Please fill all fields', 'error');
+                return;
+            }
+
+            const addBtn = document.getElementById('addUserBtn');
+            addBtn.disabled = true;
+            addBtn.textContent = 'Adding...';
+
+            try {
+                const response = await fetch('/api/di/members', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, institution_email: email, affiliation, role }),
+                    credentials: 'include'
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    showMessage('addUserMessage', data.error || 'Failed to add user', 'error');
+                } else {
+                    showMessage('addUserMessage', `User added: ${data.researcher_id}`, 'success');
+                    document.getElementById('addUserForm').reset();
+                    loadAllUsers();
+                    populateResearcherDropdown();
+                }
+            } catch (err) {
+                showMessage('addUserMessage', 'Connection error', 'error');
+            } finally {
+                addBtn.disabled = false;
+                addBtn.textContent = 'Add User';
+            }
+        });
+
+        async function deactivateUser(id, name) {
+            if (!confirm(`Deactivate user "${name}"? They will not be able to log in.`)) return;
+
+            try {
+                const response = await fetch(`/api/di/members/${id}/deactivate`, {
+                    method: 'PUT',
+                    credentials: 'include'
+                });
+
+                if (response.ok) {
+                    alert('User deactivated');
+                    loadAllUsers();
+                    populateResearcherDropdown();
+                } else {
+                    const data = await response.json();
+                    alert(data.error || 'Failed to deactivate user');
+                }
+            } catch (err) {
+                alert('Error deactivating user');
+            }
+        }
+
+        async function reactivateUser(id, name) {
+            if (!confirm(`Reactivate user "${name}"? All their previous data will be restored.`)) return;
+
+            try {
+                const response = await fetch(`/api/di/members/${id}/reactivate`, {
+                    method: 'PUT',
+                    credentials: 'include'
+                });
+
+                if (response.ok) {
+                    alert('User reactivated');
+                    loadAllUsers();
+                    populateResearcherDropdown();
+                } else {
+                    const data = await response.json();
+                    alert(data.error || 'Failed to reactivate user');
+                }
+            } catch (err) {
+                alert('Error reactivating user');
+            }
+        }
+
+        // =====================================================
+        // REPORTS TAB
+        // =====================================================
+        async function loadReportsData() {
+            try {
+                const response = await fetch('/api/di/metrics', { credentials: 'include' });
+                if (!response.ok) throw new Error('Failed to load');
+                const data = await response.json();
+
+                // Update summary stats
+                document.getElementById('reportTotalSubmissions').textContent = data.total || 0;
+                document.getElementById('reportTotalResearchers').textContent = data.totalResearchers || 0;
+                document.getElementById('reportThisMonth').textContent = data.thisMonth || 0;
+
+                const approved = data.byStatus?.APPROVED || 0;
+                const total = data.total || 1;
+                document.getElementById('reportApprovalRate').textContent = Math.round((approved / total) * 100) + '%';
+
+                // Status breakdown
+                const statusBody = document.getElementById('statusBreakdownBody');
+                statusBody.innerHTML = Object.entries(data.byStatus || {}).map(([status, count]) => {
+                    const pct = Math.round((count / total) * 100);
+                    const statusClass = status === 'APPROVED' ? 'status-approved' : status === 'REVISION_NEEDED' ? 'status-revision' : 'status-pending';
+                    return `
+                        <tr>
+                            <td><span class="status-badge ${statusClass}">${status.replace('_', ' ')}</span></td>
+                            <td>${count}</td>
+                            <td>${pct}%</td>
+                        </tr>
+                    `;
+                }).join('') || '<tr><td colspan="3" style="text-align:center;color:#666;">No data</td></tr>';
+
+                // Researcher breakdown
+                const researcherBody = document.getElementById('researcherBreakdownBody');
+                const topResearchers = (data.byResearcher || []).slice(0, 10);
+                researcherBody.innerHTML = topResearchers.map(r => `
+                    <tr>
+                        <td>${escapeHtml(r.researcher_id)}</td>
+                        <td>${r.total}</td>
+                        <td>${r.approved || 0}</td>
+                    </tr>
+                `).join('') || '<tr><td colspan="3" style="text-align:center;color:#666;">No data</td></tr>';
+
+            } catch (err) {
+                console.error('Error loading reports:', err);
+            }
+        }
+
+        async function exportToCSV() {
+            const from = document.getElementById('exportFromDate').value;
+            const to = document.getElementById('exportToDate').value;
+            const status = document.getElementById('exportStatus').value;
+
+            let url = '/api/di/reports/export?format=csv';
+            if (from) url += `&from=${from}`;
+            if (to) url += `&to=${to}`;
+            if (status) url += `&status=${status}`;
+
+            window.location.href = url;
+        }
+
+        // =====================================================
+        // UTILITY FUNCTIONS
+        // =====================================================
+        function showMessage(elementId, text, type) {
+            const el = document.getElementById(elementId);
+            el.textContent = text;
+            el.className = `message show ${type}`;
+            setTimeout(() => el.classList.remove('show'), 5000);
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text || '';
+            return div.innerHTML;
+        }
+
+        // Logout
+        document.getElementById('logoutBtn').addEventListener('click', async () => {
+            try {
+                await fetch('/api/di/logout', { method: 'POST', credentials: 'include' });
+            } catch (err) {}
+            window.location.href = 'access.html';
         });
     </script>
 </body>
 </html>
-
