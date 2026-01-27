@@ -737,6 +737,7 @@ app.get('/api/di/me', requireAuth, (req, res) => {
 app.get('/api/di/my-files', requireAuth, async (req, res) => {
     try {
         const user = req.session.user;
+        console.log('[MY-FILES] Loading files for researcher:', user.researcher_id);
 
         // Get all submissions for this researcher
         const result = await pool.query(
@@ -747,6 +748,8 @@ app.get('/api/di/my-files', requireAuth, async (req, res) => {
              ORDER BY created_at DESC`,
             [user.researcher_id]
         );
+
+        console.log('[MY-FILES] Found', result.rows.length, 'submissions');
 
         // Build flat tree structure: My Files / Submitted | Approved
         const submittedFiles = [];
@@ -760,7 +763,9 @@ app.get('/api/di/my-files', requireAuth, async (req, res) => {
         for (const file of result.rows) {
             const status = file.status || 'PENDING';
             const fileId = file.drive_file_id;
-            const hasR2File = fileId && isR2Id(fileId);
+
+            // Check if file is stored in R2 (has r2: prefix)
+            const hasR2File = fileId && typeof fileId === 'string' && fileId.startsWith('r2:');
 
             // Generate proper URLs - use backend download endpoint for R2 files
             const viewUrl = hasR2File ? `/api/di/download/${file.submission_id}` : null;
@@ -777,7 +782,7 @@ app.get('/api/di/my-files', requireAuth, async (req, res) => {
                 verificationCode: file.verification_code,
                 aiScore: file.ai_review_score,
                 aiDecision: file.ai_review_decision,
-                r2ObjectKey: hasR2File ? r2KeyFromId(fileId) : null,
+                r2ObjectKey: hasR2File ? fileId.replace(/^r2:/, '') : null,
                 viewUrl: viewUrl,
                 downloadUrl: downloadUrl
             };
@@ -815,6 +820,8 @@ app.get('/api/di/my-files', requireAuth, async (req, res) => {
             ]
         };
 
+        console.log('[MY-FILES] Success: pending=' + pendingCount + ', approved=' + approvedCount + ', revision=' + revisionCount);
+
         res.json({
             success: true,
             tree: tree,
@@ -825,8 +832,9 @@ app.get('/api/di/my-files', requireAuth, async (req, res) => {
         });
 
     } catch (err) {
-        console.error('My files error:', err);
-        res.status(500).json({ error: 'Server error' });
+        console.error('[MY-FILES] Error:', err.message);
+        console.error('[MY-FILES] Stack:', err.stack);
+        res.status(500).json({ error: 'Server error', message: err.message });
     }
 });
 
