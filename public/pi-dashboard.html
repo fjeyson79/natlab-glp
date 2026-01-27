@@ -52,8 +52,12 @@
             grid-template-columns: 1fr 1fr;
             gap: 20px;
             padding: 20px;
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 0 auto;
+        }
+
+        .full-width-panel {
+            grid-column: 1 / -1;
         }
 
         .panel {
@@ -241,6 +245,112 @@
             100% { transform: rotate(360deg); }
         }
 
+        /* Group Documents Management */
+        .group-doc-form {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .group-doc-form h3 {
+            font-size: 14px;
+            color: #1a365d;
+            margin-bottom: 15px;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .form-group.full-width {
+            grid-column: 1 / -1;
+        }
+
+        .form-group label {
+            font-size: 12px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            padding: 8px 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 60px;
+        }
+
+        .doc-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        .doc-table th {
+            background: #f8f9fa;
+            padding: 10px;
+            text-align: left;
+            border-bottom: 2px solid #e0e0e0;
+            font-size: 12px;
+            color: #666;
+        }
+
+        .doc-table td {
+            padding: 10px;
+            border-bottom: 1px solid #e0e0e0;
+            vertical-align: middle;
+        }
+
+        .doc-table tr:hover {
+            background: #f8f9fa;
+        }
+
+        .doc-type-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 10px;
+            font-weight: bold;
+        }
+
+        .doc-type-badge.pdf { background: #fee; color: #c00; }
+        .doc-type-badge.excel { background: #efe; color: #060; }
+        .doc-type-badge.word { background: #eef; color: #00c; }
+        .doc-type-badge.powerpoint { background: #fef3e0; color: #e65100; }
+
+        .doc-actions {
+            display: flex;
+            gap: 5px;
+        }
+
+        .doc-actions button {
+            padding: 4px 8px;
+            font-size: 11px;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+
+        .btn-edit { background: #ffc107; color: #333; }
+        .btn-delete-doc { background: #dc3545; color: white; }
+        .btn-download-doc { background: #28a745; color: white; }
+
         /* Responsive */
         @media (max-width: 1200px) {
             .main-container {
@@ -248,6 +358,9 @@
             }
             .panel {
                 max-height: none;
+            }
+            .form-row {
+                grid-template-columns: 1fr;
             }
         }
     </style>
@@ -321,6 +434,88 @@
             </div>
         </div>
 
+        <!-- Panel 3: Group Documents Management (Full Width) -->
+        <div class="panel full-width-panel">
+            <div class="panel-header">
+                <h2><span class="icon">&#128218;</span> Group Documents</h2>
+                <button onclick="loadGroupDocuments()" style="padding:5px 10px;font-size:12px;cursor:pointer;border:1px solid #ddd;border-radius:4px;background:white;">Refresh</button>
+            </div>
+            <div class="panel-content">
+                <!-- Upload Form -->
+                <div class="group-doc-form">
+                    <h3>Upload New Document</h3>
+                    <div id="groupDocMessage" class="message"></div>
+                    <form id="groupDocForm">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="docTitle">Title *</label>
+                                <input type="text" id="docTitle" required placeholder="Document title">
+                            </div>
+                            <div class="form-group">
+                                <label for="docCategory">Category *</label>
+                                <select id="docCategory" required>
+                                    <option value="">Select category...</option>
+                                    <option value="SOP">SOP (Standard Operating Procedure)</option>
+                                    <option value="Guidelines">Guidelines</option>
+                                    <option value="Templates">Templates</option>
+                                    <option value="Training">Training Materials</option>
+                                    <option value="Forms">Forms</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group full-width">
+                                <label for="docDescription">Description (optional)</label>
+                                <textarea id="docDescription" placeholder="Brief description of the document"></textarea>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>File * (PDF, Word, Excel, PowerPoint)</label>
+                                <div class="file-upload" id="groupDocUploadArea" style="padding:15px;">
+                                    <input type="file" id="groupDocFile" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx">
+                                    <p class="file-upload-text" style="margin:0;">
+                                        <strong>Click to select</strong> or drag and drop
+                                    </p>
+                                    <p class="file-name" id="groupDocFileName" style="margin:5px 0 0 0;"></p>
+                                </div>
+                            </div>
+                            <div class="form-group" style="justify-content:flex-end;">
+                                <button type="submit" class="upload-btn" id="groupDocSubmitBtn" style="height:50px;">
+                                    Upload Document
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Documents Table -->
+                <table class="doc-table">
+                    <thead>
+                        <tr>
+                            <th>Title</th>
+                            <th>Category</th>
+                            <th>Type</th>
+                            <th>Filename</th>
+                            <th>Uploaded</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="groupDocsTableBody">
+                        <tr>
+                            <td colspan="6" style="text-align:center;padding:20px;color:#666;">
+                                <div class="loading">
+                                    <div class="spinner"></div>
+                                    Loading documents...
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
     </div>
 
     <script>
@@ -344,6 +539,7 @@
                 // Load all data
                 loadDirectory();
                 populateResearcherDropdown(user);
+                loadGroupDocuments();
 
             } catch (err) {
                 window.location.href = 'access.html';
@@ -679,6 +875,213 @@
             el.className = `message show ${type}`;
             setTimeout(() => el.classList.remove('show'), 5000);
         }
+
+        // =====================================================
+        // GROUP DOCUMENTS MANAGEMENT
+        // =====================================================
+
+        // Load group documents
+        async function loadGroupDocuments() {
+            const tbody = document.getElementById('groupDocsTableBody');
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;"><div class="loading"><div class="spinner"></div>Loading...</div></td></tr>';
+
+            try {
+                const response = await fetch('/api/di/group-documents', { credentials: 'include' });
+                if (!response.ok) throw new Error('Failed to load documents');
+                const data = await response.json();
+
+                if (!data.documents || data.documents.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:#666;">No group documents yet. Upload one above.</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = data.documents.map(doc => {
+                    const typeClass = doc.file_type.toLowerCase();
+                    const date = new Date(doc.created_at).toLocaleDateString();
+                    return `
+                        <tr>
+                            <td><strong>${escapeHtml(doc.title)}</strong>${doc.description ? '<br><small style="color:#666;">' + escapeHtml(doc.description) + '</small>' : ''}</td>
+                            <td>${escapeHtml(doc.category)}</td>
+                            <td><span class="doc-type-badge ${typeClass}">${doc.file_type}</span></td>
+                            <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(doc.filename)}">${escapeHtml(doc.filename)}</td>
+                            <td>${date}</td>
+                            <td>
+                                <div class="doc-actions">
+                                    <button class="btn-download-doc" onclick="window.location.href='${doc.downloadUrl}'">Download</button>
+                                    <button class="btn-edit" onclick="editGroupDoc('${doc.id}', '${escapeHtml(doc.title)}', '${escapeHtml(doc.category)}', '${escapeHtml(doc.description || '')}')">Edit</button>
+                                    <button class="btn-delete-doc" onclick="deleteGroupDoc('${doc.id}', '${escapeHtml(doc.title)}')">Delete</button>
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+
+            } catch (err) {
+                console.error('Error loading group documents:', err);
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:#dc3545;">Error loading documents</td></tr>';
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text || '';
+            return div.innerHTML;
+        }
+
+        // Group document file upload handling
+        const groupDocUploadArea = document.getElementById('groupDocUploadArea');
+        const groupDocFileInput = document.getElementById('groupDocFile');
+        const groupDocFileName = document.getElementById('groupDocFileName');
+
+        groupDocUploadArea.addEventListener('click', () => groupDocFileInput.click());
+
+        groupDocFileInput.addEventListener('change', () => {
+            if (groupDocFileInput.files.length > 0) {
+                groupDocFileName.textContent = groupDocFileInput.files[0].name;
+                groupDocUploadArea.classList.add('has-file');
+            } else {
+                groupDocFileName.textContent = '';
+                groupDocUploadArea.classList.remove('has-file');
+            }
+        });
+
+        groupDocUploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            groupDocUploadArea.style.borderColor = '#2d5a87';
+        });
+
+        groupDocUploadArea.addEventListener('dragleave', () => {
+            groupDocUploadArea.style.borderColor = '#ddd';
+        });
+
+        groupDocUploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            groupDocUploadArea.style.borderColor = '#ddd';
+            if (e.dataTransfer.files.length > 0) {
+                groupDocFileInput.files = e.dataTransfer.files;
+                groupDocFileName.textContent = e.dataTransfer.files[0].name;
+                groupDocUploadArea.classList.add('has-file');
+            }
+        });
+
+        // Group document form submit
+        document.getElementById('groupDocForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const title = document.getElementById('docTitle').value.trim();
+            const category = document.getElementById('docCategory').value;
+            const description = document.getElementById('docDescription').value.trim();
+            const file = groupDocFileInput.files[0];
+
+            if (!title || !category || !file) {
+                showMessage('groupDocMessage', 'Please fill all required fields and select a file', 'error');
+                return;
+            }
+
+            const submitBtn = document.getElementById('groupDocSubmitBtn');
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Uploading...';
+
+            const formData = new FormData();
+            formData.append('title', title);
+            formData.append('category', category);
+            formData.append('description', description);
+            formData.append('file', file);
+
+            try {
+                const response = await fetch('/api/di/group-documents', {
+                    method: 'POST',
+                    body: formData,
+                    credentials: 'include'
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    showMessage('groupDocMessage', data.error || 'Upload failed', 'error');
+                } else {
+                    showMessage('groupDocMessage', 'Document uploaded successfully!', 'success');
+                    document.getElementById('groupDocForm').reset();
+                    groupDocFileName.textContent = '';
+                    groupDocUploadArea.classList.remove('has-file');
+                    loadGroupDocuments();
+                }
+
+            } catch (err) {
+                showMessage('groupDocMessage', 'Connection error', 'error');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Upload Document';
+            }
+        });
+
+        // Edit group document
+        async function editGroupDoc(id, title, category, description) {
+            const newTitle = prompt('Edit title:', title);
+            if (newTitle === null) return;
+
+            const newCategory = prompt('Edit category (SOP, Guidelines, Templates, Training, Forms, Other):', category);
+            if (newCategory === null) return;
+
+            const newDescription = prompt('Edit description:', description);
+            if (newDescription === null) return;
+
+            try {
+                const response = await fetch(`/api/di/group-documents/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        title: newTitle,
+                        category: newCategory,
+                        description: newDescription
+                    }),
+                    credentials: 'include'
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    alert(data.error || 'Update failed');
+                } else {
+                    alert('Document updated successfully');
+                    loadGroupDocuments();
+                }
+
+            } catch (err) {
+                alert('Error updating document');
+            }
+        }
+
+        // Delete group document
+        async function deleteGroupDoc(id, title) {
+            if (!confirm(`Are you sure you want to delete "${title}"? This action cannot be undone.`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/di/group-documents/${id}`, {
+                    method: 'DELETE',
+                    credentials: 'include'
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    alert(data.error || 'Delete failed');
+                } else {
+                    alert('Document deleted successfully');
+                    loadGroupDocuments();
+                }
+
+            } catch (err) {
+                alert('Error deleting document');
+            }
+        }
+
+        // Load group documents on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            // Will be called after auth check
+        });
     </script>
 </body>
 </html>

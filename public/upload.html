@@ -56,6 +56,10 @@
             margin: 0 auto;
         }
 
+        .full-width-panel {
+            grid-column: 1 / -1;
+        }
+
         .panel {
             background: white;
             border-radius: 10px;
@@ -240,6 +244,129 @@
         }
         .stat-value { font-weight: bold; color: #1a365d; }
 
+        /* Group Documents Styles */
+        .doc-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 15px;
+        }
+
+        .doc-card {
+            background: #f8f9fa;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 15px;
+            transition: box-shadow 0.2s;
+        }
+
+        .doc-card:hover {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .doc-card-header {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .doc-icon {
+            font-size: 28px;
+            flex-shrink: 0;
+        }
+
+        .doc-icon.pdf { color: #dc3545; }
+        .doc-icon.excel { color: #28a745; }
+        .doc-icon.word { color: #007bff; }
+        .doc-icon.powerpoint { color: #fd7e14; }
+
+        .doc-title {
+            font-weight: bold;
+            color: #1a365d;
+            font-size: 14px;
+            line-height: 1.3;
+        }
+
+        .doc-category {
+            display: inline-block;
+            background: #e3f2fd;
+            color: #1565c0;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            margin-top: 5px;
+        }
+
+        .doc-description {
+            color: #666;
+            font-size: 12px;
+            margin: 10px 0;
+            line-height: 1.4;
+        }
+
+        .doc-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        .doc-filename {
+            font-size: 11px;
+            color: #999;
+            max-width: 150px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .doc-download-btn {
+            padding: 6px 12px;
+            background: #2d5a87;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .doc-download-btn:hover {
+            background: #1a365d;
+        }
+
+        .category-filter {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-bottom: 15px;
+        }
+
+        .category-btn {
+            padding: 6px 12px;
+            border: 1px solid #ddd;
+            background: white;
+            border-radius: 20px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .category-btn:hover {
+            border-color: #2d5a87;
+            color: #2d5a87;
+        }
+
+        .category-btn.active {
+            background: #2d5a87;
+            color: white;
+            border-color: #2d5a87;
+        }
+
         /* Responsive */
         @media (max-width: 900px) {
             .main-container {
@@ -327,6 +454,25 @@
                 </div>
             </div>
         </div>
+
+        <!-- Panel 3: Group Documents (Full Width) -->
+        <div class="panel full-width-panel">
+            <div class="panel-header">
+                <h2><span class="icon">&#128218;</span> Group Documents</h2>
+                <button onclick="loadGroupDocuments()" style="padding:5px 10px;font-size:12px;cursor:pointer;border:1px solid #ddd;border-radius:4px;background:white;">Refresh</button>
+            </div>
+            <div class="panel-content">
+                <div id="categoryFilter" class="category-filter" style="display:none;">
+                    <button class="category-btn active" onclick="filterByCategory('all')">All</button>
+                </div>
+                <div id="groupDocsContainer">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        Loading group documents...
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -343,8 +489,9 @@
                 badge.textContent = user.affiliation;
                 badge.classList.add(user.affiliation);
 
-                // Load files after user info
+                // Load files and group documents after user info
                 loadMyFiles();
+                loadGroupDocuments();
 
             } catch (err) {
                 window.location.href = 'access.html';
@@ -413,10 +560,10 @@
                 const signedBadge = isApproved && node.signedAt ? `<span style="background:#28a745;color:white;padding:1px 6px;border-radius:8px;font-size:9px;margin-left:5px;">SIGNED</span>` : '';
                 const verifyBtn = isApproved && node.verificationCode ? `<button class="btn-verify" onclick="verifyDocument('${node.verificationCode}')" title="Verify signature">Verify</button>` : '';
 
-                // Use provided URLs or fall back to API endpoint
-                const viewUrl = node.viewUrl || `/api/di/download/${node.id}`;
-                const downloadUrl = node.downloadUrl || `/api/di/download/${node.id}?download=true`;
-                const hasFile = node.r2ObjectKey || node.status === 'PENDING';
+                // Use provided URLs from backend (R2 URLs via /api/di/download)
+                const viewUrl = node.viewUrl;
+                const downloadUrl = node.downloadUrl;
+                const hasFile = node.r2ObjectKey || node.viewUrl;
 
                 return `
                     <div class="tree-item tree-file" style="padding-left:${level * 20}px">
@@ -433,18 +580,22 @@
                 `;
             }
 
-            const isRoot = level === 0;
+            // Folder rendering - no delete buttons for researchers
+            const isRoot = node.name === 'My Files';
             const isSubmitted = node.name.includes('Submitted');
             const isApproved = node.name.includes('Approved');
             const folderClass = isSubmitted ? 'folder-submitted' : (isApproved ? 'folder-approved' : '');
             const childrenHtml = node.children ? node.children.map(child => renderTree(child, level + 1)).join('') : '';
+
+            // Always show folder contents expanded for the simple two-folder structure
+            const collapsed = isRoot ? '' : '';
 
             return `
                 <div class="tree-item tree-folder ${folderClass}" style="padding-left:${level * 20}px" onclick="toggleFolder(this)">
                     <span class="icon">${isApproved ? '&#9989;' : (isSubmitted ? '&#128203;' : '&#128193;')}</span>
                     <span>${node.name}</span>
                 </div>
-                <div class="tree-children ${isRoot ? '' : 'collapsed'}">
+                <div class="tree-children ${collapsed}">
                     ${childrenHtml || '<div style="padding:10px 10px 10px 30px;color:#999;font-size:12px;">No files</div>'}
                 </div>
             `;
@@ -587,6 +738,137 @@ credentials: 'include'
             el.className = `message show ${type}`;
             setTimeout(() => el.classList.remove('show'), 5000);
         }
+
+        // =====================================================
+        // GROUP DOCUMENTS
+        // =====================================================
+        let allGroupDocs = [];
+        let currentCategory = 'all';
+
+        async function loadGroupDocuments() {
+            const container = document.getElementById('groupDocsContainer');
+            const filterContainer = document.getElementById('categoryFilter');
+
+            container.innerHTML = '<div class="loading"><div class="spinner"></div>Loading group documents...</div>';
+
+            try {
+                const response = await fetch('/api/di/group-documents', {
+                    credentials: 'include'
+                });
+
+                if (!response.ok) throw new Error('Failed to load documents');
+                const data = await response.json();
+
+                allGroupDocs = data.documents || [];
+
+                if (allGroupDocs.length === 0) {
+                    filterContainer.style.display = 'none';
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="icon">&#128218;</div>
+                            <p>No group documents available</p>
+                            <p style="font-size:12px;margin-top:10px;">Your PI will upload shared documents here</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                // Build category filter buttons
+                const categories = [...new Set(allGroupDocs.map(d => d.category))].sort();
+                filterContainer.innerHTML = `
+                    <button class="category-btn ${currentCategory === 'all' ? 'active' : ''}" onclick="filterByCategory('all')">All (${allGroupDocs.length})</button>
+                    ${categories.map(cat => {
+                        const count = allGroupDocs.filter(d => d.category === cat).length;
+                        return `<button class="category-btn ${currentCategory === cat ? 'active' : ''}" onclick="filterByCategory('${cat}')">${cat} (${count})</button>`;
+                    }).join('')}
+                `;
+                filterContainer.style.display = 'flex';
+
+                renderGroupDocuments();
+
+            } catch (err) {
+                console.error('Error loading group documents:', err);
+                container.innerHTML = '<p style="color:#dc3545;text-align:center;">Error loading group documents</p>';
+            }
+        }
+
+        function filterByCategory(category) {
+            currentCategory = category;
+
+            // Update active button
+            document.querySelectorAll('.category-btn').forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.textContent.toLowerCase().startsWith(category.toLowerCase()) ||
+                    (category === 'all' && btn.textContent.startsWith('All'))) {
+                    btn.classList.add('active');
+                }
+            });
+
+            renderGroupDocuments();
+        }
+
+        function renderGroupDocuments() {
+            const container = document.getElementById('groupDocsContainer');
+            const filteredDocs = currentCategory === 'all'
+                ? allGroupDocs
+                : allGroupDocs.filter(d => d.category === currentCategory);
+
+            if (filteredDocs.length === 0) {
+                container.innerHTML = '<p style="color:#666;text-align:center;padding:20px;">No documents in this category</p>';
+                return;
+            }
+
+            container.innerHTML = `
+                <div class="doc-grid">
+                    ${filteredDocs.map(doc => renderDocCard(doc)).join('')}
+                </div>
+            `;
+        }
+
+        function renderDocCard(doc) {
+            const iconClass = doc.file_type.toLowerCase();
+            const icons = {
+                'pdf': '&#128196;',
+                'excel': '&#128202;',
+                'word': '&#128196;',
+                'powerpoint': '&#128200;'
+            };
+            const icon = icons[iconClass] || '&#128196;';
+
+            return `
+                <div class="doc-card">
+                    <div class="doc-card-header">
+                        <span class="doc-icon ${iconClass}">${icon}</span>
+                        <div>
+                            <div class="doc-title">${escapeHtml(doc.title)}</div>
+                            <span class="doc-category">${escapeHtml(doc.category)}</span>
+                        </div>
+                    </div>
+                    ${doc.description ? `<div class="doc-description">${escapeHtml(doc.description)}</div>` : ''}
+                    <div class="doc-meta">
+                        <span class="doc-filename" title="${escapeHtml(doc.filename)}">${escapeHtml(doc.filename)}</span>
+                        <button class="doc-download-btn" onclick="downloadGroupDoc('${doc.downloadUrl}')">
+                            &#8595; Download
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function downloadGroupDoc(url) {
+            window.location.href = url;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text || '';
+            return div.innerHTML;
+        }
+
+        // Load group documents on page load (after user loads)
+        document.addEventListener('DOMContentLoaded', () => {
+            // Group docs will load after user auth check
+        });
     </script>
 </body>
 </html>

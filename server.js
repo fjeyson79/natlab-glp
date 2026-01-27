@@ -730,11 +730,10 @@ app.get('/api/di/me', requireAuth, (req, res) => {
 });
 
 // GET /api/di/my-files
-// Get current researcher's files organized by year and status
-// Files appear in ONLY ONE folder based on status (no duplication to save storage)
+// Get current researcher's files organized by status (flat structure)
 // - Submitted: files with status PENDING (under review)
 // - Approved: files with status APPROVED
-// - Files with REVISION_NEEDED are removed from Submitted (need to be re-uploaded)
+// Researchers can only view/download, not delete
 app.get('/api/di/my-files', requireAuth, async (req, res) => {
     try {
         const user = req.session.user;
@@ -742,23 +741,16 @@ app.get('/api/di/my-files', requireAuth, async (req, res) => {
         // Get all submissions for this researcher
         const result = await pool.query(
             `SELECT submission_id, file_type, original_filename, status, created_at, signed_at,
-                    verification_code, ai_review_score, ai_review_decision, drive_file_id,
-                    EXTRACT(YEAR FROM created_at) as year
+                    verification_code, ai_review_score, ai_review_decision, drive_file_id
              FROM di_submissions
              WHERE researcher_id = $1
              ORDER BY created_at DESC`,
             [user.researcher_id]
         );
 
-        // Build tree structure: My Files / Year / Submitted|Approved
-        const tree = {
-            name: 'My Files',
-            type: 'folder',
-            children: []
-        };
-
-        // Group by year
-        const yearMap = {};
+        // Build flat tree structure: My Files / Submitted | Approved
+        const submittedFiles = [];
+        const approvedFiles = [];
 
         // Count stats
         let pendingCount = 0;
@@ -766,19 +758,13 @@ app.get('/api/di/my-files', requireAuth, async (req, res) => {
         let revisionCount = 0;
 
         for (const file of result.rows) {
-            const year = file.year || new Date(file.created_at).getFullYear();
             const status = file.status || 'PENDING';
+            const fileId = file.drive_file_id;
+            const hasR2File = fileId && isR2Id(fileId);
 
-            if (!yearMap[year]) {
-                yearMap[year] = {
-                    name: String(year),
-                    type: 'folder',
-                    children: [
-                        { name: 'Submitted', type: 'folder', children: [], count: 0 },
-                        { name: 'Approved', type: 'folder', children: [], count: 0 }
-                    ]
-                };
-            }
+            // Generate proper URLs - use backend download endpoint for R2 files
+            const viewUrl = hasR2File ? `/api/di/download/${file.submission_id}` : null;
+            const downloadUrl = hasR2File ? `/api/di/download/${file.submission_id}?download=true` : null;
 
             const fileNode = {
                 name: file.original_filename,
@@ -791,51 +777,43 @@ app.get('/api/di/my-files', requireAuth, async (req, res) => {
                 verificationCode: file.verification_code,
                 aiScore: file.ai_review_score,
                 aiDecision: file.ai_review_decision,
-                driveFileId: file.drive_file_id,
-                viewUrl: file.drive_file_id ? getDriveViewUrl(file.drive_file_id) : null,
-                downloadUrl: file.drive_file_id ? getDriveDownloadUrl(file.drive_file_id) : null
+                r2ObjectKey: hasR2File ? r2KeyFromId(fileId) : null,
+                viewUrl: viewUrl,
+                downloadUrl: downloadUrl
             };
 
-            // Place file in ONLY ONE folder based on status
+            // Place file in appropriate folder based on status
             if (status === 'APPROVED') {
-                // Approved files go to Approved folder only
-                yearMap[year].children[1].children.push(fileNode);
-                yearMap[year].children[1].count++;
+                approvedFiles.push(fileNode);
                 approvedCount++;
             } else if (status === 'PENDING') {
-                // Pending files (under review) go to Submitted folder
-                yearMap[year].children[0].children.push(fileNode);
-                yearMap[year].children[0].count++;
+                submittedFiles.push(fileNode);
                 pendingCount++;
             } else if (status === 'REVISION_NEEDED') {
-                // Revision needed files are NOT shown in Submitted
-                // They need to be re-uploaded, so they're effectively removed
+                // Revision needed files are NOT shown - need to be re-uploaded
                 revisionCount++;
             }
         }
 
-        // Convert map to array and sort by year descending
-        const years = Object.keys(yearMap).sort((a, b) => b - a);
-        for (const year of years) {
-            const yearNode = yearMap[year];
-            // Update counts in folder names
-            yearNode.children[0].name = `Submitted (${yearNode.children[0].count})`;
-            yearNode.children[1].name = `Approved (${yearNode.children[1].count})`;
-            tree.children.push(yearNode);
-        }
-
-        // Add current year if no files yet
-        const currentYear = new Date().getFullYear();
-        if (!yearMap[currentYear]) {
-            tree.children.unshift({
-                name: String(currentYear),
-                type: 'folder',
-                children: [
-                    { name: 'Submitted (0)', type: 'folder', children: [], count: 0 },
-                    { name: 'Approved (0)', type: 'folder', children: [], count: 0 }
-                ]
-            });
-        }
+        // Build the simple two-folder structure
+        const tree = {
+            name: 'My Files',
+            type: 'folder',
+            children: [
+                {
+                    name: `Submitted (${pendingCount})`,
+                    type: 'folder',
+                    children: submittedFiles,
+                    count: pendingCount
+                },
+                {
+                    name: `Approved (${approvedCount})`,
+                    type: 'folder',
+                    children: approvedFiles,
+                    count: approvedCount
+                }
+            ]
+        };
 
         res.json({
             success: true,
@@ -2105,6 +2083,246 @@ app.delete('/api/di/submissions/:id', requirePI, async (req, res) => {
     console.error('Delete submission error:', err);
     res.status(500).json({ error: 'Server error' });
   }
+});
+
+// =====================================================
+// GROUP DOCUMENTS - Shared lab documents (PI managed)
+// =====================================================
+
+// Multer config for Group Documents (multiple file types)
+const groupDocUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit for documents
+    fileFilter: (req, file, cb) => {
+        const name = (file.originalname || '').toLowerCase();
+        const mt = (file.mimetype || '').toLowerCase();
+
+        // Allowed file types
+        const allowedExtensions = ['.pdf', '.xls', '.xlsx', '.doc', '.docx', '.ppt', '.pptx'];
+        const allowedMimes = [
+            'application/pdf',
+            'application/vnd.ms-excel',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'application/msword',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'application/vnd.ms-powerpoint',
+            'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+            'application/octet-stream'
+        ];
+
+        const hasAllowedExt = allowedExtensions.some(ext => name.endsWith(ext));
+        const hasAllowedMime = allowedMimes.includes(mt);
+
+        if (hasAllowedExt || hasAllowedMime) {
+            return cb(null, true);
+        }
+        return cb(new Error('Only PDF, Excel, Word, and PowerPoint files are accepted'), false);
+    }
+});
+
+// Helper to determine file type from filename
+function getFileTypeFromName(filename) {
+    const name = (filename || '').toLowerCase();
+    if (name.endsWith('.pdf')) return 'PDF';
+    if (name.endsWith('.xls') || name.endsWith('.xlsx')) return 'EXCEL';
+    if (name.endsWith('.doc') || name.endsWith('.docx')) return 'WORD';
+    if (name.endsWith('.ppt') || name.endsWith('.pptx')) return 'POWERPOINT';
+    return 'PDF'; // default
+}
+
+// GET /api/di/group-documents
+// List all active group documents (accessible to all authenticated users)
+app.get('/api/di/group-documents', requireAuth, async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT id, title, category, description, filename, file_type, created_at, uploaded_by
+             FROM di_group_documents
+             WHERE is_active = true
+             ORDER BY category, title`
+        );
+
+        res.json({
+            success: true,
+            count: result.rows.length,
+            documents: result.rows.map(doc => ({
+                ...doc,
+                downloadUrl: `/api/di/group-documents/${doc.id}/download`
+            }))
+        });
+
+    } catch (err) {
+        console.error('Get group documents error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/di/group-documents/:id/download
+// Download a group document
+app.get('/api/di/group-documents/:id/download', requireAuth, async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const result = await pool.query(
+            'SELECT filename, r2_object_key FROM di_group_documents WHERE id = $1 AND is_active = true',
+            [id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Document not found' });
+        }
+
+        const doc = result.rows[0];
+
+        if (!r2Enabled()) {
+            return res.status(503).json({ error: 'R2 storage not configured' });
+        }
+
+        try {
+            const obj = await downloadFromR2(doc.r2_object_key);
+
+            res.setHeader('Content-Type', obj.ContentType || 'application/octet-stream');
+            res.setHeader('Content-Disposition', `attachment; filename="${doc.filename}"`);
+            if (obj.ContentLength) res.setHeader('Content-Length', String(obj.ContentLength));
+
+            return obj.Body.pipe(res);
+        } catch (e) {
+            console.error('[GROUP-DOC] R2 download error:', e.message);
+            return res.status(500).json({ error: 'Failed to download document' });
+        }
+
+    } catch (err) {
+        console.error('Download group document error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/di/group-documents
+// Upload a new group document (PI only)
+app.post('/api/di/group-documents', requirePI, groupDocUpload.single('file'), async (req, res) => {
+    try {
+        const { title, category, description } = req.body;
+        const file = req.file;
+
+        if (!title || !category) {
+            return res.status(400).json({ error: 'Title and category are required' });
+        }
+
+        if (!file) {
+            return res.status(400).json({ error: 'No file uploaded' });
+        }
+
+        if (!r2Enabled()) {
+            return res.status(503).json({ error: 'R2 storage not configured' });
+        }
+
+        const user = req.session.user;
+        const year = new Date().getFullYear();
+        const fileType = getFileTypeFromName(file.originalname);
+        const safeFilename = (file.originalname || 'document').replace(/[^\w.\-]+/g, '_');
+        const timestamp = Date.now();
+        const key = `di/GroupDocuments/${year}/${timestamp}_${safeFilename}`;
+
+        console.log(`[GROUP-DOC] Uploading: ${key}`);
+        await uploadToR2(file.buffer, key, file.mimetype);
+
+        const result = await pool.query(
+            `INSERT INTO di_group_documents (title, category, description, filename, file_type, r2_object_key, uploaded_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
+             RETURNING id, title, category, description, filename, file_type, created_at`,
+            [title, category, description || null, file.originalname, fileType, key, user.researcher_id]
+        );
+
+        res.json({
+            success: true,
+            message: 'Document uploaded successfully',
+            document: {
+                ...result.rows[0],
+                downloadUrl: `/api/di/group-documents/${result.rows[0].id}/download`
+            }
+        });
+
+    } catch (err) {
+        console.error('Upload group document error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// PUT /api/di/group-documents/:id
+// Update a group document metadata (PI only)
+app.put('/api/di/group-documents/:id', requirePI, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { title, category, description } = req.body;
+
+        if (!title || !category) {
+            return res.status(400).json({ error: 'Title and category are required' });
+        }
+
+        const result = await pool.query(
+            `UPDATE di_group_documents
+             SET title = $1, category = $2, description = $3, updated_at = CURRENT_TIMESTAMP
+             WHERE id = $4 AND is_active = true
+             RETURNING id, title, category, description, filename, file_type, created_at, updated_at`,
+            [title, category, description || null, id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Document not found' });
+        }
+
+        res.json({
+            success: true,
+            message: 'Document updated successfully',
+            document: result.rows[0]
+        });
+
+    } catch (err) {
+        console.error('Update group document error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// DELETE /api/di/group-documents/:id
+// Soft delete a group document (PI only)
+app.delete('/api/di/group-documents/:id', requirePI, async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // Get document info first
+        const docResult = await pool.query(
+            'SELECT r2_object_key FROM di_group_documents WHERE id = $1',
+            [id]
+        );
+
+        if (docResult.rows.length === 0) {
+            return res.status(404).json({ error: 'Document not found' });
+        }
+
+        // Soft delete in database
+        await pool.query(
+            'UPDATE di_group_documents SET is_active = false WHERE id = $1',
+            [id]
+        );
+
+        // Best-effort delete from R2
+        const key = docResult.rows[0].r2_object_key;
+        if (key && r2Enabled()) {
+            try {
+                await deleteFromR2(key);
+            } catch (e) {
+                console.warn('[GROUP-DOC] R2 delete warning:', e.message);
+            }
+        }
+
+        res.json({
+            success: true,
+            message: 'Document deleted successfully'
+        });
+
+    } catch (err) {
+        console.error('Delete group document error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
 });
 
 // redeploy bump 2026-01-23T20:49:14
