@@ -745,9 +745,9 @@ app.get('/api/di/my-files', requireAuth, async (req, res) => {
         console.log('[MY-FILES] Loading files for researcher:', user.researcher_id);
 
         // Get all submissions for this researcher
+        // Only select columns that exist in the database
         const result = await pool.query(
-            `SELECT submission_id, file_type, original_filename, status, created_at, signed_at,
-                    verification_code, ai_review_score, ai_review_decision, drive_file_id
+            `SELECT submission_id, file_type, original_filename, status, created_at, signed_at, drive_file_id
              FROM di_submissions
              WHERE researcher_id = $1
              ORDER BY created_at DESC`,
@@ -784,9 +784,6 @@ app.get('/api/di/my-files', requireAuth, async (req, res) => {
                 fileType: file.file_type,
                 date: file.created_at,
                 signedAt: file.signed_at,
-                verificationCode: file.verification_code,
-                aiScore: file.ai_review_score,
-                aiDecision: file.ai_review_decision,
                 r2ObjectKey: hasR2File ? fileId.replace(/^r2:/, '') : null,
                 viewUrl: viewUrl,
                 downloadUrl: downloadUrl
