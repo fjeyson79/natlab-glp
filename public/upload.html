@@ -511,8 +511,10 @@
                 const response = await fetch('/api/di/my-files', {
                     credentials: 'include'
                 });
-                if (!response.ok) throw new Error('Failed to load files');
                 const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.message || data.error || 'Failed to load files');
+                }
 
                 // Update stats
                 document.getElementById('statPending').textContent = data.pendingCount || 0;
@@ -549,7 +551,7 @@
 
             } catch (err) {
                 console.error('Error loading files:', err);
-                treeContainer.innerHTML = '<p style="color:#dc3545;text-align:center;">Error loading files</p>';
+                treeContainer.innerHTML = `<p style="color:#dc3545;text-align:center;">Error loading files: ${err.message || 'Unknown error'}</p>`;
             }
         }
 
