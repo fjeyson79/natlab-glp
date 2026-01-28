@@ -528,6 +528,27 @@ async function checkRoleColumn() {
     return roleColumnExists;
 }
 
+// Helper function to check if supervisor_researchers table exists (migration 008)
+let supervisorTableExists = null;
+let supervisorTableLastCheck = 0;
+
+async function checkSupervisorTable() {
+    const now = Date.now();
+    if (supervisorTableExists === null || supervisorTableExists === false || (now - supervisorTableLastCheck > ROLE_COLUMN_CHECK_INTERVAL)) {
+        try {
+            const result = await pool.query(`
+                SELECT table_name FROM information_schema.tables
+                WHERE table_name = 'di_supervisor_researchers'
+            `);
+            supervisorTableExists = result.rows.length > 0;
+            supervisorTableLastCheck = now;
+        } catch (err) {
+            supervisorTableExists = false;
+        }
+    }
+    return supervisorTableExists;
+}
+
 // Helper to get allowlist query based on role column existence
 function getAllowlistQuery(hasRole) {
     if (hasRole) {
@@ -2793,15 +2814,19 @@ app.post('/api/di/delegation/demote', requirePI, async (req, res) => {
             return res.status(400).json({ error: 'Only supervisors can be demoted to researcher' });
         }
 
+        // Remove all researcher assignments for this supervisor FIRST
+        // (Do this before role update so if it fails, role remains unchanged)
+        const hasTable = await checkSupervisorTable();
+        if (hasTable) {
+            await pool.query(
+                `DELETE FROM di_supervisor_researchers WHERE supervisor_id = $1`,
+                [user_id]
+            );
+        }
+
         // Update role to researcher
         await pool.query(
             `UPDATE di_allowlist SET role = 'researcher' WHERE researcher_id = $1`,
-            [user_id]
-        );
-
-        // Remove all researcher assignments for this supervisor
-        await pool.query(
-            `DELETE FROM di_supervisor_researchers WHERE supervisor_id = $1`,
             [user_id]
         );
 
@@ -2819,6 +2844,12 @@ app.post('/api/di/delegation/assign', requirePI, async (req, res) => {
         const { supervisor_id, researcher_id } = req.body;
         if (!supervisor_id || !researcher_id) {
             return res.status(400).json({ error: 'supervisor_id and researcher_id are required' });
+        }
+
+        // Check if supervisor assignments table exists (migration 008)
+        const hasTable = await checkSupervisorTable();
+        if (!hasTable) {
+            return res.status(503).json({ error: 'Supervisor assignments feature not available. Migration 008 required.' });
         }
 
         // Verify supervisor exists and has supervisor role
@@ -2864,6 +2895,12 @@ app.post('/api/di/delegation/unassign', requirePI, async (req, res) => {
         const { supervisor_id, researcher_id } = req.body;
         if (!supervisor_id || !researcher_id) {
             return res.status(400).json({ error: 'supervisor_id and researcher_id are required' });
+        }
+
+        // Check if supervisor assignments table exists (migration 008)
+        const hasTable = await checkSupervisorTable();
+        if (!hasTable) {
+            return res.status(503).json({ error: 'Supervisor assignments feature not available. Migration 008 required.' });
         }
 
         const result = await pool.query(
