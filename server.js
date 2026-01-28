@@ -360,6 +360,9 @@ function getDriveDownloadUrl(fileId) {
 // Serve static files from public folder under /di
 app.use('/di', express.static(path.join(__dirname, 'public')));
 
+// Also serve static files at root level for direct access
+app.use(express.static(path.join(__dirname, 'public')));
+
 // Initialize Drive at startup
 console.log('[STARTUP] Initializing Google Drive...');
 initializeDriveClient();
@@ -484,6 +487,17 @@ function requirePI(req, res, next) {
     }
     if (req.session.user.role !== 'pi') {
         return res.status(403).json({ error: 'Access denied. PI role required.' });
+    }
+    next();
+}
+
+// SUPERVISOR MIDDLEWARE - requires user to be a Supervisor
+function requireSupervisor(req, res, next) {
+    if (!req.session.user) {
+        return res.status(401).json({ error: 'Not authenticated' });
+    }
+    if (req.session.user.role !== 'supervisor') {
+        return res.status(403).json({ error: 'Access denied. Supervisor role required.' });
     }
     next();
 }
@@ -632,11 +646,16 @@ app.post('/api/di/register', async (req, res) => {
             role: allowlistEntry.role
         };
 
+        // Determine redirect based on role
+        let redirectPage = 'upload.html';
+        if (allowlistEntry.role === 'pi') redirectPage = 'pi-dashboard.html';
+        else if (allowlistEntry.role === 'supervisor') redirectPage = 'supervisor-dashboard.html';
+
         res.json({
             success: true,
             message: 'Registration successful',
             user: req.session.user,
-            redirect: allowlistEntry.role === 'pi' ? 'pi-dashboard.html' : 'upload.html'
+            redirect: redirectPage
         });
 
     } catch (err) {
@@ -705,11 +724,16 @@ app.post('/api/di/login', async (req, res) => {
             role: user.role
         };
 
+        // Determine redirect based on role
+        let redirectPage = 'upload.html';
+        if (user.role === 'pi') redirectPage = 'pi-dashboard.html';
+        else if (user.role === 'supervisor') redirectPage = 'supervisor-dashboard.html';
+
         res.json({
             success: true,
             message: 'Login successful',
             user: req.session.user,
-            redirect: user.role === 'pi' ? 'pi-dashboard.html' : 'upload.html'
+            redirect: redirectPage
         });
 
     } catch (err) {
@@ -1806,8 +1830,8 @@ app.post('/api/di/members', requirePI, async (req, res) => {
         }
 
         const memberRole = role || 'researcher';
-        if (!['researcher', 'pi'].includes(memberRole)) {
-            return res.status(400).json({ error: 'Role must be researcher or pi' });
+        if (!['researcher', 'supervisor', 'pi'].includes(memberRole)) {
+            return res.status(400).json({ error: 'Role must be researcher, supervisor, or pi' });
         }
 
         const emailLower = institution_email.toLowerCase().trim();
@@ -2705,6 +2729,326 @@ app.get('/api/di/reports/export', requirePI, async (req, res) => {
 
     } catch (err) {
         console.error('Export error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// =====================================================
+// DELEGATION ENDPOINTS (PI only)
+// Manage supervisor roles and researcher assignments
+// =====================================================
+
+// POST /api/di/delegation/promote
+// Promote a researcher to supervisor role
+app.post('/api/di/delegation/promote', requirePI, async (req, res) => {
+    try {
+        const { user_id } = req.body;
+        if (!user_id) {
+            return res.status(400).json({ error: 'user_id is required' });
+        }
+
+        // Check user exists and is currently a researcher
+        const userCheck = await pool.query(
+            `SELECT researcher_id, COALESCE(role, 'researcher') as role FROM di_allowlist WHERE researcher_id = $1 AND active = true`,
+            [user_id]
+        );
+        if (userCheck.rows.length === 0) {
+            return res.status(404).json({ error: 'User not found or inactive' });
+        }
+        if (userCheck.rows[0].role !== 'researcher') {
+            return res.status(400).json({ error: 'Only researchers can be promoted to supervisor' });
+        }
+
+        // Update role to supervisor
+        await pool.query(
+            `UPDATE di_allowlist SET role = 'supervisor' WHERE researcher_id = $1`,
+            [user_id]
+        );
+
+        res.json({ success: true, message: 'User promoted to supervisor', user_id });
+    } catch (err) {
+        console.error('Promote to supervisor error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/di/delegation/demote
+// Demote a supervisor back to researcher
+app.post('/api/di/delegation/demote', requirePI, async (req, res) => {
+    try {
+        const { user_id } = req.body;
+        if (!user_id) {
+            return res.status(400).json({ error: 'user_id is required' });
+        }
+
+        // Check user exists and is currently a supervisor
+        const userCheck = await pool.query(
+            `SELECT researcher_id, COALESCE(role, 'researcher') as role FROM di_allowlist WHERE researcher_id = $1 AND active = true`,
+            [user_id]
+        );
+        if (userCheck.rows.length === 0) {
+            return res.status(404).json({ error: 'User not found or inactive' });
+        }
+        if (userCheck.rows[0].role !== 'supervisor') {
+            return res.status(400).json({ error: 'Only supervisors can be demoted to researcher' });
+        }
+
+        // Update role to researcher
+        await pool.query(
+            `UPDATE di_allowlist SET role = 'researcher' WHERE researcher_id = $1`,
+            [user_id]
+        );
+
+        // Remove all researcher assignments for this supervisor
+        await pool.query(
+            `DELETE FROM di_supervisor_researchers WHERE supervisor_id = $1`,
+            [user_id]
+        );
+
+        res.json({ success: true, message: 'User demoted to researcher', user_id });
+    } catch (err) {
+        console.error('Demote supervisor error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/di/delegation/assign
+// Assign a researcher to a supervisor for viewing
+app.post('/api/di/delegation/assign', requirePI, async (req, res) => {
+    try {
+        const { supervisor_id, researcher_id } = req.body;
+        if (!supervisor_id || !researcher_id) {
+            return res.status(400).json({ error: 'supervisor_id and researcher_id are required' });
+        }
+
+        // Verify supervisor exists and has supervisor role
+        const supervisorCheck = await pool.query(
+            `SELECT researcher_id, COALESCE(role, 'researcher') as role FROM di_allowlist WHERE researcher_id = $1 AND active = true`,
+            [supervisor_id]
+        );
+        if (supervisorCheck.rows.length === 0) {
+            return res.status(404).json({ error: 'Supervisor not found' });
+        }
+        if (supervisorCheck.rows[0].role !== 'supervisor') {
+            return res.status(400).json({ error: 'Target user is not a supervisor' });
+        }
+
+        // Verify researcher exists
+        const researcherCheck = await pool.query(
+            `SELECT researcher_id FROM di_allowlist WHERE researcher_id = $1 AND active = true`,
+            [researcher_id]
+        );
+        if (researcherCheck.rows.length === 0) {
+            return res.status(404).json({ error: 'Researcher not found' });
+        }
+
+        // Insert assignment (ignore if already exists)
+        await pool.query(
+            `INSERT INTO di_supervisor_researchers (supervisor_id, researcher_id, assigned_by)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (supervisor_id, researcher_id) DO NOTHING`,
+            [supervisor_id, researcher_id, req.session.user.researcher_id]
+        );
+
+        res.json({ success: true, message: 'Researcher assigned to supervisor', supervisor_id, researcher_id });
+    } catch (err) {
+        console.error('Assign researcher error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/di/delegation/unassign
+// Remove a researcher from a supervisor
+app.post('/api/di/delegation/unassign', requirePI, async (req, res) => {
+    try {
+        const { supervisor_id, researcher_id } = req.body;
+        if (!supervisor_id || !researcher_id) {
+            return res.status(400).json({ error: 'supervisor_id and researcher_id are required' });
+        }
+
+        const result = await pool.query(
+            `DELETE FROM di_supervisor_researchers WHERE supervisor_id = $1 AND researcher_id = $2 RETURNING *`,
+            [supervisor_id, researcher_id]
+        );
+
+        if (result.rowCount === 0) {
+            return res.status(404).json({ error: 'Assignment not found' });
+        }
+
+        res.json({ success: true, message: 'Researcher unassigned from supervisor', supervisor_id, researcher_id });
+    } catch (err) {
+        console.error('Unassign researcher error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/di/delegation/assignments
+// Get all assignments for a supervisor (or all if no supervisor_id)
+app.get('/api/di/delegation/assignments', requirePI, async (req, res) => {
+    try {
+        const { supervisor_id } = req.query;
+        let query, params;
+
+        if (supervisor_id) {
+            query = `
+                SELECT sr.supervisor_id, sr.researcher_id, sr.assigned_at, sr.assigned_by,
+                       a.name as researcher_name, a.institution_email as researcher_email
+                FROM di_supervisor_researchers sr
+                JOIN di_allowlist a ON sr.researcher_id = a.researcher_id
+                WHERE sr.supervisor_id = $1
+                ORDER BY a.name
+            `;
+            params = [supervisor_id];
+        } else {
+            query = `
+                SELECT sr.supervisor_id, sr.researcher_id, sr.assigned_at, sr.assigned_by,
+                       a.name as researcher_name, a.institution_email as researcher_email,
+                       s.name as supervisor_name
+                FROM di_supervisor_researchers sr
+                JOIN di_allowlist a ON sr.researcher_id = a.researcher_id
+                JOIN di_allowlist s ON sr.supervisor_id = s.researcher_id
+                ORDER BY s.name, a.name
+            `;
+            params = [];
+        }
+
+        const result = await pool.query(query, params);
+        res.json({ success: true, count: result.rows.length, assignments: result.rows });
+    } catch (err) {
+        console.error('Get assignments error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/di/delegation/supervisors
+// Get all users with supervisor role
+app.get('/api/di/delegation/supervisors', requirePI, async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT researcher_id, name, institution_email, affiliation
+             FROM di_allowlist
+             WHERE role = 'supervisor' AND active = true
+             ORDER BY name`
+        );
+        res.json({ success: true, count: result.rows.length, supervisors: result.rows });
+    } catch (err) {
+        console.error('Get supervisors error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// =====================================================
+// SUPERVISION ENDPOINTS (Supervisor only)
+// Read-only access to assigned researchers' files
+// =====================================================
+
+// GET /api/di/supervision/researchers
+// Get list of researchers assigned to the logged-in supervisor
+app.get('/api/di/supervision/researchers', requireSupervisor, async (req, res) => {
+    try {
+        const supervisorId = req.session.user.researcher_id;
+
+        const result = await pool.query(
+            `SELECT a.researcher_id, a.name, a.institution_email, a.affiliation,
+                    sr.assigned_at,
+                    (SELECT COUNT(*) FROM di_submissions s WHERE s.researcher_id = a.researcher_id) as file_count
+             FROM di_supervisor_researchers sr
+             JOIN di_allowlist a ON sr.researcher_id = a.researcher_id
+             WHERE sr.supervisor_id = $1 AND a.active = true
+             ORDER BY a.name`,
+            [supervisorId]
+        );
+
+        res.json({ success: true, count: result.rows.length, researchers: result.rows });
+    } catch (err) {
+        console.error('Get supervised researchers error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/di/supervision/researchers/:researcher_id/files
+// Get files for a specific researcher (must be assigned to this supervisor)
+app.get('/api/di/supervision/researchers/:researcher_id/files', requireSupervisor, async (req, res) => {
+    try {
+        const supervisorId = req.session.user.researcher_id;
+        const { researcher_id } = req.params;
+
+        // SECURITY: Verify the researcher is assigned to this supervisor
+        const assignmentCheck = await pool.query(
+            `SELECT 1 FROM di_supervisor_researchers WHERE supervisor_id = $1 AND researcher_id = $2`,
+            [supervisorId, researcher_id]
+        );
+        if (assignmentCheck.rows.length === 0) {
+            return res.status(403).json({ error: 'Access denied. Researcher not assigned to you.' });
+        }
+
+        // Get researcher info
+        const researcherInfo = await pool.query(
+            `SELECT name, institution_email, affiliation FROM di_allowlist WHERE researcher_id = $1`,
+            [researcher_id]
+        );
+
+        // Get all submissions for this researcher (same query pattern as my-files)
+        const result = await pool.query(
+            `SELECT submission_id, file_type, original_filename, status, created_at, signed_at, drive_file_id
+             FROM di_submissions
+             WHERE researcher_id = $1
+             ORDER BY created_at DESC`,
+            [researcher_id]
+        );
+
+        // Build tree structure matching my-files format
+        const submittedFiles = [];
+        const approvedFiles = [];
+        let pendingCount = 0, approvedCount = 0, revisionCount = 0;
+
+        for (const file of result.rows) {
+            const status = file.status || 'PENDING';
+            const fileId = file.drive_file_id;
+            const hasR2File = fileId && typeof fileId === 'string' && fileId.startsWith('r2:');
+
+            const fileNode = {
+                name: file.original_filename,
+                type: 'file',
+                id: file.submission_id,
+                status: status,
+                fileType: file.file_type,
+                date: file.created_at,
+                signedAt: file.signed_at,
+                r2ObjectKey: hasR2File ? fileId.replace(/^r2:/, '') : null,
+                viewUrl: hasR2File ? `/api/di/download/${file.submission_id}` : null,
+                downloadUrl: hasR2File ? `/api/di/download/${file.submission_id}?download=true` : null
+            };
+
+            if (status === 'APPROVED') {
+                approvedFiles.push(fileNode);
+                approvedCount++;
+            } else if (status === 'PENDING') {
+                submittedFiles.push(fileNode);
+                pendingCount++;
+            } else if (status === 'REVISION_NEEDED') {
+                revisionCount++;
+            }
+        }
+
+        const tree = {
+            name: researcherInfo.rows[0]?.name || researcher_id,
+            type: 'folder',
+            children: [
+                { name: `Submitted (${pendingCount})`, type: 'folder', children: submittedFiles, count: pendingCount },
+                { name: `Approved (${approvedCount})`, type: 'folder', children: approvedFiles, count: approvedCount }
+            ]
+        };
+
+        res.json({
+            success: true,
+            researcher: researcherInfo.rows[0] || { researcher_id },
+            tree: tree,
+            totalFiles: result.rows.length,
+            pendingCount, approvedCount, revisionCount
+        });
+    } catch (err) {
+        console.error('Get researcher files error:', err);
         res.status(500).json({ error: 'Server error' });
     }
 });

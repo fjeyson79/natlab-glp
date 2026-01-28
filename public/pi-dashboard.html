@@ -288,6 +288,7 @@
             font-weight: bold;
         }
         .role-badge.pi { background: #ffc107; color: #333; }
+        .role-badge.supervisor { background: #17a2b8; color: white; }
         .role-badge.researcher { background: #e0e0e0; color: #333; }
 
         /* Actions */
@@ -680,6 +681,7 @@
                                 <label for="newUserRole">Role *</label>
                                 <select id="newUserRole" required>
                                     <option value="researcher">Researcher</option>
+                                    <option value="supervisor">Supervisor</option>
                                     <option value="pi">Principal Investigator</option>
                                 </select>
                             </div>
@@ -710,6 +712,56 @@
                             <li>They can log in again with the same credentials</li>
                         </ul>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Delegation Section -->
+        <div class="panel">
+            <div class="panel-header">
+                <h2><span class="icon">&#128101;</span> Supervisor Delegation</h2>
+                <button class="btn btn-sm btn-secondary" onclick="loadDelegationData()">Refresh</button>
+            </div>
+            <div class="panel-content">
+                <div id="delegationMessage" class="message"></div>
+                <div class="form-row">
+                    <!-- Promote/Demote -->
+                    <div class="form-group">
+                        <label>Promote/Demote Researcher</label>
+                        <select id="promoteSelect" style="margin-bottom:8px;">
+                            <option value="">Select a researcher...</option>
+                        </select>
+                        <div style="display:flex;gap:8px;">
+                            <button class="btn btn-sm btn-success" onclick="promoteToSupervisor()">Promote to Supervisor</button>
+                            <button class="btn btn-sm btn-warning" onclick="demoteToResearcher()">Demote to Researcher</button>
+                        </div>
+                    </div>
+                    <!-- Assign Researchers -->
+                    <div class="form-group">
+                        <label>Assign Researcher to Supervisor</label>
+                        <select id="supervisorSelect" style="margin-bottom:8px;">
+                            <option value="">Select supervisor...</option>
+                        </select>
+                        <select id="assignResearcherSelect" style="margin-bottom:8px;">
+                            <option value="">Select researcher to assign...</option>
+                        </select>
+                        <div style="display:flex;gap:8px;">
+                            <button class="btn btn-sm btn-primary" onclick="assignResearcher()">Assign</button>
+                            <button class="btn btn-sm btn-danger" onclick="unassignResearcher()">Unassign</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- Assignments Table -->
+                <div style="margin-top:15px;">
+                    <label>Current Assignments</label>
+                    <table class="data-table" id="assignmentsTable">
+                        <thead>
+                            <tr><th>Supervisor</th><th>Researcher</th><th>Assigned</th><th>Action</th></tr>
+                        </thead>
+                        <tbody id="assignmentsTableBody">
+                            <tr><td colspan="4" style="text-align:center;color:#666;">Loading...</td></tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -1600,7 +1652,7 @@
                 }
 
                 tbody.innerHTML = data.members.map(u => {
-                    const roleClass = u.role === 'pi' ? 'pi' : 'researcher';
+                    const roleClass = u.role === 'pi' ? 'pi' : (u.role === 'supervisor' ? 'supervisor' : 'researcher');
                     const statusClass = u.active ? 'status-active' : 'status-inactive';
                     return `
                         <tr>
@@ -1798,6 +1850,153 @@
             } catch (err) {}
             window.location.href = 'access.html';
         });
+
+        // =====================================================
+        // DELEGATION FUNCTIONS
+        // =====================================================
+        async function loadDelegationData() {
+            try {
+                // Load supervisors
+                const supRes = await fetch('/api/di/delegation/supervisors', { credentials: 'include' });
+                const supData = supRes.ok ? await supRes.json() : { supervisors: [] };
+                const supervisorSelect = document.getElementById('supervisorSelect');
+                supervisorSelect.innerHTML = '<option value="">Select supervisor...</option>' +
+                    supData.supervisors.map(s => `<option value="${s.researcher_id}">${s.name} (${s.researcher_id})</option>`).join('');
+
+                // Load all members for promote/demote and assign
+                const memRes = await fetch('/api/di/all-members', { credentials: 'include' });
+                const memData = memRes.ok ? await memRes.json() : { members: [] };
+                const activeMembers = memData.members.filter(m => m.active);
+
+                // Populate promote select (researchers and supervisors only)
+                const promoteSelect = document.getElementById('promoteSelect');
+                const promotable = activeMembers.filter(m => m.role === 'researcher' || m.role === 'supervisor');
+                promoteSelect.innerHTML = '<option value="">Select a user...</option>' +
+                    promotable.map(m => `<option value="${m.researcher_id}" data-role="${m.role}">${m.name} (${m.role.toUpperCase()})</option>`).join('');
+
+                // Populate assign researcher select (non-supervisor, non-PI)
+                const assignSelect = document.getElementById('assignResearcherSelect');
+                const assignable = activeMembers.filter(m => m.role === 'researcher');
+                assignSelect.innerHTML = '<option value="">Select researcher...</option>' +
+                    assignable.map(m => `<option value="${m.researcher_id}">${m.name} (${m.researcher_id})</option>`).join('');
+
+                // Load assignments
+                const assRes = await fetch('/api/di/delegation/assignments', { credentials: 'include' });
+                const assData = assRes.ok ? await assRes.json() : { assignments: [] };
+                const tbody = document.getElementById('assignmentsTableBody');
+                if (assData.assignments.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#666;">No assignments yet</td></tr>';
+                } else {
+                    tbody.innerHTML = assData.assignments.map(a => `
+                        <tr>
+                            <td>${escapeHtml(a.supervisor_name || a.supervisor_id)}</td>
+                            <td>${escapeHtml(a.researcher_name)} (${escapeHtml(a.researcher_id)})</td>
+                            <td>${new Date(a.assigned_at).toLocaleDateString()}</td>
+                            <td><button class="btn btn-sm btn-danger" onclick="removeAssignment('${a.supervisor_id}','${a.researcher_id}')">Remove</button></td>
+                        </tr>
+                    `).join('');
+                }
+            } catch (err) {
+                console.error('Load delegation data error:', err);
+            }
+        }
+
+        async function promoteToSupervisor() {
+            const userId = document.getElementById('promoteSelect').value;
+            if (!userId) { alert('Select a user to promote'); return; }
+            const opt = document.querySelector(`#promoteSelect option[value="${userId}"]`);
+            if (opt && opt.dataset.role === 'supervisor') { alert('User is already a supervisor'); return; }
+            if (!confirm('Promote this researcher to supervisor?')) return;
+            try {
+                const res = await fetch('/api/di/delegation/promote', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: userId }), credentials: 'include'
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    showMessage('delegationMessage', 'User promoted to supervisor', 'success');
+                    loadDelegationData(); loadAllUsers();
+                } else {
+                    showMessage('delegationMessage', data.error || 'Failed', 'error');
+                }
+            } catch (err) { showMessage('delegationMessage', 'Error: ' + err.message, 'error'); }
+        }
+
+        async function demoteToResearcher() {
+            const userId = document.getElementById('promoteSelect').value;
+            if (!userId) { alert('Select a user to demote'); return; }
+            const opt = document.querySelector(`#promoteSelect option[value="${userId}"]`);
+            if (opt && opt.dataset.role !== 'supervisor') { alert('User is not a supervisor'); return; }
+            if (!confirm('Demote this supervisor to researcher? All assignments will be removed.')) return;
+            try {
+                const res = await fetch('/api/di/delegation/demote', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: userId }), credentials: 'include'
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    showMessage('delegationMessage', 'User demoted to researcher', 'success');
+                    loadDelegationData(); loadAllUsers();
+                } else {
+                    showMessage('delegationMessage', data.error || 'Failed', 'error');
+                }
+            } catch (err) { showMessage('delegationMessage', 'Error: ' + err.message, 'error'); }
+        }
+
+        async function assignResearcher() {
+            const supId = document.getElementById('supervisorSelect').value;
+            const resId = document.getElementById('assignResearcherSelect').value;
+            if (!supId || !resId) { alert('Select both supervisor and researcher'); return; }
+            try {
+                const res = await fetch('/api/di/delegation/assign', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ supervisor_id: supId, researcher_id: resId }), credentials: 'include'
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    showMessage('delegationMessage', 'Researcher assigned to supervisor', 'success');
+                    loadDelegationData();
+                } else {
+                    showMessage('delegationMessage', data.error || 'Failed', 'error');
+                }
+            } catch (err) { showMessage('delegationMessage', 'Error: ' + err.message, 'error'); }
+        }
+
+        async function unassignResearcher() {
+            const supId = document.getElementById('supervisorSelect').value;
+            const resId = document.getElementById('assignResearcherSelect').value;
+            if (!supId || !resId) { alert('Select both supervisor and researcher'); return; }
+            try {
+                const res = await fetch('/api/di/delegation/unassign', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ supervisor_id: supId, researcher_id: resId }), credentials: 'include'
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    showMessage('delegationMessage', 'Researcher unassigned', 'success');
+                    loadDelegationData();
+                } else {
+                    showMessage('delegationMessage', data.error || 'Failed', 'error');
+                }
+            } catch (err) { showMessage('delegationMessage', 'Error: ' + err.message, 'error'); }
+        }
+
+        async function removeAssignment(supId, resId) {
+            if (!confirm('Remove this assignment?')) return;
+            try {
+                const res = await fetch('/api/di/delegation/unassign', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ supervisor_id: supId, researcher_id: resId }), credentials: 'include'
+                });
+                if (res.ok) {
+                    showMessage('delegationMessage', 'Assignment removed', 'success');
+                    loadDelegationData();
+                }
+            } catch (err) { console.error(err); }
+        }
+
+        // Load delegation data on page load
+        loadDelegationData();
     </script>
 </body>
 </html>

@@ -11,10 +11,4 @@ patch-*.ps1
 
 nul
 
-# Allow NATLAB logo only (keep images ignored by default)
-!public/images/natlab-logo.png
-
-
-# Track NATLAB logo (do not ignore images folder)
-!public/images/
-!public/images/natlab-logo.png
+# Track all public/ portal assets (never ignore)
