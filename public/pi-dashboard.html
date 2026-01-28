@@ -675,6 +675,7 @@
                                     <option value="">Select...</option>
                                     <option value="LiU">LiU</option>
                                     <option value="UNAV">UNAV</option>
+                                    <option value="EXTERNAL">External</option>
                                 </select>
                             </div>
                             <div class="form-group">
@@ -1654,6 +1655,7 @@
                 tbody.innerHTML = data.members.map(u => {
                     const roleClass = u.role === 'pi' ? 'pi' : (u.role === 'supervisor' ? 'supervisor' : 'researcher');
                     const statusClass = u.active ? 'status-active' : 'status-inactive';
+                    const canResetPassword = u.active && u.role !== 'pi' && u.last_login;
                     return `
                         <tr>
                             <td>${escapeHtml(u.name || '-')}</td>
@@ -1668,6 +1670,9 @@
                                     ${u.active ?
                                         `<button class="btn btn-sm btn-danger" onclick="deactivateUser('${u.researcher_id}', '${escapeHtml(u.name || u.researcher_id)}')">Deactivate</button>` :
                                         `<button class="btn btn-sm btn-success" onclick="reactivateUser('${u.researcher_id}', '${escapeHtml(u.name || u.researcher_id)}')">Reactivate</button>`
+                                    }
+                                    ${canResetPassword ?
+                                        `<button class="btn btn-sm btn-warning" onclick="resetUserPassword('${u.researcher_id}', '${escapeHtml(u.name || u.researcher_id)}')">Reset Password</button>` : ''
                                     }
                                 </div>
                             </td>
@@ -1763,6 +1768,27 @@
                 }
             } catch (err) {
                 alert('Error reactivating user');
+            }
+        }
+
+        async function resetUserPassword(id, name) {
+            if (!confirm(`Reset password for "${name}"?\n\nThey will be required to set a new password on their next login.`)) return;
+
+            try {
+                const response = await fetch(`/api/di/members/${id}/reset-password`, {
+                    method: 'POST',
+                    credentials: 'include'
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    alert(data.message || 'Password reset flagged successfully');
+                } else {
+                    alert(data.error || 'Failed to reset password');
+                }
+            } catch (err) {
+                alert('Error resetting password');
             }
         }
 

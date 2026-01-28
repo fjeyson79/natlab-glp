@@ -701,12 +701,14 @@ app.post('/api/di/login', async (req, res) => {
         const hasRole = await checkRoleColumn();
         const loginQuery = hasRole
             ? `SELECT u.institution_email, u.password_hash, u.researcher_id,
-                      a.name, a.affiliation, a.active, COALESCE(a.role, 'researcher') as role
+                      a.name, a.affiliation, a.active, COALESCE(a.role, 'researcher') as role,
+                      COALESCE(u.force_password_reset, false) as force_password_reset
                FROM di_users u
                JOIN di_allowlist a ON u.researcher_id = a.researcher_id
                WHERE LOWER(u.institution_email) = $1`
             : `SELECT u.institution_email, u.password_hash, u.researcher_id,
-                      a.name, a.affiliation, a.active, 'researcher' as role
+                      a.name, a.affiliation, a.active, 'researcher' as role,
+                      COALESCE(u.force_password_reset, false) as force_password_reset
                FROM di_users u
                JOIN di_allowlist a ON u.researcher_id = a.researcher_id
                WHERE LOWER(u.institution_email) = $1`;
@@ -728,6 +730,23 @@ app.post('/api/di/login', async (req, res) => {
 
         if (!passwordMatch) {
             return res.status(401).json({ error: 'Invalid credentials' });
+        }
+
+        // Check if password reset is required
+        if (user.force_password_reset) {
+            // Store info in session for password reset page
+            req.session.pendingPasswordReset = {
+                researcher_id: user.researcher_id,
+                institution_email: user.institution_email,
+                name: user.name,
+                affiliation: user.affiliation
+            };
+            return res.json({
+                success: true,
+                message: 'Password reset required',
+                requirePasswordReset: true,
+                redirect: 'reset-password.html'
+            });
         }
 
         // Update last login
@@ -761,6 +780,84 @@ app.post('/api/di/login', async (req, res) => {
         console.error('Login error:', err);
         res.status(500).json({ error: 'Server error' });
     }
+});
+
+// POST /api/di/complete-password-reset
+// Complete a forced password reset (user sets new password)
+app.post('/api/di/complete-password-reset', async (req, res) => {
+    try {
+        const { password } = req.body;
+
+        // Check for pending password reset in session
+        if (!req.session.pendingPasswordReset) {
+            return res.status(403).json({ error: 'No pending password reset' });
+        }
+
+        if (!password || password.length < 8) {
+            return res.status(400).json({ error: 'Password must be at least 8 characters' });
+        }
+
+        const { researcher_id, institution_email, name, affiliation } = req.session.pendingPasswordReset;
+
+        // Hash new password
+        const saltRounds = 10;
+        const passwordHash = await bcrypt.hash(password, saltRounds);
+
+        // Update password and clear the reset flag
+        await pool.query(
+            `UPDATE di_users
+             SET password_hash = $1, force_password_reset = false, last_login = CURRENT_TIMESTAMP
+             WHERE researcher_id = $2`,
+            [passwordHash, researcher_id]
+        );
+
+        // Get user role for redirect
+        const hasRole = await checkRoleColumn();
+        const roleQuery = hasRole
+            ? `SELECT COALESCE(role, 'researcher') as role FROM di_allowlist WHERE researcher_id = $1`
+            : `SELECT 'researcher' as role FROM di_allowlist WHERE researcher_id = $1`;
+        const roleResult = await pool.query(roleQuery, [researcher_id]);
+        const role = roleResult.rows[0]?.role || 'researcher';
+
+        // Clear pending reset and set normal session
+        delete req.session.pendingPasswordReset;
+        req.session.user = {
+            institution_email,
+            researcher_id,
+            name,
+            affiliation,
+            role
+        };
+
+        // Determine redirect based on role
+        let redirectPage = 'upload.html';
+        if (role === 'pi') redirectPage = 'pi-dashboard.html';
+        else if (role === 'supervisor') redirectPage = 'supervisor-dashboard.html';
+
+        console.log(`Password reset completed for user ${researcher_id}`);
+
+        res.json({
+            success: true,
+            message: 'Password updated successfully',
+            redirect: redirectPage
+        });
+
+    } catch (err) {
+        console.error('Complete password reset error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/di/pending-reset-info
+// Get info for pending password reset (for reset-password.html)
+app.get('/api/di/pending-reset-info', (req, res) => {
+    if (!req.session.pendingPasswordReset) {
+        return res.status(403).json({ error: 'No pending password reset' });
+    }
+    res.json({
+        name: req.session.pendingPasswordReset.name,
+        affiliation: req.session.pendingPasswordReset.affiliation
+    });
 });
 
 // GET /api/di/me
@@ -1839,23 +1936,37 @@ app.get('/api/di/members', requirePI, async (req, res) => {
 // Add a new lab member (PI only)
 app.post('/api/di/members', requirePI, async (req, res) => {
     try {
-        const { name, researcher_id, institution_email, affiliation, role } = req.body;
+        const { name, institution_email, affiliation, role } = req.body;
+        let { researcher_id } = req.body;
 
         // Validate required fields
-        if (!name || !researcher_id || !institution_email || !affiliation) {
-            return res.status(400).json({ error: 'All fields are required' });
+        if (!name || !institution_email || !affiliation) {
+            return res.status(400).json({ error: 'Name, email, and affiliation are required' });
         }
 
-        if (!['LiU', 'UNAV'].includes(affiliation)) {
-            return res.status(400).json({ error: 'Affiliation must be LiU or UNAV' });
+        if (!['LiU', 'UNAV', 'EXTERNAL'].includes(affiliation)) {
+            return res.status(400).json({ error: 'Affiliation must be LiU, UNAV, or EXTERNAL' });
+        }
+
+        const emailLower = institution_email.toLowerCase().trim();
+
+        // Domain validation for LIU and UNAV
+        if (affiliation === 'LiU' && !emailLower.endsWith('@liu.se')) {
+            return res.status(400).json({ error: 'LiU affiliation requires @liu.se email' });
+        }
+        if (affiliation === 'UNAV' && !emailLower.endsWith('@unav.es') && !emailLower.endsWith('@alumni.unav.es')) {
+            return res.status(400).json({ error: 'UNAV affiliation requires @unav.es or @alumni.unav.es email' });
+        }
+
+        // Auto-generate researcher_id from email if not provided
+        if (!researcher_id) {
+            researcher_id = emailLower.split('@')[0].replace(/[^a-z0-9]/g, '.');
         }
 
         const memberRole = role || 'researcher';
         if (!['researcher', 'supervisor', 'pi'].includes(memberRole)) {
             return res.status(400).json({ error: 'Role must be researcher, supervisor, or pi' });
         }
-
-        const emailLower = institution_email.toLowerCase().trim();
 
         // Check if already exists
         const existing = await pool.query(
@@ -2608,6 +2719,57 @@ app.put('/api/di/members/:id/reactivate', requirePI, async (req, res) => {
 
     } catch (err) {
         console.error('Reactivate user error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/di/members/:id/reset-password
+// Force a user to reset password on next login (PI only)
+// Only works for researcher and supervisor roles, not PI
+app.post('/api/di/members/:id/reset-password', requirePI, async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // Get user info and verify they exist and have appropriate role
+        const userResult = await pool.query(
+            `SELECT a.researcher_id, a.name, COALESCE(a.role, 'researcher') as role, u.institution_email
+             FROM di_allowlist a
+             LEFT JOIN di_users u ON a.researcher_id = u.researcher_id
+             WHERE a.researcher_id = $1 AND a.active = true`,
+            [id]
+        );
+
+        if (userResult.rows.length === 0) {
+            return res.status(404).json({ error: 'User not found or inactive' });
+        }
+
+        const user = userResult.rows[0];
+
+        // Prevent resetting password for PI accounts
+        if (user.role === 'pi') {
+            return res.status(403).json({ error: 'Cannot reset password for PI accounts' });
+        }
+
+        // Check if user has registered (has a row in di_users)
+        if (!user.institution_email) {
+            return res.status(400).json({ error: 'User has not registered yet - no password to reset' });
+        }
+
+        // Set force_password_reset flag
+        await pool.query(
+            `UPDATE di_users SET force_password_reset = true WHERE researcher_id = $1`,
+            [id]
+        );
+
+        console.log(`Password reset flagged for user ${id} by PI ${req.session.user.researcher_id}`);
+
+        res.json({
+            success: true,
+            message: `Password reset required for ${user.name || id} on next login`
+        });
+
+    } catch (err) {
+        console.error('Reset password error:', err);
         res.status(500).json({ error: 'Server error' });
     }
 });
