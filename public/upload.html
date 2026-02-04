@@ -36,6 +36,16 @@
         }
         .affiliation-badge.LiU { background: #007bff; color: white; }
         .affiliation-badge.UNAV { background: #dc3545; color: white; }
+        .affiliation-badge.External { background: #6c757d; color: white; }
+        .role-badge {
+            background: #17a2b8;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: bold;
+        }
+        .role-badge.hidden { display: none; }
         .logout-btn {
             padding: 8px 16px;
             background: rgba(255,255,255,0.2);
@@ -367,6 +377,97 @@
             border-color: #2d5a87;
         }
 
+        /* Supervision Panel Styles (for Supervisors) */
+        .supervision-panel { display: none; }
+        .supervision-panel.visible { display: block; }
+
+        .supervision-grid {
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            gap: 15px;
+            min-height: 400px;
+        }
+
+        .researcher-list-container {
+            background: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+            overflow: hidden;
+        }
+
+        .researcher-list-header {
+            padding: 12px 15px;
+            background: #17a2b8;
+            color: white;
+            font-weight: bold;
+            font-size: 13px;
+        }
+
+        .researcher-list {
+            list-style: none;
+            max-height: 350px;
+            overflow-y: auto;
+        }
+
+        .researcher-item {
+            padding: 12px 15px;
+            border-bottom: 1px solid #e0e0e0;
+            cursor: pointer;
+            transition: background 0.2s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .researcher-item:hover { background: #e9ecef; }
+        .researcher-item.active { background: #d1ecf1; border-left: 3px solid #17a2b8; }
+        .researcher-item:last-child { border-bottom: none; }
+        .researcher-name { font-weight: bold; color: #333; font-size: 13px; }
+        .researcher-email { font-size: 11px; color: #666; }
+        .researcher-files { font-size: 11px; color: #17a2b8; }
+
+        .supervision-files-container {
+            background: white;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+            padding: 15px;
+        }
+
+        .supervision-select-prompt {
+            text-align: center;
+            padding: 40px 20px;
+            color: #666;
+        }
+
+        .supervision-select-prompt .icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+            opacity: 0.5;
+        }
+
+        .selected-researcher-info {
+            background: #17a2b8;
+            color: white;
+            padding: 10px 15px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+        }
+
+        .selected-researcher-info strong { display: block; font-size: 14px; }
+        .selected-researcher-info span { font-size: 12px; opacity: 0.9; }
+
+        .supervision-stats-bar {
+            display: flex;
+            gap: 15px;
+            padding: 10px 15px;
+            background: #e3f2fd;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            font-size: 12px;
+        }
+
+        .supervision-file-tree { font-size: 13px; }
+
         /* Responsive */
         @media (max-width: 900px) {
             .main-container {
@@ -382,6 +483,7 @@
     <div class="header">
         <h1>NATLAB GLP Data Integrity Portal</h1>
         <div class="header-info">
+            <span id="roleBadge" class="role-badge hidden">SUPERVISOR</span>
             <span id="affiliationBadge" class="affiliation-badge">Loading...</span>
             <span class="user-badge" id="userName">Loading...</span>
             <button class="logout-btn" id="logoutBtn">Logout</button>
@@ -473,9 +575,58 @@
                 </div>
             </div>
         </div>
+
+        <!-- Panel 4: Supervision (Full Width, Supervisors Only) -->
+        <div id="supervisionPanel" class="panel full-width-panel supervision-panel">
+            <div class="panel-header">
+                <h2><span class="icon">&#128101;</span> Supervision</h2>
+                <button onclick="loadAssignedResearchers()" style="padding:5px 10px;font-size:12px;cursor:pointer;border:1px solid #ddd;border-radius:4px;background:white;">Refresh</button>
+            </div>
+            <div class="panel-content">
+                <div class="supervision-grid">
+                    <!-- Left: Researcher List -->
+                    <div class="researcher-list-container">
+                        <div class="researcher-list-header">My Researchers</div>
+                        <ul id="assignedResearcherList" class="researcher-list">
+                            <li class="loading" style="padding:20px;text-align:center;">
+                                <div class="spinner"></div>
+                                Loading...
+                            </li>
+                        </ul>
+                    </div>
+
+                    <!-- Right: Selected Researcher's Files -->
+                    <div class="supervision-files-container">
+                        <div id="supervisionSelectPrompt" class="supervision-select-prompt">
+                            <div class="icon">&#128101;</div>
+                            <p>Select a researcher to view their files</p>
+                            <p style="font-size:12px;margin-top:10px;color:#999;">You can only view and download files. No editing or deletion is permitted.</p>
+                        </div>
+                        <div id="selectedResearcherInfo" class="selected-researcher-info" style="display:none;">
+                            <strong id="selectedResearcherName"></strong>
+                            <span id="selectedResearcherEmail"></span>
+                        </div>
+                        <div id="supervisionStatsBar" class="supervision-stats-bar" style="display:none;">
+                            <div class="stat-item">
+                                <span>Under Review:</span>
+                                <span class="stat-value" style="color:#856404;" id="supervisionStatPending">0</span>
+                            </div>
+                            <div class="stat-item">
+                                <span>Approved:</span>
+                                <span class="stat-value" style="color:#28a745;" id="supervisionStatApproved">0</span>
+                            </div>
+                        </div>
+                        <div id="supervisionFileTree" class="supervision-file-tree" style="display:none;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
+        let currentUserRole = null;
+        let selectedSupervisionResearcherId = null;
+
         // Load user info
         async function loadUser() {
             try {
@@ -488,6 +639,14 @@
                 const badge = document.getElementById('affiliationBadge');
                 badge.textContent = user.affiliation;
                 badge.classList.add(user.affiliation);
+
+                // Check if user is a supervisor - show supervision panel
+                currentUserRole = (user.role || '').toLowerCase();
+                if (currentUserRole === 'supervisor') {
+                    document.getElementById('roleBadge').classList.remove('hidden');
+                    document.getElementById('supervisionPanel').classList.add('visible');
+                    loadAssignedResearchers();
+                }
 
                 // Load files and group documents after user info
                 loadMyFiles();
@@ -869,6 +1028,142 @@ credentials: 'include'
             const div = document.createElement('div');
             div.textContent = text || '';
             return div.innerHTML;
+        }
+
+        // =====================================================
+        // SUPERVISION FUNCTIONS (for Supervisors only)
+        // =====================================================
+
+        // Load assigned researchers
+        async function loadAssignedResearchers() {
+            const list = document.getElementById('assignedResearcherList');
+            list.innerHTML = '<li class="loading" style="padding:20px;text-align:center;"><div class="spinner"></div>Loading...</li>';
+
+            try {
+                const response = await fetch('/api/di/supervision/researchers', { credentials: 'include' });
+                if (!response.ok) throw new Error('Failed to load');
+                const data = await response.json();
+
+                if (!data.researchers || data.researchers.length === 0) {
+                    list.innerHTML = `
+                        <li style="padding:40px 20px;text-align:center;color:#666;">
+                            <div style="font-size:32px;margin-bottom:10px;opacity:0.5;">&#128101;</div>
+                            <p>No researchers assigned</p>
+                            <p style="font-size:11px;margin-top:10px;">Contact your PI to assign researchers to you</p>
+                        </li>
+                    `;
+                    return;
+                }
+
+                list.innerHTML = data.researchers.map(r => `
+                    <li class="researcher-item ${selectedSupervisionResearcherId === r.researcher_id ? 'active' : ''}"
+                        onclick="selectSupervisionResearcher('${r.researcher_id}', '${escapeHtml(r.name)}', '${escapeHtml(r.institution_email)}', this)">
+                        <div>
+                            <div class="researcher-name">${escapeHtml(r.name)}</div>
+                            <div class="researcher-email">${escapeHtml(r.institution_email)}</div>
+                        </div>
+                        <div class="researcher-files">${r.file_count || 0} files</div>
+                    </li>
+                `).join('');
+            } catch (err) {
+                list.innerHTML = '<li style="color:#dc3545;padding:20px;text-align:center;">Error loading researchers</li>';
+            }
+        }
+
+        // Select a researcher and load their files
+        async function selectSupervisionResearcher(researcherId, name, email, element) {
+            selectedSupervisionResearcherId = researcherId;
+
+            // Update UI to show selection
+            document.querySelectorAll('#assignedResearcherList .researcher-item').forEach(item => item.classList.remove('active'));
+            if (element) element.classList.add('active');
+
+            document.getElementById('supervisionSelectPrompt').style.display = 'none';
+            document.getElementById('selectedResearcherInfo').style.display = 'block';
+            document.getElementById('selectedResearcherName').textContent = name;
+            document.getElementById('selectedResearcherEmail').textContent = email;
+
+            const fileTree = document.getElementById('supervisionFileTree');
+            const statsBar = document.getElementById('supervisionStatsBar');
+            fileTree.style.display = 'block';
+            fileTree.innerHTML = '<div class="loading"><div class="spinner"></div>Loading files...</div>';
+            statsBar.style.display = 'none';
+
+            try {
+                const response = await fetch(`/api/di/supervision/researchers/${researcherId}/files`, { credentials: 'include' });
+                if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.error || 'Failed to load files');
+                }
+                const data = await response.json();
+
+                // Update stats
+                document.getElementById('supervisionStatPending').textContent = data.pendingCount || 0;
+                document.getElementById('supervisionStatApproved').textContent = data.approvedCount || 0;
+                statsBar.style.display = 'flex';
+
+                if (data.totalFiles === 0) {
+                    fileTree.innerHTML = `
+                        <div class="empty-state">
+                            <div class="icon">&#128196;</div>
+                            <p>No files uploaded yet</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                fileTree.innerHTML = renderSupervisionTree(data.tree);
+            } catch (err) {
+                fileTree.innerHTML = `<p style="color:#dc3545;text-align:center;">${err.message}</p>`;
+            }
+        }
+
+        // Render file tree for supervision (read-only - View and Download only)
+        function renderSupervisionTree(node, level = 0) {
+            if (node.type === 'file') {
+                const statusClass = 'status-' + (node.status || 'PENDING');
+                const isApproved = node.status === 'APPROVED';
+                const signedBadge = isApproved && node.signedAt ? `<span style="background:#28a745;color:white;padding:1px 6px;border-radius:8px;font-size:9px;margin-left:5px;">SIGNED</span>` : '';
+                const hasFile = node.r2ObjectKey || node.viewUrl;
+
+                return `
+                    <div class="tree-item tree-file" style="padding-left:${level * 20}px">
+                        <span class="icon">${isApproved ? '&#9989;' : '&#128196;'}</span>
+                        <span>${escapeHtml(node.name)}</span>
+                        <span class="file-status ${statusClass}">${node.status || 'PENDING'}</span>
+                        ${signedBadge}
+                        <div class="file-actions">
+                            ${hasFile ? `
+                                <button class="btn-view" onclick="window.open('${node.viewUrl}', '_blank')">View</button>
+                                <button class="btn-download" onclick="window.location.href='${node.downloadUrl}'">Download</button>
+                            ` : '<span style="color:#999;font-size:11px;">File removed</span>'}
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Folder rendering
+            const isSubmitted = node.name.includes('Submitted');
+            const isApproved = node.name.includes('Approved');
+            const folderClass = isSubmitted ? 'folder-submitted' : (isApproved ? 'folder-approved' : '');
+            const childrenHtml = node.children ? node.children.map(child => renderSupervisionTree(child, level + 1)).join('') : '';
+
+            return `
+                <div class="tree-item tree-folder ${folderClass}" style="padding-left:${level * 20}px" onclick="toggleSupervisionFolder(this)">
+                    <span class="icon">${isApproved ? '&#9989;' : (isSubmitted ? '&#128203;' : '&#128193;')}</span>
+                    <span>${escapeHtml(node.name)}</span>
+                </div>
+                <div class="tree-children">
+                    ${childrenHtml || '<div style="padding:10px 10px 10px 30px;color:#999;font-size:12px;">No files</div>'}
+                </div>
+            `;
+        }
+
+        function toggleSupervisionFolder(element) {
+            const children = element.nextElementSibling;
+            if (children && children.classList.contains('tree-children')) {
+                children.classList.toggle('collapsed');
+            }
         }
 
         // Load group documents on page load (after user loads)

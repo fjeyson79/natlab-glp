@@ -668,9 +668,9 @@ app.post('/api/di/register', async (req, res) => {
         };
 
         // Determine redirect based on role
+        // Supervisors go to upload.html (same as researchers) but get additional supervision panel
         let redirectPage = 'upload.html';
         if (allowlistEntry.role === 'pi') redirectPage = 'pi-dashboard.html';
-        else if (allowlistEntry.role === 'supervisor') redirectPage = 'supervisor-dashboard.html';
 
         res.json({
             success: true,
@@ -765,9 +765,9 @@ app.post('/api/di/login', async (req, res) => {
         };
 
         // Determine redirect based on role
+        // Supervisors go to upload.html (same as researchers) but get additional supervision panel
         let redirectPage = 'upload.html';
         if (user.role === 'pi') redirectPage = 'pi-dashboard.html';
-        else if (user.role === 'supervisor') redirectPage = 'supervisor-dashboard.html';
 
         res.json({
             success: true,
@@ -830,9 +830,9 @@ app.post('/api/di/complete-password-reset', async (req, res) => {
         };
 
         // Determine redirect based on role
+        // Supervisors go to upload.html (same as researchers) but get additional supervision panel
         let redirectPage = 'upload.html';
         if (role === 'pi') redirectPage = 'pi-dashboard.html';
-        else if (role === 'supervisor') redirectPage = 'supervisor-dashboard.html';
 
         console.log(`Password reset completed for user ${researcher_id}`);
 
