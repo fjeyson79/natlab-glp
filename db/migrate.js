@@ -37,7 +37,58 @@ async function migrate() {
                 is_active BOOLEAN DEFAULT TRUE
             )`,
             `CREATE INDEX IF NOT EXISTS idx_di_group_documents_category ON di_group_documents(category)`,
-            `CREATE INDEX IF NOT EXISTS idx_di_group_documents_active ON di_group_documents(is_active)`
+            `CREATE INDEX IF NOT EXISTS idx_di_group_documents_active ON di_group_documents(is_active)`,
+
+            // ==================== INVENTORY SYSTEM ====================
+
+            // Extend di_submissions file_type CHECK to include INVENTORY
+            `ALTER TABLE di_submissions DROP CONSTRAINT IF EXISTS di_submissions_file_type_check`,
+            `ALTER TABLE di_submissions ADD CONSTRAINT di_submissions_file_type_check CHECK (file_type IN ('SOP', 'DATA', 'INVENTORY'))`,
+
+            // Extend di_submissions status CHECK to include SUBMITTED (canonical GLP wording; PENDING is legacy for SOP/DATA)
+            `ALTER TABLE di_submissions DROP CONSTRAINT IF EXISTS di_submissions_status_check`,
+            `ALTER TABLE di_submissions ADD CONSTRAINT di_submissions_status_check CHECK (status IN ('PENDING', 'APPROVED', 'REVISION_NEEDED', 'SUBMITTED'))`,
+
+            // Inventory table — tracks what physically exists in the lab
+            `CREATE TABLE IF NOT EXISTS di_inventory (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                affiliation VARCHAR(10) NOT NULL CHECK (affiliation IN ('LiU', 'UNAV')),
+                vendor_company VARCHAR(255) NOT NULL,
+                product_name VARCHAR(500) NOT NULL,
+                catalog_id VARCHAR(255) NOT NULL,
+                product_link VARCHAR(1000) NOT NULL,
+                responsible_type VARCHAR(10) NOT NULL DEFAULT 'user' CHECK (responsible_type IN ('user', 'group')),
+                responsible_user_id VARCHAR(50) REFERENCES di_allowlist(researcher_id),
+                quantity_remaining NUMERIC(10,2) NOT NULL DEFAULT 0,
+                unit VARCHAR(20) NOT NULL DEFAULT 'each' CHECK (unit IN ('bottle', 'box', 'pack', 'each')),
+                storage VARCHAR(10) NOT NULL DEFAULT 'RT' CHECK (storage IN ('RT', '4C', '20C', '80C')),
+                location VARCHAR(255),
+                status VARCHAR(20) NOT NULL DEFAULT 'Active' CHECK (status IN ('Active', 'Finished')),
+                origin_type VARCHAR(20) NOT NULL DEFAULT 'offline_import' CHECK (origin_type IN ('online_purchase', 'offline_import')),
+                last_update_channel VARCHAR(20) DEFAULT 'offline_import' CHECK (last_update_channel IN ('online_ui', 'offline_import')),
+                import_batch_id UUID,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created_by VARCHAR(50) NOT NULL,
+                last_updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_updated_by VARCHAR(50) NOT NULL
+            )`,
+            `CREATE INDEX IF NOT EXISTS idx_di_inventory_responsible ON di_inventory(responsible_type, responsible_user_id)`,
+            `CREATE INDEX IF NOT EXISTS idx_di_inventory_affiliation ON di_inventory(affiliation)`,
+            `CREATE INDEX IF NOT EXISTS idx_di_inventory_status ON di_inventory(status)`,
+            `CREATE INDEX IF NOT EXISTS idx_di_inventory_catalog ON di_inventory(affiliation, vendor_company, catalog_id)`,
+
+            // Inventory audit log — GLP traceability
+            `CREATE TABLE IF NOT EXISTS di_inventory_log (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                inventory_id UUID NOT NULL REFERENCES di_inventory(id),
+                action VARCHAR(30) NOT NULL,
+                changed_by VARCHAR(50) NOT NULL,
+                old_values JSONB,
+                new_values JSONB,
+                import_batch_id UUID,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )`,
+            `CREATE INDEX IF NOT EXISTS idx_di_inventory_log_inventory ON di_inventory_log(inventory_id)`
         ];
 
         for (const sql of migrations) {

@@ -68,6 +68,18 @@ const upload = multer({
     }
 });
 
+// Multer config for inventory CSV uploads (separate from PDF upload)
+const inventoryUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB for CSV
+    fileFilter: (req, file, cb) => {
+        if ((file.originalname || '').toLowerCase().endsWith('.csv')) {
+            return cb(null, true);
+        }
+        return cb(new Error('Only CSV files are accepted for inventory imports'), false);
+    }
+});
+
 
 // =====================================================
 // R2 STORAGE (S3-compatible) - minimal implementation
@@ -498,6 +510,17 @@ function requireSupervisor(req, res, next) {
     }
     if (req.session.user.role !== 'supervisor') {
         return res.status(403).json({ error: 'Access denied. Supervisor role required.' });
+    }
+    next();
+}
+
+// INTERNAL MIDDLEWARE - blocks external affiliations from inventory
+function requireInternal(req, res, next) {
+    if (!req.session.user) {
+        return res.status(401).json({ error: 'Not authenticated' });
+    }
+    if (req.session.user.affiliation === 'EXTERNAL') {
+        return res.status(403).json({ error: 'Inventory access is restricted to internal members.' });
     }
     next();
 }
@@ -2681,10 +2704,22 @@ app.put('/api/di/members/:id/deactivate', requirePI, async (req, res) => {
             return res.status(404).json({ error: 'User not found' });
         }
 
+        // Check for active inventory items (non-blocking warning)
+        let inventoryWarning = null;
+        try {
+            const invCheck = await pool.query(
+                `SELECT COUNT(*) as cnt FROM di_inventory WHERE responsible_type = 'user' AND responsible_user_id = $1 AND status = 'Active'`,
+                [id]
+            );
+            const cnt = parseInt(invCheck.rows[0].cnt, 10);
+            if (cnt > 0) inventoryWarning = { count: cnt };
+        } catch (invErr) { /* non-blocking */ }
+
         res.json({
             success: true,
             message: 'User deactivated successfully',
-            member: result.rows[0]
+            member: result.rows[0],
+            inventory_warning: inventoryWarning
         });
 
     } catch (err) {
@@ -3768,6 +3803,694 @@ app.post('/api/di/backup/download/zip', requirePI, async (req, res) => {
 
 
 
+
+
+// ==================== INVENTORY SYSTEM ====================
+
+// CSV parser — native, no dependencies
+function parseInventoryCSV(buffer) {
+    const text = buffer.toString('utf-8');
+    const lines = text.split(/\r?\n/).filter(l => l.trim());
+    if (lines.length < 2) throw new Error('CSV must have a header row and at least one data row');
+    const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/["\s]+/g, ''));
+    const rows = [];
+    for (let i = 1; i < lines.length; i++) {
+        const values = lines[i].split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+        const row = {};
+        headers.forEach((h, idx) => { row[h] = values[idx] || ''; });
+        rows.push(row);
+    }
+    return { headers, rows };
+}
+
+const INVENTORY_REQUIRED_COLS = [
+    'affiliation', 'vendor_company', 'product_name', 'catalog_id',
+    'product_link', 'responsible_user_email', 'quantity_remaining',
+    'unit', 'storage', 'location'
+];
+const INVENTORY_VALID_UNITS = ['bottle', 'box', 'pack', 'each'];
+const INVENTORY_VALID_STORAGE = ['RT', '4C', '20C', '80C'];
+const INVENTORY_VALID_AFFILIATIONS = ['LiU', 'UNAV'];
+
+// Validate CSV rows and resolve responsible_user_email → researcher_id
+async function validateInventoryRows(rows) {
+    const errors = [];
+    const validatedRows = [];
+
+    // Pre-fetch all active internal users for email lookup
+    const usersResult = await pool.query(
+        `SELECT researcher_id, institution_email, name FROM di_allowlist WHERE active = true AND affiliation != 'EXTERNAL'`
+    );
+    const emailMap = {};
+    for (const u of usersResult.rows) {
+        emailMap[u.institution_email.toLowerCase()] = u;
+    }
+
+    for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const rowNum = i + 2; // 1-based, skip header
+        const rowErrors = [];
+
+        // Affiliation
+        if (!INVENTORY_VALID_AFFILIATIONS.includes(row.affiliation)) {
+            rowErrors.push(`affiliation must be LiU or UNAV, got "${row.affiliation}"`);
+        }
+
+        // Required text fields
+        if (!row.vendor_company) rowErrors.push('vendor_company is required');
+        if (!row.product_name) rowErrors.push('product_name is required');
+        if (!row.catalog_id) rowErrors.push('catalog_id is required');
+        if (!row.product_link) rowErrors.push('product_link is required');
+
+        // Unit
+        if (!INVENTORY_VALID_UNITS.includes(row.unit)) {
+            rowErrors.push(`unit must be one of ${INVENTORY_VALID_UNITS.join(', ')}, got "${row.unit}"`);
+        }
+
+        // Storage
+        if (!INVENTORY_VALID_STORAGE.includes(row.storage)) {
+            rowErrors.push(`storage must be one of ${INVENTORY_VALID_STORAGE.join(', ')}, got "${row.storage}"`);
+        }
+
+        // Quantity
+        const qty = parseFloat(row.quantity_remaining);
+        if (isNaN(qty) || qty < 0) {
+            rowErrors.push(`quantity_remaining must be a non-negative number, got "${row.quantity_remaining}"`);
+        }
+
+        // Responsibility
+        const email = (row.responsible_user_email || '').trim().toLowerCase();
+        let responsibleType = 'user';
+        let responsibleUserId = null;
+        if (!email) {
+            rowErrors.push('responsible_user_email is required');
+        } else if (email === 'group') {
+            responsibleType = 'group';
+            responsibleUserId = null;
+        } else {
+            const found = emailMap[email];
+            if (!found) {
+                rowErrors.push(`responsible_user_email "${row.responsible_user_email}" not found or not an active internal user`);
+            } else {
+                responsibleUserId = found.researcher_id;
+            }
+        }
+
+        if (rowErrors.length > 0) {
+            errors.push({ row: rowNum, errors: rowErrors });
+        } else {
+            validatedRows.push({
+                affiliation: row.affiliation,
+                vendor_company: row.vendor_company,
+                product_name: row.product_name,
+                catalog_id: row.catalog_id,
+                product_link: row.product_link,
+                responsible_type: responsibleType,
+                responsible_user_id: responsibleUserId,
+                responsible_email: email,
+                quantity_remaining: qty,
+                unit: row.unit,
+                storage: row.storage,
+                location: row.location || ''
+            });
+        }
+    }
+
+    return { errors, validatedRows };
+}
+
+// Compute diff between CSV rows and existing inventory
+async function computeInventoryDiff(validatedRows) {
+    const diff = { new: [], update: [], duplicate: [] };
+
+    for (const row of validatedRows) {
+        const existing = await pool.query(
+            `SELECT * FROM di_inventory
+             WHERE affiliation = $1 AND LOWER(vendor_company) = LOWER($2) AND LOWER(catalog_id) = LOWER($3)
+             LIMIT 1`,
+            [row.affiliation, row.vendor_company, row.catalog_id]
+        );
+
+        if (existing.rows.length === 0) {
+            diff.new.push(row);
+        } else {
+            const ex = existing.rows[0];
+            const hasChanges = (
+                ex.product_name !== row.product_name ||
+                Number(ex.quantity_remaining) !== row.quantity_remaining ||
+                ex.unit !== row.unit ||
+                ex.storage !== row.storage ||
+                (ex.location || '') !== row.location ||
+                ex.product_link !== row.product_link ||
+                ex.responsible_type !== row.responsible_type ||
+                ex.responsible_user_id !== row.responsible_user_id
+            );
+            if (hasChanges) {
+                diff.update.push({ existing: ex, incoming: row });
+            } else {
+                diff.duplicate.push({ existing: ex, incoming: row });
+            }
+        }
+    }
+
+    return diff;
+}
+
+// POST /api/di/inventory/upload
+// Upload inventory CSV — creates SUBMITTED submission in di_submissions
+app.post('/api/di/inventory/upload', requireAuth, requireInternal, inventoryUpload.single('file'), async (req, res) => {
+    try {
+        const file = req.file;
+        if (!file) {
+            return res.status(400).json({ error: 'No file uploaded' });
+        }
+
+        const user = req.session.user;
+
+        // Parse CSV
+        let parsed;
+        try {
+            parsed = parseInventoryCSV(file.buffer);
+        } catch (parseErr) {
+            return res.status(400).json({ error: 'CSV parse error: ' + parseErr.message });
+        }
+
+        // Check required columns
+        const missing = INVENTORY_REQUIRED_COLS.filter(c => !parsed.headers.includes(c));
+        if (missing.length > 0) {
+            return res.status(400).json({ error: 'Missing required columns: ' + missing.join(', ') });
+        }
+
+        // Validate rows
+        const { errors, validatedRows } = await validateInventoryRows(parsed.rows);
+        if (errors.length > 0) {
+            return res.status(400).json({ error: 'Validation errors in CSV', details: errors });
+        }
+
+        if (validatedRows.length === 0) {
+            return res.status(400).json({ error: 'CSV contains no valid data rows' });
+        }
+
+        // Upload raw CSV to R2
+        if (!r2Enabled()) {
+            return res.status(503).json({ error: 'R2 storage not configured' });
+        }
+
+        const year = new Date().getFullYear();
+        const dateStamp = new Date().toISOString().slice(0, 10);
+        const safeOriginal = (file.originalname || 'inventory.csv').replace(/[^\w.\-]+/g, '_');
+        const key = `di/${user.affiliation}/Inventory/Imports/${year}/${dateStamp}_${user.researcher_id}_${safeOriginal}`;
+
+        await uploadToR2(file.buffer, key, 'text/csv');
+        const fileId = 'r2:' + key;
+
+        // Insert into di_submissions with status SUBMITTED
+        const result = await pool.query(
+            `INSERT INTO di_submissions (researcher_id, affiliation, file_type, original_filename, drive_file_id, status)
+             VALUES ($1, $2, 'INVENTORY', $3, $4, 'SUBMITTED')
+             RETURNING submission_id`,
+            [user.researcher_id, user.affiliation, file.originalname, fileId]
+        );
+
+        const submissionId = result.rows[0].submission_id;
+        console.log(`[INVENTORY] CSV uploaded: submission_id=${submissionId}, rows=${validatedRows.length}, key=${key}`);
+
+        res.json({
+            success: true,
+            submission_id: submissionId,
+            row_count: validatedRows.length,
+            message: 'Inventory CSV submitted for PI review'
+        });
+
+    } catch (err) {
+        console.error('[INVENTORY] Upload error:', err);
+        res.status(500).json({ error: 'Upload failed', message: err.message });
+    }
+});
+
+// GET /api/di/inventory/import/pending
+// List SUBMITTED inventory submissions for PI review
+app.get('/api/di/inventory/import/pending', requirePI, async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT s.submission_id, s.researcher_id, s.original_filename, s.affiliation,
+                    s.status, s.created_at, s.revision_comments,
+                    a.name as researcher_name
+             FROM di_submissions s
+             LEFT JOIN di_allowlist a ON s.researcher_id = a.researcher_id
+             WHERE s.file_type = 'INVENTORY' AND s.status = 'SUBMITTED'
+             ORDER BY s.created_at ASC`
+        );
+
+        res.json({ success: true, submissions: result.rows });
+    } catch (err) {
+        console.error('[INVENTORY] Pending list error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/di/inventory/import/preview/:id
+// Parse CSV from R2 and compute diff for PI review
+app.get('/api/di/inventory/import/preview/:id', requirePI, async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // Fetch submission
+        const sub = await pool.query(
+            `SELECT * FROM di_submissions WHERE submission_id = $1 AND file_type = 'INVENTORY'`, [id]
+        );
+        if (sub.rows.length === 0) {
+            return res.status(404).json({ error: 'Inventory submission not found' });
+        }
+
+        const submission = sub.rows[0];
+        if (submission.status !== 'SUBMITTED') {
+            return res.status(400).json({ error: 'Submission is not in SUBMITTED state' });
+        }
+
+        const fileId = (submission.drive_file_id || '').trim();
+        if (!fileId.startsWith('r2:')) {
+            return res.status(400).json({ error: 'No R2 file associated with this submission' });
+        }
+
+        // Download and parse CSV from R2
+        const r2Key = fileId.replace(/^r2:/, '');
+        const r2Obj = await downloadFromR2(r2Key);
+        const chunks = [];
+        for await (const c of r2Obj.Body) chunks.push(c);
+        const csvBuffer = Buffer.concat(chunks);
+
+        const parsed = parseInventoryCSV(csvBuffer);
+        const { errors, validatedRows } = await validateInventoryRows(parsed.rows);
+        if (errors.length > 0) {
+            return res.json({ success: true, validation_errors: errors, diff: null });
+        }
+
+        const diff = await computeInventoryDiff(validatedRows);
+
+        res.json({
+            success: true,
+            submission_id: id,
+            researcher_id: submission.researcher_id,
+            filename: submission.original_filename,
+            row_count: validatedRows.length,
+            new_count: diff.new.length,
+            update_count: diff.update.length,
+            duplicate_count: diff.duplicate.length,
+            diff: diff
+        });
+
+    } catch (err) {
+        console.error('[INVENTORY] Preview error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/di/inventory/import/approve/:id
+// PI approves inventory import — apply CSV changes to di_inventory
+app.post('/api/di/inventory/import/approve/:id', requirePI, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const piUser = req.session.user;
+
+        // Fetch submission
+        const sub = await pool.query(
+            `SELECT * FROM di_submissions WHERE submission_id = $1 AND file_type = 'INVENTORY'`, [id]
+        );
+        if (sub.rows.length === 0) {
+            return res.status(404).json({ error: 'Inventory submission not found' });
+        }
+
+        const submission = sub.rows[0];
+        if (submission.status !== 'SUBMITTED') {
+            return res.status(400).json({ error: 'Submission is not in SUBMITTED state' });
+        }
+
+        const fileId = (submission.drive_file_id || '').trim();
+        if (!fileId.startsWith('r2:')) {
+            return res.status(400).json({ error: 'No R2 file associated' });
+        }
+
+        // Re-parse CSV from R2 (authoritative at approval time)
+        const r2Key = fileId.replace(/^r2:/, '');
+        const r2Obj = await downloadFromR2(r2Key);
+        const chunks = [];
+        for await (const c of r2Obj.Body) chunks.push(c);
+        const csvBuffer = Buffer.concat(chunks);
+
+        const parsed = parseInventoryCSV(csvBuffer);
+        const { errors, validatedRows } = await validateInventoryRows(parsed.rows);
+        if (errors.length > 0) {
+            return res.status(400).json({ error: 'CSV validation errors at approval time', details: errors });
+        }
+
+        const diff = await computeInventoryDiff(validatedRows);
+        const importBatchId = id; // Use submission_id as batch ID
+
+        let newCount = 0;
+        let updateCount = 0;
+
+        // Apply NEW items
+        for (const row of diff.new) {
+            await pool.query(
+                `INSERT INTO di_inventory (affiliation, vendor_company, product_name, catalog_id, product_link,
+                 responsible_type, responsible_user_id, quantity_remaining, unit, storage, location, status,
+                 origin_type, last_update_channel, import_batch_id, created_by, last_updated_by)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'Active','offline_import','offline_import',$12,$13,$13)`,
+                [row.affiliation, row.vendor_company, row.product_name, row.catalog_id, row.product_link,
+                 row.responsible_type, row.responsible_user_id, row.quantity_remaining, row.unit, row.storage,
+                 row.location, importBatchId, submission.researcher_id]
+            );
+            newCount++;
+        }
+
+        // Apply UPDATE items
+        for (const item of diff.update) {
+            const row = item.incoming;
+            const oldId = item.existing.id;
+
+            // Audit log
+            await pool.query(
+                `INSERT INTO di_inventory_log (inventory_id, action, changed_by, old_values, new_values, import_batch_id)
+                 VALUES ($1, 'IMPORT_UPDATE', $2, $3, $4, $5)`,
+                [oldId, submission.researcher_id, JSON.stringify(item.existing), JSON.stringify(row), importBatchId]
+            );
+
+            // Apply update
+            await pool.query(
+                `UPDATE di_inventory SET product_name=$1, product_link=$2, quantity_remaining=$3, unit=$4,
+                 storage=$5, location=$6, responsible_type=$7, responsible_user_id=$8,
+                 last_update_channel='offline_import', last_updated_at=NOW(), last_updated_by=$9, import_batch_id=$10
+                 WHERE id = $11`,
+                [row.product_name, row.product_link, row.quantity_remaining, row.unit,
+                 row.storage, row.location, row.responsible_type, row.responsible_user_id,
+                 submission.researcher_id, importBatchId, oldId]
+            );
+            updateCount++;
+        }
+
+        // Update submission status
+        await pool.query(
+            `UPDATE di_submissions SET status='APPROVED', signed_at=NOW() WHERE submission_id=$1`, [id]
+        );
+
+        // Delete original CSV from R2 (same pattern as SOP/DATA approval)
+        try { await deleteFromR2(r2Key); } catch (e) { console.warn('[INVENTORY] Delete CSV warning:', e.message); }
+
+        console.log(`[INVENTORY] Approved: submission=${id}, new=${newCount}, updated=${updateCount}, duplicates=${diff.duplicate.length}`);
+
+        res.json({
+            success: true,
+            message: 'Inventory import approved and applied',
+            new_count: newCount,
+            update_count: updateCount,
+            duplicate_count: diff.duplicate.length
+        });
+
+    } catch (err) {
+        console.error('[INVENTORY] Approve error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/di/inventory/import/revise/:id
+// PI requests revision on inventory import
+app.post('/api/di/inventory/import/revise/:id', requirePI, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { comments } = req.body;
+
+        const sub = await pool.query(
+            `SELECT * FROM di_submissions WHERE submission_id = $1 AND file_type = 'INVENTORY'`, [id]
+        );
+        if (sub.rows.length === 0) {
+            return res.status(404).json({ error: 'Inventory submission not found' });
+        }
+
+        const submission = sub.rows[0];
+        if (submission.status !== 'SUBMITTED') {
+            return res.status(400).json({ error: 'Submission is not in SUBMITTED state' });
+        }
+
+        // Delete CSV from R2 (same as SOP/DATA revise pattern)
+        const fileId = (submission.drive_file_id || '').trim();
+        if (fileId.startsWith('r2:')) {
+            try { await deleteFromR2(fileId.replace(/^r2:/, '')); } catch (e) { console.warn('[INVENTORY] Delete warning:', e.message); }
+        }
+
+        // Update submission
+        await pool.query(
+            `UPDATE di_submissions SET status='REVISION_NEEDED', drive_file_id=NULL, revision_comments=$1 WHERE submission_id=$2`,
+            [comments || '', id]
+        );
+
+        console.log(`[INVENTORY] Revision requested: submission=${id}`);
+        res.json({ success: true, message: 'Revision requested' });
+
+    } catch (err) {
+        console.error('[INVENTORY] Revise error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/di/inventory/my-items
+// Researcher/supervisor sees their own active inventory items
+app.get('/api/di/inventory/my-items', requireAuth, requireInternal, async (req, res) => {
+    try {
+        const user = req.session.user;
+        const result = await pool.query(
+            `SELECT * FROM di_inventory
+             WHERE responsible_type = 'user' AND responsible_user_id = $1 AND status = 'Active'
+             ORDER BY last_updated_at DESC`,
+            [user.researcher_id]
+        );
+        res.json({ success: true, items: result.rows });
+    } catch (err) {
+        console.error('[INVENTORY] My items error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/di/inventory/group-items
+// All internal users see group inventory (read-only)
+app.get('/api/di/inventory/group-items', requireAuth, requireInternal, async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT * FROM di_inventory
+             WHERE responsible_type = 'group' AND status = 'Active'
+             ORDER BY vendor_company, product_name`
+        );
+        res.json({ success: true, items: result.rows });
+    } catch (err) {
+        console.error('[INVENTORY] Group items error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// PATCH /api/di/inventory/:id
+// Owner updates quantity_remaining, storage, or location
+app.patch('/api/di/inventory/:id', requireAuth, requireInternal, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const user = req.session.user;
+        const { quantity_remaining, storage, location } = req.body;
+
+        // Verify ownership
+        const item = await pool.query(
+            `SELECT * FROM di_inventory WHERE id = $1 AND responsible_type = 'user' AND responsible_user_id = $2 AND status = 'Active'`,
+            [id, user.researcher_id]
+        );
+        if (item.rows.length === 0) {
+            return res.status(404).json({ error: 'Item not found or you are not the owner' });
+        }
+
+        const old = item.rows[0];
+        const updates = {};
+        const setClauses = [];
+        const params = [];
+        let paramIdx = 1;
+
+        if (quantity_remaining !== undefined) {
+            const qty = parseFloat(quantity_remaining);
+            if (isNaN(qty) || qty < 0) return res.status(400).json({ error: 'Invalid quantity' });
+            setClauses.push(`quantity_remaining = $${paramIdx++}`);
+            params.push(qty);
+            updates.quantity_remaining = qty;
+        }
+        if (storage !== undefined) {
+            if (!INVENTORY_VALID_STORAGE.includes(storage)) return res.status(400).json({ error: 'Invalid storage value' });
+            setClauses.push(`storage = $${paramIdx++}`);
+            params.push(storage);
+            updates.storage = storage;
+        }
+        if (location !== undefined) {
+            setClauses.push(`location = $${paramIdx++}`);
+            params.push(location);
+            updates.location = location;
+        }
+
+        if (setClauses.length === 0) {
+            return res.status(400).json({ error: 'No valid fields to update' });
+        }
+
+        setClauses.push(`last_updated_at = NOW()`);
+        setClauses.push(`last_updated_by = $${paramIdx++}`);
+        params.push(user.researcher_id);
+        setClauses.push(`last_update_channel = 'online_ui'`);
+        params.push(id);
+
+        await pool.query(
+            `UPDATE di_inventory SET ${setClauses.join(', ')} WHERE id = $${paramIdx}`,
+            params
+        );
+
+        // Audit log
+        await pool.query(
+            `INSERT INTO di_inventory_log (inventory_id, action, changed_by, old_values, new_values)
+             VALUES ($1, 'UPDATE', $2, $3, $4)`,
+            [id, user.researcher_id, JSON.stringify({ quantity_remaining: old.quantity_remaining, storage: old.storage, location: old.location }), JSON.stringify(updates)]
+        );
+
+        res.json({ success: true, message: 'Item updated' });
+    } catch (err) {
+        console.error('[INVENTORY] Update error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// PUT /api/di/inventory/:id/transfer-to-group
+// Owner transfers item to group inventory
+app.put('/api/di/inventory/:id/transfer-to-group', requireAuth, requireInternal, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const user = req.session.user;
+
+        const item = await pool.query(
+            `SELECT * FROM di_inventory WHERE id = $1 AND responsible_type = 'user' AND responsible_user_id = $2 AND status = 'Active'`,
+            [id, user.researcher_id]
+        );
+        if (item.rows.length === 0) {
+            return res.status(404).json({ error: 'Item not found or you are not the owner' });
+        }
+
+        await pool.query(
+            `UPDATE di_inventory SET responsible_type = 'group', responsible_user_id = NULL,
+             last_updated_at = NOW(), last_updated_by = $1, last_update_channel = 'online_ui'
+             WHERE id = $2`,
+            [user.researcher_id, id]
+        );
+
+        await pool.query(
+            `INSERT INTO di_inventory_log (inventory_id, action, changed_by, old_values, new_values)
+             VALUES ($1, 'TRANSFER_TO_GROUP', $2, $3, $4)`,
+            [id, user.researcher_id,
+             JSON.stringify({ responsible_type: 'user', responsible_user_id: user.researcher_id }),
+             JSON.stringify({ responsible_type: 'group', responsible_user_id: null })]
+        );
+
+        res.json({ success: true, message: 'Item transferred to group inventory' });
+    } catch (err) {
+        console.error('[INVENTORY] Transfer error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// PUT /api/di/inventory/:id/mark-finished
+// Owner marks item as finished
+app.put('/api/di/inventory/:id/mark-finished', requireAuth, requireInternal, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const user = req.session.user;
+
+        const item = await pool.query(
+            `SELECT * FROM di_inventory WHERE id = $1 AND responsible_type = 'user' AND responsible_user_id = $2 AND status = 'Active'`,
+            [id, user.researcher_id]
+        );
+        if (item.rows.length === 0) {
+            return res.status(404).json({ error: 'Item not found or you are not the owner' });
+        }
+
+        await pool.query(
+            `UPDATE di_inventory SET status = 'Finished', quantity_remaining = 0,
+             last_updated_at = NOW(), last_updated_by = $1, last_update_channel = 'online_ui'
+             WHERE id = $2`,
+            [user.researcher_id, id]
+        );
+
+        await pool.query(
+            `INSERT INTO di_inventory_log (inventory_id, action, changed_by, old_values, new_values)
+             VALUES ($1, 'MARK_FINISHED', $2, $3, $4)`,
+            [id, user.researcher_id,
+             JSON.stringify({ status: 'Active', quantity_remaining: item.rows[0].quantity_remaining }),
+             JSON.stringify({ status: 'Finished', quantity_remaining: 0 })]
+        );
+
+        res.json({ success: true, message: 'Item marked as finished' });
+    } catch (err) {
+        console.error('[INVENTORY] Mark finished error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/di/inventory/all
+// PI sees all inventory items with optional filters
+app.get('/api/di/inventory/all', requirePI, async (req, res) => {
+    try {
+        const { affiliation, responsible, status, origin } = req.query;
+        const conditions = [];
+        const params = [];
+        let idx = 1;
+
+        if (affiliation && INVENTORY_VALID_AFFILIATIONS.includes(affiliation)) {
+            conditions.push(`i.affiliation = $${idx++}`);
+            params.push(affiliation);
+        }
+        if (responsible === 'user' || responsible === 'group') {
+            conditions.push(`i.responsible_type = $${idx++}`);
+            params.push(responsible);
+        }
+        if (status === 'Active' || status === 'Finished') {
+            conditions.push(`i.status = $${idx++}`);
+            params.push(status);
+        }
+        if (origin === 'online_purchase' || origin === 'offline_import') {
+            conditions.push(`i.origin_type = $${idx++}`);
+            params.push(origin);
+        }
+
+        const where = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
+        const result = await pool.query(
+            `SELECT i.*, a.name as responsible_name, a.institution_email as responsible_email
+             FROM di_inventory i
+             LEFT JOIN di_allowlist a ON i.responsible_user_id = a.researcher_id
+             ${where}
+             ORDER BY i.last_updated_at DESC`,
+            params
+        );
+
+        res.json({ success: true, items: result.rows });
+    } catch (err) {
+        console.error('[INVENTORY] All items error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/di/inventory/check-user/:researcher_id
+// Returns active inventory count for a user (used by deactivation warning)
+app.get('/api/di/inventory/check-user/:researcher_id', requirePI, async (req, res) => {
+    try {
+        const { researcher_id } = req.params;
+        const result = await pool.query(
+            `SELECT COUNT(*) as active_count FROM di_inventory
+             WHERE responsible_type = 'user' AND responsible_user_id = $1 AND status = 'Active'`,
+            [researcher_id]
+        );
+        res.json({ success: true, active_count: parseInt(result.rows[0].active_count, 10) });
+    } catch (err) {
+        console.error('[INVENTORY] Check user error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
 
 
 //

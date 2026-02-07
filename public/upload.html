@@ -477,6 +477,54 @@
                 max-height: none;
             }
         }
+        /* Section navigation for internal users */
+        .section-nav {
+            background: white;
+            border-bottom: 2px solid #e0e0e0;
+            display: flex;
+            padding: 0 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .section-btn {
+            padding: 12px 25px;
+            cursor: pointer;
+            border: none;
+            background: none;
+            font-size: 14px;
+            font-weight: 600;
+            color: #666;
+            border-bottom: 3px solid transparent;
+            margin-bottom: -2px;
+            transition: all 0.2s;
+        }
+        .section-btn:hover { color: #1a365d; background: #f8f9fa; }
+        .section-btn.active { color: #1a365d; border-bottom-color: #1a365d; }
+        .inv-toggle-btn {
+            padding: 6px 16px;
+            cursor: pointer;
+            border: 1px solid #ddd;
+            background: #f8f9fa;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #666;
+            transition: all 0.2s;
+        }
+        .inv-toggle-btn:hover { background: #e9ecef; }
+        .inv-toggle-btn.active { background: #1a365d; color: white; border-color: #1a365d; }
+        .inv-inline-input {
+            padding: 4px 6px;
+            border: 1px solid #90cdf4;
+            border-radius: 3px;
+            font-size: 13px;
+            width: 80px;
+        }
+        .inv-inline-select {
+            padding: 4px 6px;
+            border: 1px solid #90cdf4;
+            border-radius: 3px;
+            font-size: 13px;
+        }
     </style>
 </head>
 <body>
@@ -490,6 +538,13 @@
         </div>
     </div>
 
+    <!-- Section navigation for internal users (hidden for EXTERNAL) -->
+    <div id="sectionNav" class="section-nav" style="display:none;">
+        <button class="section-btn active" data-section="files" onclick="switchSection('files')">Files &amp; Documents</button>
+        <button class="section-btn" data-section="inventory" onclick="switchSection('inventory')">Purchases &amp; Inventory</button>
+    </div>
+
+    <div id="section-files" class="section-content">
     <div class="main-container">
         <!-- Panel 1: Upload -->
         <div class="panel">
@@ -505,6 +560,7 @@
                         <option value="">Select file type...</option>
                         <option value="SOP">SOP (Standard Operating Procedure)</option>
                         <option value="DATA">DATA (Research Data)</option>
+                        <option value="INVENTORY">INVENTORY (Offline Import)</option>
                     </select>
 
                     <label>File</label>
@@ -622,6 +678,68 @@
             </div>
         </div>
     </div>
+    </div><!-- end section-files -->
+
+    <!-- Inventory section (hidden by default, internal users only) -->
+    <div id="section-inventory" class="section-content" style="display:none;">
+        <div class="main-container" style="grid-template-columns:1fr;">
+            <!-- Inventory Panel -->
+            <div class="panel" style="grid-column:1/-1;">
+                <div class="panel-header">
+                    <h2><span class="icon">&#128230;</span> Inventory</h2>
+                    <div style="display:flex;gap:8px;">
+                        <button class="inv-toggle-btn active" id="invToggleMy" onclick="switchInvView('my')">My Products</button>
+                        <button class="inv-toggle-btn" id="invToggleGroup" onclick="switchInvView('group')">Group Inventory</button>
+                    </div>
+                </div>
+                <div class="panel-content">
+                    <!-- My Products View -->
+                    <div id="invMyView">
+                        <div id="invMyHelper" style="display:none;padding:8px 12px;background:#e7f1ff;border-radius:4px;margin-bottom:12px;font-size:13px;color:#1a365d;"></div>
+                        <div id="invMyMessage" class="message"></div>
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Product</th>
+                                    <th>Vendor</th>
+                                    <th>Catalog ID</th>
+                                    <th>Qty</th>
+                                    <th>Unit</th>
+                                    <th>Storage</th>
+                                    <th>Location</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="invMyTableBody">
+                                <tr><td colspan="8" style="text-align:center;color:#999;">Loading...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <!-- Group Inventory View (read-only) -->
+                    <div id="invGroupView" style="display:none;">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Product</th>
+                                    <th>Vendor</th>
+                                    <th>Catalog ID</th>
+                                    <th>Affiliation</th>
+                                    <th>Qty</th>
+                                    <th>Unit</th>
+                                    <th>Storage</th>
+                                    <th>Location</th>
+                                    <th>Last Updated</th>
+                                </tr>
+                            </thead>
+                            <tbody id="invGroupTableBody">
+                                <tr><td colspan="9" style="text-align:center;color:#999;">Loading...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <script>
         let currentUserRole = null;
@@ -646,6 +764,14 @@
                     document.getElementById('roleBadge').classList.remove('hidden');
                     document.getElementById('supervisionPanel').classList.add('visible');
                     loadAssignedResearchers();
+                }
+
+                // Show inventory section nav for internal users, hide INVENTORY option for external
+                if (user.affiliation === 'EXTERNAL') {
+                    const invOption = document.querySelector('#fileType option[value="INVENTORY"]');
+                    if (invOption) invOption.remove();
+                } else {
+                    document.getElementById('sectionNav').style.display = 'flex';
                 }
 
                 // Load files and group documents after user info
@@ -790,6 +916,20 @@
         const uploadLoading = document.getElementById('uploadLoading');
         const uploadMessage = document.getElementById('uploadMessage');
 
+        // Dynamic file accept based on selected type
+        document.getElementById('fileType').addEventListener('change', function() {
+            if (this.value === 'INVENTORY') {
+                fileInput.accept = '.csv';
+                document.querySelector('.file-upload-text strong').textContent = 'Click to select a CSV file';
+            } else {
+                fileInput.accept = '.pdf,application/pdf';
+                document.querySelector('.file-upload-text strong').textContent = 'Click to select a file';
+            }
+            fileInput.value = '';
+            fileNameDisplay.textContent = '';
+            fileUploadArea.classList.remove('has-file');
+        });
+
         fileUploadArea.addEventListener('click', () => fileInput.click());
 
         fileInput.addEventListener('change', () => {
@@ -847,9 +987,10 @@
             formData.append('file', file);
 
             try {
-                const response = await fetch('/api/di/upload', {
+                const uploadUrl = (fileType === 'INVENTORY') ? '/api/di/inventory/upload' : '/api/di/upload';
+                const response = await fetch(uploadUrl, {
                     method: 'POST',
-body: formData,
+                    body: formData,
                     credentials: 'include'
                 });
 
@@ -1170,6 +1311,182 @@ credentials: 'include'
         document.addEventListener('DOMContentLoaded', () => {
             // Group docs will load after user auth check
         });
+
+        // =====================================================
+        // INVENTORY SECTION
+        // =====================================================
+
+        function switchSection(section) {
+            document.querySelectorAll('.section-btn').forEach(b => b.classList.remove('active'));
+            document.querySelector(`[data-section="${section}"]`).classList.add('active');
+            document.getElementById('section-files').style.display = section === 'files' ? 'block' : 'none';
+            document.getElementById('section-inventory').style.display = section === 'inventory' ? 'block' : 'none';
+            if (section === 'inventory') {
+                loadMyInventory();
+            }
+        }
+
+        function switchInvView(view) {
+            document.getElementById('invToggleMy').classList.toggle('active', view === 'my');
+            document.getElementById('invToggleGroup').classList.toggle('active', view === 'group');
+            document.getElementById('invMyView').style.display = view === 'my' ? 'block' : 'none';
+            document.getElementById('invGroupView').style.display = view === 'group' ? 'block' : 'none';
+            if (view === 'my') loadMyInventory();
+            else loadGroupInventory();
+        }
+
+        async function loadMyInventory() {
+            const tbody = document.getElementById('invMyTableBody');
+            const helper = document.getElementById('invMyHelper');
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;"><div class="loading"><div class="spinner"></div></div></td></tr>';
+
+            try {
+                const resp = await fetch('/api/di/inventory/my-items', { credentials: 'include' });
+                if (!resp.ok) throw new Error('Failed to load');
+                const data = await resp.json();
+                const items = data.items || [];
+
+                if (items.length > 0) {
+                    helper.style.display = 'block';
+                    helper.textContent = `You have ${items.length} active product${items.length > 1 ? 's' : ''} under your responsibility.`;
+                } else {
+                    helper.style.display = 'none';
+                }
+
+                if (items.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#999;">No active products under your responsibility</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = items.map(i => `
+                    <tr id="inv-row-${i.id}">
+                        <td>${i.product_link ? '<a href="'+escapeHtml(i.product_link)+'" target="_blank">'+escapeHtml(i.product_name)+'</a>' : escapeHtml(i.product_name)}</td>
+                        <td>${escapeHtml(i.vendor_company)}</td>
+                        <td>${escapeHtml(i.catalog_id)}</td>
+                        <td class="inv-qty-cell">${i.quantity_remaining}</td>
+                        <td>${escapeHtml(i.unit)}</td>
+                        <td class="inv-storage-cell">${escapeHtml(i.storage)}</td>
+                        <td class="inv-location-cell">${escapeHtml(i.location || '')}</td>
+                        <td>
+                            <div style="display:flex;gap:4px;flex-wrap:wrap;">
+                                <button class="btn btn-sm btn-primary" onclick="editInventoryRow('${i.id}', ${i.quantity_remaining}, '${escapeHtml(i.storage)}', '${escapeHtml(i.location || '')}')">Edit</button>
+                                <button class="btn btn-sm btn-secondary" onclick="transferToGroup('${i.id}')">Transfer</button>
+                                <button class="btn btn-sm btn-warning" onclick="markFinished('${i.id}')">Finished</button>
+                            </div>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (err) {
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#dc3545;">Error loading inventory</td></tr>';
+            }
+        }
+
+        async function loadGroupInventory() {
+            const tbody = document.getElementById('invGroupTableBody');
+            tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;"><div class="loading"><div class="spinner"></div></div></td></tr>';
+
+            try {
+                const resp = await fetch('/api/di/inventory/group-items', { credentials: 'include' });
+                if (!resp.ok) throw new Error('Failed to load');
+                const data = await resp.json();
+                const items = data.items || [];
+
+                if (items.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#999;">No group inventory items</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = items.map(i => `
+                    <tr>
+                        <td>${i.product_link ? '<a href="'+escapeHtml(i.product_link)+'" target="_blank">'+escapeHtml(i.product_name)+'</a>' : escapeHtml(i.product_name)}</td>
+                        <td>${escapeHtml(i.vendor_company)}</td>
+                        <td>${escapeHtml(i.catalog_id)}</td>
+                        <td>${escapeHtml(i.affiliation)}</td>
+                        <td>${i.quantity_remaining}</td>
+                        <td>${escapeHtml(i.unit)}</td>
+                        <td>${escapeHtml(i.storage)}</td>
+                        <td>${escapeHtml(i.location || '')}</td>
+                        <td style="font-size:12px;color:#666;">${new Date(i.last_updated_at).toLocaleDateString()}</td>
+                    </tr>
+                `).join('');
+            } catch (err) {
+                tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#dc3545;">Error loading group inventory</td></tr>';
+            }
+        }
+
+        function editInventoryRow(id, currentQty, currentStorage, currentLocation) {
+            const row = document.getElementById('inv-row-' + id);
+            if (!row) return;
+            const qtyCell = row.querySelector('.inv-qty-cell');
+            const storageCell = row.querySelector('.inv-storage-cell');
+            const locationCell = row.querySelector('.inv-location-cell');
+
+            qtyCell.innerHTML = `<input type="number" class="inv-inline-input" id="inv-edit-qty-${id}" value="${currentQty}" min="0" step="0.01">`;
+            storageCell.innerHTML = `<select class="inv-inline-select" id="inv-edit-storage-${id}">
+                <option value="RT" ${currentStorage==='RT'?'selected':''}>RT</option>
+                <option value="4C" ${currentStorage==='4C'?'selected':''}>4C</option>
+                <option value="20C" ${currentStorage==='20C'?'selected':''}>20C</option>
+                <option value="80C" ${currentStorage==='80C'?'selected':''}>80C</option>
+            </select>`;
+            locationCell.innerHTML = `<input type="text" class="inv-inline-input" id="inv-edit-loc-${id}" value="${currentLocation}" style="width:120px;">`;
+
+            // Replace actions with Save/Cancel
+            const actionsCell = row.querySelector('td:last-child');
+            actionsCell.innerHTML = `
+                <div style="display:flex;gap:4px;">
+                    <button class="btn btn-sm btn-success" onclick="saveInventoryEdit('${id}')">Save</button>
+                    <button class="btn btn-sm btn-secondary" onclick="loadMyInventory()">Cancel</button>
+                </div>
+            `;
+        }
+
+        async function saveInventoryEdit(id) {
+            const qty = document.getElementById('inv-edit-qty-' + id).value;
+            const storage = document.getElementById('inv-edit-storage-' + id).value;
+            const location = document.getElementById('inv-edit-loc-' + id).value;
+
+            try {
+                const resp = await fetch(`/api/di/inventory/${id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ quantity_remaining: parseFloat(qty), storage, location }),
+                    credentials: 'include'
+                });
+                if (!resp.ok) {
+                    const data = await resp.json();
+                    throw new Error(data.error || 'Update failed');
+                }
+                loadMyInventory();
+            } catch (err) {
+                alert('Error: ' + err.message);
+            }
+        }
+
+        async function transferToGroup(id) {
+            if (!confirm('Transfer this item to group inventory? You will no longer be responsible for it.')) return;
+            try {
+                const resp = await fetch(`/api/di/inventory/${id}/transfer-to-group`, {
+                    method: 'PUT', credentials: 'include'
+                });
+                if (!resp.ok) throw new Error('Failed');
+                loadMyInventory();
+            } catch (err) {
+                alert('Error transferring item');
+            }
+        }
+
+        async function markFinished(id) {
+            if (!confirm('Mark this item as finished? Quantity will be set to 0.')) return;
+            try {
+                const resp = await fetch(`/api/di/inventory/${id}/mark-finished`, {
+                    method: 'PUT', credentials: 'include'
+                });
+                if (!resp.ok) throw new Error('Failed');
+                loadMyInventory();
+            } catch (err) {
+                alert('Error marking item as finished');
+            }
+        }
     </script>
 </body>
 </html>

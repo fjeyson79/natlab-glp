@@ -443,6 +443,7 @@
         <button class="tab-btn" data-tab="user-mgmt">User Management</button>
         <button class="tab-btn" data-tab="reports">Reports</button>
         <button class="tab-btn" data-tab="backup">Backup</button>
+        <button class="tab-btn" data-tab="purchases-inventory">Purchases &amp; Inventory <span class="badge" id="invSubmittedBadge" style="display:none;">0</span></button>
     </div>
 
     <!-- ==================== DASHBOARD TAB ==================== -->
@@ -1000,6 +1001,118 @@
         </div>
     </div>
 
+    <!-- ==================== PURCHASES & INVENTORY TAB ==================== -->
+    <div class="tab-content" id="tab-purchases-inventory">
+        <!-- Submitted Inventory Imports -->
+        <div class="panel">
+            <div class="panel-header">
+                <h2>Submitted Inventory Imports</h2>
+                <button class="btn btn-sm btn-secondary" onclick="loadSubmittedInventoryImports()">Refresh</button>
+            </div>
+            <div class="panel-content">
+                <div id="invImportMessage" class="message"></div>
+                <table class="data-table" id="invImportTable">
+                    <thead>
+                        <tr>
+                            <th>Submitted By</th>
+                            <th>File</th>
+                            <th>Affiliation</th>
+                            <th>Date</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="invImportTableBody">
+                        <tr><td colspan="5" style="text-align:center;color:#999;">Click tab to load data</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Inventory Import Review Area (hidden by default) -->
+        <div class="panel" id="invReviewPanel" style="display:none;">
+            <div class="panel-header">
+                <h2 id="invReviewTitle">Review Import</h2>
+                <button class="btn btn-sm btn-secondary" onclick="closeInventoryReview()">Close</button>
+            </div>
+            <div class="panel-content">
+                <div id="invReviewMessage" class="message"></div>
+                <div id="invReviewSummary" style="margin-bottom:15px;"></div>
+                <div style="max-height:400px;overflow-y:auto;">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Status</th>
+                                <th>Affiliation</th>
+                                <th>Vendor</th>
+                                <th>Product</th>
+                                <th>Catalog ID</th>
+                                <th>Qty</th>
+                                <th>Unit</th>
+                                <th>Storage</th>
+                                <th>Location</th>
+                                <th>Responsible</th>
+                            </tr>
+                        </thead>
+                        <tbody id="invReviewTableBody"></tbody>
+                    </table>
+                </div>
+                <div style="margin-top:15px;display:flex;gap:10px;" id="invReviewActions"></div>
+            </div>
+        </div>
+
+        <!-- All Inventory Items -->
+        <div class="panel">
+            <div class="panel-header">
+                <h2>All Inventory Items</h2>
+                <button class="btn btn-sm btn-secondary" onclick="loadAllInventory()">Refresh</button>
+            </div>
+            <div class="panel-content">
+                <div style="display:flex;gap:10px;margin-bottom:15px;flex-wrap:wrap;">
+                    <select id="invFilterAffiliation" onchange="loadAllInventory()" style="padding:6px;border-radius:4px;border:1px solid #ddd;">
+                        <option value="">All Affiliations</option>
+                        <option value="LiU">LiU</option>
+                        <option value="UNAV">UNAV</option>
+                    </select>
+                    <select id="invFilterResponsible" onchange="loadAllInventory()" style="padding:6px;border-radius:4px;border:1px solid #ddd;">
+                        <option value="">All Responsible</option>
+                        <option value="user">User-owned</option>
+                        <option value="group">Group</option>
+                    </select>
+                    <select id="invFilterStatus" onchange="loadAllInventory()" style="padding:6px;border-radius:4px;border:1px solid #ddd;">
+                        <option value="">All Statuses</option>
+                        <option value="Active">Active</option>
+                        <option value="Finished">Finished</option>
+                    </select>
+                    <select id="invFilterOrigin" onchange="loadAllInventory()" style="padding:6px;border-radius:4px;border:1px solid #ddd;">
+                        <option value="">All Origins</option>
+                        <option value="online_purchase">Online Purchase</option>
+                        <option value="offline_import">Offline Import</option>
+                    </select>
+                </div>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Product</th>
+                            <th>Vendor</th>
+                            <th>Catalog ID</th>
+                            <th>Affiliation</th>
+                            <th>Owner</th>
+                            <th>Qty</th>
+                            <th>Unit</th>
+                            <th>Storage</th>
+                            <th>Location</th>
+                            <th>Status</th>
+                            <th>Origin</th>
+                        </tr>
+                    </thead>
+                    <tbody id="invAllTableBody">
+                        <tr><td colspan="11" style="text-align:center;color:#999;">Click tab to load data</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
     <script>
         // =====================================================
         // GLOBAL STATE & INIT
@@ -1057,6 +1170,7 @@
                 // Load tab-specific data
                 if (tabId === 'lab-files') loadLabFiles();
                 if (tabId === 'reports') loadReportsData();
+                if (tabId === 'purchases-inventory') { loadSubmittedInventoryImports(); loadAllInventory(); }
             });
         });
 
@@ -1066,6 +1180,7 @@
         async function loadDashboardData() {
             loadPendingApprovals();
             loadStats();
+            loadInventoryBadge();
         }
 
         async function loadStats() {
@@ -1101,6 +1216,9 @@
                 const response = await fetch('/api/di/pending-approvals', { credentials: 'include' });
                 if (!response.ok) throw new Error('Failed to load');
                 const data = await response.json();
+
+                // Filter out INVENTORY submissions — they are reviewed in Purchases & Inventory tab
+                data.submissions = (data.submissions || []).filter(s => s.file_type !== 'INVENTORY');
 
                 if (!data.submissions || data.submissions.length === 0) {
                     container.innerHTML = '<p style="text-align:center;color:#666;padding:20px;">No pending approvals</p>';
@@ -1835,7 +1953,19 @@
         });
 
         async function deactivateUser(id, name) {
-            if (!confirm(`Deactivate user "${name}"? They will not be able to log in.`)) return;
+            // Check for active inventory items before confirming
+            let warningMsg = `Deactivate user "${name}"? They will not be able to log in.`;
+            try {
+                const invResp = await fetch(`/api/di/inventory/check-user/${id}`, { credentials: 'include' });
+                if (invResp.ok) {
+                    const invData = await invResp.json();
+                    if (invData.active_count > 0) {
+                        warningMsg += `\n\nWARNING: This user has ${invData.active_count} active inventory item(s). These items will remain assigned but the user will not be able to manage them.`;
+                    }
+                }
+            } catch (e) { /* non-blocking */ }
+
+            if (!confirm(warningMsg)) return;
 
             try {
                 const response = await fetch(`/api/di/members/${id}/deactivate`, {
@@ -2510,6 +2640,247 @@
             const units = ['B', 'KB', 'MB', 'GB'];
             const i = Math.floor(Math.log(bytes) / Math.log(1024));
             return (bytes / Math.pow(1024, i)).toFixed(1) + ' ' + units[i];
+        }
+
+        // =====================================================
+        // PURCHASES & INVENTORY TAB
+        // =====================================================
+        let currentReviewSubmissionId = null;
+
+        async function loadInventoryBadge() {
+            try {
+                const resp = await fetch('/api/di/inventory/import/pending', { credentials: 'include' });
+                if (resp.ok) {
+                    const data = await resp.json();
+                    const count = (data.submissions || []).length;
+                    const badge = document.getElementById('invSubmittedBadge');
+                    if (count > 0) {
+                        badge.textContent = count;
+                        badge.style.display = 'inline';
+                    } else {
+                        badge.style.display = 'none';
+                    }
+                }
+            } catch (e) { /* silent */ }
+        }
+
+        async function loadSubmittedInventoryImports() {
+            const tbody = document.getElementById('invImportTableBody');
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;"><div class="loading"><div class="spinner"></div></div></td></tr>';
+
+            try {
+                const resp = await fetch('/api/di/inventory/import/pending', { credentials: 'include' });
+                if (!resp.ok) throw new Error('Failed to load');
+                const data = await resp.json();
+                const subs = data.submissions || [];
+
+                // Update badge
+                const badge = document.getElementById('invSubmittedBadge');
+                if (subs.length > 0) { badge.textContent = subs.length; badge.style.display = 'inline'; }
+                else { badge.style.display = 'none'; }
+
+                if (subs.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#999;">No submitted inventory imports</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = subs.map(s => `
+                    <tr>
+                        <td>${escapeHtml(s.researcher_name || s.researcher_id)}</td>
+                        <td title="${escapeHtml(s.original_filename)}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(s.original_filename)}</td>
+                        <td>${escapeHtml(s.affiliation)}</td>
+                        <td>${new Date(s.created_at).toLocaleDateString()}</td>
+                        <td>
+                            <button class="btn btn-sm btn-primary" onclick="reviewInventoryImport('${s.submission_id}')">Review</button>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (err) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#dc3545;">Error loading imports</td></tr>';
+            }
+        }
+
+        async function reviewInventoryImport(submissionId) {
+            currentReviewSubmissionId = submissionId;
+            const panel = document.getElementById('invReviewPanel');
+            const tbody = document.getElementById('invReviewTableBody');
+            const summary = document.getElementById('invReviewSummary');
+            const actions = document.getElementById('invReviewActions');
+            const msgEl = document.getElementById('invReviewMessage');
+
+            panel.style.display = 'block';
+            tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;"><div class="loading"><div class="spinner"></div></div></td></tr>';
+            summary.innerHTML = '';
+            actions.innerHTML = '';
+            msgEl.className = 'message';
+            msgEl.textContent = '';
+
+            try {
+                const resp = await fetch(`/api/di/inventory/import/preview/${submissionId}`, { credentials: 'include' });
+                if (!resp.ok) throw new Error('Failed to load preview');
+                const data = await resp.json();
+
+                if (data.validation_errors) {
+                    msgEl.className = 'message error show';
+                    msgEl.style.display = 'block';
+                    msgEl.innerHTML = '<strong>Validation errors found:</strong><br>' +
+                        data.validation_errors.map(e => `Row ${e.row}: ${e.errors.join('; ')}`).join('<br>');
+                    tbody.innerHTML = '';
+                    actions.innerHTML = `<button class="btn btn-warning" onclick="requestInventoryRevision('${submissionId}')">Request Revision</button>`;
+                    return;
+                }
+
+                const diff = data.diff;
+                document.getElementById('invReviewTitle').textContent = `Review: ${escapeHtml(data.filename)}`;
+                summary.innerHTML = `
+                    <div style="display:flex;gap:15px;flex-wrap:wrap;">
+                        <span style="padding:4px 12px;border-radius:12px;background:#d4edda;color:#155724;font-weight:600;">New: ${data.new_count}</span>
+                        <span style="padding:4px 12px;border-radius:12px;background:#fff3cd;color:#856404;font-weight:600;">Updates: ${data.update_count}</span>
+                        <span style="padding:4px 12px;border-radius:12px;background:#e2e3e5;color:#383d41;font-weight:600;">Duplicates: ${data.duplicate_count}</span>
+                        <span style="color:#666;">Total rows: ${data.row_count}</span>
+                    </div>`;
+
+                let rows = '';
+                for (const r of diff.new) {
+                    rows += `<tr style="background:#d4edda;">
+                        <td><strong>NEW</strong></td>
+                        <td>${escapeHtml(r.affiliation)}</td><td>${escapeHtml(r.vendor_company)}</td>
+                        <td>${escapeHtml(r.product_name)}</td><td>${escapeHtml(r.catalog_id)}</td>
+                        <td>${r.quantity_remaining}</td><td>${escapeHtml(r.unit)}</td>
+                        <td>${escapeHtml(r.storage)}</td><td>${escapeHtml(r.location)}</td>
+                        <td>${escapeHtml(r.responsible_email)}</td>
+                    </tr>`;
+                }
+                for (const item of diff.update) {
+                    const r = item.incoming;
+                    const ex = item.existing;
+                    rows += `<tr style="background:#fff3cd;">
+                        <td><strong>UPDATE</strong></td>
+                        <td>${escapeHtml(r.affiliation)}</td><td>${escapeHtml(r.vendor_company)}</td>
+                        <td>${escapeHtml(r.product_name)}${r.product_name !== ex.product_name ? ' <small style="color:#856404;">(was: '+escapeHtml(ex.product_name)+')</small>' : ''}</td>
+                        <td>${escapeHtml(r.catalog_id)}</td>
+                        <td>${r.quantity_remaining}${Number(r.quantity_remaining) !== Number(ex.quantity_remaining) ? ' <small style="color:#856404;">(was: '+ex.quantity_remaining+')</small>' : ''}</td>
+                        <td>${escapeHtml(r.unit)}</td><td>${escapeHtml(r.storage)}</td>
+                        <td>${escapeHtml(r.location)}${r.location !== (ex.location||'') ? ' <small style="color:#856404;">(was: '+escapeHtml(ex.location||'')+')</small>' : ''}</td>
+                        <td>${escapeHtml(r.responsible_email)}</td>
+                    </tr>`;
+                }
+                for (const item of diff.duplicate) {
+                    const r = item.incoming;
+                    rows += `<tr style="background:#e2e3e5;color:#6c757d;">
+                        <td>DUPLICATE</td>
+                        <td>${escapeHtml(r.affiliation)}</td><td>${escapeHtml(r.vendor_company)}</td>
+                        <td>${escapeHtml(r.product_name)}</td><td>${escapeHtml(r.catalog_id)}</td>
+                        <td>${r.quantity_remaining}</td><td>${escapeHtml(r.unit)}</td>
+                        <td>${escapeHtml(r.storage)}</td><td>${escapeHtml(r.location)}</td>
+                        <td>${escapeHtml(r.responsible_email)}</td>
+                    </tr>`;
+                }
+                tbody.innerHTML = rows || '<tr><td colspan="10" style="text-align:center;color:#999;">No data</td></tr>';
+
+                actions.innerHTML = `
+                    <button class="btn btn-success" onclick="approveInventoryImport('${submissionId}')">Approve &amp; Apply</button>
+                    <button class="btn btn-warning" onclick="requestInventoryRevision('${submissionId}')">Request Revision</button>
+                `;
+
+            } catch (err) {
+                msgEl.className = 'message error show';
+                msgEl.style.display = 'block';
+                msgEl.textContent = 'Error loading preview: ' + err.message;
+            }
+        }
+
+        async function approveInventoryImport(submissionId) {
+            if (!confirm('Approve this inventory import? New items will be created and updates will be applied.')) return;
+
+            try {
+                const resp = await fetch(`/api/di/inventory/import/approve/${submissionId}`, {
+                    method: 'POST', credentials: 'include'
+                });
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data.error || 'Approval failed');
+
+                alert(`Import approved: ${data.new_count} new, ${data.update_count} updated, ${data.duplicate_count} duplicates skipped.`);
+                closeInventoryReview();
+                loadSubmittedInventoryImports();
+                loadAllInventory();
+            } catch (err) {
+                alert('Error: ' + err.message);
+            }
+        }
+
+        async function requestInventoryRevision(submissionId) {
+            const comments = prompt('Enter revision comments for the researcher:');
+            if (comments === null) return;
+
+            try {
+                const resp = await fetch(`/api/di/inventory/import/revise/${submissionId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ comments }),
+                    credentials: 'include'
+                });
+                if (!resp.ok) throw new Error('Failed');
+
+                alert('Revision requested');
+                closeInventoryReview();
+                loadSubmittedInventoryImports();
+            } catch (err) {
+                alert('Error requesting revision');
+            }
+        }
+
+        function closeInventoryReview() {
+            document.getElementById('invReviewPanel').style.display = 'none';
+            currentReviewSubmissionId = null;
+        }
+
+        async function loadAllInventory() {
+            const tbody = document.getElementById('invAllTableBody');
+            tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;"><div class="loading"><div class="spinner"></div></div></td></tr>';
+
+            const aff = document.getElementById('invFilterAffiliation').value;
+            const resp_type = document.getElementById('invFilterResponsible').value;
+            const status = document.getElementById('invFilterStatus').value;
+            const origin = document.getElementById('invFilterOrigin').value;
+
+            const params = new URLSearchParams();
+            if (aff) params.set('affiliation', aff);
+            if (resp_type) params.set('responsible', resp_type);
+            if (status) params.set('status', status);
+            if (origin) params.set('origin', origin);
+
+            try {
+                const resp = await fetch('/api/di/inventory/all?' + params.toString(), { credentials: 'include' });
+                if (!resp.ok) throw new Error('Failed');
+                const data = await resp.json();
+                const items = data.items || [];
+
+                if (items.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#999;">No inventory items found</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = items.map(i => `
+                    <tr>
+                        <td title="${escapeHtml(i.product_link || '')}" style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                            ${i.product_link ? '<a href="'+escapeHtml(i.product_link)+'" target="_blank">'+escapeHtml(i.product_name)+'</a>' : escapeHtml(i.product_name)}
+                        </td>
+                        <td>${escapeHtml(i.vendor_company)}</td>
+                        <td>${escapeHtml(i.catalog_id)}</td>
+                        <td>${escapeHtml(i.affiliation)}</td>
+                        <td>${i.responsible_type === 'group' ? '<em>Group</em>' : escapeHtml(i.responsible_name || i.responsible_user_id || '')}</td>
+                        <td>${i.quantity_remaining}</td>
+                        <td>${escapeHtml(i.unit)}</td>
+                        <td>${escapeHtml(i.storage)}</td>
+                        <td>${escapeHtml(i.location || '')}</td>
+                        <td><span style="padding:2px 8px;border-radius:10px;font-size:11px;background:${i.status==='Active'?'#d4edda':'#e2e3e5'};color:${i.status==='Active'?'#155724':'#383d41'};">${i.status}</span></td>
+                        <td style="font-size:11px;color:#666;">${i.origin_type === 'offline_import' ? 'Import' : 'Purchase'}</td>
+                    </tr>
+                `).join('');
+            } catch (err) {
+                tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#dc3545;">Error loading inventory</td></tr>';
+            }
         }
     </script>
 </body>
