@@ -3396,7 +3396,7 @@ app.post('/api/di/backup/preview', requirePI, async (req, res) => {
     if (!snapshot || typeof snapshot !== 'string') {
       return res.status(400).json({ error: 'Missing snapshot parameter' });
     }
-    if (!/^(daily\/[\d-]+|weekly\/[\d\-W]+|latest)$/.test(snapshot)) {
+    if (!/^(daily\/(latest|[\d-]+)|weekly\/(latest|[\d\-W]+)|latest)$/.test(snapshot)) {
       return res.status(400).json({ error: 'Invalid snapshot path' });
     }
 
@@ -3437,7 +3437,7 @@ app.post('/api/di/backup/recover', requirePI, async (req, res) => {
     if (!snapshot || typeof snapshot !== 'string') {
       return res.status(400).json({ error: 'Missing snapshot' });
     }
-    if (!/^(daily\/[\d-]+|weekly\/[\d\-W]+|latest)$/.test(snapshot)) {
+    if (!/^(daily\/(latest|[\d-]+)|weekly\/(latest|[\d\-W]+)|latest)$/.test(snapshot)) {
       return res.status(400).json({ error: 'Invalid snapshot path' });
     }
     if (mode !== 'add-missing' && mode !== 'full-restore') {
@@ -3567,6 +3567,7 @@ app.post('/api/di/backup/export-url', requirePI, async (req, res) => {
 app.listen(PORT, () => {
   console.log("[STARTUP] Server listening on port ");
 });
+
 
 
 
