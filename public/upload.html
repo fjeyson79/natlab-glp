@@ -690,7 +690,7 @@
                     <h2><span class="icon">&#128722;</span> Purchase Requests</h2>
                     <div style="display:flex;gap:8px;">
                         <button class="inv-toggle-btn active" id="prToggleNew" onclick="switchPrView('new')">New Request</button>
-                        <button class="inv-toggle-btn" id="prToggleMy" onclick="switchPrView('my')">My Requests</button>
+                        <button class="inv-toggle-btn" id="prToggleMy" onclick="switchPrView('my')">My Requests <span id="prMyBadge" style="display:none;background:#007bff;color:#fff;border-radius:10px;padding:0 6px;font-size:11px;margin-left:2px;"></span></button>
                     </div>
                 </div>
                 <div class="panel-content">
@@ -766,10 +766,11 @@
                                     <th>Total</th>
                                     <th>Status</th>
                                     <th>PI Comment</th>
+                                    <th style="width:30px;"></th>
                                 </tr>
                             </thead>
                             <tbody id="prMyTableBody">
-                                <tr><td colspan="5" style="text-align:center;color:#999;">Loading...</td></tr>
+                                <tr><td colspan="6" style="text-align:center;color:#999;">Loading...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -1701,11 +1702,10 @@ credentials: 'include'
                 const data = await resp.json();
                 if (!resp.ok) throw new Error(data.error || 'Submission failed');
 
-                msgEl.className = 'message success show'; msgEl.style.display = 'block';
-                msgEl.textContent = `Request submitted (${data.item_count} items, total ${data.request_total} ${currency}). Request ID: ${data.request_id.substring(0,8)}`;
-                // Reset form
+                // Reset form and switch to My Requests so researcher sees submission
                 document.getElementById('prJustification').value = '';
                 prInitForm();
+                switchPrView('my');
             } catch (err) {
                 msgEl.className = 'message error show'; msgEl.style.display = 'block';
                 msgEl.textContent = 'Error: ' + err.message;
@@ -1714,7 +1714,7 @@ credentials: 'include'
 
         async function loadMyPurchaseRequests() {
             const tbody = document.getElementById('prMyTableBody');
-            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;"><div class="loading"><div class="spinner"></div></div></td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;"><div class="loading"><div class="spinner"></div></div></td></tr>';
 
             try {
                 const resp = await fetch('/api/di/purchases/my', { credentials: 'include' });
@@ -1722,25 +1722,52 @@ credentials: 'include'
                 const data = await resp.json();
                 const requests = data.requests || [];
 
+                // Update badge
+                const badge = document.getElementById('prMyBadge');
+                if (requests.length > 0) { badge.textContent = requests.length; badge.style.display = 'inline'; }
+                else { badge.style.display = 'none'; }
+
                 if (requests.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#999;">No purchase requests yet</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;">No purchase requests yet</td></tr>';
                     return;
                 }
 
-                tbody.innerHTML = requests.map(r => {
-                    const statusColors = { SUBMITTED: '#007bff', APPROVED: '#28a745', DECLINED: '#fd7e14' };
-                    const itemSummary = (r.items || []).map(i => escapeHtml(i.product_name)).join(', ');
-                    return `<tr>
+                const statusColors = { SUBMITTED: '#007bff', APPROVED: '#28a745', DECLINED: '#fd7e14' };
+                let html = '';
+                for (const r of requests) {
+                    const items = r.items || [];
+                    const itemSummary = items.map(i => i.product_name).join(', ');
+                    const rowId = 'pr-my-' + r.id.substring(0,8);
+                    html += `<tr style="cursor:pointer;" onclick="togglePrDetail('${rowId}')">
                         <td style="white-space:nowrap;">${new Date(r.created_at).toLocaleDateString()}</td>
-                        <td title="${escapeHtml(itemSummary)}" style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${(r.items||[]).length} item${(r.items||[]).length>1?'s':''}: ${escapeHtml(itemSummary)}</td>
+                        <td title="${escapeHtml(itemSummary)}" style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${items.length} item${items.length>1?'s':''}: ${escapeHtml(itemSummary)}</td>
                         <td style="white-space:nowrap;font-weight:600;">${Number(r.request_total).toFixed(2)} ${escapeHtml(r.currency)}</td>
                         <td><span style="padding:2px 8px;border-radius:10px;font-size:11px;color:#fff;background:${statusColors[r.status]||'#666'};">${r.status}</span></td>
                         <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:#856404;">${r.pi_comment ? escapeHtml(r.pi_comment) : ''}</td>
+                        <td style="text-align:center;font-size:11px;color:#666;">&#9660;</td>
                     </tr>`;
-                }).join('');
+                    // Expandable detail row (hidden by default)
+                    let detailRows = items.map(i => {
+                        const ordered = i.ordered_at ? '<span style="color:#28a745;">Ordered ' + new Date(i.ordered_at).toLocaleDateString() + '</span>' : '<span style="color:#999;">Not ordered</span>';
+                        const received = i.received_at ? '<span style="color:#28a745;">Received ' + new Date(i.received_at).toLocaleDateString() + '</span>' : '<span style="color:#999;">Not received</span>';
+                        return `<tr><td style="padding-left:20px;">${escapeHtml(i.product_name)}</td><td>${escapeHtml(i.vendor_company)}</td><td style="white-space:nowrap;">${i.quantity} &times; ${Number(i.unit_price).toFixed(2)}</td><td>${ordered}</td><td>${received}</td><td></td></tr>`;
+                    }).join('');
+                    html += `<tr id="${rowId}" style="display:none;"><td colspan="6" style="padding:0;">
+                        <table style="width:100%;font-size:12px;background:#f8f9fa;border-collapse:collapse;">
+                            <thead><tr style="color:#666;"><th style="padding:3px 6px;font-weight:600;">Product</th><th style="padding:3px 6px;font-weight:600;">Vendor</th><th style="padding:3px 6px;font-weight:600;">Qty &times; Price</th><th style="padding:3px 6px;font-weight:600;">Ordered</th><th style="padding:3px 6px;font-weight:600;">Received</th><th></th></tr></thead>
+                            <tbody>${detailRows}</tbody>
+                        </table>
+                    </td></tr>`;
+                }
+                tbody.innerHTML = html;
             } catch (err) {
-                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#dc3545;">Error loading requests</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#dc3545;">Error loading requests</td></tr>';
             }
+        }
+
+        function togglePrDetail(rowId) {
+            const row = document.getElementById(rowId);
+            if (row) row.style.display = row.style.display === 'none' ? 'table-row' : 'none';
         }
 
         // =====================================================
@@ -1851,6 +1878,7 @@ credentials: 'include'
             if (section === 'inventory') {
                 prInitForm();
                 loadApprovedToReceive();
+                loadMyPurchaseRequests(); // pre-fetch so badge + data are ready
             }
         };
     </script>
