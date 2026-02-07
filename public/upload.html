@@ -1630,14 +1630,16 @@ credentials: 'include'
             const tbody = document.getElementById('prItemsBody');
             const row = document.createElement('tr');
             row.innerHTML = `
-                <td><input type="text" class="pr-vendor" placeholder="Company"></td>
-                <td><input type="text" class="pr-product" placeholder="Name"></td>
-                <td><input type="text" class="pr-catalog" placeholder="Cat. ID"></td>
-                <td><input type="url" class="pr-link" placeholder="https://..."></td>
-                <td><input type="number" class="pr-qty" min="1" step="1" value="1" oninput="prUpdateTotals()"></td>
-                <td><input type="number" class="pr-price" min="0" step="0.01" value="" placeholder="0.00" oninput="prUpdateTotals()"></td>
-                <td class="pr-item-total" style="font-weight:600;white-space:nowrap;text-align:right;">0.00</td>
-                <td style="text-align:center;"><button style="color:#dc3545;background:none;border:none;font-size:16px;cursor:pointer;padding:0;line-height:30px;" onclick="prRemoveRow(this)" title="Remove">&times;</button></td>
+                <td class="col-vendor"><input type="text" class="pr-vendor" placeholder="Company"></td>
+                <td class="col-product"><input type="text" class="pr-product" placeholder="Name"></td>
+                <td class="col-catalog"><input type="text" class="pr-catalog" placeholder="Cat. ID"></td>
+                <td class="col-link"><input type="url" class="pr-link" placeholder="https://..."></td>
+                <td class="col-qty"><input type="number" class="pr-qty" min="1" step="1" value="1" oninput="prUpdateTotals()"></td>
+                <td class="col-price"><input type="number" class="pr-price" min="0" step="0.01" value="" placeholder="0.00" oninput="prUpdateTotals()"></td>
+                <td class="col-total pr-item-total" style="font-weight:600;white-space:nowrap;text-align:right;">0.00</td>
+                <td class="col-del" style="text-align:center;">
+                    <button style="color:#dc3545;background:none;border:none;font-size:16px;cursor:pointer;padding:0;line-height:30px;" onclick="prRemoveRow(this)" title="Remove">&times;</button>
+                </td>
             `;
             tbody.appendChild(row);
         }
