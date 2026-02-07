@@ -3550,8 +3550,217 @@ app.post('/api/di/backup/export-url', requirePI, async (req, res) => {
   }
 });
 
+// =====================================================
+// BACKUP DOWNLOAD — R2 on-demand ZIP (PI only)
+// =====================================================
 
+// Download guardrail constants
+const DL_MAX_SINGLE_FILES = 500;
+const DL_MAX_SINGLE_BYTES = 500 * 1024 * 1024;       // 500 MB
+const DL_MAX_PART_FILES   = 2000;
+const DL_MAX_PART_BYTES   = 2 * 1024 * 1024 * 1024;  // 2 GB hard cap per part
+const DL_TIMEOUT_MS       = 10 * 60 * 1000;           // 10 min
 
+// Key pattern: di/{affiliation}/Submitted/{year}/{YYYY-MM-DD}_{researcher_id}_{filename}.pdf
+function dlExtractResearcher(key) {
+  const fn = key.split('/').pop();
+  const segs = fn ? fn.split('_') : [];
+  return segs.length >= 3 ? segs[1] : null;
+}
+
+function dlExtractDate(key) {
+  const fn = key.split('/').pop();
+  if (!fn) return null;
+  const m = fn.match(/^(\d{4}-\d{2}-\d{2})_/);
+  return m ? m[1] : null;
+}
+
+function dlKeyMatches(key, filters) {
+  if (!key.startsWith('di/') || !key.toLowerCase().endsWith('.pdf')) return false;
+  if (filters.researchers && filters.researchers.length > 0) {
+    const rid = dlExtractResearcher(key);
+    if (!rid || !filters.researchers.includes(rid)) return false;
+  }
+  if (filters.dateFrom || filters.dateTo) {
+    const d = dlExtractDate(key);
+    // If date cannot be parsed from filename, exclude from date-filtered results
+    if (!d) return false;
+    if (filters.dateFrom && d < filters.dateFrom) return false;
+    if (filters.dateTo && d > filters.dateTo) return false;
+  }
+  return true;
+}
+
+function dlBuildFilters(body) {
+  const filters = {};
+  if (body.mode === 'researcher' && Array.isArray(body.researchers)) {
+    filters.researchers = body.researchers;
+  }
+  if (body.mode === 'daterange') {
+    if (body.dateFrom) filters.dateFrom = body.dateFrom;
+    if (body.dateTo) filters.dateTo = body.dateTo;
+    if (Array.isArray(body.researchers) && body.researchers.length > 0) {
+      filters.researchers = body.researchers;
+    }
+  }
+  return filters;
+}
+
+// --- GET /api/di/backup/download/researchers ---
+app.get('/api/di/backup/download/researchers', requirePI, async (req, res) => {
+  try {
+    if (!r2Enabled()) return res.status(503).json({ error: 'R2 storage not configured' });
+    const dbRows = await pool.query(
+      'SELECT researcher_id, name, affiliation FROM di_allowlist WHERE active = true'
+    );
+    const rmap = {};
+    for (const r of dbRows.rows) {
+      rmap[r.researcher_id] = { id: r.researcher_id, name: r.name, affiliation: r.affiliation, files: 0 };
+    }
+    let token;
+    do {
+      const resp = await getR2Client().send(new ListObjectsV2Command({
+        Bucket: process.env.R2_BUCKET, Prefix: 'di/', ContinuationToken: token
+      }));
+      if (resp.Contents) {
+        for (const obj of resp.Contents) {
+          if (!obj.Key.toLowerCase().endsWith('.pdf')) continue;
+          const rid = dlExtractResearcher(obj.Key);
+          if (!rid) continue;
+          if (rmap[rid]) { rmap[rid].files++; }
+          else { rmap[rid] = { id: rid, name: 'Unknown (' + rid + ')', affiliation: 'Unknown', files: 1 }; }
+        }
+      }
+      token = resp.IsTruncated ? resp.NextContinuationToken : undefined;
+    } while (token);
+    const list = Object.values(rmap).filter(r => r.files > 0).sort((a, b) => a.name.localeCompare(b.name));
+    res.json({ success: true, researchers: list });
+  } catch (err) {
+    console.error('[BACKUP-DL] Researchers error:', err.message);
+    res.status(500).json({ error: 'Failed to list researchers' });
+  }
+});
+
+// --- POST /api/di/backup/download/estimate ---
+app.post('/api/di/backup/download/estimate', requirePI, async (req, res) => {
+  try {
+    if (!r2Enabled()) return res.status(503).json({ error: 'R2 storage not configured' });
+    const { mode } = req.body;
+    if (!['researcher', 'daterange', 'full'].includes(mode))
+      return res.status(400).json({ error: 'Invalid mode' });
+    if (mode === 'researcher' && (!Array.isArray(req.body.researchers) || !req.body.researchers.length))
+      return res.status(400).json({ error: 'No researchers selected' });
+    if (mode === 'daterange' && (!req.body.dateFrom || !req.body.dateTo))
+      return res.status(400).json({ error: 'Date range required' });
+
+    const filters = dlBuildFilters(req.body);
+    let fileCount = 0, totalBytes = 0, token;
+    do {
+      const resp = await getR2Client().send(new ListObjectsV2Command({
+        Bucket: process.env.R2_BUCKET, Prefix: 'di/', ContinuationToken: token
+      }));
+      if (resp.Contents) {
+        for (const obj of resp.Contents) {
+          if (dlKeyMatches(obj.Key, filters)) { fileCount++; totalBytes += (obj.Size || 0); }
+        }
+      }
+      token = resp.IsTruncated ? resp.NextContinuationToken : undefined;
+    } while (token);
+    const singleOk = fileCount <= DL_MAX_SINGLE_FILES && totalBytes <= DL_MAX_SINGLE_BYTES;
+    res.json({ success: true, fileCount, totalBytes, singleZipAvailable: singleOk, recommendedMode: singleOk ? 'single' : 'multi' });
+  } catch (err) {
+    console.error('[BACKUP-DL] Estimate error:', err.message);
+    res.status(500).json({ error: 'Failed to estimate' });
+  }
+});
+
+// --- POST /api/di/backup/download/zip ---
+// Streams a ZIP of matching R2 PDFs.
+// Multi-part: send cursor (last included key) and maxBytes. Check X-Next-Cursor response header.
+app.post('/api/di/backup/download/zip', requirePI, async (req, res) => {
+  const t0 = Date.now();
+  try {
+    if (!r2Enabled()) return res.status(503).json({ error: 'R2 storage not configured' });
+    const { mode, cursor, maxBytes: rawMax } = req.body;
+    if (!['researcher', 'daterange', 'full'].includes(mode))
+      return res.status(400).json({ error: 'Invalid mode' });
+    if (mode === 'researcher' && (!Array.isArray(req.body.researchers) || !req.body.researchers.length))
+      return res.status(400).json({ error: 'No researchers selected' });
+    if (mode === 'daterange' && (!req.body.dateFrom || !req.body.dateTo))
+      return res.status(400).json({ error: 'Date range required' });
+
+    const filters = dlBuildFilters(req.body);
+    const maxBytes = rawMax ? Math.min(Number(rawMax), DL_MAX_PART_BYTES) : null;
+
+    // Phase 1 — collect keys for this part (ListObjectsV2 only, no GetObject yet)
+    const r2 = getR2Client();
+    const bucket = process.env.R2_BUCKET;
+    const keys = [];
+    let partBytes = 0, nextCursor = '', partDone = false, listToken;
+    const listParams = { Bucket: bucket, Prefix: 'di/' };
+    if (cursor) listParams.StartAfter = cursor;
+
+    do {
+      if (listToken) { listParams.ContinuationToken = listToken; delete listParams.StartAfter; }
+      const resp = await r2.send(new ListObjectsV2Command(listParams));
+      if (resp.Contents) {
+        for (const obj of resp.Contents) {
+          if (!dlKeyMatches(obj.Key, filters)) continue;
+          const sz = obj.Size || 0;
+          if (maxBytes && partBytes + sz > maxBytes && keys.length > 0) { partDone = true; break; }
+          if (keys.length >= DL_MAX_PART_FILES) { partDone = true; break; }
+          keys.push({ key: obj.Key, size: sz });
+          partBytes += sz;
+        }
+      }
+      if (partDone) { nextCursor = keys[keys.length - 1].key; break; }
+      listToken = resp.IsTruncated ? resp.NextContinuationToken : undefined;
+    } while (listToken);
+
+    if (!keys.length) return res.status(404).json({ error: 'No matching files found' });
+
+    // Phase 2 — stream ZIP
+    const who = req.session.user.researcher_id;
+    console.log(`[BACKUP-DL] ZIP by=${who} mode=${mode} files=${keys.length} est=${partBytes} multi=${!!maxBytes}`);
+
+    const stamp = new Date().toISOString().slice(0, 10);
+    let fn = 'natlab-' + stamp;
+    if (mode === 'researcher' && req.body.researchers.length === 1) fn += '-' + req.body.researchers[0];
+    else if (mode === 'daterange') fn += '-' + req.body.dateFrom + '_' + req.body.dateTo;
+    if (maxBytes && cursor) fn += '-cont';
+    fn += '.zip';
+
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', 'attachment; filename="' + fn + '"');
+    res.setHeader('X-Next-Cursor', nextCursor);
+    res.setHeader('X-File-Count', String(keys.length));
+    res.setHeader('Access-Control-Expose-Headers', 'X-Next-Cursor, X-File-Count');
+
+    const archive = archiver('zip', { zlib: { level: 5 } });
+    const errors = [];
+    archive.on('error', (e) => { console.error('[BACKUP-DL] archiver err:', e.message); });
+    archive.pipe(res);
+
+    for (const item of keys) {
+      if (Date.now() - t0 > DL_TIMEOUT_MS) { errors.push({ key: item.key, error: 'timeout' }); break; }
+      try {
+        const obj = await r2.send(new GetObjectCommand({ Bucket: bucket, Key: item.key }));
+        archive.append(obj.Body, { name: item.key });
+      } catch (e) {
+        errors.push({ key: item.key, error: e.message });
+      }
+    }
+    if (errors.length) {
+      archive.append(errors.map(e => e.key + ' \u2014 ' + e.error).join('\n'), { name: 'manifest_errors.txt' });
+      console.log(`[BACKUP-DL] ${errors.length} file(s) skipped`);
+    }
+    await archive.finalize();
+    console.log(`[BACKUP-DL] done files=${keys.length} errors=${errors.length} ms=${Date.now() - t0}`);
+  } catch (err) {
+    console.error('[BACKUP-DL] ZIP error:', err.message);
+    if (!res.headersSent) res.status(500).json({ error: 'Download failed' });
+  }
+});
 
 
 
