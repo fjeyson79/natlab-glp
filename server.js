@@ -3829,7 +3829,7 @@ const INVENTORY_REQUIRED_COLS = [
     'unit', 'storage', 'location'
 ];
 const INVENTORY_VALID_UNITS = ['bottle', 'box', 'pack', 'each'];
-const INVENTORY_VALID_STORAGE = ['RT', '4C', '20C', '80C'];
+const INVENTORY_VALID_STORAGE = ['RT', '4C', '-20C', '-80C'];
 const INVENTORY_VALID_AFFILIATIONS = ['LiU', 'UNAV'];
 
 // Validate CSV rows and resolve responsible_user_email → researcher_id
@@ -4640,10 +4640,6 @@ app.post('/api/di/purchases/item/:itemId/receive', requireAuth, requireInternal,
             return res.status(400).json({ error: 'location is required' });
         }
 
-        // Map storage display values to DB values (DB stores without dash)
-        const storageDbMap = { 'RT': 'RT', '4C': '4C', '-20C': '20C', '-80C': '80C' };
-        const storageDb = storageDbMap[storage] || storage;
-
         // Verify item belongs to user and is eligible
         const itemResult = await pool.query(
             `SELECT i.*, r.requester_id, r.status AS request_status, r.affiliation
@@ -4678,7 +4674,7 @@ app.post('/api/di/purchases/item/:itemId/receive', requireAuth, requireInternal,
                  VALUES ($1, $2, $3, $4, $5, 'user', $6, $7, $8, $9, $10,
                     'Active', 'online_purchase', 'online_ui', NULL, $6, $6) RETURNING id`,
                 [item.affiliation, item.vendor_company, item.product_name, item.catalog_id, item.product_link,
-                 user.researcher_id, Number(quantity_received), unit, storageDb, location.trim()]
+                 user.researcher_id, Number(quantity_received), unit, storage, location.trim()]
             );
             const inventoryId = invResult.rows[0].id;
 

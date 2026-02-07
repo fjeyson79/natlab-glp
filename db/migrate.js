@@ -90,6 +90,13 @@ async function migrate() {
             )`,
             `CREATE INDEX IF NOT EXISTS idx_di_inventory_log_inventory ON di_inventory_log(inventory_id)`,
 
+            // ==================== STORAGE CANONICAL FIX ====================
+            // Migrate DB values to real-world labels: 20C → -20C, 80C → -80C
+            `UPDATE di_inventory SET storage = '-20C' WHERE storage = '20C'`,
+            `UPDATE di_inventory SET storage = '-80C' WHERE storage = '80C'`,
+            `ALTER TABLE di_inventory DROP CONSTRAINT IF EXISTS di_inventory_storage_check`,
+            `ALTER TABLE di_inventory ADD CONSTRAINT di_inventory_storage_check CHECK (storage IN ('RT', '4C', '-20C', '-80C'))`,
+
             // ==================== PURCHASE REQUEST SYSTEM ====================
 
             // Purchase requests — one request per researcher with justification
