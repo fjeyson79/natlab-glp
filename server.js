@@ -3254,8 +3254,301 @@ app.get('/api/di/supervision/researchers/:researcher_id/files', requireSuperviso
 
 // redeploy bump 2026-01-23T20:49:14
 
+// =====================================================
+// BACKUP & RECOVERY (AWS S3) — PI only
+// =====================================================
+const { ListObjectsV2Command, HeadObjectCommand } = require('@aws-sdk/client-s3');
+const { getSignedUrl: backupGetSignedUrl } = require('@aws-sdk/s3-request-presigner');
 
+function backupS3Enabled() {
+  return !!(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY &&
+            process.env.AWS_S3_BACKUP_BUCKET && process.env.AWS_REGION);
+}
 
+let _backupS3Client = null;
+function getBackupS3Client() {
+  if (_backupS3Client) return _backupS3Client;
+  _backupS3Client = new S3Client({
+    region: process.env.AWS_REGION,
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+    }
+  });
+  return _backupS3Client;
+}
+
+// Count objects under a prefix without collecting keys
+async function countS3Objects(s3, bucket, prefix) {
+  let count = 0;
+  let totalBytes = 0;
+  let token;
+  do {
+    const resp = await s3.send(new ListObjectsV2Command({
+      Bucket: bucket, Prefix: prefix, ContinuationToken: token
+    }));
+    if (resp.Contents) {
+      count += resp.Contents.length;
+      for (const o of resp.Contents) totalBytes += (o.Size || 0);
+    }
+    token = resp.IsTruncated ? resp.NextContinuationToken : undefined;
+  } while (token);
+  return { count, totalBytes };
+}
+
+// Iterate backup objects page by page, calling fn(object) for each
+async function forEachBackupObject(s3, bucket, prefix, fn) {
+  let token;
+  do {
+    const resp = await s3.send(new ListObjectsV2Command({
+      Bucket: bucket, Prefix: prefix, ContinuationToken: token
+    }));
+    if (resp.Contents) {
+      for (const obj of resp.Contents) await fn(obj);
+    }
+    token = resp.IsTruncated ? resp.NextContinuationToken : undefined;
+  } while (token);
+}
+
+// Check if object exists in R2, return { exists, size } or { exists: false }
+async function headR2Object(key) {
+  try {
+    const resp = await getR2Client().send(new HeadObjectCommand({
+      Bucket: process.env.R2_BUCKET, Key: key
+    }));
+    return { exists: true, size: resp.ContentLength || 0 };
+  } catch (e) {
+    if (e.name === 'NotFound' || e.$metadata?.httpStatusCode === 404) {
+      return { exists: false, size: 0 };
+    }
+    throw e;
+  }
+}
+
+// Stream-copy a single object from backup S3 to R2
+async function streamCopyToR2(backupS3, backupBucket, sourceKey, destKey) {
+  const getResp = await backupS3.send(new GetObjectCommand({
+    Bucket: backupBucket, Key: sourceKey
+  }));
+  const contentLength = getResp.ContentLength;
+  const contentType = getResp.ContentType || 'application/octet-stream';
+  // If ContentLength is known, stream directly; otherwise buffer
+  if (contentLength != null) {
+    await getR2Client().send(new PutObjectCommand({
+      Bucket: process.env.R2_BUCKET,
+      Key: destKey,
+      Body: getResp.Body,
+      ContentLength: contentLength,
+      ContentType: contentType
+    }));
+  } else {
+    const buffer = await streamToBuffer(getResp.Body);
+    await uploadToR2(buffer, destKey, contentType);
+  }
+}
+
+// --- GET /api/di/backup/snapshots ---
+app.get('/api/di/backup/snapshots', requirePI, async (req, res) => {
+  try {
+    if (!backupS3Enabled()) return res.status(503).json({ error: 'Backup storage not configured' });
+    const s3 = getBackupS3Client();
+    const bucket = process.env.AWS_S3_BACKUP_BUCKET;
+    const snapshots = [];
+
+    // Check daily/ and weekly/ for sub-prefixes
+    for (const pfx of ['daily/', 'weekly/']) {
+      const resp = await s3.send(new ListObjectsV2Command({
+        Bucket: bucket, Prefix: pfx, Delimiter: '/'
+      }));
+      if (resp.CommonPrefixes) {
+        for (const cp of resp.CommonPrefixes) {
+          snapshots.push({
+            path: cp.Prefix.replace(/\/$/, ''),
+            type: pfx.replace('/', ''),
+            label: cp.Prefix.replace(pfx, '').replace(/\/$/, '')
+          });
+        }
+      }
+    }
+
+    // Check if latest/ has any objects
+    const latestResp = await s3.send(new ListObjectsV2Command({
+      Bucket: bucket, Prefix: 'latest/', MaxKeys: 1
+    }));
+    if (latestResp.Contents && latestResp.Contents.length > 0) {
+      snapshots.push({ path: 'latest', type: 'latest', label: 'latest' });
+    }
+
+    res.json({ success: true, snapshots });
+  } catch (err) {
+    console.error('[BACKUP] List snapshots error:', err);
+    res.status(500).json({ error: 'Failed to list snapshots' });
+  }
+});
+
+// --- POST /api/di/backup/preview (summary only) ---
+app.post('/api/di/backup/preview', requirePI, async (req, res) => {
+  try {
+    if (!backupS3Enabled()) return res.status(503).json({ error: 'Backup storage not configured' });
+    if (!r2Enabled()) return res.status(503).json({ error: 'R2 storage not configured' });
+
+    const { snapshot } = req.body;
+    if (!snapshot || typeof snapshot !== 'string') {
+      return res.status(400).json({ error: 'Missing snapshot parameter' });
+    }
+    if (!/^(daily\/[\d-]+|weekly\/[\d\-W]+|latest)$/.test(snapshot)) {
+      return res.status(400).json({ error: 'Invalid snapshot path' });
+    }
+
+    const backupPrefix = snapshot + '/di/';
+    const [backupStats, r2Stats] = await Promise.all([
+      countS3Objects(getBackupS3Client(), process.env.AWS_S3_BACKUP_BUCKET, backupPrefix),
+      countS3Objects(getR2Client(), process.env.R2_BUCKET, 'di/')
+    ]);
+
+    const estimatedDifference = Math.abs(backupStats.count - r2Stats.count);
+    const label = snapshot.replace('/', ' / ');
+    const summaryText = `Backup snapshot contains ${backupStats.count} files, current storage contains ${r2Stats.count} files. Estimated difference: ${estimatedDifference} files.`;
+
+    res.json({
+      success: true,
+      snapshot,
+      snapshotLabel: label,
+      backupFileCount: backupStats.count,
+      r2FileCount: r2Stats.count,
+      estimatedDifference,
+      backupTotalBytes: backupStats.totalBytes,
+      r2TotalBytes: r2Stats.totalBytes,
+      summaryText
+    });
+  } catch (err) {
+    console.error('[BACKUP] Preview error:', err);
+    res.status(500).json({ error: 'Failed to generate preview' });
+  }
+});
+
+// --- POST /api/di/backup/recover ---
+app.post('/api/di/backup/recover', requirePI, async (req, res) => {
+  try {
+    if (!backupS3Enabled()) return res.status(503).json({ error: 'Backup storage not configured' });
+    if (!r2Enabled()) return res.status(503).json({ error: 'R2 storage not configured' });
+
+    const { snapshot, mode, confirm } = req.body;
+    if (!snapshot || typeof snapshot !== 'string') {
+      return res.status(400).json({ error: 'Missing snapshot' });
+    }
+    if (!/^(daily\/[\d-]+|weekly\/[\d\-W]+|latest)$/.test(snapshot)) {
+      return res.status(400).json({ error: 'Invalid snapshot path' });
+    }
+    if (mode !== 'add-missing' && mode !== 'full-restore') {
+      return res.status(400).json({ error: 'Invalid mode. Use "add-missing" or "full-restore".' });
+    }
+    if (confirm !== true) {
+      return res.status(400).json({ error: 'Confirmation required. Send confirm: true.' });
+    }
+
+    const piUser = req.session.user.researcher_id;
+    const startTime = new Date().toISOString();
+    console.log(`[BACKUP-RECOVER] Started by ${piUser}: mode=${mode}, snapshot=${snapshot}, start=${startTime}`);
+
+    const backupS3 = getBackupS3Client();
+    const backupBucket = process.env.AWS_S3_BACKUP_BUCKET;
+    const backupPrefix = snapshot + '/di/';
+
+    let processed = 0, copied = 0, skipped = 0, failed = 0;
+    const errors = [];
+
+    await forEachBackupObject(backupS3, backupBucket, backupPrefix, async (obj) => {
+      const relKey = obj.Key;
+      const destKey = relKey.replace(snapshot + '/', '');
+      if (!destKey.startsWith('di/')) return; // hard scope
+
+      processed++;
+      try {
+        const head = await headR2Object(destKey);
+
+        if (mode === 'add-missing') {
+          if (head.exists) { skipped++; return; }
+        } else {
+          // full-restore: skip if exists and same size
+          if (head.exists && head.size === (obj.Size || 0)) { skipped++; return; }
+        }
+
+        await streamCopyToR2(backupS3, backupBucket, relKey, destKey);
+        copied++;
+      } catch (copyErr) {
+        failed++;
+        if (errors.length < 10) errors.push({ key: destKey, error: copyErr.message });
+        console.error(`[BACKUP-RECOVER] Failed ${destKey}:`, copyErr.message);
+      }
+    });
+
+    const endTime = new Date().toISOString();
+    console.log(`[BACKUP-RECOVER] Complete by ${piUser}: mode=${mode}, snapshot=${snapshot}, processed=${processed}, copied=${copied}, skipped=${skipped}, failed=${failed}, start=${startTime}, end=${endTime}`);
+
+    res.json({ success: true, mode, snapshot, processed, copied, skipped, failed, errors });
+  } catch (err) {
+    console.error('[BACKUP-RECOVER] Fatal error:', err);
+    res.status(500).json({ error: 'Recovery failed: ' + err.message });
+  }
+});
+
+// --- GET /api/di/backup/exports ---
+app.get('/api/di/backup/exports', requirePI, async (req, res) => {
+  try {
+    if (!backupS3Enabled()) return res.status(503).json({ error: 'Backup storage not configured' });
+    const exports = [];
+    await forEachBackupObject(getBackupS3Client(), process.env.AWS_S3_BACKUP_BUCKET, 'exports/', (obj) => {
+      const key = obj.Key;
+      if (!key.endsWith('.zip')) return;
+      const parts = key.split('/');
+      exports.push({
+        key,
+        date: parts.length >= 3 ? parts[1] : 'unknown',
+        name: parts[parts.length - 1],
+        size: obj.Size || 0,
+        lastModified: obj.LastModified
+      });
+    });
+    exports.sort((a, b) => b.date.localeCompare(a.date));
+    res.json({ success: true, exports });
+  } catch (err) {
+    console.error('[BACKUP] List exports error:', err);
+    res.status(500).json({ error: 'Failed to list exports' });
+  }
+});
+
+// --- POST /api/di/backup/export-url ---
+app.post('/api/di/backup/export-url', requirePI, async (req, res) => {
+  try {
+    if (!backupS3Enabled()) return res.status(503).json({ error: 'Backup storage not configured' });
+    const { key } = req.body;
+    if (!key || typeof key !== 'string') return res.status(400).json({ error: 'Missing key' });
+    if (!key.startsWith('exports/') || !key.endsWith('.zip')) {
+      return res.status(400).json({ error: 'Invalid export key' });
+    }
+
+    const s3 = getBackupS3Client();
+    const bucket = process.env.AWS_S3_BACKUP_BUCKET;
+
+    // Verify object exists
+    try {
+      await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
+    } catch (headErr) {
+      return res.status(404).json({ error: 'Export archive not found' });
+    }
+
+    const url = await backupGetSignedUrl(s3, new GetObjectCommand({
+      Bucket: bucket, Key: key
+    }), { expiresIn: 900 });
+
+    console.log(`[BACKUP] Pre-signed URL for ${key} by ${req.session.user.researcher_id}`);
+    res.json({ success: true, url, expiresIn: 900 });
+  } catch (err) {
+    console.error('[BACKUP] Export URL error:', err);
+    res.status(500).json({ error: 'Failed to generate download URL' });
+  }
+});
 
 
 

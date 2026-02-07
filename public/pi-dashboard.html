@@ -436,6 +436,7 @@
         <button class="tab-btn" data-tab="group-docs">Group Documents</button>
         <button class="tab-btn" data-tab="user-mgmt">User Management</button>
         <button class="tab-btn" data-tab="reports">Reports</button>
+        <button class="tab-btn" data-tab="backup">Backup</button>
     </div>
 
     <!-- ==================== DASHBOARD TAB ==================== -->
@@ -889,6 +890,99 @@
                         <button class="btn btn-success" onclick="exportToCSV()">Export to CSV</button>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== BACKUP TAB ==================== -->
+    <div class="tab-content" id="tab-backup">
+        <!-- Description -->
+        <div class="message info show" style="margin-bottom:20px;display:block;">
+            This section provides secure access to verified backup copies of all laboratory data. Primary data are continuously stored in the system and replicated to an independent backup storage as immutable snapshots. Backups protect against accidental deletion, corruption, or system failure and do not affect ongoing work unless explicitly used.
+        </div>
+
+        <!-- Recovery Section -->
+        <div class="panel">
+            <div class="panel-header">
+                <h2>Recovery</h2>
+                <button class="btn btn-sm btn-secondary" onclick="loadBackupSnapshots()">Refresh</button>
+            </div>
+            <div class="panel-content">
+                <div id="backupMessage" class="message"></div>
+
+                <!-- Step 1: Select Snapshot -->
+                <div class="form-group">
+                    <label>Select Recovery Point</label>
+                    <select id="backupSnapshotSelect" onchange="clearBackupPreview()">
+                        <option value="">Select a recovery point...</option>
+                    </select>
+                </div>
+
+                <div style="margin-bottom:15px;">
+                    <button class="btn btn-primary" onclick="previewBackupRecovery()">Preview Comparison</button>
+                </div>
+
+                <!-- Step 2: Preview Summary -->
+                <div id="backupPreviewContainer" style="display:none;">
+                    <div class="stats-row" style="margin-bottom:10px;">
+                        <div class="stat-card">
+                            <div class="stat-value" id="bkpBackupCount">0</div>
+                            <div class="stat-label">Files in Backup</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="bkpR2Count">0</div>
+                            <div class="stat-label">Files in Storage</div>
+                        </div>
+                        <div class="stat-card pending">
+                            <div class="stat-value" id="bkpDiffCount">0</div>
+                            <div class="stat-label">Estimated Difference</div>
+                        </div>
+                    </div>
+                    <p id="backupSummaryText" style="color:#555;margin-bottom:15px;font-size:14px;"></p>
+
+                    <!-- Step 3: Recovery Mode -->
+                    <div class="form-group">
+                        <label>Recovery Mode</label>
+                        <select id="backupRecoveryMode">
+                            <option value="add-missing">Add missing files only (recommended)</option>
+                            <option value="full-restore">Full restore from backup</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-warning" onclick="confirmBackupRecovery()" id="backupRecoverBtn">Start Recovery</button>
+                </div>
+
+                <!-- Recovery Progress -->
+                <div id="backupRecoveryProgress" style="display:none;margin-top:15px;">
+                    <div class="loading"><div class="spinner"></div>Recovery in progress. This may take several minutes.</div>
+                </div>
+
+                <!-- Recovery Result -->
+                <div id="backupRecoveryResult" style="display:none;margin-top:15px;"></div>
+            </div>
+        </div>
+
+        <!-- Download Section -->
+        <div class="panel">
+            <div class="panel-header">
+                <h2>Download</h2>
+                <button class="btn btn-sm btn-secondary" onclick="loadBackupExports()">Refresh</button>
+            </div>
+            <div class="panel-content">
+                <p style="color:#555;margin-bottom:15px;font-size:14px;">Download pre-generated export archives. Available categories: Full Dataset, Approved Only, By Date Range, By Researcher, By Affiliation. Only archives that exist are listed below.</p>
+                <div id="exportMessage" class="message"></div>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Archive</th>
+                            <th>Size</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="exportsTableBody">
+                        <tr><td colspan="4" style="text-align:center;color:#666;padding:20px;">Select the Backup tab to load exports.</td></tr>
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
@@ -2023,6 +2117,172 @@
 
         // Load delegation data on page load
         loadDelegationData();
+
+        // =====================================================
+        // BACKUP & RECOVERY TAB
+        // =====================================================
+        document.querySelector('[data-tab="backup"]').addEventListener('click', () => {
+            loadBackupSnapshots();
+            loadBackupExports();
+        });
+
+        async function loadBackupSnapshots() {
+            const select = document.getElementById('backupSnapshotSelect');
+            select.innerHTML = '<option value="">Loading...</option>';
+            try {
+                const resp = await fetch('/api/di/backup/snapshots', { credentials: 'include' });
+                if (!resp.ok) throw new Error('Failed to load');
+                const data = await resp.json();
+                if (!data.snapshots || data.snapshots.length === 0) {
+                    select.innerHTML = '<option value="">No snapshots available</option>';
+                    return;
+                }
+                select.innerHTML = '<option value="">Select a recovery point...</option>' +
+                    data.snapshots.map(s =>
+                        `<option value="${escapeHtml(s.path)}">[${escapeHtml(s.type)}] ${escapeHtml(s.label)}</option>`
+                    ).join('');
+            } catch (err) {
+                select.innerHTML = '<option value="">Error loading snapshots</option>';
+                console.error('Load snapshots error:', err);
+            }
+        }
+
+        function clearBackupPreview() {
+            document.getElementById('backupPreviewContainer').style.display = 'none';
+            document.getElementById('backupRecoveryResult').style.display = 'none';
+            document.getElementById('backupRecoveryProgress').style.display = 'none';
+        }
+
+        async function previewBackupRecovery() {
+            const snapshot = document.getElementById('backupSnapshotSelect').value;
+            if (!snapshot) { alert('Please select a recovery point first.'); return; }
+
+            clearBackupPreview();
+            showMessage('backupMessage', 'Loading preview...', 'info');
+
+            try {
+                const resp = await fetch('/api/di/backup/preview', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ snapshot }),
+                    credentials: 'include'
+                });
+                if (!resp.ok) {
+                    const err = await resp.json();
+                    throw new Error(err.error || 'Preview failed');
+                }
+                const data = await resp.json();
+
+                document.getElementById('bkpBackupCount').textContent = data.backupFileCount;
+                document.getElementById('bkpR2Count').textContent = data.r2FileCount;
+                document.getElementById('bkpDiffCount').textContent = data.estimatedDifference;
+                document.getElementById('backupSummaryText').textContent = data.summaryText;
+
+                document.getElementById('backupPreviewContainer').style.display = 'block';
+                document.getElementById('backupMessage').className = 'message';
+            } catch (err) {
+                showMessage('backupMessage', 'Preview error: ' + err.message, 'error');
+            }
+        }
+
+        async function confirmBackupRecovery() {
+            const snapshot = document.getElementById('backupSnapshotSelect').value;
+            const mode = document.getElementById('backupRecoveryMode').value;
+            if (!snapshot) { alert('No snapshot selected.'); return; }
+
+            const modeLabel = mode === 'add-missing' ? 'ADD MISSING FILES ONLY' : 'FULL RESTORE (overwrites changed files)';
+            if (!window.confirm('You are about to perform: ' + modeLabel + ' from snapshot "' + snapshot + '". Continue?')) return;
+
+            if (mode === 'full-restore') {
+                if (!window.confirm('FINAL WARNING: Full restore will overwrite files that differ in size. Are you sure?')) return;
+            }
+
+            document.getElementById('backupRecoverBtn').disabled = true;
+            document.getElementById('backupRecoveryProgress').style.display = 'block';
+            document.getElementById('backupRecoveryResult').style.display = 'none';
+
+            try {
+                const resp = await fetch('/api/di/backup/recover', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ snapshot, mode, confirm: true }),
+                    credentials: 'include'
+                });
+                const data = await resp.json();
+                document.getElementById('backupRecoveryProgress').style.display = 'none';
+
+                const resultEl = document.getElementById('backupRecoveryResult');
+                if (data.success) {
+                    resultEl.innerHTML =
+                        '<div class="message success show" style="display:block;">' +
+                        '<strong>Recovery Complete</strong><br>' +
+                        'Processed: ' + data.processed + ' | Copied: ' + data.copied +
+                        ' | Skipped: ' + data.skipped + ' | Failed: ' + data.failed +
+                        (data.failed > 0 ? '<br><span style="color:#dc3545;">Some files failed. Check server logs.</span>' : '') +
+                        '</div>';
+                } else {
+                    resultEl.innerHTML = '<div class="message error show" style="display:block;"><strong>Recovery Failed:</strong> ' + escapeHtml(data.error || 'Unknown error') + '</div>';
+                }
+                resultEl.style.display = 'block';
+            } catch (err) {
+                document.getElementById('backupRecoveryProgress').style.display = 'none';
+                showMessage('backupMessage', 'Recovery request failed: ' + err.message, 'error');
+            } finally {
+                document.getElementById('backupRecoverBtn').disabled = false;
+            }
+        }
+
+        // --- Export Downloads ---
+        async function loadBackupExports() {
+            const tbody = document.getElementById('exportsTableBody');
+            tbody.innerHTML = '<tr><td colspan="4"><div class="loading"><div class="spinner"></div>Loading...</div></td></tr>';
+            try {
+                const resp = await fetch('/api/di/backup/exports', { credentials: 'include' });
+                if (!resp.ok) throw new Error('Failed to load');
+                const data = await resp.json();
+                if (!data.exports || data.exports.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#666;padding:20px;">No export archives available yet.</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = data.exports.map(exp =>
+                    '<tr>' +
+                    '<td>' + escapeHtml(exp.date) + '</td>' +
+                    '<td>' + escapeHtml(exp.name) + '</td>' +
+                    '<td>' + formatFileSize(exp.size) + '</td>' +
+                    '<td><button class="btn btn-sm btn-primary" onclick="downloadExport(\'' + escapeHtml(exp.key) + '\')">Download</button></td>' +
+                    '</tr>'
+                ).join('');
+            } catch (err) {
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#dc3545;">Error loading exports</td></tr>';
+            }
+        }
+
+        async function downloadExport(key) {
+            try {
+                const resp = await fetch('/api/di/backup/export-url', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ key }),
+                    credentials: 'include'
+                });
+                if (!resp.ok) {
+                    const err = await resp.json();
+                    alert('Error: ' + (err.error || 'Failed to generate download URL'));
+                    return;
+                }
+                const data = await resp.json();
+                window.open(data.url, '_blank');
+            } catch (err) {
+                alert('Download error: ' + err.message);
+            }
+        }
+
+        function formatFileSize(bytes) {
+            if (!bytes || bytes === 0) return '0 B';
+            const units = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(1024));
+            return (bytes / Math.pow(1024, i)).toFixed(1) + ' ' + units[i];
+        }
     </script>
 </body>
 </html>
