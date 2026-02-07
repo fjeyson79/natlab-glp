@@ -4493,6 +4493,344 @@ app.get('/api/di/inventory/check-user/:researcher_id', requirePI, async (req, re
 });
 
 
+// ==================== PURCHASE REQUEST SYSTEM ====================
+
+// POST /api/di/purchases/request — Create a purchase request with items
+app.post('/api/di/purchases/request', requireAuth, requireInternal, async (req, res) => {
+    try {
+        const user = req.session.user;
+        const { justification, currency, items } = req.body;
+
+        if (!justification || !justification.trim()) {
+            return res.status(400).json({ error: 'Justification is required' });
+        }
+        if (!currency || !currency.trim()) {
+            return res.status(400).json({ error: 'Currency is required' });
+        }
+        if (!items || !Array.isArray(items) || items.length === 0) {
+            return res.status(400).json({ error: 'At least one item is required' });
+        }
+
+        // Validate each item
+        for (let i = 0; i < items.length; i++) {
+            const it = items[i];
+            if (!it.vendor_company || !it.product_name || !it.catalog_id || !it.product_link) {
+                return res.status(400).json({ error: `Item ${i + 1}: all fields are required` });
+            }
+            if (!it.quantity || isNaN(it.quantity) || Number(it.quantity) <= 0) {
+                return res.status(400).json({ error: `Item ${i + 1}: quantity must be a positive number` });
+            }
+            if (it.unit_price === undefined || it.unit_price === null || isNaN(it.unit_price) || Number(it.unit_price) < 0) {
+                return res.status(400).json({ error: `Item ${i + 1}: unit_price must be a non-negative number` });
+            }
+        }
+
+        // Server-authoritative totals
+        const computedItems = items.map(it => ({
+            ...it,
+            quantity: Number(it.quantity),
+            unit_price: Number(it.unit_price),
+            item_total: Math.round(Number(it.quantity) * Number(it.unit_price) * 100) / 100
+        }));
+        const request_total = Math.round(computedItems.reduce((sum, it) => sum + it.item_total, 0) * 100) / 100;
+
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+
+            const reqResult = await client.query(
+                `INSERT INTO di_purchase_requests (requester_id, affiliation, justification, status, request_total, currency)
+                 VALUES ($1, $2, $3, 'SUBMITTED', $4, $5) RETURNING id`,
+                [user.researcher_id, user.affiliation, justification.trim(), request_total, currency.trim()]
+            );
+            const requestId = reqResult.rows[0].id;
+
+            for (const it of computedItems) {
+                await client.query(
+                    `INSERT INTO di_purchase_items (request_id, vendor_company, product_name, catalog_id, product_link, quantity, unit_price, item_total, currency)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+                    [requestId, it.vendor_company.trim(), it.product_name.trim(), it.catalog_id.trim(), it.product_link.trim(), it.quantity, it.unit_price, it.item_total, currency.trim()]
+                );
+            }
+
+            await client.query('COMMIT');
+            console.log(`[PURCHASES] Request ${requestId} created by ${user.researcher_id} with ${computedItems.length} items, total ${request_total} ${currency}`);
+            res.json({ success: true, request_id: requestId, request_total, item_count: computedItems.length });
+        } catch (err) {
+            await client.query('ROLLBACK');
+            throw err;
+        } finally {
+            client.release();
+        }
+    } catch (err) {
+        console.error('[PURCHASES] Create request error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/di/purchases/my — List current user's purchase requests
+app.get('/api/di/purchases/my', requireAuth, requireInternal, async (req, res) => {
+    try {
+        const user = req.session.user;
+        const result = await pool.query(
+            `SELECT r.id, r.affiliation, r.justification, r.status, r.request_total, r.currency,
+                    r.pi_comment, r.created_at, r.updated_at,
+                    json_agg(json_build_object(
+                        'id', i.id, 'vendor_company', i.vendor_company, 'product_name', i.product_name,
+                        'catalog_id', i.catalog_id, 'product_link', i.product_link,
+                        'quantity', i.quantity, 'unit_price', i.unit_price, 'item_total', i.item_total,
+                        'currency', i.currency, 'ordered_at', i.ordered_at, 'received_at', i.received_at,
+                        'inventory_id', i.inventory_id
+                    ) ORDER BY i.created_at) AS items
+             FROM di_purchase_requests r
+             JOIN di_purchase_items i ON i.request_id = r.id
+             WHERE r.requester_id = $1
+             GROUP BY r.id
+             ORDER BY r.created_at DESC`,
+            [user.researcher_id]
+        );
+        res.json({ success: true, requests: result.rows });
+    } catch (err) {
+        console.error('[PURCHASES] My requests error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/di/purchases/my-approved-to-receive — Approved items not yet received for current user
+app.get('/api/di/purchases/my-approved-to-receive', requireAuth, requireInternal, async (req, res) => {
+    try {
+        const user = req.session.user;
+        const result = await pool.query(
+            `SELECT i.id, i.vendor_company, i.product_name, i.catalog_id, i.product_link,
+                    i.quantity, i.unit_price, i.item_total, i.currency, i.ordered_at,
+                    r.id AS request_id, r.affiliation, r.justification, r.created_at AS request_date
+             FROM di_purchase_items i
+             JOIN di_purchase_requests r ON r.id = i.request_id
+             WHERE r.requester_id = $1 AND r.status = 'APPROVED' AND i.received_at IS NULL
+             ORDER BY r.created_at DESC, i.created_at`,
+            [user.researcher_id]
+        );
+        res.json({ success: true, items: result.rows });
+    } catch (err) {
+        console.error('[PURCHASES] Approved to receive error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/di/purchases/item/:itemId/receive — Researcher confirms item received → creates inventory
+app.post('/api/di/purchases/item/:itemId/receive', requireAuth, requireInternal, async (req, res) => {
+    try {
+        const user = req.session.user;
+        const { itemId } = req.params;
+        const { quantity_received, unit, storage, location, received_at } = req.body;
+
+        // Validate inputs
+        if (!quantity_received || isNaN(quantity_received) || Number(quantity_received) <= 0) {
+            return res.status(400).json({ error: 'quantity_received must be a positive number' });
+        }
+        const validUnits = ['bottle', 'box', 'pack', 'each'];
+        if (!unit || !validUnits.includes(unit)) {
+            return res.status(400).json({ error: 'unit must be one of: ' + validUnits.join(', ') });
+        }
+        const validStorage = ['RT', '4C', '-20C', '-80C'];
+        if (!storage || !validStorage.includes(storage)) {
+            return res.status(400).json({ error: 'storage must be one of: ' + validStorage.join(', ') });
+        }
+        if (!location || !location.trim()) {
+            return res.status(400).json({ error: 'location is required' });
+        }
+
+        // Map storage display values to DB values (DB stores without dash)
+        const storageDbMap = { 'RT': 'RT', '4C': '4C', '-20C': '20C', '-80C': '80C' };
+        const storageDb = storageDbMap[storage] || storage;
+
+        // Verify item belongs to user and is eligible
+        const itemResult = await pool.query(
+            `SELECT i.*, r.requester_id, r.status AS request_status, r.affiliation
+             FROM di_purchase_items i
+             JOIN di_purchase_requests r ON r.id = i.request_id
+             WHERE i.id = $1`,
+            [itemId]
+        );
+        if (itemResult.rows.length === 0) {
+            return res.status(404).json({ error: 'Item not found' });
+        }
+        const item = itemResult.rows[0];
+        if (item.requester_id !== user.researcher_id) {
+            return res.status(403).json({ error: 'You can only receive your own purchase items' });
+        }
+        if (item.request_status !== 'APPROVED') {
+            return res.status(400).json({ error: 'Only items from approved requests can be received' });
+        }
+        if (item.received_at) {
+            return res.status(400).json({ error: 'Item already received' });
+        }
+
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+
+            // Create inventory record
+            const invResult = await client.query(
+                `INSERT INTO di_inventory (affiliation, vendor_company, product_name, catalog_id, product_link,
+                    responsible_type, responsible_user_id, quantity_remaining, unit, storage, location,
+                    status, origin_type, last_update_channel, import_batch_id, created_by, last_updated_by)
+                 VALUES ($1, $2, $3, $4, $5, 'user', $6, $7, $8, $9, $10,
+                    'Active', 'online_purchase', 'online_ui', NULL, $6, $6) RETURNING id`,
+                [item.affiliation, item.vendor_company, item.product_name, item.catalog_id, item.product_link,
+                 user.researcher_id, Number(quantity_received), unit, storageDb, location.trim()]
+            );
+            const inventoryId = invResult.rows[0].id;
+
+            // Update purchase item with received info and link to inventory
+            const recvDate = received_at ? new Date(received_at) : new Date();
+            await client.query(
+                `UPDATE di_purchase_items SET received_at = $1, inventory_id = $2 WHERE id = $3`,
+                [recvDate, inventoryId, itemId]
+            );
+
+            await client.query('COMMIT');
+            console.log(`[PURCHASES] Item ${itemId} received by ${user.researcher_id}, inventory ${inventoryId} created`);
+            res.json({ success: true, inventory_id: inventoryId });
+        } catch (err) {
+            await client.query('ROLLBACK');
+            throw err;
+        } finally {
+            client.release();
+        }
+    } catch (err) {
+        console.error('[PURCHASES] Receive item error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/di/purchases/all — PI views all purchase requests
+app.get('/api/di/purchases/all', requirePI, async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT r.id, r.requester_id, r.affiliation, r.justification, r.status,
+                    r.request_total, r.currency, r.pi_comment, r.created_at, r.updated_at,
+                    a.name AS requester_name,
+                    json_agg(json_build_object(
+                        'id', i.id, 'vendor_company', i.vendor_company, 'product_name', i.product_name,
+                        'catalog_id', i.catalog_id, 'product_link', i.product_link,
+                        'quantity', i.quantity, 'unit_price', i.unit_price, 'item_total', i.item_total,
+                        'currency', i.currency, 'ordered_at', i.ordered_at, 'received_at', i.received_at
+                    ) ORDER BY i.created_at) AS items
+             FROM di_purchase_requests r
+             JOIN di_purchase_items i ON i.request_id = r.id
+             LEFT JOIN di_allowlist a ON a.researcher_id = r.requester_id
+             GROUP BY r.id, a.name
+             ORDER BY r.created_at DESC`
+        );
+        res.json({ success: true, requests: result.rows });
+    } catch (err) {
+        console.error('[PURCHASES] All requests error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/di/purchases/:id/approve — PI approves a purchase request
+app.post('/api/di/purchases/:id/approve', requirePI, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await pool.query(
+            `UPDATE di_purchase_requests SET status = 'APPROVED', updated_at = CURRENT_TIMESTAMP
+             WHERE id = $1 AND status = 'SUBMITTED' RETURNING id`,
+            [id]
+        );
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Request not found or not in SUBMITTED status' });
+        }
+        console.log(`[PURCHASES] Request ${id} approved by PI`);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[PURCHASES] Approve error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/di/purchases/:id/decline — PI declines a purchase request (requires comment)
+app.post('/api/di/purchases/:id/decline', requirePI, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { pi_comment } = req.body;
+
+        if (!pi_comment || !pi_comment.trim()) {
+            return res.status(400).json({ error: 'A comment is required when declining a request' });
+        }
+
+        const result = await pool.query(
+            `UPDATE di_purchase_requests SET status = 'DECLINED', pi_comment = $1, updated_at = CURRENT_TIMESTAMP
+             WHERE id = $2 AND status = 'SUBMITTED' RETURNING id`,
+            [pi_comment.trim(), id]
+        );
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Request not found or not in SUBMITTED status' });
+        }
+        console.log(`[PURCHASES] Request ${id} declined by PI`);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[PURCHASES] Decline error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/di/purchases/item/:itemId/mark-ordered — PI marks item as ordered
+app.post('/api/di/purchases/item/:itemId/mark-ordered', requirePI, async (req, res) => {
+    try {
+        const { itemId } = req.params;
+        const result = await pool.query(
+            `UPDATE di_purchase_items SET ordered_at = CURRENT_TIMESTAMP
+             WHERE id = $1 AND ordered_at IS NULL
+             RETURNING id, request_id`,
+            [itemId]
+        );
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Item not found or already marked as ordered' });
+        }
+        console.log(`[PURCHASES] Item ${itemId} marked as ordered`);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[PURCHASES] Mark ordered error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/di/purchases/consolidated — PI consolidated email list of approved, non-ordered items
+app.get('/api/di/purchases/consolidated', requirePI, async (req, res) => {
+    try {
+        const { affiliation } = req.query;
+        if (!affiliation || !['LiU', 'UNAV'].includes(affiliation)) {
+            return res.status(400).json({ error: 'affiliation must be LiU or UNAV' });
+        }
+
+        const result = await pool.query(
+            `SELECT i.id, i.vendor_company, i.product_name, i.catalog_id, i.product_link,
+                    i.quantity, i.unit_price, i.item_total, i.currency,
+                    r.id AS request_id, r.requester_id,
+                    a.name AS requester_name
+             FROM di_purchase_items i
+             JOIN di_purchase_requests r ON r.id = i.request_id
+             LEFT JOIN di_allowlist a ON a.researcher_id = r.requester_id
+             WHERE r.status = 'APPROVED' AND r.affiliation = $1 AND i.ordered_at IS NULL
+             ORDER BY r.created_at, i.created_at`,
+            [affiliation]
+        );
+
+        // Compute total
+        const items = result.rows;
+        const total = Math.round(items.reduce((s, i) => s + Number(i.item_total), 0) * 100) / 100;
+        const currency = items.length > 0 ? items[0].currency : '';
+
+        res.json({ success: true, affiliation, items, total, currency });
+    } catch (err) {
+        console.error('[PURCHASES] Consolidated error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+
 //
 // Server start
 //

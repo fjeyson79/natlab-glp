@@ -1003,6 +1003,96 @@
 
     <!-- ==================== PURCHASES & INVENTORY TAB ==================== -->
     <div class="tab-content" id="tab-purchases-inventory">
+
+        <!-- Purchase Requests for PI Review -->
+        <div class="panel">
+            <div class="panel-header">
+                <h2>Purchase Requests</h2>
+                <button class="btn btn-sm btn-secondary" onclick="loadAllPurchaseRequests()">Refresh</button>
+            </div>
+            <div class="panel-content">
+                <div style="display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
+                    <select id="prFilterStatus" onchange="loadAllPurchaseRequests()" style="padding:6px;border-radius:4px;border:1px solid #ddd;font-size:13px;">
+                        <option value="">All Statuses</option>
+                        <option value="SUBMITTED" selected>Submitted</option>
+                        <option value="APPROVED">Approved</option>
+                        <option value="DECLINED">Declined</option>
+                    </select>
+                </div>
+                <div style="max-height:500px;overflow-y:auto;">
+                    <table class="data-table" style="font-size:13px;">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Requester</th>
+                                <th>Affil.</th>
+                                <th>Justification</th>
+                                <th>Items</th>
+                                <th>Total</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="prAllTableBody">
+                            <tr><td colspan="8" style="text-align:center;color:#999;">Click tab to load data</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Purchase Request Detail (hidden by default) -->
+        <div class="panel" id="prDetailPanel" style="display:none;">
+            <div class="panel-header">
+                <h2 id="prDetailTitle">Request Detail</h2>
+                <button class="btn btn-sm btn-secondary" onclick="closePrDetail()">Close</button>
+            </div>
+            <div class="panel-content">
+                <div id="prDetailJustification" style="margin-bottom:10px;padding:8px 12px;background:#f8f9fa;border-radius:4px;font-size:13px;"></div>
+                <table class="data-table" style="font-size:13px;">
+                    <thead>
+                        <tr>
+                            <th>Vendor</th>
+                            <th>Product</th>
+                            <th>Catalog ID</th>
+                            <th>Link</th>
+                            <th>Qty</th>
+                            <th>Unit Price</th>
+                            <th>Total</th>
+                            <th>Ordered</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="prDetailItemsBody"></tbody>
+                    <tfoot>
+                        <tr><td colspan="6" style="text-align:right;font-weight:600;">Request Total:</td><td id="prDetailTotal" style="font-weight:700;" colspan="3"></td></tr>
+                    </tfoot>
+                </table>
+                <div id="prDetailActions" style="margin-top:12px;display:flex;gap:10px;"></div>
+            </div>
+        </div>
+
+        <!-- Consolidated Email (PI) -->
+        <div class="panel">
+            <div class="panel-header">
+                <h2>Consolidated Purchase Email</h2>
+            </div>
+            <div class="panel-content">
+                <div style="display:flex;gap:10px;margin-bottom:10px;">
+                    <button class="btn btn-sm btn-primary" onclick="loadConsolidatedEmail('LiU')">Load LiU</button>
+                    <button class="btn btn-sm btn-primary" onclick="loadConsolidatedEmail('UNAV')">Load UNAV</button>
+                </div>
+                <div id="prConsolidatedArea" style="display:none;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                        <strong id="prConsolidatedTitle"></strong>
+                        <button class="btn btn-sm btn-success" onclick="copyConsolidatedEmail()">Copy email text</button>
+                    </div>
+                    <pre id="prConsolidatedText" style="background:#f8f9fa;padding:12px;border-radius:4px;font-size:12px;white-space:pre-wrap;max-height:400px;overflow-y:auto;border:1px solid #ddd;"></pre>
+                </div>
+                <div id="prConsolidatedEmpty" style="display:none;text-align:center;color:#999;padding:10px;">No approved items to order for this affiliation.</div>
+            </div>
+        </div>
+
         <!-- Submitted Inventory Imports -->
         <div class="panel">
             <div class="panel-header">
@@ -1170,7 +1260,7 @@
                 // Load tab-specific data
                 if (tabId === 'lab-files') loadLabFiles();
                 if (tabId === 'reports') loadReportsData();
-                if (tabId === 'purchases-inventory') { loadSubmittedInventoryImports(); loadAllInventory(); }
+                if (tabId === 'purchases-inventory') { loadAllPurchaseRequests(); loadSubmittedInventoryImports(); loadAllInventory(); }
             });
         });
 
@@ -2643,7 +2733,206 @@
         }
 
         // =====================================================
-        // PURCHASES & INVENTORY TAB
+        // PURCHASE REQUESTS (PI)
+        // =====================================================
+
+        async function loadAllPurchaseRequests() {
+            const tbody = document.getElementById('prAllTableBody');
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;"><div class="loading"><div class="spinner"></div></div></td></tr>';
+
+            try {
+                const resp = await fetch('/api/di/purchases/all', { credentials: 'include' });
+                if (!resp.ok) throw new Error('Failed');
+                const data = await resp.json();
+                let requests = data.requests || [];
+
+                const statusFilter = document.getElementById('prFilterStatus').value;
+                if (statusFilter) requests = requests.filter(r => r.status === statusFilter);
+
+                if (requests.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#999;">No purchase requests found</td></tr>';
+                    return;
+                }
+
+                const statusColors = { SUBMITTED: '#007bff', APPROVED: '#28a745', DECLINED: '#fd7e14' };
+                tbody.innerHTML = requests.map(r => {
+                    const items = r.items || [];
+                    const itemNames = items.map(i => i.product_name).join(', ');
+                    return `<tr>
+                        <td style="white-space:nowrap;">${new Date(r.created_at).toLocaleDateString()}</td>
+                        <td>${escapeHtml(r.requester_name || r.requester_id)}</td>
+                        <td>${escapeHtml(r.affiliation)}</td>
+                        <td title="${escapeHtml(r.justification)}" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.justification)}</td>
+                        <td title="${escapeHtml(itemNames)}" style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${items.length} item${items.length>1?'s':''}</td>
+                        <td style="white-space:nowrap;font-weight:600;">${Number(r.request_total).toFixed(2)} ${escapeHtml(r.currency)}</td>
+                        <td><span style="padding:2px 8px;border-radius:10px;font-size:11px;color:#fff;background:${statusColors[r.status]||'#666'};">${r.status}</span></td>
+                        <td><button class="btn btn-sm btn-primary" onclick="showPrDetail('${r.id}')">Review</button></td>
+                    </tr>`;
+                }).join('');
+            } catch (err) {
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#dc3545;">Error loading requests</td></tr>';
+            }
+        }
+
+        let prAllData = [];
+        async function showPrDetail(requestId) {
+            // Fetch fresh data
+            try {
+                const resp = await fetch('/api/di/purchases/all', { credentials: 'include' });
+                if (!resp.ok) throw new Error('Failed');
+                const data = await resp.json();
+                prAllData = data.requests || [];
+            } catch (err) { return; }
+
+            const req = prAllData.find(r => r.id === requestId);
+            if (!req) return;
+
+            document.getElementById('prDetailPanel').style.display = 'block';
+            document.getElementById('prDetailTitle').textContent = `Request from ${req.requester_name || req.requester_id} (${req.affiliation})`;
+            document.getElementById('prDetailJustification').innerHTML = `<strong>Justification:</strong> ${escapeHtml(req.justification)}`;
+            document.getElementById('prDetailTotal').textContent = `${Number(req.request_total).toFixed(2)} ${escapeHtml(req.currency)}`;
+
+            const items = req.items || [];
+            const tbody = document.getElementById('prDetailItemsBody');
+            tbody.innerHTML = items.map(i => {
+                const orderedLabel = i.ordered_at ? `<span style="color:#28a745;" title="${new Date(i.ordered_at).toLocaleDateString()}">Yes</span>` : '<span style="color:#999;">No</span>';
+                const markOrderedBtn = (req.status === 'APPROVED' && !i.ordered_at)
+                    ? `<button class="btn btn-sm btn-secondary" onclick="markItemOrdered('${i.id}','${requestId}')">Mark Ordered</button>`
+                    : '';
+                return `<tr>
+                    <td>${escapeHtml(i.vendor_company)}</td>
+                    <td>${escapeHtml(i.product_name)}</td>
+                    <td>${escapeHtml(i.catalog_id)}</td>
+                    <td>${i.product_link ? '<a href="'+escapeHtml(i.product_link)+'" target="_blank" style="font-size:11px;">Link</a>' : ''}</td>
+                    <td>${i.quantity}</td>
+                    <td>${Number(i.unit_price).toFixed(2)}</td>
+                    <td style="font-weight:600;">${Number(i.item_total).toFixed(2)}</td>
+                    <td>${orderedLabel}</td>
+                    <td>${markOrderedBtn}</td>
+                </tr>`;
+            }).join('');
+
+            const actionsEl = document.getElementById('prDetailActions');
+            if (req.status === 'SUBMITTED') {
+                actionsEl.innerHTML = `
+                    <button class="btn btn-success" onclick="approvePurchaseRequest('${requestId}')">Approve</button>
+                    <button class="btn" style="background:#fd7e14;color:#fff;" onclick="declinePurchaseRequest('${requestId}')">Decline</button>
+                `;
+            } else if (req.status === 'DECLINED' && req.pi_comment) {
+                actionsEl.innerHTML = `<div style="color:#856404;font-size:13px;"><strong>Declined:</strong> ${escapeHtml(req.pi_comment)}</div>`;
+            } else {
+                actionsEl.innerHTML = '';
+            }
+        }
+
+        function closePrDetail() {
+            document.getElementById('prDetailPanel').style.display = 'none';
+        }
+
+        async function approvePurchaseRequest(requestId) {
+            if (!confirm('Approve this purchase request?')) return;
+            try {
+                const resp = await fetch(`/api/di/purchases/${requestId}/approve`, { method: 'POST', credentials: 'include' });
+                if (!resp.ok) { const d = await resp.json(); throw new Error(d.error || 'Failed'); }
+                alert('Request approved.');
+                closePrDetail();
+                loadAllPurchaseRequests();
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        async function declinePurchaseRequest(requestId) {
+            const comment = prompt('Enter reason for declining (required):');
+            if (comment === null) return;
+            if (!comment.trim()) { alert('A comment is required when declining.'); return; }
+            try {
+                const resp = await fetch(`/api/di/purchases/${requestId}/decline`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ pi_comment: comment }),
+                    credentials: 'include'
+                });
+                if (!resp.ok) { const d = await resp.json(); throw new Error(d.error || 'Failed'); }
+                alert('Request declined.');
+                closePrDetail();
+                loadAllPurchaseRequests();
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        async function markItemOrdered(itemId, requestId) {
+            try {
+                const resp = await fetch(`/api/di/purchases/item/${itemId}/mark-ordered`, { method: 'POST', credentials: 'include' });
+                if (!resp.ok) { const d = await resp.json(); throw new Error(d.error || 'Failed'); }
+                showPrDetail(requestId);
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        // =====================================================
+        // CONSOLIDATED EMAIL
+        // =====================================================
+
+        let consolidatedEmailText = '';
+
+        async function loadConsolidatedEmail(affiliation) {
+            const area = document.getElementById('prConsolidatedArea');
+            const emptyEl = document.getElementById('prConsolidatedEmpty');
+            area.style.display = 'none';
+            emptyEl.style.display = 'none';
+
+            try {
+                const resp = await fetch(`/api/di/purchases/consolidated?affiliation=${affiliation}`, { credentials: 'include' });
+                if (!resp.ok) throw new Error('Failed');
+                const data = await resp.json();
+                const items = data.items || [];
+
+                if (items.length === 0) {
+                    emptyEl.style.display = 'block';
+                    return;
+                }
+
+                const subject = `NATLAB purchase request (${affiliation})`;
+                let body = `Hi,\n\nPlease find below the products that have been approved and need to be ordered as soon as possible.\n\nThank you,\nBest,\nFrank\n\n`;
+
+                items.forEach(i => {
+                    body += `- Vendor: ${i.vendor_company}\n`;
+                    body += `  Product name: ${i.product_name}\n`;
+                    body += `  Catalog ID: ${i.catalog_id}\n`;
+                    body += `  Quantity: ${i.quantity}\n`;
+                    body += `  Unit price: ${Number(i.unit_price).toFixed(2)} ${i.currency}\n`;
+                    body += `  Item total: ${Number(i.item_total).toFixed(2)} ${i.currency}\n`;
+                    body += `  Product link: ${i.product_link}\n`;
+                    body += `  Requested by: ${i.requester_name || i.requester_id}\n`;
+                    body += `  Request ID: ${i.request_id.substring(0, 8)}\n\n`;
+                });
+
+                body += `---\nTotal: ${data.total.toFixed(2)} ${data.currency}`;
+
+                consolidatedEmailText = `Subject: ${subject}\n\n${body}`;
+                document.getElementById('prConsolidatedTitle').textContent = subject;
+                document.getElementById('prConsolidatedText').textContent = consolidatedEmailText;
+                area.style.display = 'block';
+            } catch (err) {
+                alert('Error loading consolidated data: ' + err.message);
+            }
+        }
+
+        function copyConsolidatedEmail() {
+            navigator.clipboard.writeText(consolidatedEmailText).then(() => {
+                const btn = document.querySelector('#prConsolidatedArea .btn-success');
+                const orig = btn.textContent;
+                btn.textContent = 'Copied!';
+                setTimeout(() => btn.textContent = orig, 2000);
+            }).catch(() => {
+                // Fallback: select text
+                const pre = document.getElementById('prConsolidatedText');
+                const range = document.createRange();
+                range.selectNodeContents(pre);
+                window.getSelection().removeAllRanges();
+                window.getSelection().addRange(range);
+            });
+        }
+
+        // =====================================================
+        // PURCHASES & INVENTORY TAB (INVENTORY IMPORTS)
         // =====================================================
         let currentReviewSubmissionId = null;
 

@@ -680,10 +680,113 @@
     </div>
     </div><!-- end section-files -->
 
-    <!-- Inventory section (hidden by default, internal users only) -->
+    <!-- Purchases & Inventory section (hidden by default, internal users only) -->
     <div id="section-inventory" class="section-content" style="display:none;">
         <div class="main-container" style="grid-template-columns:1fr;">
-            <!-- Inventory Panel -->
+
+            <!-- Purchase Request Panel -->
+            <div class="panel" style="grid-column:1/-1;">
+                <div class="panel-header">
+                    <h2><span class="icon">&#128722;</span> Purchase Requests</h2>
+                    <div style="display:flex;gap:8px;">
+                        <button class="inv-toggle-btn active" id="prToggleNew" onclick="switchPrView('new')">New Request</button>
+                        <button class="inv-toggle-btn" id="prToggleMy" onclick="switchPrView('my')">My Requests</button>
+                    </div>
+                </div>
+                <div class="panel-content">
+                    <!-- New Request Form -->
+                    <div id="prNewView">
+                        <div id="prFormMessage" class="message"></div>
+                        <div style="display:flex;gap:10px;margin-bottom:10px;">
+                            <div style="flex:1;">
+                                <label style="font-size:12px;font-weight:600;display:block;margin-bottom:3px;">Justification *</label>
+                                <textarea id="prJustification" rows="2" style="width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:4px;font-size:13px;resize:vertical;" placeholder="Why are these products needed?"></textarea>
+                            </div>
+                            <div style="width:100px;">
+                                <label style="font-size:12px;font-weight:600;display:block;margin-bottom:3px;">Currency *</label>
+                                <select id="prCurrency" style="width:100%;padding:6px 8px;border:1px solid #ddd;border-radius:4px;font-size:13px;">
+                                    <option value="EUR">EUR</option>
+                                    <option value="SEK">SEK</option>
+                                    <option value="USD">USD</option>
+                                    <option value="GBP">GBP</option>
+                                </select>
+                            </div>
+                        </div>
+                        <table class="data-table" style="font-size:13px;">
+                            <thead>
+                                <tr>
+                                    <th>Vendor *</th>
+                                    <th>Product *</th>
+                                    <th>Catalog ID *</th>
+                                    <th>Product Link *</th>
+                                    <th>Qty *</th>
+                                    <th>Unit Price *</th>
+                                    <th>Total</th>
+                                    <th style="width:40px;"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="prItemsBody"></tbody>
+                            <tfoot>
+                                <tr>
+                                    <td colspan="6" style="text-align:right;font-weight:600;">Request Total:</td>
+                                    <td id="prRequestTotal" style="font-weight:700;color:#155724;">0.00</td>
+                                    <td></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                        <div style="display:flex;gap:8px;margin-top:8px;">
+                            <button class="btn btn-sm btn-secondary" onclick="prAddItemRow()">+ Add Item</button>
+                            <button class="btn btn-sm btn-success" onclick="prSubmitRequest()" style="margin-left:auto;">Submit Request</button>
+                        </div>
+                    </div>
+
+                    <!-- My Requests View -->
+                    <div id="prMyView" style="display:none;">
+                        <table class="data-table" style="font-size:13px;">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Items</th>
+                                    <th>Total</th>
+                                    <th>Status</th>
+                                    <th>PI Comment</th>
+                                </tr>
+                            </thead>
+                            <tbody id="prMyTableBody">
+                                <tr><td colspan="5" style="text-align:center;color:#999;">Loading...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Approved Purchases to Receive -->
+            <div class="panel" style="grid-column:1/-1;">
+                <div class="panel-header">
+                    <h2><span class="icon">&#128230;</span> Approved Purchases to Receive</h2>
+                    <button class="btn btn-sm btn-secondary" onclick="loadApprovedToReceive()">Refresh</button>
+                </div>
+                <div class="panel-content">
+                    <table class="data-table" style="font-size:13px;">
+                        <thead>
+                            <tr>
+                                <th>Product</th>
+                                <th>Vendor</th>
+                                <th>Catalog ID</th>
+                                <th>Qty</th>
+                                <th>Price</th>
+                                <th>Ordered</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="prReceiveTableBody">
+                            <tr><td colspan="7" style="text-align:center;color:#999;">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Inventory Panel (existing) -->
             <div class="panel" style="grid-column:1/-1;">
                 <div class="panel-header">
                     <h2><span class="icon">&#128230;</span> Inventory</h2>
@@ -1487,6 +1590,253 @@ credentials: 'include'
                 alert('Error marking item as finished');
             }
         }
+
+        // =====================================================
+        // PURCHASE REQUESTS
+        // =====================================================
+
+        function switchPrView(view) {
+            document.getElementById('prToggleNew').classList.toggle('active', view === 'new');
+            document.getElementById('prToggleMy').classList.toggle('active', view === 'my');
+            document.getElementById('prNewView').style.display = view === 'new' ? 'block' : 'none';
+            document.getElementById('prMyView').style.display = view === 'my' ? 'block' : 'none';
+            if (view === 'my') loadMyPurchaseRequests();
+        }
+
+        // Initialize with one empty row
+        function prInitForm() {
+            document.getElementById('prItemsBody').innerHTML = '';
+            prAddItemRow();
+        }
+
+        function prAddItemRow() {
+            const tbody = document.getElementById('prItemsBody');
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td><input type="text" class="pr-vendor" style="width:100%;padding:4px 6px;border:1px solid #ddd;border-radius:3px;font-size:12px;" placeholder="Company"></td>
+                <td><input type="text" class="pr-product" style="width:100%;padding:4px 6px;border:1px solid #ddd;border-radius:3px;font-size:12px;" placeholder="Name"></td>
+                <td><input type="text" class="pr-catalog" style="width:100%;padding:4px 6px;border:1px solid #ddd;border-radius:3px;font-size:12px;" placeholder="Cat. ID"></td>
+                <td><input type="url" class="pr-link" style="width:100%;padding:4px 6px;border:1px solid #ddd;border-radius:3px;font-size:12px;" placeholder="https://..."></td>
+                <td><input type="number" class="pr-qty" min="1" step="1" value="1" style="width:60px;padding:4px 6px;border:1px solid #ddd;border-radius:3px;font-size:12px;" oninput="prUpdateTotals()"></td>
+                <td><input type="number" class="pr-price" min="0" step="0.01" value="" style="width:80px;padding:4px 6px;border:1px solid #ddd;border-radius:3px;font-size:12px;" placeholder="0.00" oninput="prUpdateTotals()"></td>
+                <td class="pr-item-total" style="font-weight:600;white-space:nowrap;">0.00</td>
+                <td><button class="btn btn-sm" style="color:#dc3545;background:none;border:none;font-size:16px;cursor:pointer;padding:2px 6px;" onclick="prRemoveRow(this)" title="Remove">&times;</button></td>
+            `;
+            tbody.appendChild(row);
+        }
+
+        function prRemoveRow(btn) {
+            const tbody = document.getElementById('prItemsBody');
+            if (tbody.rows.length <= 1) return; // keep at least one row
+            btn.closest('tr').remove();
+            prUpdateTotals();
+        }
+
+        function prUpdateTotals() {
+            let total = 0;
+            const rows = document.getElementById('prItemsBody').querySelectorAll('tr');
+            rows.forEach(row => {
+                const qty = parseFloat(row.querySelector('.pr-qty').value) || 0;
+                const price = parseFloat(row.querySelector('.pr-price').value) || 0;
+                const itemTotal = Math.round(qty * price * 100) / 100;
+                row.querySelector('.pr-item-total').textContent = itemTotal.toFixed(2);
+                total += itemTotal;
+            });
+            const currency = document.getElementById('prCurrency').value;
+            document.getElementById('prRequestTotal').textContent = total.toFixed(2) + ' ' + currency;
+        }
+
+        // Currency change updates displayed total
+        document.getElementById('prCurrency').addEventListener('change', prUpdateTotals);
+
+        async function prSubmitRequest() {
+            const msgEl = document.getElementById('prFormMessage');
+            msgEl.className = 'message'; msgEl.textContent = '';
+
+            const justification = document.getElementById('prJustification').value.trim();
+            const currency = document.getElementById('prCurrency').value;
+            if (!justification) { msgEl.className = 'message error show'; msgEl.style.display = 'block'; msgEl.textContent = 'Justification is required.'; return; }
+
+            const rows = document.getElementById('prItemsBody').querySelectorAll('tr');
+            const items = [];
+            for (let idx = 0; idx < rows.length; idx++) {
+                const r = rows[idx];
+                const vendor_company = r.querySelector('.pr-vendor').value.trim();
+                const product_name = r.querySelector('.pr-product').value.trim();
+                const catalog_id = r.querySelector('.pr-catalog').value.trim();
+                const product_link = r.querySelector('.pr-link').value.trim();
+                const quantity = parseFloat(r.querySelector('.pr-qty').value);
+                const unit_price = parseFloat(r.querySelector('.pr-price').value);
+                if (!vendor_company || !product_name || !catalog_id || !product_link) {
+                    msgEl.className = 'message error show'; msgEl.style.display = 'block'; msgEl.textContent = `Item ${idx+1}: all fields are required.`; return;
+                }
+                if (!quantity || quantity <= 0) { msgEl.className = 'message error show'; msgEl.style.display = 'block'; msgEl.textContent = `Item ${idx+1}: quantity must be positive.`; return; }
+                if (isNaN(unit_price) || unit_price < 0) { msgEl.className = 'message error show'; msgEl.style.display = 'block'; msgEl.textContent = `Item ${idx+1}: unit price is required.`; return; }
+                items.push({ vendor_company, product_name, catalog_id, product_link, quantity, unit_price });
+            }
+
+            try {
+                const resp = await fetch('/api/di/purchases/request', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ justification, currency, items }),
+                    credentials: 'include'
+                });
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data.error || 'Submission failed');
+
+                msgEl.className = 'message success show'; msgEl.style.display = 'block';
+                msgEl.textContent = `Request submitted (${data.item_count} items, total ${data.request_total} ${currency}). Request ID: ${data.request_id.substring(0,8)}`;
+                // Reset form
+                document.getElementById('prJustification').value = '';
+                prInitForm();
+            } catch (err) {
+                msgEl.className = 'message error show'; msgEl.style.display = 'block';
+                msgEl.textContent = 'Error: ' + err.message;
+            }
+        }
+
+        async function loadMyPurchaseRequests() {
+            const tbody = document.getElementById('prMyTableBody');
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;"><div class="loading"><div class="spinner"></div></div></td></tr>';
+
+            try {
+                const resp = await fetch('/api/di/purchases/my', { credentials: 'include' });
+                if (!resp.ok) throw new Error('Failed');
+                const data = await resp.json();
+                const requests = data.requests || [];
+
+                if (requests.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#999;">No purchase requests yet</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = requests.map(r => {
+                    const statusColors = { SUBMITTED: '#007bff', APPROVED: '#28a745', DECLINED: '#fd7e14' };
+                    const itemSummary = (r.items || []).map(i => escapeHtml(i.product_name)).join(', ');
+                    return `<tr>
+                        <td style="white-space:nowrap;">${new Date(r.created_at).toLocaleDateString()}</td>
+                        <td title="${escapeHtml(itemSummary)}" style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${(r.items||[]).length} item${(r.items||[]).length>1?'s':''}: ${escapeHtml(itemSummary)}</td>
+                        <td style="white-space:nowrap;font-weight:600;">${Number(r.request_total).toFixed(2)} ${escapeHtml(r.currency)}</td>
+                        <td><span style="padding:2px 8px;border-radius:10px;font-size:11px;color:#fff;background:${statusColors[r.status]||'#666'};">${r.status}</span></td>
+                        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:#856404;">${r.pi_comment ? escapeHtml(r.pi_comment) : ''}</td>
+                    </tr>`;
+                }).join('');
+            } catch (err) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#dc3545;">Error loading requests</td></tr>';
+            }
+        }
+
+        // =====================================================
+        // APPROVED PURCHASES TO RECEIVE
+        // =====================================================
+
+        async function loadApprovedToReceive() {
+            const tbody = document.getElementById('prReceiveTableBody');
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;"><div class="loading"><div class="spinner"></div></div></td></tr>';
+
+            try {
+                const resp = await fetch('/api/di/purchases/my-approved-to-receive', { credentials: 'include' });
+                if (!resp.ok) throw new Error('Failed');
+                const data = await resp.json();
+                const items = data.items || [];
+
+                if (items.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#999;">No approved items awaiting receipt</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = items.map(i => `
+                    <tr id="pr-recv-${i.id}">
+                        <td>${i.product_link ? '<a href="'+escapeHtml(i.product_link)+'" target="_blank">'+escapeHtml(i.product_name)+'</a>' : escapeHtml(i.product_name)}</td>
+                        <td>${escapeHtml(i.vendor_company)}</td>
+                        <td>${escapeHtml(i.catalog_id)}</td>
+                        <td>${i.quantity}</td>
+                        <td style="white-space:nowrap;">${Number(i.unit_price).toFixed(2)} ${escapeHtml(i.currency)}</td>
+                        <td>${i.ordered_at ? '<span style="color:#28a745;" title="'+new Date(i.ordered_at).toLocaleDateString()+'">Yes</span>' : '<span style="color:#999;">No</span>'}</td>
+                        <td><button class="btn btn-sm btn-success" onclick="showReceiveForm('${i.id}', ${i.quantity})">Received</button></td>
+                    </tr>
+                `).join('');
+            } catch (err) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#dc3545;">Error loading items</td></tr>';
+            }
+        }
+
+        function showReceiveForm(itemId, defaultQty) {
+            const row = document.getElementById('pr-recv-' + itemId);
+            if (!row) return;
+            const actionCell = row.querySelector('td:last-child');
+            actionCell.innerHTML = `
+                <div style="display:flex;flex-direction:column;gap:4px;font-size:12px;">
+                    <div style="display:flex;gap:4px;align-items:center;">
+                        <label style="width:35px;">Qty:</label>
+                        <input type="number" id="recv-qty-${itemId}" value="${defaultQty}" min="0.01" step="0.01" style="width:55px;padding:2px 4px;border:1px solid #ddd;border-radius:3px;">
+                    </div>
+                    <div style="display:flex;gap:4px;align-items:center;">
+                        <label style="width:35px;">Unit:</label>
+                        <select id="recv-unit-${itemId}" style="padding:2px 4px;border:1px solid #ddd;border-radius:3px;">
+                            <option value="each">each</option>
+                            <option value="bottle">bottle</option>
+                            <option value="box">box</option>
+                            <option value="pack">pack</option>
+                        </select>
+                    </div>
+                    <div style="display:flex;gap:4px;align-items:center;">
+                        <label style="width:35px;">Temp:</label>
+                        <select id="recv-storage-${itemId}" style="padding:2px 4px;border:1px solid #ddd;border-radius:3px;">
+                            <option value="RT">RT</option>
+                            <option value="4C">4C</option>
+                            <option value="-20C">-20C</option>
+                            <option value="-80C">-80C</option>
+                        </select>
+                    </div>
+                    <div style="display:flex;gap:4px;align-items:center;">
+                        <label style="width:35px;">Loc:</label>
+                        <input type="text" id="recv-loc-${itemId}" style="width:100px;padding:2px 4px;border:1px solid #ddd;border-radius:3px;" placeholder="Shelf/Room">
+                    </div>
+                    <div style="display:flex;gap:4px;margin-top:2px;">
+                        <button class="btn btn-sm btn-success" onclick="submitReceive('${itemId}')">Confirm</button>
+                        <button class="btn btn-sm btn-secondary" onclick="loadApprovedToReceive()">Cancel</button>
+                    </div>
+                </div>`;
+        }
+
+        async function submitReceive(itemId) {
+            const quantity_received = parseFloat(document.getElementById('recv-qty-' + itemId).value);
+            const unit = document.getElementById('recv-unit-' + itemId).value;
+            const storage = document.getElementById('recv-storage-' + itemId).value;
+            const location = document.getElementById('recv-loc-' + itemId).value.trim();
+
+            if (!quantity_received || quantity_received <= 0) { alert('Quantity must be positive'); return; }
+            if (!location) { alert('Location is required'); return; }
+
+            try {
+                const resp = await fetch(`/api/di/purchases/item/${itemId}/receive`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ quantity_received, unit, storage, location }),
+                    credentials: 'include'
+                });
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data.error || 'Failed');
+
+                alert('Item received and added to your inventory.');
+                loadApprovedToReceive();
+                loadMyInventory();
+            } catch (err) {
+                alert('Error: ' + err.message);
+            }
+        }
+
+        // Load purchase data when inventory section activates
+        const _origSwitchSection = switchSection;
+        switchSection = function(section) {
+            _origSwitchSection(section);
+            if (section === 'inventory') {
+                prInitForm();
+                loadApprovedToReceive();
+            }
+        };
     </script>
 </body>
 </html>

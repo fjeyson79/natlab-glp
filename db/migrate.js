@@ -88,7 +88,46 @@ async function migrate() {
                 import_batch_id UUID,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )`,
-            `CREATE INDEX IF NOT EXISTS idx_di_inventory_log_inventory ON di_inventory_log(inventory_id)`
+            `CREATE INDEX IF NOT EXISTS idx_di_inventory_log_inventory ON di_inventory_log(inventory_id)`,
+
+            // ==================== PURCHASE REQUEST SYSTEM ====================
+
+            // Purchase requests — one request per researcher with justification
+            `CREATE TABLE IF NOT EXISTS di_purchase_requests (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                requester_id VARCHAR(50) NOT NULL REFERENCES di_allowlist(researcher_id),
+                affiliation VARCHAR(10) NOT NULL CHECK (affiliation IN ('LiU', 'UNAV')),
+                justification TEXT NOT NULL,
+                status VARCHAR(20) NOT NULL DEFAULT 'SUBMITTED' CHECK (status IN ('SUBMITTED', 'APPROVED', 'DECLINED')),
+                request_total NUMERIC(12,2) NOT NULL DEFAULT 0,
+                currency VARCHAR(10) NOT NULL,
+                pi_comment TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )`,
+            `CREATE INDEX IF NOT EXISTS idx_di_purchase_requests_requester ON di_purchase_requests(requester_id)`,
+            `CREATE INDEX IF NOT EXISTS idx_di_purchase_requests_status ON di_purchase_requests(status)`,
+            `CREATE INDEX IF NOT EXISTS idx_di_purchase_requests_affiliation ON di_purchase_requests(affiliation)`,
+
+            // Purchase items — multiple items per request
+            `CREATE TABLE IF NOT EXISTS di_purchase_items (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                request_id UUID NOT NULL REFERENCES di_purchase_requests(id) ON DELETE CASCADE,
+                vendor_company VARCHAR(255) NOT NULL,
+                product_name VARCHAR(500) NOT NULL,
+                catalog_id VARCHAR(255) NOT NULL,
+                product_link VARCHAR(1000) NOT NULL,
+                quantity NUMERIC(10,2) NOT NULL,
+                unit_price NUMERIC(12,2) NOT NULL,
+                item_total NUMERIC(12,2) NOT NULL,
+                currency VARCHAR(10) NOT NULL,
+                ordered_at TIMESTAMP,
+                received_at TIMESTAMP,
+                inventory_id UUID REFERENCES di_inventory(id),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )`,
+            `CREATE INDEX IF NOT EXISTS idx_di_purchase_items_request ON di_purchase_items(request_id)`,
+            `CREATE INDEX IF NOT EXISTS idx_di_purchase_items_inventory ON di_purchase_items(inventory_id)`
         ];
 
         for (const sql of migrations) {
