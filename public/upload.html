@@ -525,6 +525,13 @@
             border-radius: 3px;
             font-size: 13px;
         }
+        .off-label { font-size:12px; font-weight:600; display:block; margin-bottom:3px; color:#333; }
+        .off-input { width:100%; padding:6px 8px; border:1px solid #ddd; border-radius:4px; font-size:13px; box-sizing:border-box; }
+        .status-badge { padding:2px 8px; border-radius:10px; font-size:11px; color:#fff; display:inline-block; }
+        .status-badge.Pending { background:#ffc107; color:#333; }
+        .status-badge.Approved { background:#28a745; }
+        .status-badge.Revision { background:#fd7e14; }
+        .status-badge.Rejected { background:#dc3545; }
     </style>
 </head>
 <body>
@@ -560,7 +567,6 @@
                         <option value="">Select file type...</option>
                         <option value="SOP">SOP (Standard Operating Procedure)</option>
                         <option value="DATA">DATA (Research Data)</option>
-                        <option value="INVENTORY">INVENTORY (Offline Import)</option>
                     </select>
 
                     <label>File</label>
@@ -814,7 +820,7 @@
                                 <th>Qty</th>
                                 <th>Price</th>
                                 <th>Ordered</th>
-                                <th>Action</th>
+                                <th style="min-width:220px;">Action</th>
                             </tr>
                         </thead>
                         <tbody id="prReceiveTableBody">
@@ -824,58 +830,225 @@
                 </div>
             </div>
 
-            <!-- Inventory Panel (existing) -->
+            <!-- Add Offline Item -->
             <div class="panel" style="grid-column:1/-1;">
                 <div class="panel-header">
-                    <h2><span class="icon">&#128230;</span> Inventory</h2>
+                    <h2><span class="icon">&#10133;</span> Add Offline Item</h2>
                     <div style="display:flex;gap:8px;">
-                        <button class="inv-toggle-btn active" id="invToggleMy" onclick="switchInvView('my')">My Products</button>
-                        <button class="inv-toggle-btn" id="invToggleGroup" onclick="switchInvView('group')">Group Inventory</button>
+                        <button class="inv-toggle-btn active" id="offTypeProduct" onclick="switchOfflineType('product')">Product</button>
+                        <button class="inv-toggle-btn" id="offTypeSample" onclick="switchOfflineType('sample')">Sample</button>
+                        <button class="inv-toggle-btn" id="offTypeOligo" onclick="switchOfflineType('oligo')" disabled style="opacity:0.5;cursor:not-allowed;">Oligo</button>
                     </div>
                 </div>
                 <div class="panel-content">
-                    <!-- My Products View -->
-                    <div id="invMyView">
-                        <div id="invMyHelper" style="display:none;padding:8px 12px;background:#e7f1ff;border-radius:4px;margin-bottom:12px;font-size:13px;color:#1a365d;"></div>
-                        <div id="invMyMessage" class="message"></div>
-                        <table class="data-table">
+                    <div id="offlineFormMessage" class="message"></div>
+                    <!-- Product offline form -->
+                    <div id="offProductForm">
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;">
+                            <div><label class="off-label">Product Name *</label><input type="text" id="offProdName" class="off-input" placeholder="e.g. Taq Polymerase"></div>
+                            <div><label class="off-label">Catalog ID *</label><input type="text" id="offProdCatalogId" class="off-input" placeholder="e.g. M0273S"></div>
+                            <div><label class="off-label">Vendor</label><input type="text" id="offProdVendor" class="off-input" placeholder="e.g. NEB"></div>
+                            <div><label class="off-label">Product Link</label><input type="url" id="offProdLink" class="off-input" placeholder="https://..."></div>
+                            <div style="display:flex;gap:8px;">
+                                <div style="flex:1;"><label class="off-label">Quantity *</label><input type="number" id="offProdQty" class="off-input" min="0.01" step="0.01"></div>
+                                <div style="flex:1;"><label class="off-label">Unit *</label>
+                                    <select id="offProdUnit" class="off-input">
+                                        <option value="">Select...</option>
+                                        <option value="bottle">bottle</option><option value="box">box</option><option value="pack">pack</option>
+                                        <option value="each">each</option><option value="mL">mL</option><option value="uL">uL</option>
+                                        <option value="mg">mg</option><option value="g">g</option><option value="vial">vial</option>
+                                        <option value="tube">tube</option><option value="other">other</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div style="display:flex;gap:8px;">
+                                <div style="flex:1;"><label class="off-label">Storage Location *</label><input type="text" id="offProdLoc" class="off-input" placeholder="Room/Shelf"></div>
+                                <div style="flex:1;"><label class="off-label">Storage Temp *</label>
+                                    <select id="offProdTemp" class="off-input">
+                                        <option value="RT">RT</option><option value="4C">4C</option>
+                                        <option value="-20C">-20C</option><option value="-80C">-80C</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div><label class="off-label">Lot/Batch Number</label><input type="text" id="offProdLot" class="off-input"></div>
+                            <div style="display:flex;gap:8px;">
+                                <div style="flex:1;"><label class="off-label">Expiry Date</label><input type="date" id="offProdExpiry" class="off-input"></div>
+                                <div style="flex:1;"><label class="off-label">Opened Date</label><input type="date" id="offProdOpened" class="off-input"></div>
+                            </div>
+                        </div>
+                        <div style="margin-top:8px;"><label class="off-label">Notes</label><textarea id="offProdNotes" class="off-input" rows="2" style="resize:vertical;"></textarea></div>
+                        <button class="btn btn-sm btn-success" onclick="submitOfflineProduct()" style="margin-top:10px;">Add Product</button>
+                    </div>
+                    <!-- Sample offline form -->
+                    <div id="offSampleForm" style="display:none;">
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;">
+                            <div><label class="off-label">Sample Name *</label><input type="text" id="offSampName" class="off-input" placeholder="e.g. Patient Blood Sample #12"></div>
+                            <div><label class="off-label">Sample ID *</label><input type="text" id="offSampId" class="off-input" placeholder="e.g. S-2026-001"></div>
+                            <div><label class="off-label">Sample Origin *</label>
+                                <select id="offSampOrigin" class="off-input">
+                                    <option value="">Select...</option>
+                                    <option value="Human">Human</option><option value="Animal">Animal</option>
+                                    <option value="Cell culture">Cell culture</option><option value="Environmental">Environmental</option>
+                                    <option value="Synthetic">Synthetic</option><option value="Other">Other</option>
+                                </select>
+                            </div>
+                            <div><label class="off-label">Provider / Collaborator</label>
+                                <select id="offSampProvider" class="off-input" onchange="toggleProviderDetail()">
+                                    <option value="">Select...</option>
+                                    <option value="Internal NAT Lab">Internal NAT Lab</option>
+                                    <option value="External collaborator">External collaborator</option>
+                                    <option value="Commercial source">Commercial source</option>
+                                    <option value="Clinical source">Clinical source</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                            </div>
+                            <div id="providerDetailRow" style="display:none;"><label class="off-label">Provider Detail</label><input type="text" id="offSampProviderDetail" class="off-input" placeholder="Specify..."></div>
+                            <div style="display:flex;gap:8px;">
+                                <div style="flex:1;"><label class="off-label">Quantity *</label><input type="number" id="offSampQty" class="off-input" min="0.01" step="0.01"></div>
+                                <div style="flex:1;"><label class="off-label">Unit *</label>
+                                    <select id="offSampUnit" class="off-input">
+                                        <option value="">Select...</option>
+                                        <option value="uL">uL</option><option value="mL">mL</option>
+                                        <option value="mg">mg</option><option value="g">g</option>
+                                        <option value="aliquots">Number of aliquots</option><option value="slides">Slides</option>
+                                        <option value="tube">tube</option><option value="vial">vial</option>
+                                        <option value="each">each</option><option value="other">other</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div style="display:flex;gap:8px;">
+                                <div style="flex:1;"><label class="off-label">Storage Location *</label><input type="text" id="offSampLoc" class="off-input" placeholder="Room/Shelf"></div>
+                                <div style="flex:1;"><label class="off-label">Storage Temp *</label>
+                                    <select id="offSampTemp" class="off-input">
+                                        <option value="RT">RT</option><option value="4C">4C</option>
+                                        <option value="-20C">-20C</option><option value="-80C">-80C</option>
+                                        <option value="LN2">Liquid nitrogen</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div><label class="off-label">Sample Status *</label>
+                                <select id="offSampStatus" class="off-input">
+                                    <option value="">Select...</option>
+                                    <option value="Fresh">Fresh</option><option value="Aliquoted">Aliquoted</option>
+                                    <option value="In use">In use</option><option value="Archived">Archived</option>
+                                    <option value="Near depletion">Near depletion</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div style="margin-top:8px;"><label class="off-label">Notes</label><textarea id="offSampNotes" class="off-input" rows="2" style="resize:vertical;"></textarea></div>
+                        <button class="btn btn-sm btn-success" onclick="submitOfflineSample()" style="margin-top:10px;">Add Sample</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- My Inventory (accent color) -->
+            <div class="panel" style="grid-column:1/-1;border-top:3px solid #17a2b8;">
+                <div class="panel-header" style="background:linear-gradient(135deg,#e8f4f8,#d1ecf1);">
+                    <h2 style="color:#0c5460;"><span class="icon">&#128230;</span> My Inventory</h2>
+                    <div style="display:flex;gap:8px;">
+                        <button class="inv-toggle-btn active" id="myInvProducts" onclick="switchMyInvType('product')">Products</button>
+                        <button class="inv-toggle-btn" id="myInvSamples" onclick="switchMyInvType('sample')">Samples</button>
+                        <button class="inv-toggle-btn" id="myInvOligos" onclick="switchMyInvType('oligo')">Oligos</button>
+                    </div>
+                </div>
+                <div class="panel-content">
+                    <div id="myInvProductView">
+                        <table class="data-table" style="font-size:13px;">
                             <thead>
-                                <tr>
-                                    <th>Product</th>
-                                    <th>Vendor</th>
-                                    <th>Catalog ID</th>
-                                    <th>Qty</th>
-                                    <th>Unit</th>
-                                    <th>Storage</th>
-                                    <th>Location</th>
-                                    <th>Actions</th>
-                                </tr>
+                                <tr><th>Name</th><th>Vendor</th><th>Catalog ID</th><th>Qty</th><th>Unit</th><th>Storage</th><th>Location</th><th>Status</th><th>Actions</th></tr>
                             </thead>
-                            <tbody id="invMyTableBody">
-                                <tr><td colspan="8" style="text-align:center;color:#999;">Loading...</td></tr>
-                            </tbody>
+                            <tbody id="myInvProductBody"><tr><td colspan="9" style="text-align:center;color:#999;">Loading...</td></tr></tbody>
                         </table>
                     </div>
-                    <!-- Group Inventory View (read-only) -->
-                    <div id="invGroupView" style="display:none;">
-                        <table class="data-table">
+                    <div id="myInvSampleView" style="display:none;">
+                        <table class="data-table" style="font-size:13px;">
                             <thead>
-                                <tr>
-                                    <th>Product</th>
-                                    <th>Vendor</th>
-                                    <th>Catalog ID</th>
-                                    <th>Affiliation</th>
-                                    <th>Qty</th>
-                                    <th>Unit</th>
-                                    <th>Storage</th>
-                                    <th>Location</th>
-                                    <th>Last Updated</th>
-                                </tr>
+                                <tr><th>Name</th><th>Sample ID</th><th>Origin</th><th>Provider</th><th>Qty</th><th>Unit</th><th>Storage</th><th>Location</th><th>Status</th><th>Actions</th></tr>
                             </thead>
-                            <tbody id="invGroupTableBody">
-                                <tr><td colspan="9" style="text-align:center;color:#999;">Loading...</td></tr>
-                            </tbody>
+                            <tbody id="myInvSampleBody"><tr><td colspan="10" style="text-align:center;color:#999;">Loading...</td></tr></tbody>
                         </table>
+                    </div>
+                    <div id="myInvOligoView" style="display:none;">
+                        <div style="text-align:center;padding:30px;color:#999;">
+                            <p style="font-size:18px;">Oligo tracking coming soon</p>
+                            <p style="font-size:13px;">This section is under development.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Supervisor: Supervised Researcher Inventory (read-only) -->
+            <div class="panel" id="supInvPanel" style="grid-column:1/-1;display:none;">
+                <div class="panel-header">
+                    <h2><span class="icon">&#128101;</span> Supervision &mdash; Researcher Inventory</h2>
+                </div>
+                <div class="panel-content">
+                    <div style="display:flex;gap:12px;">
+                        <div style="width:240px;border-right:1px solid #eee;padding-right:12px;">
+                            <p style="font-size:12px;color:#666;margin-bottom:8px;">Select a researcher:</p>
+                            <ul id="supInvResearcherList" style="list-style:none;padding:0;margin:0;"></ul>
+                        </div>
+                        <div style="flex:1;">
+                            <div id="supInvPrompt" style="text-align:center;padding:20px;color:#999;">Select a researcher to view their inventory (read-only).</div>
+                            <div id="supInvContent" style="display:none;">
+                                <div style="display:flex;gap:8px;margin-bottom:10px;">
+                                    <button class="inv-toggle-btn active" id="supInvProducts" onclick="switchSupInvType('product')">Products</button>
+                                    <button class="inv-toggle-btn" id="supInvSamples" onclick="switchSupInvType('sample')">Samples</button>
+                                    <button class="inv-toggle-btn" id="supInvOligos" onclick="switchSupInvType('oligo')">Oligos</button>
+                                </div>
+                                <div id="supInvProductView">
+                                    <table class="data-table" style="font-size:13px;">
+                                        <thead><tr><th>Name</th><th>Vendor</th><th>ID</th><th>Qty</th><th>Unit</th><th>Storage</th><th>Location</th><th>Status</th></tr></thead>
+                                        <tbody id="supInvProductBody"><tr><td colspan="8" style="text-align:center;color:#999;">-</td></tr></tbody>
+                                    </table>
+                                </div>
+                                <div id="supInvSampleView" style="display:none;">
+                                    <table class="data-table" style="font-size:13px;">
+                                        <thead><tr><th>Name</th><th>Sample ID</th><th>Origin</th><th>Provider</th><th>Qty</th><th>Unit</th><th>Storage</th><th>Location</th><th>Status</th></tr></thead>
+                                        <tbody id="supInvSampleBody"><tr><td colspan="9" style="text-align:center;color:#999;">-</td></tr></tbody>
+                                    </table>
+                                </div>
+                                <div id="supInvOligoView" style="display:none;">
+                                    <div style="text-align:center;padding:20px;color:#999;">Oligo tracking coming soon</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Group Inventory (standard theme) -->
+            <div class="panel" style="grid-column:1/-1;">
+                <div class="panel-header">
+                    <h2><span class="icon">&#127760;</span> Group Inventory</h2>
+                    <div style="display:flex;gap:8px;">
+                        <button class="inv-toggle-btn active" id="grpInvProducts" onclick="switchGrpInvType('product')">Products</button>
+                        <button class="inv-toggle-btn" id="grpInvSamples" onclick="switchGrpInvType('sample')">Samples</button>
+                        <button class="inv-toggle-btn" id="grpInvOligos" onclick="switchGrpInvType('oligo')">Oligos</button>
+                    </div>
+                </div>
+                <div class="panel-content">
+                    <div id="grpInvProductView">
+                        <table class="data-table" style="font-size:13px;">
+                            <thead>
+                                <tr><th>Name</th><th>Vendor</th><th>Catalog ID</th><th>Affiliation</th><th>Owner</th><th>Qty</th><th>Unit</th><th>Storage</th><th>Location</th></tr>
+                            </thead>
+                            <tbody id="grpInvProductBody"><tr><td colspan="9" style="text-align:center;color:#999;">Loading...</td></tr></tbody>
+                        </table>
+                    </div>
+                    <div id="grpInvSampleView" style="display:none;">
+                        <table class="data-table" style="font-size:13px;">
+                            <thead>
+                                <tr><th>Name</th><th>Sample ID</th><th>Origin</th><th>Affiliation</th><th>Owner</th><th>Qty</th><th>Unit</th><th>Storage</th><th>Location</th></tr>
+                            </thead>
+                            <tbody id="grpInvSampleBody"><tr><td colspan="9" style="text-align:center;color:#999;">Loading...</td></tr></tbody>
+                        </table>
+                    </div>
+                    <div id="grpInvOligoView" style="display:none;">
+                        <div style="text-align:center;padding:30px;color:#999;">
+                            <p style="font-size:18px;">Oligo tracking coming soon</p>
+                            <p style="font-size:13px;">This section is under development.</p>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -907,11 +1080,8 @@
                     loadAssignedResearchers();
                 }
 
-                // Show inventory section nav for internal users, hide INVENTORY option for external
-                if (user.affiliation === 'EXTERNAL') {
-                    const invOption = document.querySelector('#fileType option[value="INVENTORY"]');
-                    if (invOption) invOption.remove();
-                } else {
+                // Show purchase & inventory section nav for internal users
+                if (user.affiliation !== 'EXTERNAL') {
                     document.getElementById('sectionNav').style.display = 'flex';
                 }
 
@@ -1057,15 +1227,8 @@
         const uploadLoading = document.getElementById('uploadLoading');
         const uploadMessage = document.getElementById('uploadMessage');
 
-        // Dynamic file accept based on selected type
+        // Reset file input on type change
         document.getElementById('fileType').addEventListener('change', function() {
-            if (this.value === 'INVENTORY') {
-                fileInput.accept = '.csv';
-                document.querySelector('.file-upload-text strong').textContent = 'Click to select a CSV file';
-            } else {
-                fileInput.accept = '.pdf,application/pdf';
-                document.querySelector('.file-upload-text strong').textContent = 'Click to select a file';
-            }
             fileInput.value = '';
             fileNameDisplay.textContent = '';
             fileUploadArea.classList.remove('has-file');
@@ -1128,7 +1291,7 @@
             formData.append('file', file);
 
             try {
-                const uploadUrl = (fileType === 'INVENTORY') ? '/api/di/inventory/upload' : '/api/di/upload';
+                const uploadUrl = '/api/di/upload';
                 const response = await fetch(uploadUrl, {
                     method: 'POST',
                     body: formData,
@@ -1454,8 +1617,13 @@ credentials: 'include'
         });
 
         // =====================================================
-        // INVENTORY SECTION
+        // SECTION SWITCHING & INVENTORY V2
         // =====================================================
+
+        let currentMyInvType = 'product';
+        let currentGrpInvType = 'product';
+        let currentSupInvType = 'product';
+        let selectedSupInvResearcher = null;
 
         function switchSection(section) {
             document.querySelectorAll('.section-btn').forEach(b => b.classList.remove('active'));
@@ -1463,174 +1631,372 @@ credentials: 'include'
             document.getElementById('section-files').style.display = section === 'files' ? 'block' : 'none';
             document.getElementById('section-inventory').style.display = section === 'inventory' ? 'block' : 'none';
             if (section === 'inventory') {
-                loadMyInventory();
+                prInitForm();
+                loadApprovedToReceive();
+                loadMyPurchaseRequests();
+                loadMyInventoryV2('product');
+                loadGroupInventoryV2('product');
+                // Show supervisor inventory panel if supervisor
+                if (currentUserRole === 'supervisor') {
+                    document.getElementById('supInvPanel').style.display = 'block';
+                    loadSupInvResearcherList();
+                }
             }
         }
 
-        function switchInvView(view) {
-            document.getElementById('invToggleMy').classList.toggle('active', view === 'my');
-            document.getElementById('invToggleGroup').classList.toggle('active', view === 'group');
-            document.getElementById('invMyView').style.display = view === 'my' ? 'block' : 'none';
-            document.getElementById('invGroupView').style.display = view === 'group' ? 'block' : 'none';
-            if (view === 'my') loadMyInventory();
-            else loadGroupInventory();
+        // =====================================================
+        // OFFLINE ITEM ENTRY
+        // =====================================================
+
+        function switchOfflineType(type) {
+            document.getElementById('offTypeProduct').classList.toggle('active', type === 'product');
+            document.getElementById('offTypeSample').classList.toggle('active', type === 'sample');
+            document.getElementById('offTypeOligo').classList.toggle('active', type === 'oligo');
+            document.getElementById('offProductForm').style.display = type === 'product' ? 'block' : 'none';
+            document.getElementById('offSampleForm').style.display = type === 'sample' ? 'block' : 'none';
         }
 
-        async function loadMyInventory() {
-            const tbody = document.getElementById('invMyTableBody');
-            const helper = document.getElementById('invMyHelper');
-            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;"><div class="loading"><div class="spinner"></div></div></td></tr>';
+        function toggleProviderDetail() {
+            const val = document.getElementById('offSampProvider').value;
+            document.getElementById('providerDetailRow').style.display = (val === 'External collaborator' || val === 'Other') ? 'block' : 'none';
+        }
+
+        async function submitOfflineProduct() {
+            const msgEl = document.getElementById('offlineFormMessage');
+            msgEl.className = 'message'; msgEl.textContent = '';
+            const body = {
+                item_type: 'product',
+                item_name: document.getElementById('offProdName').value.trim(),
+                item_identifier: document.getElementById('offProdCatalogId').value.trim(),
+                vendor_company: document.getElementById('offProdVendor').value.trim() || undefined,
+                product_link: document.getElementById('offProdLink').value.trim() || undefined,
+                quantity: parseFloat(document.getElementById('offProdQty').value),
+                quantity_unit: document.getElementById('offProdUnit').value,
+                storage_location: document.getElementById('offProdLoc').value.trim(),
+                storage_temperature: document.getElementById('offProdTemp').value,
+                lot_or_batch_number: document.getElementById('offProdLot').value.trim() || undefined,
+                expiry_date: document.getElementById('offProdExpiry').value || undefined,
+                opened_date: document.getElementById('offProdOpened').value || undefined,
+                notes: document.getElementById('offProdNotes').value.trim() || undefined,
+            };
+            if (!body.item_name) { showMsg(msgEl, 'Product name is required.'); return; }
+            if (!body.item_identifier) { showMsg(msgEl, 'Catalog ID is required.'); return; }
+            if (!body.quantity || body.quantity <= 0) { showMsg(msgEl, 'Quantity must be positive.'); return; }
+            if (!body.quantity_unit) { showMsg(msgEl, 'Unit is required.'); return; }
+            if (!body.storage_location) { showMsg(msgEl, 'Storage location is required.'); return; }
 
             try {
-                const resp = await fetch('/api/di/inventory/my-items', { credentials: 'include' });
-                if (!resp.ok) throw new Error('Failed to load');
+                const resp = await fetch('/api/di/inventory-v2/offline-entry', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body), credentials: 'include'
+                });
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data.error || 'Failed');
+                msgEl.className = 'message success show'; msgEl.style.display = 'block';
+                msgEl.textContent = 'Product added (pending PI approval).';
+                // Clear form
+                ['offProdName','offProdCatalogId','offProdVendor','offProdLink','offProdQty','offProdLot','offProdExpiry','offProdOpened','offProdNotes'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+                loadMyInventoryV2('product');
+            } catch (err) { showMsg(msgEl, 'Error: ' + err.message); }
+        }
+
+        async function submitOfflineSample() {
+            const msgEl = document.getElementById('offlineFormMessage');
+            msgEl.className = 'message'; msgEl.textContent = '';
+            const body = {
+                item_type: 'sample',
+                item_name: document.getElementById('offSampName').value.trim(),
+                item_identifier: document.getElementById('offSampId').value.trim(),
+                sample_origin: document.getElementById('offSampOrigin').value,
+                provider_or_collaborator: document.getElementById('offSampProvider').value || undefined,
+                provider_detail: document.getElementById('offSampProviderDetail')?.value.trim() || undefined,
+                quantity: parseFloat(document.getElementById('offSampQty').value),
+                quantity_unit: document.getElementById('offSampUnit').value,
+                storage_location: document.getElementById('offSampLoc').value.trim(),
+                storage_temperature: document.getElementById('offSampTemp').value,
+                sample_status: document.getElementById('offSampStatus').value,
+                notes: document.getElementById('offSampNotes').value.trim() || undefined,
+            };
+            if (!body.item_name) { showMsg(msgEl, 'Sample name is required.'); return; }
+            if (!body.item_identifier) { showMsg(msgEl, 'Sample ID is required.'); return; }
+            if (!body.sample_origin) { showMsg(msgEl, 'Sample origin is required.'); return; }
+            if (!body.quantity || body.quantity <= 0) { showMsg(msgEl, 'Quantity must be positive.'); return; }
+            if (!body.quantity_unit) { showMsg(msgEl, 'Unit is required.'); return; }
+            if (!body.storage_location) { showMsg(msgEl, 'Storage location is required.'); return; }
+            if (!body.sample_status) { showMsg(msgEl, 'Sample status is required.'); return; }
+
+            try {
+                const resp = await fetch('/api/di/inventory-v2/offline-entry', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body), credentials: 'include'
+                });
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data.error || 'Failed');
+                msgEl.className = 'message success show'; msgEl.style.display = 'block';
+                msgEl.textContent = 'Sample added (pending PI approval).';
+                ['offSampName','offSampId','offSampQty','offSampLoc','offSampNotes','offSampProviderDetail'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+                ['offSampOrigin','offSampProvider','offSampUnit','offSampStatus'].forEach(id => { const el = document.getElementById(id); if(el) el.selectedIndex = 0; });
+                loadMyInventoryV2('sample');
+            } catch (err) { showMsg(msgEl, 'Error: ' + err.message); }
+        }
+
+        function showMsg(el, msg) { el.className = 'message error show'; el.style.display = 'block'; el.textContent = msg; }
+
+        // =====================================================
+        // MY INVENTORY V2
+        // =====================================================
+
+        function switchMyInvType(type) {
+            currentMyInvType = type;
+            document.getElementById('myInvProducts').classList.toggle('active', type === 'product');
+            document.getElementById('myInvSamples').classList.toggle('active', type === 'sample');
+            document.getElementById('myInvOligos').classList.toggle('active', type === 'oligo');
+            document.getElementById('myInvProductView').style.display = type === 'product' ? 'block' : 'none';
+            document.getElementById('myInvSampleView').style.display = type === 'sample' ? 'block' : 'none';
+            document.getElementById('myInvOligoView').style.display = type === 'oligo' ? 'block' : 'none';
+            if (type !== 'oligo') loadMyInventoryV2(type);
+        }
+
+        async function loadMyInventoryV2(itemType) {
+            const bodyId = itemType === 'product' ? 'myInvProductBody' : 'myInvSampleBody';
+            const tbody = document.getElementById(bodyId);
+            const cols = itemType === 'product' ? 9 : 10;
+            tbody.innerHTML = `<tr><td colspan="${cols}" style="text-align:center;"><div class="loading"><div class="spinner"></div></div></td></tr>`;
+
+            try {
+                const resp = await fetch(`/api/di/inventory-v2/my-items?item_type=${itemType}`, { credentials: 'include' });
+                if (!resp.ok) throw new Error('Failed');
                 const data = await resp.json();
                 const items = data.items || [];
 
-                if (items.length > 0) {
-                    helper.style.display = 'block';
-                    helper.textContent = `You have ${items.length} active product${items.length > 1 ? 's' : ''} under your responsibility.`;
-                } else {
-                    helper.style.display = 'none';
-                }
-
                 if (items.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#999;">No active products under your responsibility</td></tr>';
+                    tbody.innerHTML = `<tr><td colspan="${cols}" style="text-align:center;color:#999;">No ${itemType}s in your inventory</td></tr>`;
                     return;
                 }
 
-                tbody.innerHTML = items.map(i => `
-                    <tr id="inv-row-${i.id}">
-                        <td>${i.product_link ? '<a href="'+escapeHtml(i.product_link)+'" target="_blank">'+escapeHtml(i.product_name)+'</a>' : escapeHtml(i.product_name)}</td>
-                        <td>${escapeHtml(i.vendor_company)}</td>
-                        <td>${escapeHtml(i.catalog_id)}</td>
-                        <td class="inv-qty-cell">${i.quantity_remaining}</td>
-                        <td>${escapeHtml(i.unit)}</td>
-                        <td class="inv-storage-cell">${escapeHtml(i.storage)}</td>
-                        <td class="inv-location-cell">${escapeHtml(i.location || '')}</td>
-                        <td>
-                            <div style="display:flex;gap:4px;flex-wrap:wrap;">
-                                <button class="btn btn-sm btn-primary" onclick="editInventoryRow('${i.id}', ${i.quantity_remaining}, '${escapeHtml(i.storage)}', '${escapeHtml(i.location || '')}')">Edit</button>
-                                <button class="btn btn-sm btn-secondary" onclick="transferToGroup('${i.id}')">Transfer</button>
-                                <button class="btn btn-sm btn-warning" onclick="markFinished('${i.id}')">Finished</button>
-                            </div>
-                        </td>
-                    </tr>
-                `).join('');
+                if (itemType === 'product') {
+                    tbody.innerHTML = items.map(i => `
+                        <tr id="inv2-row-${i.id}">
+                            <td>${i.product_link ? '<a href="'+escapeHtml(i.product_link)+'" target="_blank">'+escapeHtml(i.item_name)+'</a>' : escapeHtml(i.item_name)}</td>
+                            <td>${escapeHtml(i.vendor_company || '')}</td>
+                            <td>${escapeHtml(i.item_identifier)}</td>
+                            <td class="inv2-qty">${i.quantity}</td>
+                            <td>${escapeHtml(i.quantity_unit)}</td>
+                            <td class="inv2-storage">${escapeHtml(i.storage_temperature)}</td>
+                            <td class="inv2-loc">${escapeHtml(i.storage_location)}</td>
+                            <td><span class="status-badge ${i.status}">${i.status}</span>${i.status_comment ? '<br><small style="color:#856404;">'+escapeHtml(i.status_comment)+'</small>' : ''}</td>
+                            <td>
+                                <div style="display:flex;gap:4px;flex-wrap:wrap;">
+                                    ${i.status !== 'Rejected' ? '<button class="btn btn-sm btn-primary" onclick="editInvItem(\''+i.id+'\',\'product\')">Edit</button>' : ''}
+                                    ${i.status === 'Approved' ? '<button class="btn btn-sm btn-warning" onclick="markInvFinished(\''+i.id+'\',\'product\')">Finished</button>' : ''}
+                                </div>
+                            </td>
+                        </tr>
+                    `).join('');
+                } else {
+                    tbody.innerHTML = items.map(i => `
+                        <tr id="inv2-row-${i.id}">
+                            <td>${escapeHtml(i.item_name)}</td>
+                            <td>${escapeHtml(i.item_identifier)}</td>
+                            <td>${escapeHtml(i.sample_origin || '')}</td>
+                            <td>${escapeHtml(i.provider_or_collaborator || '')}</td>
+                            <td class="inv2-qty">${i.quantity}</td>
+                            <td>${escapeHtml(i.quantity_unit)}</td>
+                            <td class="inv2-storage">${escapeHtml(i.storage_temperature)}</td>
+                            <td class="inv2-loc">${escapeHtml(i.storage_location)}</td>
+                            <td><span class="status-badge ${i.status}">${i.status}</span>${i.status_comment ? '<br><small style="color:#856404;">'+escapeHtml(i.status_comment)+'</small>' : ''}</td>
+                            <td>
+                                <div style="display:flex;gap:4px;flex-wrap:wrap;">
+                                    ${i.status !== 'Rejected' ? '<button class="btn btn-sm btn-primary" onclick="editInvItem(\''+i.id+'\',\'sample\')">Edit</button>' : ''}
+                                    ${i.status === 'Approved' ? '<button class="btn btn-sm btn-warning" onclick="markInvFinished(\''+i.id+'\',\'sample\')">Finished</button>' : ''}
+                                </div>
+                            </td>
+                        </tr>
+                    `).join('');
+                }
             } catch (err) {
-                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#dc3545;">Error loading inventory</td></tr>';
+                tbody.innerHTML = `<tr><td colspan="${cols}" style="text-align:center;color:#dc3545;">Error loading inventory</td></tr>`;
             }
         }
 
-        async function loadGroupInventory() {
-            const tbody = document.getElementById('invGroupTableBody');
-            tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;"><div class="loading"><div class="spinner"></div></div></td></tr>';
+        async function editInvItem(id, itemType) {
+            const row = document.getElementById('inv2-row-' + id);
+            if (!row) return;
+            const qtyCell = row.querySelector('.inv2-qty');
+            const storageCell = row.querySelector('.inv2-storage');
+            const locCell = row.querySelector('.inv2-loc');
+            const currentQty = qtyCell.textContent;
+            const currentStorage = storageCell.textContent;
+            const currentLoc = locCell.textContent;
 
+            const tempOptions = itemType === 'sample'
+                ? ['RT','4C','-20C','-80C','LN2']
+                : ['RT','4C','-20C','-80C'];
+
+            qtyCell.innerHTML = `<input type="number" id="inv2-eq-${id}" value="${currentQty}" min="0" step="0.01" style="width:55px;padding:2px 4px;border:1px solid #ddd;border-radius:3px;">`;
+            storageCell.innerHTML = `<select id="inv2-es-${id}" style="padding:2px 4px;border:1px solid #ddd;border-radius:3px;">${tempOptions.map(t => `<option value="${t}" ${t===currentStorage?'selected':''}>${t}</option>`).join('')}</select>`;
+            locCell.innerHTML = `<input type="text" id="inv2-el-${id}" value="${currentLoc}" style="width:100px;padding:2px 4px;border:1px solid #ddd;border-radius:3px;">`;
+
+            const actionsCell = row.querySelector('td:last-child');
+            actionsCell.innerHTML = `<div style="display:flex;gap:4px;">
+                <button class="btn btn-sm btn-success" onclick="saveInvEdit('${id}','${itemType}')">Save</button>
+                <button class="btn btn-sm btn-secondary" onclick="loadMyInventoryV2('${itemType}')">Cancel</button>
+            </div>`;
+        }
+
+        async function saveInvEdit(id, itemType) {
+            const quantity = parseFloat(document.getElementById('inv2-eq-' + id).value);
+            const storage_temperature = document.getElementById('inv2-es-' + id).value;
+            const storage_location = document.getElementById('inv2-el-' + id).value.trim();
             try {
-                const resp = await fetch('/api/di/inventory/group-items', { credentials: 'include' });
-                if (!resp.ok) throw new Error('Failed to load');
+                const resp = await fetch(`/api/di/inventory-v2/${id}`, {
+                    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ quantity, storage_temperature, storage_location }),
+                    credentials: 'include'
+                });
+                if (!resp.ok) { const d = await resp.json(); throw new Error(d.error || 'Failed'); }
+                loadMyInventoryV2(itemType);
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        async function markInvFinished(id, itemType) {
+            if (!confirm('Mark this item as finished? Quantity will be set to 0.')) return;
+            try {
+                const resp = await fetch(`/api/di/inventory-v2/${id}/mark-finished`, { method: 'PUT', credentials: 'include' });
+                if (!resp.ok) throw new Error('Failed');
+                loadMyInventoryV2(itemType);
+            } catch (err) { alert('Error marking item as finished'); }
+        }
+
+        // =====================================================
+        // GROUP INVENTORY V2
+        // =====================================================
+
+        function switchGrpInvType(type) {
+            currentGrpInvType = type;
+            document.getElementById('grpInvProducts').classList.toggle('active', type === 'product');
+            document.getElementById('grpInvSamples').classList.toggle('active', type === 'sample');
+            document.getElementById('grpInvOligos').classList.toggle('active', type === 'oligo');
+            document.getElementById('grpInvProductView').style.display = type === 'product' ? 'block' : 'none';
+            document.getElementById('grpInvSampleView').style.display = type === 'sample' ? 'block' : 'none';
+            document.getElementById('grpInvOligoView').style.display = type === 'oligo' ? 'block' : 'none';
+            if (type !== 'oligo') loadGroupInventoryV2(type);
+        }
+
+        async function loadGroupInventoryV2(itemType) {
+            const bodyId = itemType === 'product' ? 'grpInvProductBody' : 'grpInvSampleBody';
+            const tbody = document.getElementById(bodyId);
+            tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;"><div class="loading"><div class="spinner"></div></div></td></tr>';
+            try {
+                const resp = await fetch(`/api/di/inventory-v2/group-items?item_type=${itemType}`, { credentials: 'include' });
+                if (!resp.ok) throw new Error('Failed');
                 const data = await resp.json();
                 const items = data.items || [];
-
                 if (items.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#999;">No group inventory items</td></tr>';
                     return;
                 }
-
-                tbody.innerHTML = items.map(i => `
-                    <tr>
-                        <td>${i.product_link ? '<a href="'+escapeHtml(i.product_link)+'" target="_blank">'+escapeHtml(i.product_name)+'</a>' : escapeHtml(i.product_name)}</td>
-                        <td>${escapeHtml(i.vendor_company)}</td>
-                        <td>${escapeHtml(i.catalog_id)}</td>
+                if (itemType === 'product') {
+                    tbody.innerHTML = items.map(i => `<tr>
+                        <td>${i.product_link ? '<a href="'+escapeHtml(i.product_link)+'" target="_blank">'+escapeHtml(i.item_name)+'</a>' : escapeHtml(i.item_name)}</td>
+                        <td>${escapeHtml(i.vendor_company || '')}</td>
+                        <td>${escapeHtml(i.item_identifier)}</td>
                         <td>${escapeHtml(i.affiliation)}</td>
-                        <td>${i.quantity_remaining}</td>
-                        <td>${escapeHtml(i.unit)}</td>
-                        <td>${escapeHtml(i.storage)}</td>
-                        <td>${escapeHtml(i.location || '')}</td>
-                        <td style="font-size:12px;color:#666;">${new Date(i.last_updated_at).toLocaleDateString()}</td>
-                    </tr>
-                `).join('');
+                        <td>${escapeHtml(i.created_by_name || i.created_by)}</td>
+                        <td>${i.quantity}</td><td>${escapeHtml(i.quantity_unit)}</td>
+                        <td>${escapeHtml(i.storage_temperature)}</td><td>${escapeHtml(i.storage_location)}</td>
+                    </tr>`).join('');
+                } else {
+                    tbody.innerHTML = items.map(i => `<tr>
+                        <td>${escapeHtml(i.item_name)}</td>
+                        <td>${escapeHtml(i.item_identifier)}</td>
+                        <td>${escapeHtml(i.sample_origin || '')}</td>
+                        <td>${escapeHtml(i.affiliation)}</td>
+                        <td>${escapeHtml(i.created_by_name || i.created_by)}</td>
+                        <td>${i.quantity}</td><td>${escapeHtml(i.quantity_unit)}</td>
+                        <td>${escapeHtml(i.storage_temperature)}</td><td>${escapeHtml(i.storage_location)}</td>
+                    </tr>`).join('');
+                }
             } catch (err) {
                 tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#dc3545;">Error loading group inventory</td></tr>';
             }
         }
 
-        function editInventoryRow(id, currentQty, currentStorage, currentLocation) {
-            const row = document.getElementById('inv-row-' + id);
-            if (!row) return;
-            const qtyCell = row.querySelector('.inv-qty-cell');
-            const storageCell = row.querySelector('.inv-storage-cell');
-            const locationCell = row.querySelector('.inv-location-cell');
+        // =====================================================
+        // SUPERVISOR: SUPERVISED RESEARCHER INVENTORY
+        // =====================================================
 
-            qtyCell.innerHTML = `<input type="number" class="inv-inline-input" id="inv-edit-qty-${id}" value="${currentQty}" min="0" step="0.01">`;
-            storageCell.innerHTML = `<select class="inv-inline-select" id="inv-edit-storage-${id}">
-                <option value="RT" ${currentStorage==='RT'?'selected':''}>RT</option>
-                <option value="4C" ${currentStorage==='4C'?'selected':''}>4C</option>
-                <option value="-20C" ${currentStorage==='-20C'?'selected':''}>-20C</option>
-                <option value="-80C" ${currentStorage==='-80C'?'selected':''}>-80C</option>
-            </select>`;
-            locationCell.innerHTML = `<input type="text" class="inv-inline-input" id="inv-edit-loc-${id}" value="${currentLocation}" style="width:120px;">`;
-
-            // Replace actions with Save/Cancel
-            const actionsCell = row.querySelector('td:last-child');
-            actionsCell.innerHTML = `
-                <div style="display:flex;gap:4px;">
-                    <button class="btn btn-sm btn-success" onclick="saveInventoryEdit('${id}')">Save</button>
-                    <button class="btn btn-sm btn-secondary" onclick="loadMyInventory()">Cancel</button>
-                </div>
-            `;
+        async function loadSupInvResearcherList() {
+            const ul = document.getElementById('supInvResearcherList');
+            try {
+                const resp = await fetch('/api/di/supervision/researchers', { credentials: 'include' });
+                if (!resp.ok) throw new Error('Failed');
+                const data = await resp.json();
+                const researchers = data.researchers || [];
+                if (researchers.length === 0) { ul.innerHTML = '<li style="color:#999;padding:6px;">No assigned researchers</li>'; return; }
+                ul.innerHTML = researchers.map(r => `
+                    <li class="researcher-item" onclick="selectSupInvResearcher('${r.researcher_id}', '${escapeHtml(r.name)}')" id="supInvR-${r.researcher_id}"
+                        style="padding:8px;cursor:pointer;border-bottom:1px solid #eee;font-size:13px;">
+                        <strong>${escapeHtml(r.name)}</strong><br><span style="font-size:11px;color:#666;">${escapeHtml(r.institution_email)}</span>
+                    </li>
+                `).join('');
+            } catch (err) { ul.innerHTML = '<li style="color:#dc3545;padding:6px;">Error loading</li>'; }
         }
 
-        async function saveInventoryEdit(id) {
-            const qty = document.getElementById('inv-edit-qty-' + id).value;
-            const storage = document.getElementById('inv-edit-storage-' + id).value;
-            const location = document.getElementById('inv-edit-loc-' + id).value;
+        async function selectSupInvResearcher(researcherId, name) {
+            selectedSupInvResearcher = researcherId;
+            // Highlight active
+            document.querySelectorAll('#supInvResearcherList li').forEach(li => li.style.background = '');
+            const li = document.getElementById('supInvR-' + researcherId);
+            if (li) li.style.background = '#e7f1ff';
+            document.getElementById('supInvPrompt').style.display = 'none';
+            document.getElementById('supInvContent').style.display = 'block';
+            loadSupInvItems(researcherId, 'product');
+        }
 
+        function switchSupInvType(type) {
+            currentSupInvType = type;
+            document.getElementById('supInvProducts').classList.toggle('active', type === 'product');
+            document.getElementById('supInvSamples').classList.toggle('active', type === 'sample');
+            document.getElementById('supInvOligos').classList.toggle('active', type === 'oligo');
+            document.getElementById('supInvProductView').style.display = type === 'product' ? 'block' : 'none';
+            document.getElementById('supInvSampleView').style.display = type === 'sample' ? 'block' : 'none';
+            document.getElementById('supInvOligoView').style.display = type === 'oligo' ? 'block' : 'none';
+            if (type !== 'oligo' && selectedSupInvResearcher) loadSupInvItems(selectedSupInvResearcher, type);
+        }
+
+        async function loadSupInvItems(researcherId, itemType) {
+            const bodyId = itemType === 'product' ? 'supInvProductBody' : 'supInvSampleBody';
+            const tbody = document.getElementById(bodyId);
+            const cols = itemType === 'product' ? 8 : 9;
+            tbody.innerHTML = `<tr><td colspan="${cols}" style="text-align:center;"><div class="loading"><div class="spinner"></div></div></td></tr>`;
             try {
-                const resp = await fetch(`/api/di/inventory/${id}`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ quantity_remaining: parseFloat(qty), storage, location }),
-                    credentials: 'include'
-                });
-                if (!resp.ok) {
-                    const data = await resp.json();
-                    throw new Error(data.error || 'Update failed');
+                const resp = await fetch(`/api/di/inventory-v2/supervision/${researcherId}/inventory?item_type=${itemType}`, { credentials: 'include' });
+                if (!resp.ok) throw new Error('Failed');
+                const data = await resp.json();
+                const items = data.items || [];
+                if (items.length === 0) { tbody.innerHTML = `<tr><td colspan="${cols}" style="text-align:center;color:#999;">No ${itemType}s</td></tr>`; return; }
+                if (itemType === 'product') {
+                    tbody.innerHTML = items.map(i => `<tr>
+                        <td>${escapeHtml(i.item_name)}</td><td>${escapeHtml(i.vendor_company||'')}</td>
+                        <td>${escapeHtml(i.item_identifier)}</td><td>${i.quantity}</td><td>${escapeHtml(i.quantity_unit)}</td>
+                        <td>${escapeHtml(i.storage_temperature)}</td><td>${escapeHtml(i.storage_location)}</td>
+                        <td><span class="status-badge ${i.status}">${i.status}</span></td>
+                    </tr>`).join('');
+                } else {
+                    tbody.innerHTML = items.map(i => `<tr>
+                        <td>${escapeHtml(i.item_name)}</td><td>${escapeHtml(i.item_identifier)}</td>
+                        <td>${escapeHtml(i.sample_origin||'')}</td><td>${escapeHtml(i.provider_or_collaborator||'')}</td>
+                        <td>${i.quantity}</td><td>${escapeHtml(i.quantity_unit)}</td>
+                        <td>${escapeHtml(i.storage_temperature)}</td><td>${escapeHtml(i.storage_location)}</td>
+                        <td><span class="status-badge ${i.status}">${i.status}</span></td>
+                    </tr>`).join('');
                 }
-                loadMyInventory();
-            } catch (err) {
-                alert('Error: ' + err.message);
-            }
-        }
-
-        async function transferToGroup(id) {
-            if (!confirm('Transfer this item to group inventory? You will no longer be responsible for it.')) return;
-            try {
-                const resp = await fetch(`/api/di/inventory/${id}/transfer-to-group`, {
-                    method: 'PUT', credentials: 'include'
-                });
-                if (!resp.ok) throw new Error('Failed');
-                loadMyInventory();
-            } catch (err) {
-                alert('Error transferring item');
-            }
-        }
-
-        async function markFinished(id) {
-            if (!confirm('Mark this item as finished? Quantity will be set to 0.')) return;
-            try {
-                const resp = await fetch(`/api/di/inventory/${id}/mark-finished`, {
-                    method: 'PUT', credentials: 'include'
-                });
-                if (!resp.ok) throw new Error('Failed');
-                loadMyInventory();
-            } catch (err) {
-                alert('Error marking item as finished');
-            }
+            } catch (err) { tbody.innerHTML = `<tr><td colspan="${cols}" style="text-align:center;color:#dc3545;">Error</td></tr>`; }
         }
 
         // =====================================================
-        // PURCHASE REQUESTS
+        // PURCHASE REQUESTS (kept from existing, unchanged)
         // =====================================================
 
         function switchPrView(view) {
@@ -1641,7 +2007,6 @@ credentials: 'include'
             if (view === 'my') loadMyPurchaseRequests();
         }
 
-        // Initialize with one empty row
         function prInitForm() {
             document.getElementById('prItemsBody').innerHTML = '';
             prAddItemRow();
@@ -1660,43 +2025,37 @@ credentials: 'include'
                 <td class="col-total pr-item-total" style="font-weight:600;white-space:nowrap;text-align:right;">0.00</td>
                 <td class="col-del" style="text-align:center;">
                     <button style="color:#dc3545;background:none;border:none;font-size:16px;cursor:pointer;padding:0;line-height:30px;" onclick="prRemoveRow(this)" title="Remove">&times;</button>
-                </td>
-            `;
+                </td>`;
             tbody.appendChild(row);
         }
 
         function prRemoveRow(btn) {
             const tbody = document.getElementById('prItemsBody');
-            if (tbody.rows.length <= 1) return; // keep at least one row
+            if (tbody.rows.length <= 1) return;
             btn.closest('tr').remove();
             prUpdateTotals();
         }
 
         function prUpdateTotals() {
             let total = 0;
-            const rows = document.getElementById('prItemsBody').querySelectorAll('tr');
-            rows.forEach(row => {
+            document.getElementById('prItemsBody').querySelectorAll('tr').forEach(row => {
                 const qty = parseFloat(row.querySelector('.pr-qty').value) || 0;
                 const price = parseFloat(row.querySelector('.pr-price').value) || 0;
                 const itemTotal = Math.round(qty * price * 100) / 100;
                 row.querySelector('.pr-item-total').textContent = itemTotal.toFixed(2);
                 total += itemTotal;
             });
-            const currency = document.getElementById('prCurrency').value;
-            document.getElementById('prRequestTotal').textContent = total.toFixed(2) + ' ' + currency;
+            document.getElementById('prRequestTotal').textContent = total.toFixed(2) + ' ' + document.getElementById('prCurrency').value;
         }
 
-        // Currency change updates displayed total
         document.getElementById('prCurrency').addEventListener('change', prUpdateTotals);
 
         async function prSubmitRequest() {
             const msgEl = document.getElementById('prFormMessage');
             msgEl.className = 'message'; msgEl.textContent = '';
-
             const justification = document.getElementById('prJustification').value.trim();
             const currency = document.getElementById('prCurrency').value;
-            if (!justification) { msgEl.className = 'message error show'; msgEl.style.display = 'block'; msgEl.textContent = 'Justification is required.'; return; }
-
+            if (!justification) { showMsg(msgEl, 'Justification is required.'); return; }
             const rows = document.getElementById('prItemsBody').querySelectorAll('tr');
             const items = [];
             for (let idx = 0; idx < rows.length; idx++) {
@@ -1707,54 +2066,35 @@ credentials: 'include'
                 const product_link = r.querySelector('.pr-link').value.trim();
                 const quantity = parseFloat(r.querySelector('.pr-qty').value);
                 const unit_price = parseFloat(r.querySelector('.pr-price').value);
-                if (!vendor_company || !product_name || !catalog_id || !product_link) {
-                    msgEl.className = 'message error show'; msgEl.style.display = 'block'; msgEl.textContent = `Item ${idx+1}: all fields are required.`; return;
-                }
-                if (!quantity || quantity <= 0) { msgEl.className = 'message error show'; msgEl.style.display = 'block'; msgEl.textContent = `Item ${idx+1}: quantity must be positive.`; return; }
-                if (isNaN(unit_price) || unit_price < 0) { msgEl.className = 'message error show'; msgEl.style.display = 'block'; msgEl.textContent = `Item ${idx+1}: unit price is required.`; return; }
+                if (!vendor_company || !product_name || !catalog_id || !product_link) { showMsg(msgEl, `Item ${idx+1}: all fields are required.`); return; }
+                if (!quantity || quantity <= 0) { showMsg(msgEl, `Item ${idx+1}: quantity must be positive.`); return; }
+                if (isNaN(unit_price) || unit_price < 0) { showMsg(msgEl, `Item ${idx+1}: unit price is required.`); return; }
                 items.push({ vendor_company, product_name, catalog_id, product_link, quantity, unit_price });
             }
-
             try {
                 const resp = await fetch('/api/di/purchases/request', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ justification, currency, items }),
-                    credentials: 'include'
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ justification, currency, items }), credentials: 'include'
                 });
                 const data = await resp.json();
                 if (!resp.ok) throw new Error(data.error || 'Submission failed');
-
-                // Reset form and switch to My Requests so researcher sees submission
                 document.getElementById('prJustification').value = '';
                 prInitForm();
                 switchPrView('my');
-            } catch (err) {
-                msgEl.className = 'message error show'; msgEl.style.display = 'block';
-                msgEl.textContent = 'Error: ' + err.message;
-            }
+            } catch (err) { showMsg(msgEl, 'Error: ' + err.message); }
         }
 
         async function loadMyPurchaseRequests() {
             const tbody = document.getElementById('prMyTableBody');
             tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;"><div class="loading"><div class="spinner"></div></div></td></tr>';
-
             try {
                 const resp = await fetch('/api/di/purchases/my', { credentials: 'include' });
                 if (!resp.ok) throw new Error('Failed');
                 const data = await resp.json();
                 const requests = data.requests || [];
-
-                // Update badge
                 const badge = document.getElementById('prMyBadge');
-                if (requests.length > 0) { badge.textContent = requests.length; badge.style.display = 'inline'; }
-                else { badge.style.display = 'none'; }
-
-                if (requests.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;">No purchase requests yet</td></tr>';
-                    return;
-                }
-
+                if (requests.length > 0) { badge.textContent = requests.length; badge.style.display = 'inline'; } else { badge.style.display = 'none'; }
+                if (requests.length === 0) { tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;">No purchase requests yet</td></tr>'; return; }
                 const statusColors = { SUBMITTED: '#007bff', APPROVED: '#28a745', DECLINED: '#fd7e14' };
                 let html = '';
                 for (const r of requests) {
@@ -1769,23 +2109,18 @@ credentials: 'include'
                         <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:#856404;">${r.pi_comment ? escapeHtml(r.pi_comment) : ''}</td>
                         <td style="text-align:center;font-size:11px;color:#666;">&#9660;</td>
                     </tr>`;
-                    // Expandable detail row (hidden by default)
                     let detailRows = items.map(i => {
-                        const ordered = i.ordered_at ? '<span style="color:#28a745;">Ordered ' + new Date(i.ordered_at).toLocaleDateString() + '</span>' : '<span style="color:#999;">Not ordered</span>';
-                        const received = i.received_at ? '<span style="color:#28a745;">Received ' + new Date(i.received_at).toLocaleDateString() + '</span>' : '<span style="color:#999;">Not received</span>';
-                        return `<tr><td style="padding-left:20px;">${escapeHtml(i.product_name)}</td><td>${escapeHtml(i.vendor_company)}</td><td style="white-space:nowrap;">${i.quantity} &times; ${Number(i.unit_price).toFixed(2)}</td><td>${ordered}</td><td>${received}</td><td></td></tr>`;
+                        const ordered = i.ordered_at ? '<span style="color:#28a745;">Ordered '+new Date(i.ordered_at).toLocaleDateString()+'</span>' : '<span style="color:#999;">Not ordered</span>';
+                        const received = i.received_at ? '<span style="color:#28a745;">Received '+new Date(i.received_at).toLocaleDateString()+'</span>' : '<span style="color:#999;">Not received</span>';
+                        const po = i.internal_order_number ? '<br><small style="color:#0c5460;">PO: '+escapeHtml(i.internal_order_number)+'</small>' : '';
+                        return `<tr><td style="padding-left:20px;">${escapeHtml(i.product_name)}${po}</td><td>${escapeHtml(i.vendor_company)}</td><td style="white-space:nowrap;">${i.quantity} &times; ${Number(i.unit_price).toFixed(2)}</td><td>${ordered}</td><td>${received}</td><td></td></tr>`;
                     }).join('');
-                    html += `<tr id="${rowId}" style="display:none;"><td colspan="6" style="padding:0;">
-                        <table style="width:100%;font-size:12px;background:#f8f9fa;border-collapse:collapse;">
-                            <thead><tr style="color:#666;"><th style="padding:3px 6px;font-weight:600;">Product</th><th style="padding:3px 6px;font-weight:600;">Vendor</th><th style="padding:3px 6px;font-weight:600;">Qty &times; Price</th><th style="padding:3px 6px;font-weight:600;">Ordered</th><th style="padding:3px 6px;font-weight:600;">Received</th><th></th></tr></thead>
-                            <tbody>${detailRows}</tbody>
-                        </table>
-                    </td></tr>`;
+                    html += `<tr id="${rowId}" style="display:none;"><td colspan="6" style="padding:0;"><table style="width:100%;font-size:12px;background:#f8f9fa;border-collapse:collapse;">
+                        <thead><tr style="color:#666;"><th style="padding:3px 6px;">Product</th><th style="padding:3px 6px;">Vendor</th><th style="padding:3px 6px;">Qty × Price</th><th style="padding:3px 6px;">Ordered</th><th style="padding:3px 6px;">Received</th><th></th></tr></thead>
+                        <tbody>${detailRows}</tbody></table></td></tr>`;
                 }
                 tbody.innerHTML = html;
-            } catch (err) {
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#dc3545;">Error loading requests</td></tr>';
-            }
+            } catch (err) { tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#dc3545;">Error loading requests</td></tr>'; }
         }
 
         function togglePrDetail(rowId) {
@@ -1794,24 +2129,18 @@ credentials: 'include'
         }
 
         // =====================================================
-        // APPROVED PURCHASES TO RECEIVE
+        // APPROVED PURCHASES TO RECEIVE (extended intake form)
         // =====================================================
 
         async function loadApprovedToReceive() {
             const tbody = document.getElementById('prReceiveTableBody');
             tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;"><div class="loading"><div class="spinner"></div></div></td></tr>';
-
             try {
                 const resp = await fetch('/api/di/purchases/my-approved-to-receive', { credentials: 'include' });
                 if (!resp.ok) throw new Error('Failed');
                 const data = await resp.json();
                 const items = data.items || [];
-
-                if (items.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#999;">No approved items awaiting receipt</td></tr>';
-                    return;
-                }
-
+                if (items.length === 0) { tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#999;">No approved items awaiting receipt</td></tr>'; return; }
                 tbody.innerHTML = items.map(i => `
                     <tr id="pr-recv-${i.id}">
                         <td>${i.product_link ? '<a href="'+escapeHtml(i.product_link)+'" target="_blank">'+escapeHtml(i.product_name)+'</a>' : escapeHtml(i.product_name)}</td>
@@ -1823,9 +2152,7 @@ credentials: 'include'
                         <td><button class="btn btn-sm btn-success" onclick="showReceiveForm('${i.id}', ${i.quantity})">Received</button></td>
                     </tr>
                 `).join('');
-            } catch (err) {
-                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#dc3545;">Error loading items</td></tr>';
-            }
+            } catch (err) { tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#dc3545;">Error loading items</td></tr>'; }
         }
 
         function showReceiveForm(itemId, defaultQty) {
@@ -1833,32 +2160,44 @@ credentials: 'include'
             if (!row) return;
             const actionCell = row.querySelector('td:last-child');
             actionCell.innerHTML = `
-                <div style="display:flex;flex-direction:column;gap:4px;font-size:12px;">
+                <div style="display:flex;flex-direction:column;gap:4px;font-size:12px;min-width:200px;">
                     <div style="display:flex;gap:4px;align-items:center;">
-                        <label style="width:35px;">Qty:</label>
-                        <input type="number" id="recv-qty-${itemId}" value="${defaultQty}" min="0.01" step="0.01" style="width:55px;padding:2px 4px;border:1px solid #ddd;border-radius:3px;">
+                        <label style="width:50px;">Qty *</label>
+                        <input type="number" id="recv-qty-${itemId}" value="${defaultQty}" min="0.01" step="0.01" style="width:60px;padding:2px 4px;border:1px solid #ddd;border-radius:3px;">
                     </div>
                     <div style="display:flex;gap:4px;align-items:center;">
-                        <label style="width:35px;">Unit:</label>
+                        <label style="width:50px;">Unit *</label>
                         <select id="recv-unit-${itemId}" style="padding:2px 4px;border:1px solid #ddd;border-radius:3px;">
-                            <option value="each">each</option>
-                            <option value="bottle">bottle</option>
-                            <option value="box">box</option>
-                            <option value="pack">pack</option>
+                            <option value="each">each</option><option value="bottle">bottle</option><option value="box">box</option>
+                            <option value="pack">pack</option><option value="mL">mL</option><option value="uL">uL</option>
+                            <option value="mg">mg</option><option value="g">g</option><option value="vial">vial</option><option value="tube">tube</option>
                         </select>
                     </div>
                     <div style="display:flex;gap:4px;align-items:center;">
-                        <label style="width:35px;">Temp:</label>
+                        <label style="width:50px;">Temp *</label>
                         <select id="recv-storage-${itemId}" style="padding:2px 4px;border:1px solid #ddd;border-radius:3px;">
-                            <option value="RT">RT</option>
-                            <option value="4C">4C</option>
-                            <option value="-20C">-20C</option>
-                            <option value="-80C">-80C</option>
+                            <option value="RT">RT</option><option value="4C">4C</option><option value="-20C">-20C</option><option value="-80C">-80C</option>
                         </select>
                     </div>
                     <div style="display:flex;gap:4px;align-items:center;">
-                        <label style="width:35px;">Loc:</label>
-                        <input type="text" id="recv-loc-${itemId}" style="width:100px;padding:2px 4px;border:1px solid #ddd;border-radius:3px;" placeholder="Shelf/Room">
+                        <label style="width:50px;">Loc *</label>
+                        <input type="text" id="recv-loc-${itemId}" style="flex:1;padding:2px 4px;border:1px solid #ddd;border-radius:3px;" placeholder="Shelf/Room">
+                    </div>
+                    <div style="display:flex;gap:4px;align-items:center;">
+                        <label style="width:50px;">Lot#</label>
+                        <input type="text" id="recv-lot-${itemId}" style="flex:1;padding:2px 4px;border:1px solid #ddd;border-radius:3px;" placeholder="Lot/Batch">
+                    </div>
+                    <div style="display:flex;gap:4px;align-items:center;">
+                        <label style="width:50px;">Expiry</label>
+                        <input type="date" id="recv-exp-${itemId}" style="flex:1;padding:2px 4px;border:1px solid #ddd;border-radius:3px;">
+                    </div>
+                    <div style="display:flex;gap:4px;align-items:center;">
+                        <label style="width:50px;">Opened</label>
+                        <input type="date" id="recv-opened-${itemId}" style="flex:1;padding:2px 4px;border:1px solid #ddd;border-radius:3px;">
+                    </div>
+                    <div style="display:flex;gap:4px;align-items:center;">
+                        <label style="width:50px;">Notes</label>
+                        <input type="text" id="recv-notes-${itemId}" style="flex:1;padding:2px 4px;border:1px solid #ddd;border-radius:3px;" placeholder="Optional">
                     </div>
                     <div style="display:flex;gap:4px;margin-top:2px;">
                         <button class="btn btn-sm btn-success" onclick="submitReceive('${itemId}')">Confirm</button>
@@ -1872,38 +2211,27 @@ credentials: 'include'
             const unit = document.getElementById('recv-unit-' + itemId).value;
             const storage = document.getElementById('recv-storage-' + itemId).value;
             const location = document.getElementById('recv-loc-' + itemId).value.trim();
+            const lot_or_batch_number = document.getElementById('recv-lot-' + itemId).value.trim() || undefined;
+            const expiry_date = document.getElementById('recv-exp-' + itemId).value || undefined;
+            const opened_date = document.getElementById('recv-opened-' + itemId).value || undefined;
+            const notes = document.getElementById('recv-notes-' + itemId).value.trim() || undefined;
 
             if (!quantity_received || quantity_received <= 0) { alert('Quantity must be positive'); return; }
             if (!location) { alert('Location is required'); return; }
 
             try {
                 const resp = await fetch(`/api/di/purchases/item/${itemId}/receive`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ quantity_received, unit, storage, location }),
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ quantity_received, unit, storage, location, lot_or_batch_number, expiry_date, opened_date, notes }),
                     credentials: 'include'
                 });
                 const data = await resp.json();
                 if (!resp.ok) throw new Error(data.error || 'Failed');
-
                 alert('Item received and added to your inventory.');
                 loadApprovedToReceive();
-                loadMyInventory();
-            } catch (err) {
-                alert('Error: ' + err.message);
-            }
+                loadMyInventoryV2('product');
+            } catch (err) { alert('Error: ' + err.message); }
         }
-
-        // Load purchase data when inventory section activates
-        const _origSwitchSection = switchSection;
-        switchSection = function(section) {
-            _origSwitchSection(section);
-            if (section === 'inventory') {
-                prInitForm();
-                loadApprovedToReceive();
-                loadMyPurchaseRequests(); // pre-fetch so badge + data are ready
-            }
-        };
     </script>
 </body>
 </html>

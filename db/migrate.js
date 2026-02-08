@@ -134,7 +134,71 @@ async function migrate() {
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )`,
             `CREATE INDEX IF NOT EXISTS idx_di_purchase_items_request ON di_purchase_items(request_id)`,
-            `CREATE INDEX IF NOT EXISTS idx_di_purchase_items_inventory ON di_purchase_items(inventory_id)`
+            `CREATE INDEX IF NOT EXISTS idx_di_purchase_items_inventory ON di_purchase_items(inventory_id)`,
+
+            // ==================== INVENTORY V2 — CANONICAL MODEL ====================
+
+            // Canonical inventory items table (replaces di_inventory for new features)
+            `CREATE TABLE IF NOT EXISTS di_inventory_items (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                affiliation VARCHAR(10) NOT NULL CHECK (affiliation IN ('LiU', 'UNAV')),
+                item_type VARCHAR(20) NOT NULL CHECK (item_type IN ('product', 'sample', 'oligo')),
+                source VARCHAR(10) NOT NULL CHECK (source IN ('Online', 'Offline')),
+                item_name VARCHAR(500) NOT NULL,
+                item_identifier VARCHAR(255) NOT NULL,
+                quantity NUMERIC(10,2) NOT NULL DEFAULT 0,
+                quantity_unit VARCHAR(30) NOT NULL,
+                storage_location VARCHAR(255) NOT NULL,
+                storage_temperature VARCHAR(20) NOT NULL CHECK (storage_temperature IN ('RT', '4C', '-20C', '-80C', 'LN2')),
+                vendor_company VARCHAR(255),
+                lot_or_batch_number VARCHAR(255),
+                expiry_date DATE,
+                opened_date DATE,
+                notes TEXT,
+                internal_order_number VARCHAR(50),
+                unit_price NUMERIC(12,2),
+                currency VARCHAR(10),
+                product_link VARCHAR(1000),
+                sample_origin VARCHAR(50),
+                provider_or_collaborator VARCHAR(255),
+                provider_detail VARCHAR(255),
+                sample_status VARCHAR(50),
+                visibility_scope VARCHAR(10) NOT NULL DEFAULT 'personal' CHECK (visibility_scope IN ('personal', 'group')),
+                created_by VARCHAR(50) NOT NULL REFERENCES di_allowlist(researcher_id),
+                status VARCHAR(20) NOT NULL DEFAULT 'Pending' CHECK (status IN ('Pending', 'Approved', 'Revision', 'Rejected')),
+                status_comment TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )`,
+            `CREATE INDEX IF NOT EXISTS idx_di_inv_items_type ON di_inventory_items(item_type)`,
+            `CREATE INDEX IF NOT EXISTS idx_di_inv_items_created_by ON di_inventory_items(created_by)`,
+            `CREATE INDEX IF NOT EXISTS idx_di_inv_items_status ON di_inventory_items(status)`,
+            `CREATE INDEX IF NOT EXISTS idx_di_inv_items_visibility ON di_inventory_items(visibility_scope)`,
+            `CREATE INDEX IF NOT EXISTS idx_di_inv_items_affiliation ON di_inventory_items(affiliation)`,
+            `CREATE INDEX IF NOT EXISTS idx_di_inv_items_po ON di_inventory_items(internal_order_number)`,
+
+            // Audit log for canonical inventory items
+            `CREATE TABLE IF NOT EXISTS di_inventory_items_log (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                inventory_item_id UUID NOT NULL REFERENCES di_inventory_items(id),
+                action VARCHAR(30) NOT NULL,
+                changed_by VARCHAR(50) NOT NULL,
+                old_values JSONB,
+                new_values JSONB,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )`,
+            `CREATE INDEX IF NOT EXISTS idx_di_inv_items_log_item ON di_inventory_items_log(inventory_item_id)`,
+
+            // PO number daily sequence counter
+            `CREATE TABLE IF NOT EXISTS di_po_sequence (
+                date_prefix VARCHAR(20) PRIMARY KEY,
+                last_seq INTEGER NOT NULL DEFAULT 0
+            )`,
+
+            // Extend di_purchase_items for v2 inventory linkage and PO numbers
+            `ALTER TABLE di_purchase_items ADD COLUMN IF NOT EXISTS new_inventory_item_id UUID REFERENCES di_inventory_items(id)`,
+            `ALTER TABLE di_purchase_items ADD COLUMN IF NOT EXISTS internal_order_number VARCHAR(50)`,
+            `CREATE INDEX IF NOT EXISTS idx_di_purchase_items_new_inv ON di_purchase_items(new_inventory_item_id)`
         ];
 
         for (const sql of migrations) {

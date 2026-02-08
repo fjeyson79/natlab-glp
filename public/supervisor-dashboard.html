@@ -47,14 +47,50 @@
         }
         .logout-btn:hover { background: rgba(255,255,255,0.3); }
 
+        /* Section Navigation */
+        .section-nav {
+            display: flex;
+            gap: 0;
+            padding: 0 20px;
+            max-width: 1400px;
+            margin: 20px auto 0;
+        }
+        .section-nav button {
+            padding: 10px 24px;
+            font-size: 14px;
+            font-weight: bold;
+            border: 1px solid #ddd;
+            border-bottom: none;
+            background: #e9ecef;
+            color: #666;
+            cursor: pointer;
+            border-radius: 8px 8px 0 0;
+            transition: all 0.2s;
+        }
+        .section-nav button.active {
+            background: white;
+            color: #1a365d;
+            border-color: #ddd;
+            position: relative;
+            z-index: 1;
+        }
+        .section-nav button:hover:not(.active) {
+            background: #f0f2f5;
+        }
+        .section-content { display: none; }
+        .section-content.active { display: block; }
+
         .main-container {
             display: grid;
             grid-template-columns: 300px 1fr;
             gap: 20px;
-            padding: 20px;
+            padding: 0 20px 20px;
             max-width: 1400px;
             margin: 0 auto;
-            min-height: calc(100vh - 70px);
+            min-height: calc(100vh - 130px);
+        }
+        .main-container.full-width {
+            grid-template-columns: 1fr;
         }
 
         .panel {
@@ -65,6 +101,7 @@
             display: flex;
             flex-direction: column;
         }
+        .panel.accent { border-top: 3px solid #17a2b8; }
         .panel-header {
             background: #f8f9fa;
             padding: 15px 20px;
@@ -72,6 +109,9 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+        }
+        .panel-header.accent-header {
+            background: linear-gradient(135deg, #e3f6f9 0%, #f0fafb 100%);
         }
         .panel-header h2 {
             font-size: 16px;
@@ -209,6 +249,131 @@
         .message.show { display: block; }
         .message.info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
 
+        /* Inventory tables */
+        .inv-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        .inv-table th {
+            background: #f8f9fa;
+            padding: 8px 10px;
+            text-align: left;
+            font-size: 11px;
+            color: #666;
+            text-transform: uppercase;
+            border-bottom: 2px solid #e0e0e0;
+            white-space: nowrap;
+        }
+        .inv-table td {
+            padding: 8px 10px;
+            border-bottom: 1px solid #f0f0f0;
+            vertical-align: top;
+        }
+        .inv-table tr:hover { background: #fafafa; }
+
+        .status-badge {
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: bold;
+        }
+        .status-badge.Pending { background: #fff3cd; color: #856404; }
+        .status-badge.Approved { background: #d4edda; color: #155724; }
+        .status-badge.Revision { background: #f8d7da; color: #721c24; }
+        .status-badge.Rejected { background: #f5c6cb; color: #721c24; }
+
+        /* Sub-tabs */
+        .sub-tabs {
+            display: flex;
+            gap: 0;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+        .sub-tab {
+            padding: 8px 18px;
+            font-size: 13px;
+            border: none;
+            background: none;
+            cursor: pointer;
+            color: #666;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+            transition: all 0.2s;
+        }
+        .sub-tab.active {
+            color: #17a2b8;
+            border-bottom-color: #17a2b8;
+            font-weight: bold;
+        }
+        .sub-tab:hover:not(.active) { color: #333; }
+
+        /* Offline entry form */
+        .off-form { margin-top: 15px; }
+        .off-row { display: flex; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
+        .off-field { flex: 1; min-width: 180px; }
+        .off-label { display: block; font-size: 11px; color: #666; margin-bottom: 3px; font-weight: bold; text-transform: uppercase; }
+        .off-input {
+            width: 100%;
+            padding: 7px 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+        .off-input:focus { border-color: #17a2b8; outline: none; }
+
+        .btn-sm {
+            padding: 4px 10px;
+            font-size: 11px;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .btn-primary { background: #17a2b8; color: white; }
+        .btn-primary:hover { background: #138496; }
+        .btn-success { background: #28a745; color: white; }
+        .btn-success:hover { background: #218838; }
+        .btn-warning { background: #ffc107; color: #333; }
+        .btn-danger { background: #dc3545; color: white; }
+
+        .inv-actions { display: flex; gap: 4px; flex-wrap: wrap; }
+
+        /* Type selector */
+        .type-selector {
+            display: flex;
+            gap: 0;
+            margin-bottom: 15px;
+        }
+        .type-selector button {
+            padding: 8px 20px;
+            font-size: 13px;
+            border: 1px solid #ddd;
+            background: white;
+            cursor: pointer;
+            color: #666;
+        }
+        .type-selector button:first-child { border-radius: 4px 0 0 4px; }
+        .type-selector button:last-child { border-radius: 0 4px 4px 0; }
+        .type-selector button.active {
+            background: #17a2b8;
+            color: white;
+            border-color: #17a2b8;
+        }
+        .type-selector button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Researcher selector for supervised inventory */
+        .sup-researcher-select {
+            padding: 7px 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 13px;
+            width: 100%;
+            max-width: 350px;
+        }
+
         /* Responsive */
         @media (max-width: 900px) {
             .main-container { grid-template-columns: 1fr; }
@@ -225,52 +390,231 @@
         </div>
     </div>
 
-    <div class="main-container">
-        <!-- Left Panel: Assigned Researchers -->
-        <div class="panel">
-            <div class="panel-header">
-                <h2><span class="icon">&#128101;</span> My Researchers</h2>
-                <button onclick="loadResearchers()" style="padding:5px 10px;font-size:12px;cursor:pointer;border:1px solid #ddd;border-radius:4px;background:white;">Refresh</button>
+    <!-- Section Navigation -->
+    <div class="section-nav">
+        <button class="active" onclick="switchSection('files')">Files &amp; Supervision</button>
+        <button onclick="switchSection('inventory')">Purchases &amp; Inventory</button>
+    </div>
+
+    <!-- ==================== SECTION: FILES & SUPERVISION ==================== -->
+    <div id="section-files" class="section-content active">
+        <div class="main-container">
+            <!-- Left Panel: Assigned Researchers -->
+            <div class="panel">
+                <div class="panel-header">
+                    <h2><span class="icon">&#128101;</span> My Researchers</h2>
+                    <button onclick="loadResearchers()" style="padding:5px 10px;font-size:12px;cursor:pointer;border:1px solid #ddd;border-radius:4px;background:white;">Refresh</button>
+                </div>
+                <div class="panel-content" style="padding:0;">
+                    <ul id="researcherList" class="researcher-list">
+                        <li class="loading"><div class="spinner"></div>Loading...</li>
+                    </ul>
+                </div>
             </div>
-            <div class="panel-content" style="padding:0;">
-                <ul id="researcherList" class="researcher-list">
-                    <li class="loading"><div class="spinner"></div>Loading...</li>
-                </ul>
+
+            <!-- Right Panel: Files View -->
+            <div class="panel">
+                <div class="panel-header">
+                    <h2><span class="icon">&#128193;</span> Supervision - Files</h2>
+                </div>
+                <div class="panel-content">
+                    <div class="message info show" id="selectPrompt">
+                        Select a researcher from the list to view their files.<br>
+                        <small>You can only view and download files. No editing or deletion is permitted.</small>
+                    </div>
+                    <div id="selectedResearcherInfo" class="selected-researcher-info" style="display:none;">
+                        <strong id="selectedResearcherName"></strong>
+                        <span id="selectedResearcherEmail"></span>
+                    </div>
+                    <div id="statsBar" class="stats-bar" style="display:none;">
+                        <div class="stat-item">
+                            <span>Under Review:</span>
+                            <span class="stat-value" style="color:#856404;" id="statPending">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span>Approved:</span>
+                            <span class="stat-value" style="color:#28a745;" id="statApproved">0</span>
+                        </div>
+                    </div>
+                    <div id="fileTree" class="file-tree" style="display:none;"></div>
+                </div>
             </div>
         </div>
+    </div>
 
-        <!-- Right Panel: Files View -->
-        <div class="panel">
-            <div class="panel-header">
-                <h2><span class="icon">&#128193;</span> Supervision - Files</h2>
-            </div>
-            <div class="panel-content">
-                <div class="message info show" id="selectPrompt">
-                    Select a researcher from the list to view their files.<br>
-                    <small>You can only view and download files. No editing or deletion is permitted.</small>
+    <!-- ==================== SECTION: PURCHASES & INVENTORY ==================== -->
+    <div id="section-inventory" class="section-content">
+        <div class="main-container full-width">
+
+            <!-- My Inventory (accent) -->
+            <div class="panel accent">
+                <div class="panel-header accent-header">
+                    <h2><span class="icon">&#128230;</span> My Inventory</h2>
                 </div>
-                <div id="selectedResearcherInfo" class="selected-researcher-info" style="display:none;">
-                    <strong id="selectedResearcherName"></strong>
-                    <span id="selectedResearcherEmail"></span>
-                </div>
-                <div id="statsBar" class="stats-bar" style="display:none;">
-                    <div class="stat-item">
-                        <span>Under Review:</span>
-                        <span class="stat-value" style="color:#856404;" id="statPending">0</span>
+                <div class="panel-content">
+                    <div class="sub-tabs">
+                        <button class="sub-tab active" onclick="switchMyInvType('product')">Products</button>
+                        <button class="sub-tab" onclick="switchMyInvType('sample')">Samples</button>
+                        <button class="sub-tab" onclick="switchMyInvType('oligo')">Oligos</button>
                     </div>
-                    <div class="stat-item">
-                        <span>Approved:</span>
-                        <span class="stat-value" style="color:#28a745;" id="statApproved">0</span>
+                    <div id="myInvTable">
+                        <div class="loading"><div class="spinner"></div>Loading...</div>
                     </div>
                 </div>
-                <div id="fileTree" class="file-tree" style="display:none;"></div>
             </div>
+
+            <!-- Add Offline Item -->
+            <div class="panel">
+                <div class="panel-header">
+                    <h2><span class="icon">&#10133;</span> Add Offline Item</h2>
+                </div>
+                <div class="panel-content">
+                    <div class="type-selector">
+                        <button class="active" onclick="switchOfflineType('product')">Product</button>
+                        <button onclick="switchOfflineType('sample')">Sample</button>
+                        <button disabled title="Coming soon">Oligo</button>
+                    </div>
+
+                    <!-- Product Form -->
+                    <div id="offProductForm" class="off-form">
+                        <div class="off-row">
+                            <div class="off-field"><label class="off-label">Product Name *</label><input class="off-input" id="offProdName"></div>
+                            <div class="off-field"><label class="off-label">Catalog / Item ID *</label><input class="off-input" id="offProdCatalog"></div>
+                        </div>
+                        <div class="off-row">
+                            <div class="off-field"><label class="off-label">Vendor / Company</label><input class="off-input" id="offProdVendor"></div>
+                            <div class="off-field"><label class="off-label">Product Link</label><input class="off-input" id="offProdLink" placeholder="https://..."></div>
+                        </div>
+                        <div class="off-row">
+                            <div class="off-field" style="max-width:120px"><label class="off-label">Quantity *</label><input class="off-input" id="offProdQty" type="number" min="0" step="0.01" value="1"></div>
+                            <div class="off-field" style="max-width:140px">
+                                <label class="off-label">Unit *</label>
+                                <select class="off-input" id="offProdUnit">
+                                    <option>each</option><option>bottle</option><option>box</option><option>pack</option>
+                                    <option>mL</option><option>uL</option><option>mg</option><option>g</option>
+                                    <option>vial</option><option>tube</option><option>slides</option><option>other</option>
+                                </select>
+                            </div>
+                            <div class="off-field"><label class="off-label">Storage Location *</label><input class="off-input" id="offProdLocation" placeholder="e.g. Shelf A3"></div>
+                            <div class="off-field" style="max-width:140px">
+                                <label class="off-label">Temperature *</label>
+                                <select class="off-input" id="offProdTemp">
+                                    <option>RT</option><option>4C</option><option>-20C</option><option>-80C</option><option>LN2</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="off-row">
+                            <div class="off-field"><label class="off-label">Lot / Batch Number</label><input class="off-input" id="offProdLot"></div>
+                            <div class="off-field" style="max-width:160px"><label class="off-label">Expiry Date</label><input class="off-input" id="offProdExpiry" type="date"></div>
+                            <div class="off-field" style="max-width:160px"><label class="off-label">Opened Date</label><input class="off-input" id="offProdOpened" type="date"></div>
+                        </div>
+                        <div class="off-row">
+                            <div class="off-field"><label class="off-label">Notes</label><textarea class="off-input" id="offProdNotes" rows="2"></textarea></div>
+                        </div>
+                        <button class="btn-sm btn-primary" onclick="submitOfflineProduct()" style="padding:8px 20px;font-size:13px;">Submit Product</button>
+                    </div>
+
+                    <!-- Sample Form -->
+                    <div id="offSampleForm" class="off-form" style="display:none;">
+                        <div class="off-row">
+                            <div class="off-field"><label class="off-label">Sample Name *</label><input class="off-input" id="offSampName"></div>
+                            <div class="off-field"><label class="off-label">Sample ID *</label><input class="off-input" id="offSampId"></div>
+                        </div>
+                        <div class="off-row">
+                            <div class="off-field">
+                                <label class="off-label">Sample Origin *</label>
+                                <select class="off-input" id="offSampOrigin">
+                                    <option value="">-- Select --</option>
+                                    <option>Internal</option><option>External Collaboration</option><option>Commercial</option><option>Patient-derived</option><option>Other</option>
+                                </select>
+                            </div>
+                            <div class="off-field">
+                                <label class="off-label">Provider / Collaborator *</label>
+                                <select class="off-input" id="offSampProvider" onchange="toggleProviderDetail()">
+                                    <option value="">-- Select --</option>
+                                    <option>LiU</option><option>UNAV</option><option>External</option>
+                                </select>
+                            </div>
+                            <div class="off-field" id="providerDetailField" style="display:none;">
+                                <label class="off-label">Provider Detail</label>
+                                <input class="off-input" id="offSampProviderDetail" placeholder="Institution or person name">
+                            </div>
+                        </div>
+                        <div class="off-row">
+                            <div class="off-field" style="max-width:120px"><label class="off-label">Quantity *</label><input class="off-input" id="offSampQty" type="number" min="0" step="0.01" value="1"></div>
+                            <div class="off-field" style="max-width:140px">
+                                <label class="off-label">Unit *</label>
+                                <select class="off-input" id="offSampUnit">
+                                    <option>each</option><option>vial</option><option>tube</option><option>mL</option>
+                                    <option>uL</option><option>mg</option><option>g</option><option>slides</option><option>other</option>
+                                </select>
+                            </div>
+                            <div class="off-field"><label class="off-label">Storage Location *</label><input class="off-input" id="offSampLocation" placeholder="e.g. Freezer B2"></div>
+                            <div class="off-field" style="max-width:140px">
+                                <label class="off-label">Temperature *</label>
+                                <select class="off-input" id="offSampTemp">
+                                    <option>RT</option><option>4C</option><option>-20C</option><option>-80C</option><option>LN2</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="off-row">
+                            <div class="off-field">
+                                <label class="off-label">Sample Status</label>
+                                <select class="off-input" id="offSampStatus">
+                                    <option value="">-- Select --</option>
+                                    <option>Available</option><option>In use</option><option>Depleted</option><option>Contaminated</option>
+                                </select>
+                            </div>
+                            <div class="off-field"><label class="off-label">Notes</label><textarea class="off-input" id="offSampNotes" rows="2"></textarea></div>
+                        </div>
+                        <button class="btn-sm btn-primary" onclick="submitOfflineSample()" style="padding:8px 20px;font-size:13px;">Submit Sample</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Supervised Researcher Inventory (read-only) -->
+            <div class="panel">
+                <div class="panel-header">
+                    <h2><span class="icon">&#128269;</span> Supervised Researcher Inventory</h2>
+                    <select id="supInvResearcherSelect" class="sup-researcher-select" onchange="selectSupInvResearcher()">
+                        <option value="">-- Select a researcher --</option>
+                    </select>
+                </div>
+                <div class="panel-content">
+                    <div id="supInvContent">
+                        <div class="message info show">Select a researcher above to view their inventory (read-only).</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Group Inventory (read-only) -->
+            <div class="panel">
+                <div class="panel-header">
+                    <h2><span class="icon">&#127760;</span> Group Inventory</h2>
+                </div>
+                <div class="panel-content">
+                    <div class="sub-tabs">
+                        <button class="sub-tab active" onclick="switchGrpInvType('product')">Products</button>
+                        <button class="sub-tab" onclick="switchGrpInvType('sample')">Samples</button>
+                        <button class="sub-tab" onclick="switchGrpInvType('oligo')">Oligos</button>
+                    </div>
+                    <div id="grpInvTable">
+                        <div class="loading"><div class="spinner"></div>Loading...</div>
+                    </div>
+                </div>
+            </div>
+
         </div>
     </div>
 
     <script>
         let currentUser = null;
         let selectedResearcherId = null;
+        let currentMyInvType = 'product';
+        let currentGrpInvType = 'product';
+        let currentSupInvType = 'product';
+        let selectedSupResearcherId = null;
+        let supResearchers = [];
 
         // Check authentication and supervisor role
         async function checkAuth() {
@@ -283,7 +627,6 @@
                 // Check if user is supervisor
                 const role = (currentUser.role || "").toLowerCase();
                 if (role !== "supervisor") {
-                    // Redirect to appropriate portal
                     if (role === 'pi') window.location.href = 'pi-dashboard.html';
                     else window.location.href = 'upload.html';
                     return;
@@ -297,6 +640,23 @@
         }
 
         checkAuth();
+
+        // ==================== SECTION NAVIGATION ====================
+
+        function switchSection(section) {
+            document.querySelectorAll('.section-nav button').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.section-content').forEach(s => s.classList.remove('active'));
+            event.currentTarget.classList.add('active');
+            document.getElementById('section-' + section).classList.add('active');
+
+            if (section === 'inventory') {
+                loadMyInventoryV2(currentMyInvType);
+                loadGroupInventoryV2(currentGrpInvType);
+                loadSupInvResearcherList();
+            }
+        }
+
+        // ==================== FILES & SUPERVISION ====================
 
         // Load assigned researchers
         async function loadResearchers() {
@@ -319,6 +679,8 @@
                     return;
                 }
 
+                supResearchers = data.researchers;
+
                 list.innerHTML = data.researchers.map(r => `
                     <li class="researcher-item ${selectedResearcherId === r.researcher_id ? 'active' : ''}"
                         onclick="selectResearcher('${r.researcher_id}', '${escapeHtml(r.name)}', '${escapeHtml(r.institution_email)}')">
@@ -338,7 +700,6 @@
         async function selectResearcher(researcherId, name, email) {
             selectedResearcherId = researcherId;
 
-            // Update UI to show selection
             document.querySelectorAll('.researcher-item').forEach(item => item.classList.remove('active'));
             event.currentTarget.classList.add('active');
 
@@ -361,7 +722,6 @@
                 }
                 const data = await response.json();
 
-                // Update stats
                 document.getElementById('statPending').textContent = data.pendingCount || 0;
                 document.getElementById('statApproved').textContent = data.approvedCount || 0;
                 statsBar.style.display = 'flex';
@@ -382,7 +742,7 @@
             }
         }
 
-        // Render file tree (read-only - only View and Download buttons)
+        // Render file tree (read-only)
         function renderTree(node, level = 0) {
             if (node.type === 'file') {
                 const statusClass = 'status-' + (node.status || 'PENDING');
@@ -406,7 +766,6 @@
                 `;
             }
 
-            // Folder rendering
             const isSubmitted = node.name.includes('Submitted');
             const isApproved = node.name.includes('Approved');
             const folderClass = isSubmitted ? 'folder-submitted' : (isApproved ? 'folder-approved' : '');
@@ -429,6 +788,389 @@
                 children.classList.toggle('collapsed');
             }
         }
+
+        // ==================== MY INVENTORY ====================
+
+        function switchMyInvType(type) {
+            currentMyInvType = type;
+            document.querySelectorAll('#section-inventory .panel.accent .sub-tab').forEach(b => b.classList.remove('active'));
+            event.currentTarget.classList.add('active');
+            loadMyInventoryV2(type);
+        }
+
+        async function loadMyInventoryV2(itemType) {
+            const container = document.getElementById('myInvTable');
+            container.innerHTML = '<div class="loading"><div class="spinner"></div>Loading...</div>';
+
+            if (itemType === 'oligo') {
+                container.innerHTML = '<div class="empty-state"><div class="icon">&#129516;</div><p>Oligo inventory coming soon</p></div>';
+                return;
+            }
+
+            try {
+                const res = await fetch(`/api/di/inventory-v2/my-items?item_type=${itemType}`, { credentials: 'include' });
+                if (!res.ok) throw new Error('Failed to load');
+                const data = await res.json();
+
+                if (!data.items || data.items.length === 0) {
+                    container.innerHTML = `<div class="empty-state"><div class="icon">&#128230;</div><p>No ${itemType}s in your inventory</p></div>`;
+                    return;
+                }
+
+                if (itemType === 'product') {
+                    container.innerHTML = `<table class="inv-table"><thead><tr>
+                        <th>Name</th><th>Vendor</th><th>ID</th><th>Qty</th><th>Unit</th><th>Storage</th><th>Location</th><th>Status</th><th>Actions</th>
+                    </tr></thead><tbody>${data.items.map(it => `<tr id="inv-row-${it.id}">
+                        <td>${escapeHtml(it.item_name)}</td>
+                        <td>${escapeHtml(it.vendor_company||'')}</td>
+                        <td>${escapeHtml(it.item_identifier)}</td>
+                        <td>${it.quantity}</td>
+                        <td>${escapeHtml(it.quantity_unit)}</td>
+                        <td>${it.storage_temperature}</td>
+                        <td>${escapeHtml(it.storage_location)}</td>
+                        <td><span class="status-badge ${it.status}">${it.status}</span></td>
+                        <td class="inv-actions">
+                            <button class="btn-sm btn-primary" onclick="editInvItem('${it.id}')">Edit</button>
+                            ${it.status !== 'Rejected' ? `<button class="btn-sm btn-warning" onclick="markInvFinished('${it.id}')">Finished</button>` : ''}
+                        </td>
+                    </tr>`).join('')}</tbody></table>`;
+                } else {
+                    container.innerHTML = `<table class="inv-table"><thead><tr>
+                        <th>Name</th><th>ID</th><th>Origin</th><th>Provider</th><th>Qty</th><th>Unit</th><th>Storage</th><th>Location</th><th>Status</th><th>Actions</th>
+                    </tr></thead><tbody>${data.items.map(it => `<tr id="inv-row-${it.id}">
+                        <td>${escapeHtml(it.item_name)}</td>
+                        <td>${escapeHtml(it.item_identifier)}</td>
+                        <td>${escapeHtml(it.sample_origin||'')}</td>
+                        <td>${escapeHtml(it.provider_or_collaborator||'')}</td>
+                        <td>${it.quantity}</td>
+                        <td>${escapeHtml(it.quantity_unit)}</td>
+                        <td>${it.storage_temperature}</td>
+                        <td>${escapeHtml(it.storage_location)}</td>
+                        <td><span class="status-badge ${it.status}">${it.status}</span></td>
+                        <td class="inv-actions">
+                            <button class="btn-sm btn-primary" onclick="editInvItem('${it.id}')">Edit</button>
+                            ${it.status !== 'Rejected' ? `<button class="btn-sm btn-warning" onclick="markInvFinished('${it.id}')">Finished</button>` : ''}
+                        </td>
+                    </tr>`).join('')}</tbody></table>`;
+                }
+            } catch (err) {
+                container.innerHTML = `<p style="color:#dc3545;text-align:center;">${err.message}</p>`;
+            }
+        }
+
+        async function editInvItem(id) {
+            const newQty = prompt('New quantity:');
+            if (newQty === null) return;
+            const qty = parseFloat(newQty);
+            if (isNaN(qty) || qty < 0) { alert('Invalid quantity'); return; }
+
+            try {
+                const res = await fetch(`/api/di/inventory-v2/${id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ quantity: qty })
+                });
+                if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Failed'); }
+                loadMyInventoryV2(currentMyInvType);
+            } catch (err) {
+                alert('Error: ' + err.message);
+            }
+        }
+
+        async function markInvFinished(id) {
+            if (!confirm('Mark this item as finished?')) return;
+            try {
+                const res = await fetch(`/api/di/inventory-v2/${id}/mark-finished`, {
+                    method: 'PUT',
+                    credentials: 'include'
+                });
+                if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Failed'); }
+                loadMyInventoryV2(currentMyInvType);
+            } catch (err) {
+                alert('Error: ' + err.message);
+            }
+        }
+
+        // ==================== ADD OFFLINE ITEM ====================
+
+        function switchOfflineType(type) {
+            document.querySelectorAll('.type-selector button').forEach(b => b.classList.remove('active'));
+            event.currentTarget.classList.add('active');
+            document.getElementById('offProductForm').style.display = type === 'product' ? 'block' : 'none';
+            document.getElementById('offSampleForm').style.display = type === 'sample' ? 'block' : 'none';
+        }
+
+        function toggleProviderDetail() {
+            const val = document.getElementById('offSampProvider').value;
+            document.getElementById('providerDetailField').style.display = val === 'External' ? 'block' : 'none';
+        }
+
+        async function submitOfflineProduct() {
+            const name = document.getElementById('offProdName').value.trim();
+            const identifier = document.getElementById('offProdCatalog').value.trim();
+            const location = document.getElementById('offProdLocation').value.trim();
+            if (!name || !identifier || !location) { alert('Please fill required fields (Name, Catalog ID, Storage Location)'); return; }
+
+            const body = {
+                item_type: 'product',
+                item_name: name,
+                item_identifier: identifier,
+                vendor_company: document.getElementById('offProdVendor').value.trim() || null,
+                product_link: document.getElementById('offProdLink').value.trim() || null,
+                quantity: parseFloat(document.getElementById('offProdQty').value) || 1,
+                quantity_unit: document.getElementById('offProdUnit').value,
+                storage_location: location,
+                storage_temperature: document.getElementById('offProdTemp').value,
+                lot_or_batch_number: document.getElementById('offProdLot').value.trim() || null,
+                expiry_date: document.getElementById('offProdExpiry').value || null,
+                opened_date: document.getElementById('offProdOpened').value || null,
+                notes: document.getElementById('offProdNotes').value.trim() || null
+            };
+
+            try {
+                const res = await fetch('/api/di/inventory-v2/offline-entry', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify(body)
+                });
+                if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Failed'); }
+                alert('Product submitted for PI review');
+                // Clear form
+                ['offProdName','offProdCatalog','offProdVendor','offProdLink','offProdLot','offProdNotes'].forEach(id => document.getElementById(id).value = '');
+                document.getElementById('offProdQty').value = '1';
+                document.getElementById('offProdExpiry').value = '';
+                document.getElementById('offProdOpened').value = '';
+                loadMyInventoryV2(currentMyInvType);
+            } catch (err) {
+                alert('Error: ' + err.message);
+            }
+        }
+
+        async function submitOfflineSample() {
+            const name = document.getElementById('offSampName').value.trim();
+            const identifier = document.getElementById('offSampId').value.trim();
+            const origin = document.getElementById('offSampOrigin').value;
+            const provider = document.getElementById('offSampProvider').value;
+            const location = document.getElementById('offSampLocation').value.trim();
+            if (!name || !identifier || !origin || !provider || !location) { alert('Please fill required fields'); return; }
+
+            const body = {
+                item_type: 'sample',
+                item_name: name,
+                item_identifier: identifier,
+                sample_origin: origin,
+                provider_or_collaborator: provider,
+                provider_detail: document.getElementById('offSampProviderDetail').value.trim() || null,
+                quantity: parseFloat(document.getElementById('offSampQty').value) || 1,
+                quantity_unit: document.getElementById('offSampUnit').value,
+                storage_location: location,
+                storage_temperature: document.getElementById('offSampTemp').value,
+                sample_status: document.getElementById('offSampStatus').value || null,
+                notes: document.getElementById('offSampNotes').value.trim() || null
+            };
+
+            try {
+                const res = await fetch('/api/di/inventory-v2/offline-entry', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify(body)
+                });
+                if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Failed'); }
+                alert('Sample submitted for PI review');
+                ['offSampName','offSampId','offSampProviderDetail','offSampNotes'].forEach(id => document.getElementById(id).value = '');
+                document.getElementById('offSampQty').value = '1';
+                document.getElementById('offSampOrigin').value = '';
+                document.getElementById('offSampProvider').value = '';
+                document.getElementById('offSampStatus').value = '';
+                document.getElementById('providerDetailField').style.display = 'none';
+                loadMyInventoryV2(currentMyInvType);
+            } catch (err) {
+                alert('Error: ' + err.message);
+            }
+        }
+
+        // ==================== SUPERVISED RESEARCHER INVENTORY ====================
+
+        function loadSupInvResearcherList() {
+            const select = document.getElementById('supInvResearcherSelect');
+            // Use the researchers already loaded from loadResearchers()
+            if (supResearchers.length === 0) {
+                // Try loading if not yet loaded
+                fetch('/api/di/supervision/researchers', { credentials: 'include' })
+                    .then(r => r.json())
+                    .then(data => {
+                        supResearchers = data.researchers || [];
+                        populateSupSelect();
+                    })
+                    .catch(() => {});
+            } else {
+                populateSupSelect();
+            }
+        }
+
+        function populateSupSelect() {
+            const select = document.getElementById('supInvResearcherSelect');
+            const opts = supResearchers.map(r =>
+                `<option value="${r.researcher_id}">${escapeHtml(r.name)} (${escapeHtml(r.researcher_id)})</option>`
+            ).join('');
+            select.innerHTML = '<option value="">-- Select a researcher --</option>' + opts;
+            if (selectedSupResearcherId) {
+                select.value = selectedSupResearcherId;
+            }
+        }
+
+        function selectSupInvResearcher() {
+            const select = document.getElementById('supInvResearcherSelect');
+            selectedSupResearcherId = select.value;
+            if (!selectedSupResearcherId) {
+                document.getElementById('supInvContent').innerHTML = '<div class="message info show">Select a researcher above to view their inventory (read-only).</div>';
+                return;
+            }
+            currentSupInvType = 'product';
+            renderSupInvPanel();
+        }
+
+        function renderSupInvPanel() {
+            const container = document.getElementById('supInvContent');
+            container.innerHTML = `
+                <div class="sub-tabs">
+                    <button class="sub-tab ${currentSupInvType==='product'?'active':''}" onclick="switchSupInvType('product')">Products</button>
+                    <button class="sub-tab ${currentSupInvType==='sample'?'active':''}" onclick="switchSupInvType('sample')">Samples</button>
+                    <button class="sub-tab ${currentSupInvType==='oligo'?'active':''}" onclick="switchSupInvType('oligo')">Oligos</button>
+                </div>
+                <div id="supInvTableBody"><div class="loading"><div class="spinner"></div>Loading...</div></div>
+            `;
+            loadSupInvItems();
+        }
+
+        function switchSupInvType(type) {
+            currentSupInvType = type;
+            document.querySelectorAll('#supInvContent .sub-tab').forEach(b => b.classList.remove('active'));
+            event.currentTarget.classList.add('active');
+            loadSupInvItems();
+        }
+
+        async function loadSupInvItems() {
+            const container = document.getElementById('supInvTableBody');
+            if (!container) return;
+            container.innerHTML = '<div class="loading"><div class="spinner"></div>Loading...</div>';
+
+            if (currentSupInvType === 'oligo') {
+                container.innerHTML = '<div class="empty-state"><div class="icon">&#129516;</div><p>Oligo inventory coming soon</p></div>';
+                return;
+            }
+
+            try {
+                const res = await fetch(`/api/di/inventory-v2/supervision/${selectedSupResearcherId}/inventory?item_type=${currentSupInvType}`, { credentials: 'include' });
+                if (!res.ok) throw new Error('Failed to load');
+                const data = await res.json();
+
+                if (!data.items || data.items.length === 0) {
+                    container.innerHTML = `<div class="empty-state"><div class="icon">&#128230;</div><p>No ${currentSupInvType}s found</p></div>`;
+                    return;
+                }
+
+                if (currentSupInvType === 'product') {
+                    container.innerHTML = `<table class="inv-table"><thead><tr>
+                        <th>Name</th><th>Vendor</th><th>ID</th><th>Qty</th><th>Unit</th><th>Storage</th><th>Location</th><th>Status</th><th>Visibility</th>
+                    </tr></thead><tbody>${data.items.map(it => `<tr>
+                        <td>${escapeHtml(it.item_name)}</td>
+                        <td>${escapeHtml(it.vendor_company||'')}</td>
+                        <td>${escapeHtml(it.item_identifier)}</td>
+                        <td>${it.quantity}</td>
+                        <td>${escapeHtml(it.quantity_unit)}</td>
+                        <td>${it.storage_temperature}</td>
+                        <td>${escapeHtml(it.storage_location)}</td>
+                        <td><span class="status-badge ${it.status}">${it.status}</span></td>
+                        <td>${it.visibility_scope}</td>
+                    </tr>`).join('')}</tbody></table>`;
+                } else {
+                    container.innerHTML = `<table class="inv-table"><thead><tr>
+                        <th>Name</th><th>ID</th><th>Origin</th><th>Provider</th><th>Qty</th><th>Unit</th><th>Storage</th><th>Location</th><th>Status</th><th>Visibility</th>
+                    </tr></thead><tbody>${data.items.map(it => `<tr>
+                        <td>${escapeHtml(it.item_name)}</td>
+                        <td>${escapeHtml(it.item_identifier)}</td>
+                        <td>${escapeHtml(it.sample_origin||'')}</td>
+                        <td>${escapeHtml(it.provider_or_collaborator||'')}</td>
+                        <td>${it.quantity}</td>
+                        <td>${escapeHtml(it.quantity_unit)}</td>
+                        <td>${it.storage_temperature}</td>
+                        <td>${escapeHtml(it.storage_location)}</td>
+                        <td><span class="status-badge ${it.status}">${it.status}</span></td>
+                        <td>${it.visibility_scope}</td>
+                    </tr>`).join('')}</tbody></table>`;
+                }
+            } catch (err) {
+                container.innerHTML = `<p style="color:#dc3545;text-align:center;">${err.message}</p>`;
+            }
+        }
+
+        // ==================== GROUP INVENTORY ====================
+
+        function switchGrpInvType(type) {
+            currentGrpInvType = type;
+            const panel = document.querySelector('#section-inventory .panel:last-child');
+            panel.querySelectorAll('.sub-tab').forEach(b => b.classList.remove('active'));
+            event.currentTarget.classList.add('active');
+            loadGroupInventoryV2(type);
+        }
+
+        async function loadGroupInventoryV2(itemType) {
+            const container = document.getElementById('grpInvTable');
+            container.innerHTML = '<div class="loading"><div class="spinner"></div>Loading...</div>';
+
+            if (itemType === 'oligo') {
+                container.innerHTML = '<div class="empty-state"><div class="icon">&#129516;</div><p>Oligo inventory coming soon</p></div>';
+                return;
+            }
+
+            try {
+                const res = await fetch(`/api/di/inventory-v2/group-items?item_type=${itemType}`, { credentials: 'include' });
+                if (!res.ok) throw new Error('Failed to load');
+                const data = await res.json();
+
+                if (!data.items || data.items.length === 0) {
+                    container.innerHTML = `<div class="empty-state"><div class="icon">&#127760;</div><p>No ${itemType}s in group inventory</p></div>`;
+                    return;
+                }
+
+                if (itemType === 'product') {
+                    container.innerHTML = `<table class="inv-table"><thead><tr>
+                        <th>Name</th><th>Vendor</th><th>ID</th><th>Qty</th><th>Unit</th><th>Storage</th><th>Location</th><th>Owner</th>
+                    </tr></thead><tbody>${data.items.map(it => `<tr>
+                        <td>${escapeHtml(it.item_name)}</td>
+                        <td>${escapeHtml(it.vendor_company||'')}</td>
+                        <td>${escapeHtml(it.item_identifier)}</td>
+                        <td>${it.quantity}</td>
+                        <td>${escapeHtml(it.quantity_unit)}</td>
+                        <td>${it.storage_temperature}</td>
+                        <td>${escapeHtml(it.storage_location)}</td>
+                        <td>${escapeHtml(it.created_by)}</td>
+                    </tr>`).join('')}</tbody></table>`;
+                } else {
+                    container.innerHTML = `<table class="inv-table"><thead><tr>
+                        <th>Name</th><th>ID</th><th>Origin</th><th>Provider</th><th>Qty</th><th>Unit</th><th>Storage</th><th>Location</th><th>Owner</th>
+                    </tr></thead><tbody>${data.items.map(it => `<tr>
+                        <td>${escapeHtml(it.item_name)}</td>
+                        <td>${escapeHtml(it.item_identifier)}</td>
+                        <td>${escapeHtml(it.sample_origin||'')}</td>
+                        <td>${escapeHtml(it.provider_or_collaborator||'')}</td>
+                        <td>${it.quantity}</td>
+                        <td>${escapeHtml(it.quantity_unit)}</td>
+                        <td>${it.storage_temperature}</td>
+                        <td>${escapeHtml(it.storage_location)}</td>
+                        <td>${escapeHtml(it.created_by)}</td>
+                    </tr>`).join('')}</tbody></table>`;
+                }
+            } catch (err) {
+                container.innerHTML = `<p style="color:#dc3545;text-align:center;">${err.message}</p>`;
+            }
+        }
+
+        // ==================== UTILITIES ====================
 
         function escapeHtml(text) {
             const div = document.createElement('div');
