@@ -198,7 +198,9 @@
                     sessionStorage.removeItem('di_name');
                     sessionStorage.removeItem('di_affiliation');
                     setTimeout(() => {
-                        window.location.href = data.redirect || 'upload.html';
+                        const role = sessionStorage.getItem('di_role') || 'researcher';
+                        const fallback = (role === 'supervisor') ? 'supervisor-dashboard.html' : 'upload.html';
+                        window.location.href = data.redirect || fallback;
                     }, 1000);
                 }
             } catch (err) {
