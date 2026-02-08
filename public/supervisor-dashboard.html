@@ -364,16 +364,6 @@
             cursor: not-allowed;
         }
 
-        /* Researcher selector for supervised inventory */
-        .sup-researcher-select {
-            padding: 7px 10px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 13px;
-            width: 100%;
-            max-width: 350px;
-        }
-
         /* Responsive */
         @media (max-width: 900px) {
             .main-container { grid-template-columns: 1fr; }
@@ -392,51 +382,92 @@
 
     <!-- Section Navigation -->
     <div class="section-nav">
-        <button class="active" onclick="switchSection('files')">Files &amp; Supervision</button>
+        <button class="active" onclick="switchSection('files')">Files &amp; Documents</button>
+        <button onclick="switchSection('supervision')">Supervision</button>
         <button onclick="switchSection('inventory')">Purchases &amp; Inventory</button>
     </div>
 
-    <!-- ==================== SECTION: FILES & SUPERVISION ==================== -->
+    <!-- ==================== SECTION: FILES & DOCUMENTS ==================== -->
     <div id="section-files" class="section-content active">
+        <div class="main-container full-width">
+            <div class="panel">
+                <div class="panel-header">
+                    <h2><span class="icon">&#128193;</span> My Files &amp; Documents</h2>
+                </div>
+                <div class="panel-content">
+                    <div class="empty-state">
+                        <div class="icon">&#128193;</div>
+                        <p>Your personal files and group documents</p>
+                        <p style="font-size:12px;margin-top:10px;color:#999;">This section is for your own files and shared documents</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== SECTION: SUPERVISION ==================== -->
+    <div id="section-supervision" class="section-content">
         <div class="main-container">
             <!-- Left Panel: Assigned Researchers -->
             <div class="panel">
                 <div class="panel-header">
                     <h2><span class="icon">&#128101;</span> My Researchers</h2>
-                    <button onclick="loadResearchers()" style="padding:5px 10px;font-size:12px;cursor:pointer;border:1px solid #ddd;border-radius:4px;background:white;">Refresh</button>
+                    <button onclick="loadSupervisionResearchers()" style="padding:5px 10px;font-size:12px;cursor:pointer;border:1px solid #ddd;border-radius:4px;background:white;">Refresh</button>
                 </div>
                 <div class="panel-content" style="padding:0;">
-                    <ul id="researcherList" class="researcher-list">
+                    <ul id="supervisionResearcherList" class="researcher-list">
                         <li class="loading"><div class="spinner"></div>Loading...</li>
                     </ul>
                 </div>
             </div>
 
-            <!-- Right Panel: Files View -->
+            <!-- Right Panel: Supervision Views -->
             <div class="panel">
                 <div class="panel-header">
-                    <h2><span class="icon">&#128193;</span> Supervision - Files</h2>
+                    <h2><span class="icon">&#128269;</span> Supervision</h2>
                 </div>
                 <div class="panel-content">
-                    <div class="message info show" id="selectPrompt">
-                        Select a researcher from the list to view their files.<br>
-                        <small>You can only view and download files. No editing or deletion is permitted.</small>
+                    <div class="message info show" id="supSelectPrompt">
+                        Select a researcher from the list to view their files and inventory.<br>
+                        <small>All views are read-only for supervision purposes.</small>
                     </div>
-                    <div id="selectedResearcherInfo" class="selected-researcher-info" style="display:none;">
-                        <strong id="selectedResearcherName"></strong>
-                        <span id="selectedResearcherEmail"></span>
+                    <div id="supSelectedResearcherInfo" class="selected-researcher-info" style="display:none;">
+                        <strong id="supSelectedResearcherName"></strong>
+                        <span id="supSelectedResearcherEmail"></span>
                     </div>
-                    <div id="statsBar" class="stats-bar" style="display:none;">
-                        <div class="stat-item">
-                            <span>Under Review:</span>
-                            <span class="stat-value" style="color:#856404;" id="statPending">0</span>
+
+                    <!-- Sub-tabs for Files / My Inventory -->
+                    <div id="supSubTabs" class="sub-tabs" style="display:none;">
+                        <button class="sub-tab active" onclick="switchSupervisionView('files')">Files</button>
+                        <button class="sub-tab" onclick="switchSupervisionView('inventory')">My Inventory</button>
+                    </div>
+
+                    <!-- Files View -->
+                    <div id="supFilesView" style="display:none;">
+                        <div id="supStatsBar" class="stats-bar" style="display:none;">
+                            <div class="stat-item">
+                                <span>Under Review:</span>
+                                <span class="stat-value" style="color:#856404;" id="supStatPending">0</span>
+                            </div>
+                            <div class="stat-item">
+                                <span>Approved:</span>
+                                <span class="stat-value" style="color:#28a745;" id="supStatApproved">0</span>
+                            </div>
                         </div>
-                        <div class="stat-item">
-                            <span>Approved:</span>
-                            <span class="stat-value" style="color:#28a745;" id="statApproved">0</span>
+                        <div id="supFileTree" class="file-tree"></div>
+                    </div>
+
+                    <!-- My Inventory View -->
+                    <div id="supInventoryView" style="display:none;">
+                        <div class="sub-tabs">
+                            <button class="sub-tab active" onclick="switchSupInvType('product')">Products</button>
+                            <button class="sub-tab" onclick="switchSupInvType('sample')">Samples</button>
+                            <button class="sub-tab" onclick="switchSupInvType('oligo')">Oligos</button>
+                        </div>
+                        <div id="supInvTableBody">
+                            <div class="loading"><div class="spinner"></div>Loading...</div>
                         </div>
                     </div>
-                    <div id="fileTree" class="file-tree" style="display:none;"></div>
                 </div>
             </div>
         </div>
@@ -572,21 +603,6 @@
                 </div>
             </div>
 
-            <!-- Supervised Researcher Inventory (read-only) -->
-            <div class="panel">
-                <div class="panel-header">
-                    <h2><span class="icon">&#128269;</span> Supervised Researcher Inventory</h2>
-                    <select id="supInvResearcherSelect" class="sup-researcher-select" onchange="selectSupInvResearcher()">
-                        <option value="">-- Select a researcher --</option>
-                    </select>
-                </div>
-                <div class="panel-content">
-                    <div id="supInvContent">
-                        <div class="message info show">Select a researcher above to view their inventory (read-only).</div>
-                    </div>
-                </div>
-            </div>
-
             <!-- Group Inventory (read-only) -->
             <div class="panel">
                 <div class="panel-header">
@@ -609,12 +625,16 @@
 
     <script>
         let currentUser = null;
-        let selectedResearcherId = null;
         let currentMyInvType = 'product';
         let currentGrpInvType = 'product';
         let currentSupInvType = 'product';
-        let selectedSupResearcherId = null;
         let supResearchers = [];
+
+        // Supervision-specific state
+        let selectedSupResearcherId = null;
+        let selectedSupResearcherName = '';
+        let selectedSupResearcherEmail = '';
+        let currentSupervisionView = 'files'; // 'files' or 'inventory'
 
         // Check authentication and supervisor role
         async function checkAuth() {
@@ -633,7 +653,6 @@
                 }
 
                 document.getElementById('userName').textContent = currentUser.researcher_id;
-                loadResearchers();
             } catch (err) {
                 window.location.href = 'access.html';
             }
@@ -652,15 +671,16 @@
             if (section === 'inventory') {
                 loadMyInventoryV2(currentMyInvType);
                 loadGroupInventoryV2(currentGrpInvType);
-                loadSupInvResearcherList();
+            } else if (section === 'supervision') {
+                loadSupervisionResearchers();
             }
         }
 
-        // ==================== FILES & SUPERVISION ====================
+        // ==================== SUPERVISION SECTION ====================
 
-        // Load assigned researchers
-        async function loadResearchers() {
-            const list = document.getElementById('researcherList');
+        // Load assigned researchers for supervision
+        async function loadSupervisionResearchers() {
+            const list = document.getElementById('supervisionResearcherList');
             list.innerHTML = '<li class="loading"><div class="spinner"></div>Loading...</li>';
 
             try {
@@ -682,8 +702,8 @@
                 supResearchers = data.researchers;
 
                 list.innerHTML = data.researchers.map(r => `
-                    <li class="researcher-item ${selectedResearcherId === r.researcher_id ? 'active' : ''}"
-                        onclick="selectResearcher('${r.researcher_id}', '${escapeHtml(r.name)}', '${escapeHtml(r.institution_email)}')">
+                    <li class="researcher-item ${selectedSupResearcherId === r.researcher_id ? 'active' : ''}"
+                        onclick="selectSupervisionResearcher('${r.researcher_id}', '${escapeHtml(r.name)}', '${escapeHtml(r.institution_email)}')">
                         <div>
                             <div class="researcher-name">${escapeHtml(r.name)}</div>
                             <div class="researcher-email">${escapeHtml(r.institution_email)}</div>
@@ -696,34 +716,66 @@
             }
         }
 
-        // Select a researcher and load their files
-        async function selectResearcher(researcherId, name, email) {
-            selectedResearcherId = researcherId;
+        // Select a researcher in supervision section
+        async function selectSupervisionResearcher(researcherId, name, email) {
+            selectedSupResearcherId = researcherId;
+            selectedSupResearcherName = name;
+            selectedSupResearcherEmail = email;
 
-            document.querySelectorAll('.researcher-item').forEach(item => item.classList.remove('active'));
+            document.querySelectorAll('#supervisionResearcherList .researcher-item').forEach(item => item.classList.remove('active'));
             event.currentTarget.classList.add('active');
 
-            document.getElementById('selectPrompt').style.display = 'none';
-            document.getElementById('selectedResearcherInfo').style.display = 'block';
-            document.getElementById('selectedResearcherName').textContent = name;
-            document.getElementById('selectedResearcherEmail').textContent = email;
+            document.getElementById('supSelectPrompt').style.display = 'none';
+            document.getElementById('supSelectedResearcherInfo').style.display = 'block';
+            document.getElementById('supSelectedResearcherName').textContent = name;
+            document.getElementById('supSelectedResearcherEmail').textContent = email;
+            document.getElementById('supSubTabs').style.display = 'flex';
 
-            const fileTree = document.getElementById('fileTree');
-            const statsBar = document.getElementById('statsBar');
-            fileTree.style.display = 'block';
+            // Default to files view
+            currentSupervisionView = 'files';
+            document.querySelectorAll('#supSubTabs .sub-tab').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('#supSubTabs .sub-tab')[0].classList.add('active');
+
+            switchSupervisionView('files');
+        }
+
+        // Switch between Files and My Inventory views in supervision
+        function switchSupervisionView(view) {
+            currentSupervisionView = view;
+
+            document.querySelectorAll('#supSubTabs .sub-tab').forEach(b => b.classList.remove('active'));
+            event.currentTarget.classList.add('active');
+
+            document.getElementById('supFilesView').style.display = view === 'files' ? 'block' : 'none';
+            document.getElementById('supInventoryView').style.display = view === 'inventory' ? 'block' : 'none';
+
+            if (view === 'files') {
+                loadSupervisionFiles();
+            } else if (view === 'inventory') {
+                currentSupInvType = 'product';
+                document.querySelectorAll('#supInventoryView .sub-tabs .sub-tab').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('#supInventoryView .sub-tabs .sub-tab')[0].classList.add('active');
+                loadSupInvItems();
+            }
+        }
+
+        // Load files for selected researcher
+        async function loadSupervisionFiles() {
+            const fileTree = document.getElementById('supFileTree');
+            const statsBar = document.getElementById('supStatsBar');
             fileTree.innerHTML = '<div class="loading"><div class="spinner"></div>Loading files...</div>';
             statsBar.style.display = 'none';
 
             try {
-                const response = await fetch(`/api/di/supervision/researchers/${researcherId}/files`, { credentials: 'include' });
+                const response = await fetch(`/api/di/supervision/researchers/${selectedSupResearcherId}/files`, { credentials: 'include' });
                 if (!response.ok) {
                     const err = await response.json();
                     throw new Error(err.error || 'Failed to load files');
                 }
                 const data = await response.json();
 
-                document.getElementById('statPending').textContent = data.pendingCount || 0;
-                document.getElementById('statApproved').textContent = data.approvedCount || 0;
+                document.getElementById('supStatPending').textContent = data.pendingCount || 0;
+                document.getElementById('supStatApproved').textContent = data.approvedCount || 0;
                 statsBar.style.display = 'flex';
 
                 if (data.totalFiles === 0) {
@@ -786,6 +838,70 @@
             const children = element.nextElementSibling;
             if (children && children.classList.contains('tree-children')) {
                 children.classList.toggle('collapsed');
+            }
+        }
+
+        // ==================== SUPERVISED RESEARCHER INVENTORY ====================
+
+        function switchSupInvType(type) {
+            currentSupInvType = type;
+            document.querySelectorAll('#supInventoryView .sub-tabs .sub-tab').forEach(b => b.classList.remove('active'));
+            event.currentTarget.classList.add('active');
+            loadSupInvItems();
+        }
+
+        async function loadSupInvItems() {
+            const container = document.getElementById('supInvTableBody');
+            if (!container) return;
+            container.innerHTML = '<div class="loading"><div class="spinner"></div>Loading...</div>';
+
+            if (currentSupInvType === 'oligo') {
+                container.innerHTML = '<div class="empty-state"><div class="icon">&#129516;</div><p>Oligo inventory coming soon</p></div>';
+                return;
+            }
+
+            try {
+                const res = await fetch(`/api/di/inventory-v2/supervision/${selectedSupResearcherId}/inventory?item_type=${currentSupInvType}`, { credentials: 'include' });
+                if (!res.ok) throw new Error('Failed to load');
+                const data = await res.json();
+
+                if (!data.items || data.items.length === 0) {
+                    container.innerHTML = `<div class="empty-state"><div class="icon">&#128230;</div><p>No ${currentSupInvType}s found</p></div>`;
+                    return;
+                }
+
+                if (currentSupInvType === 'product') {
+                    container.innerHTML = `<table class="inv-table"><thead><tr>
+                        <th>Name</th><th>Vendor</th><th>ID</th><th>Qty</th><th>Unit</th><th>Storage</th><th>Location</th><th>Status</th><th>Visibility</th>
+                    </tr></thead><tbody>${data.items.map(it => `<tr>
+                        <td>${escapeHtml(it.item_name)}</td>
+                        <td>${escapeHtml(it.vendor_company||'')}</td>
+                        <td>${escapeHtml(it.item_identifier)}</td>
+                        <td>${it.quantity}</td>
+                        <td>${escapeHtml(it.quantity_unit)}</td>
+                        <td>${it.storage_temperature}</td>
+                        <td>${escapeHtml(it.storage_location)}</td>
+                        <td><span class="status-badge ${it.status}">${it.status}</span></td>
+                        <td>${it.visibility_scope}</td>
+                    </tr>`).join('')}</tbody></table>`;
+                } else {
+                    container.innerHTML = `<table class="inv-table"><thead><tr>
+                        <th>Name</th><th>ID</th><th>Origin</th><th>Provider</th><th>Qty</th><th>Unit</th><th>Storage</th><th>Location</th><th>Status</th><th>Visibility</th>
+                    </tr></thead><tbody>${data.items.map(it => `<tr>
+                        <td>${escapeHtml(it.item_name)}</td>
+                        <td>${escapeHtml(it.item_identifier)}</td>
+                        <td>${escapeHtml(it.sample_origin||'')}</td>
+                        <td>${escapeHtml(it.provider_or_collaborator||'')}</td>
+                        <td>${it.quantity}</td>
+                        <td>${escapeHtml(it.quantity_unit)}</td>
+                        <td>${it.storage_temperature}</td>
+                        <td>${escapeHtml(it.storage_location)}</td>
+                        <td><span class="status-badge ${it.status}">${it.status}</span></td>
+                        <td>${it.visibility_scope}</td>
+                    </tr>`).join('')}</tbody></table>`;
+                }
+            } catch (err) {
+                container.innerHTML = `<p style="color:#dc3545;text-align:center;">${err.message}</p>`;
             }
         }
 
@@ -989,122 +1105,6 @@
                 loadMyInventoryV2(currentMyInvType);
             } catch (err) {
                 alert('Error: ' + err.message);
-            }
-        }
-
-        // ==================== SUPERVISED RESEARCHER INVENTORY ====================
-
-        function loadSupInvResearcherList() {
-            const select = document.getElementById('supInvResearcherSelect');
-            // Use the researchers already loaded from loadResearchers()
-            if (supResearchers.length === 0) {
-                // Try loading if not yet loaded
-                fetch('/api/di/supervision/researchers', { credentials: 'include' })
-                    .then(r => r.json())
-                    .then(data => {
-                        supResearchers = data.researchers || [];
-                        populateSupSelect();
-                    })
-                    .catch(() => {});
-            } else {
-                populateSupSelect();
-            }
-        }
-
-        function populateSupSelect() {
-            const select = document.getElementById('supInvResearcherSelect');
-            const opts = supResearchers.map(r =>
-                `<option value="${r.researcher_id}">${escapeHtml(r.name)} (${escapeHtml(r.researcher_id)})</option>`
-            ).join('');
-            select.innerHTML = '<option value="">-- Select a researcher --</option>' + opts;
-            if (selectedSupResearcherId) {
-                select.value = selectedSupResearcherId;
-            }
-        }
-
-        function selectSupInvResearcher() {
-            const select = document.getElementById('supInvResearcherSelect');
-            selectedSupResearcherId = select.value;
-            if (!selectedSupResearcherId) {
-                document.getElementById('supInvContent').innerHTML = '<div class="message info show">Select a researcher above to view their inventory (read-only).</div>';
-                return;
-            }
-            currentSupInvType = 'product';
-            renderSupInvPanel();
-        }
-
-        function renderSupInvPanel() {
-            const container = document.getElementById('supInvContent');
-            container.innerHTML = `
-                <div class="sub-tabs">
-                    <button class="sub-tab ${currentSupInvType==='product'?'active':''}" onclick="switchSupInvType('product')">Products</button>
-                    <button class="sub-tab ${currentSupInvType==='sample'?'active':''}" onclick="switchSupInvType('sample')">Samples</button>
-                    <button class="sub-tab ${currentSupInvType==='oligo'?'active':''}" onclick="switchSupInvType('oligo')">Oligos</button>
-                </div>
-                <div id="supInvTableBody"><div class="loading"><div class="spinner"></div>Loading...</div></div>
-            `;
-            loadSupInvItems();
-        }
-
-        function switchSupInvType(type) {
-            currentSupInvType = type;
-            document.querySelectorAll('#supInvContent .sub-tab').forEach(b => b.classList.remove('active'));
-            event.currentTarget.classList.add('active');
-            loadSupInvItems();
-        }
-
-        async function loadSupInvItems() {
-            const container = document.getElementById('supInvTableBody');
-            if (!container) return;
-            container.innerHTML = '<div class="loading"><div class="spinner"></div>Loading...</div>';
-
-            if (currentSupInvType === 'oligo') {
-                container.innerHTML = '<div class="empty-state"><div class="icon">&#129516;</div><p>Oligo inventory coming soon</p></div>';
-                return;
-            }
-
-            try {
-                const res = await fetch(`/api/di/inventory-v2/supervision/${selectedSupResearcherId}/inventory?item_type=${currentSupInvType}`, { credentials: 'include' });
-                if (!res.ok) throw new Error('Failed to load');
-                const data = await res.json();
-
-                if (!data.items || data.items.length === 0) {
-                    container.innerHTML = `<div class="empty-state"><div class="icon">&#128230;</div><p>No ${currentSupInvType}s found</p></div>`;
-                    return;
-                }
-
-                if (currentSupInvType === 'product') {
-                    container.innerHTML = `<table class="inv-table"><thead><tr>
-                        <th>Name</th><th>Vendor</th><th>ID</th><th>Qty</th><th>Unit</th><th>Storage</th><th>Location</th><th>Status</th><th>Visibility</th>
-                    </tr></thead><tbody>${data.items.map(it => `<tr>
-                        <td>${escapeHtml(it.item_name)}</td>
-                        <td>${escapeHtml(it.vendor_company||'')}</td>
-                        <td>${escapeHtml(it.item_identifier)}</td>
-                        <td>${it.quantity}</td>
-                        <td>${escapeHtml(it.quantity_unit)}</td>
-                        <td>${it.storage_temperature}</td>
-                        <td>${escapeHtml(it.storage_location)}</td>
-                        <td><span class="status-badge ${it.status}">${it.status}</span></td>
-                        <td>${it.visibility_scope}</td>
-                    </tr>`).join('')}</tbody></table>`;
-                } else {
-                    container.innerHTML = `<table class="inv-table"><thead><tr>
-                        <th>Name</th><th>ID</th><th>Origin</th><th>Provider</th><th>Qty</th><th>Unit</th><th>Storage</th><th>Location</th><th>Status</th><th>Visibility</th>
-                    </tr></thead><tbody>${data.items.map(it => `<tr>
-                        <td>${escapeHtml(it.item_name)}</td>
-                        <td>${escapeHtml(it.item_identifier)}</td>
-                        <td>${escapeHtml(it.sample_origin||'')}</td>
-                        <td>${escapeHtml(it.provider_or_collaborator||'')}</td>
-                        <td>${it.quantity}</td>
-                        <td>${escapeHtml(it.quantity_unit)}</td>
-                        <td>${it.storage_temperature}</td>
-                        <td>${escapeHtml(it.storage_location)}</td>
-                        <td><span class="status-badge ${it.status}">${it.status}</span></td>
-                        <td>${it.visibility_scope}</td>
-                    </tr>`).join('')}</tbody></table>`;
-                }
-            } catch (err) {
-                container.innerHTML = `<p style="color:#dc3545;text-align:center;">${err.message}</p>`;
             }
         }
 
