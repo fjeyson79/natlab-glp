@@ -532,6 +532,48 @@
         .status-badge.Approved { background:#28a745; }
         .status-badge.Revision { background:#fd7e14; }
         .status-badge.Rejected { background:#dc3545; }
+
+        /* Supervisor Navigation Banner */
+        .supervisor-nav-banner {
+            display: none;
+            display: none;
+            background: linear-gradient(135deg, #e3f6f9 0%, #f0fafb 100%);
+            border-bottom: 2px solid #17a2b8;
+            padding: 12px 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+        .supervisor-nav-banner.visible { display: block; }
+        .supervisor-nav-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 15px;
+        }
+        .supervisor-nav-text {
+            color: #0c5460;
+            font-size: 13px;
+            line-height: 1.4;
+        }
+        .supervisor-nav-text strong { color: #1a365d; }
+        .supervisor-dashboard-btn {
+            padding: 8px 18px;
+            background: #17a2b8;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            white-space: nowrap;
+            transition: all 0.2s;
+        }
+        .supervisor-dashboard-btn:hover {
+            background: #138496;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(23,162,184,0.3);
+        }
     </style>
 </head>
 <body>
@@ -542,6 +584,18 @@
             <span id="affiliationBadge" class="affiliation-badge">Loading...</span>
             <span class="user-badge" id="userName">Loading...</span>
             <button class="logout-btn" id="logoutBtn">Logout</button>
+        </div>
+    </div>
+
+    <!-- Supervisor Navigation Banner (visible only for supervisors) -->
+    <div id="supervisorNavBanner" class="supervisor-nav-banner">
+        <div class="supervisor-nav-content">
+            <div class="supervisor-nav-text">
+                <strong>Upload</strong> is your default workspace. To access <strong>Files &amp; Documents</strong>, <strong>Supervision</strong>, and <strong>Purchases &amp; Inventory</strong> tabs, open the Supervisor Dashboard.
+            </div>
+            <button class="supervisor-dashboard-btn" onclick="window.location.href='supervisor-dashboard.html'">
+                Open Supervisor Dashboard
+            </button>
         </div>
     </div>
 
@@ -1077,6 +1131,8 @@
                 if (currentUserRole === 'supervisor') {
                     document.getElementById('roleBadge').classList.remove('hidden');
                     document.getElementById('supervisionPanel').classList.add('visible');
+                    const banner = document.getElementById('supervisorNavBanner');
+                    if (banner) banner.classList.add('visible');
                     loadAssignedResearchers();
                 }
 
