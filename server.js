@@ -395,6 +395,14 @@ app.get('/health', (req, res) => {
       branch: process.env.RAILWAY_GIT_BRANCH || null
     }
   });
+  
+  // Debug endpoint to inspect Railway git env vars (safe, no secrets)
+  app.get('/api/di/debug-git', (req, res) => {
+    const keys = Object.keys(process.env).filter(k => k.startsWith('RAILWAY_GIT_')).sort();
+    const out = {};
+    for (const k of keys) out[k] = process.env[k] || null;
+    res.json(out);
+  });
 });
 
 // Drive debug endpoint
@@ -5272,6 +5280,7 @@ app.get('/api/di/inventory-v2/supervision/:researcherId/inventory', requireSuper
 app.listen(PORT, () => {
   console.log("[STARTUP] Server listening on port ");
 });
+
 
 
 
