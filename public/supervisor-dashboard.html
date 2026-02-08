@@ -189,6 +189,7 @@
         }
         .btn-view { background: #007bff; color: white; }
         .btn-download { background: #28a745; color: white; }
+        .btn-verify { background: #6f42c1; color: white; }
 
         .file-status {
             font-size: 10px;
@@ -377,6 +378,119 @@
             cursor: not-allowed;
         }
 
+        /* Group Documents Styles */
+        .doc-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 15px;
+        }
+        .doc-card {
+            background: #f8f9fa;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 15px;
+            transition: box-shadow 0.2s;
+        }
+        .doc-card:hover {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .doc-card-header {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .doc-icon {
+            font-size: 24px;
+        }
+        .doc-title {
+            font-weight: bold;
+            color: #333;
+            font-size: 14px;
+            margin-bottom: 3px;
+        }
+        .doc-category {
+            font-size: 11px;
+            color: #666;
+            background: #e0e0e0;
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+        .doc-description {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 10px;
+            line-height: 1.4;
+        }
+        .doc-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+        }
+        .doc-filename {
+            font-size: 11px;
+            color: #999;
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .doc-download-btn {
+            padding: 6px 12px;
+            background: #2d5a87;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            white-space: nowrap;
+        }
+        .doc-download-btn:hover {
+            background: #1a365d;
+        }
+        .category-filter {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-bottom: 15px;
+        }
+        .category-btn {
+            padding: 6px 12px;
+            border: 1px solid #ddd;
+            background: white;
+            border-radius: 20px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .category-btn:hover {
+            border-color: #2d5a87;
+            color: #2d5a87;
+        }
+        .category-btn.active {
+            background: #2d5a87;
+            color: white;
+            border-color: #2d5a87;
+        }
+        .upload-link-btn {
+            display: inline-block;
+            padding: 10px 20px;
+            background: #2d5a87;
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            transition: all 0.2s;
+        }
+        .upload-link-btn:hover {
+            background: #1a365d;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(45,90,135,0.3);
+        }
+
         /* Responsive */
         @media (max-width: 900px) {
             .main-container { grid-template-columns: 1fr; }
@@ -402,16 +516,45 @@
 
     <!-- ==================== SECTION: FILES & DOCUMENTS ==================== -->
     <div id="section-files" class="section-content active">
-        <div class="main-container full-width">
+        <div class="main-container">
+            <!-- My Files Panel -->
             <div class="panel">
                 <div class="panel-header">
-                    <h2><span class="icon">&#128193;</span> My Files &amp; Documents</h2>
+                    <h2><span class="icon">&#128193;</span> My Files</h2>
+                    <button onclick="loadMyFiles()" style="padding:5px 10px;font-size:12px;cursor:pointer;border:1px solid #ddd;border-radius:4px;background:white;">Refresh</button>
                 </div>
                 <div class="panel-content">
-                    <div class="empty-state">
-                        <div class="icon">&#128193;</div>
-                        <p>Your personal files and group documents</p>
-                        <p style="font-size:12px;margin-top:10px;color:#999;">This section is for your own files and shared documents</p>
+                    <a href="upload.html" class="upload-link-btn">&#8593; Go to Upload</a>
+                    <div id="myFilesStatsBar" class="stats-bar" style="display:none;">
+                        <div class="stat-item">
+                            <span>Under Review:</span>
+                            <span class="stat-value" style="color:#856404;" id="myStatPending">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span>Approved:</span>
+                            <span class="stat-value" style="color:#28a745;" id="myStatApproved">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span>Revision Needed:</span>
+                            <span class="stat-value" style="color:#dc3545;" id="myStatRevision">0</span>
+                        </div>
+                    </div>
+                    <div id="myFileTree" class="file-tree">
+                        <div class="loading"><div class="spinner"></div>Loading...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Group Documents Panel (Full Width) -->
+            <div class="panel" style="grid-column: 1 / -1;">
+                <div class="panel-header">
+                    <h2><span class="icon">&#128218;</span> Group Documents</h2>
+                    <button onclick="loadGroupDocuments()" style="padding:5px 10px;font-size:12px;cursor:pointer;border:1px solid #ddd;border-radius:4px;background:white;">Refresh</button>
+                </div>
+                <div class="panel-content">
+                    <div id="categoryFilter" class="category-filter" style="display:none;"></div>
+                    <div id="groupDocsContainer">
+                        <div class="loading"><div class="spinner"></div>Loading...</div>
                     </div>
                 </div>
             </div>
@@ -649,6 +792,10 @@
         let selectedSupResearcherEmail = '';
         let currentSupervisionView = 'files'; // 'files' or 'inventory'
 
+        // Files & Documents state
+        let allGroupDocs = [];
+        let currentCategory = 'all';
+
         // Check authentication and supervisor role
         async function checkAuth() {
             try {
@@ -681,12 +828,193 @@
             event.currentTarget.classList.add('active');
             document.getElementById('section-' + section).classList.add('active');
 
-            if (section === 'inventory') {
+            if (section === 'files') {
+              loadMyFiles();
+              loadGroupDocuments();
+            }
+
+            if (section === 'files') {
+                loadMyFiles();
+                loadGroupDocuments();
+            } else if (section === 'inventory') {
                 loadMyInventoryV2(currentMyInvType);
                 loadGroupInventoryV2(currentGrpInvType);
             } else if (section === 'supervision') {
                 loadSupervisionResearchers();
             }
+        }
+
+        // ==================== FILES & DOCUMENTS SECTION ====================
+
+        // Load My Files
+        async function loadMyFiles() {
+            const treeContainer = document.getElementById('myFileTree');
+            const statsBar = document.getElementById('myFilesStatsBar');
+
+            treeContainer.innerHTML = '<div class="loading"><div class="spinner"></div>Loading files...</div>';
+
+            try {
+                const response = await fetch('/api/di/my-files', { credentials: 'include' });
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.message || data.error || 'Failed to load files');
+                }
+
+                // Update stats
+                document.getElementById('myStatPending').textContent = data.pendingCount || 0;
+                document.getElementById('myStatApproved').textContent = data.approvedCount || 0;
+                document.getElementById('myStatRevision').textContent = data.revisionCount || 0;
+                statsBar.style.display = 'flex';
+
+                if (data.totalFiles === 0) {
+                    treeContainer.innerHTML = `
+                        <div class="empty-state">
+                            <div class="icon">&#128196;</div>
+                            <p>No files uploaded yet</p>
+                            <p style="font-size:12px;margin-top:10px;">Upload your documents using the Upload link above</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                // Build content with optional revision notice
+                let content = '';
+                if (data.revisionCount > 0) {
+                    content += `
+                        <div style="background:#fff3cd;border:1px solid #ffc107;padding:10px 15px;border-radius:6px;margin-bottom:15px;font-size:12px;">
+                            <strong style="color:#856404;">&#9888; ${data.revisionCount} file(s) need revision</strong>
+                            <p style="margin:5px 0 0 0;color:#856404;">Please re-upload the revised documents.</p>
+                        </div>
+                    `;
+                }
+
+                content += renderTree(data.tree);
+                treeContainer.innerHTML = content;
+
+            } catch (err) {
+                console.error('Error loading files:', err);
+                treeContainer.innerHTML = `<p style="color:#dc3545;text-align:center;">Error loading files: ${err.message || 'Unknown error'}</p>`;
+            }
+        }
+
+        // Load Group Documents
+        async function loadGroupDocuments() {
+            const container = document.getElementById('groupDocsContainer');
+            const filterContainer = document.getElementById('categoryFilter');
+
+            container.innerHTML = '<div class="loading"><div class="spinner"></div>Loading group documents...</div>';
+
+            try {
+                const response = await fetch('/api/di/group-documents', { credentials: 'include' });
+
+                if (!response.ok) throw new Error('Failed to load documents');
+                const data = await response.json();
+
+                allGroupDocs = data.documents || [];
+
+                if (allGroupDocs.length === 0) {
+                    filterContainer.style.display = 'none';
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="icon">&#128218;</div>
+                            <p>No group documents available</p>
+                            <p style="font-size:12px;margin-top:10px;">Your PI will upload shared documents here</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                // Build category filter buttons
+                const categories = [...new Set(allGroupDocs.map(d => d.category))].sort();
+                filterContainer.innerHTML = `
+                    <button class="category-btn ${currentCategory === 'all' ? 'active' : ''}" onclick="filterByCategory('all')">All (${allGroupDocs.length})</button>
+                    ${categories.map(cat => {
+                        const count = allGroupDocs.filter(d => d.category === cat).length;
+                        return `<button class="category-btn ${currentCategory === cat ? 'active' : ''}" onclick="filterByCategory('${cat}')">${cat} (${count})</button>`;
+                    }).join('')}
+                `;
+                filterContainer.style.display = 'flex';
+
+                renderGroupDocuments();
+
+            } catch (err) {
+                console.error('Error loading group documents:', err);
+                container.innerHTML = '<p style="color:#dc3545;text-align:center;">Error loading group documents</p>';
+            }
+        }
+
+        function filterByCategory(category) {
+            currentCategory = category;
+
+            // Update active button
+            document.querySelectorAll('.category-btn').forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.textContent.toLowerCase().startsWith(category.toLowerCase()) ||
+                    (category === 'all' && btn.textContent.startsWith('All'))) {
+                    btn.classList.add('active');
+                }
+            });
+
+            renderGroupDocuments();
+        }
+
+        function renderGroupDocuments() {
+            const container = document.getElementById('groupDocsContainer');
+            const filteredDocs = currentCategory === 'all'
+                ? allGroupDocs
+                : allGroupDocs.filter(d => d.category === currentCategory);
+
+            if (filteredDocs.length === 0) {
+                container.innerHTML = '<p style="color:#666;text-align:center;padding:20px;">No documents in this category</p>';
+                return;
+            }
+
+            container.innerHTML = `
+                <div class="doc-grid">
+                    ${filteredDocs.map(doc => renderDocCard(doc)).join('')}
+                </div>
+            `;
+        }
+
+        function renderDocCard(doc) {
+            const iconClass = doc.file_type.toLowerCase();
+            const icons = {
+                'pdf': '&#128196;',
+                'excel': '&#128202;',
+                'word': '&#128196;',
+                'powerpoint': '&#128200;'
+            };
+            const icon = icons[iconClass] || '&#128196;';
+            const canDownload = doc.can_download !== false;
+
+            return `
+                <div class="doc-card">
+                    <div class="doc-card-header">
+                        <span class="doc-icon ${iconClass}">${icon}</span>
+                        <div>
+                            <div class="doc-title">${escapeHtml(doc.title)}</div>
+                            <span class="doc-category">${escapeHtml(doc.category)}</span>
+                        </div>
+                    </div>
+                    ${doc.description ? `<div class="doc-description">${escapeHtml(doc.description)}</div>` : ''}
+                    <div class="doc-meta">
+                        <span class="doc-filename" title="${escapeHtml(doc.filename)}">${escapeHtml(doc.filename)}</span>
+                        ${canDownload ?
+                            `<button class="doc-download-btn" onclick="downloadGroupDoc('${doc.downloadUrl}')">
+                                &#8595; Download
+                            </button>` :
+                            '<span style="font-size:11px;color:#999;">View only</span>'}
+                    </div>
+                </div>
+            `;
+        }
+
+        function downloadGroupDoc(url) {
+            window.location.href = url;
+        }
+
+        function verifyDocument(code) {
+            window.open(`/api/di/verify/${code}`, '_blank');
         }
 
         // ==================== SUPERVISION SECTION ====================
@@ -813,6 +1141,7 @@
                 const statusClass = 'status-' + (node.status || 'PENDING');
                 const isApproved = node.status === 'APPROVED';
                 const signedBadge = isApproved && node.signedAt ? `<span style="background:#28a745;color:white;padding:1px 6px;border-radius:8px;font-size:9px;margin-left:5px;">SIGNED</span>` : '';
+                const verifyBtn = isApproved && node.verificationCode ? `<button class="btn-verify" onclick="verifyDocument('${node.verificationCode}')" title="Verify signature">Verify</button>` : '';
                 const hasFile = node.r2ObjectKey || node.viewUrl;
 
                 return `
@@ -826,6 +1155,7 @@
                                 <button class="btn-view" onclick="window.open('${node.viewUrl}', '_blank')">View</button>
                                 <button class="btn-download" onclick="window.location.href='${node.downloadUrl}'">Download</button>
                             ` : '<span style="color:#999;font-size:11px;">File removed</span>'}
+                            ${verifyBtn}
                         </div>
                     </div>
                 `;
