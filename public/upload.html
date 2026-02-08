@@ -713,21 +713,25 @@
                             </div>
                         </div>
                         <style>
-                            #prItemsTable { table-layout:fixed; width:100%; border-collapse:collapse; }
-                            #prItemsTable th, #prItemsTable td { padding:4px 3px; vertical-align:middle; }
-                            #prItemsTable .col-vendor   { width:14%; }
-                            #prItemsTable .col-product  { width:18%; }
-                            #prItemsTable .col-catalog  { width:12%; }
-                            #prItemsTable .col-link     { width:20%; }
-                            #prItemsTable .col-qty      { width:8%; }
-                            #prItemsTable .col-price    { width:10%; }
-                            #prItemsTable .col-total    { width:10%; }
-                            #prItemsTable .col-del      { width:32px; }
-                            #prItemsTable input, #prItemsTable select {
-                                width:100%; padding:5px 6px; border:1px solid #ddd; border-radius:3px;
-                                font-size:12px; box-sizing:border-box; height:30px;
-                            }
-                        </style>
+                              #prItemsTable { table-layout:fixed; width:100%; border-collapse:collapse; }
+                              #prItemsTable th, #prItemsTable td { padding:4px 3px; vertical-align:middle; }
+                              #prItemsTable .col-vendor   { width:14%; }
+                              #prItemsTable .col-product  { width:18%; }
+                              #prItemsTable .col-catalog  { width:12%; }
+                              #prItemsTable .col-link     { width:20%; }
+                              #prItemsTable .col-qty      { width:8%; }
+                              #prItemsTable .col-price    { width:10%; }
+                              #prItemsTable .col-total    { width:10%; }
+                              #prItemsTable .col-del      { width:32px; }
+                              #prItemsTable input, #prItemsTable select {
+                                  width:100%; padding:5px 6px; border:1px solid #ddd; border-radius:3px;
+                                  font-size:12px; box-sizing:border-box; height:30px;
+                              }
+                              #prItemsTable th { text-align:left; }
+                              #prItemsTable th.col-qty, #prItemsTable th.col-price, #prItemsTable th.col-total,
+                              #prItemsTable td.col-qty, #prItemsTable td.col-price, #prItemsTable td.col-total { text-align:right; }
+                              #prItemsTable th.col-del, #prItemsTable td.col-del { text-align:center; }
+                          </style>
                         <table id="prItemsTable" class="data-table" style="font-size:13px;">
                         <colgroup>
                           <col style="width:14%">
