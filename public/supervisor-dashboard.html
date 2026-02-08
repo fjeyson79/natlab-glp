@@ -4,6 +4,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Supervisor Dashboard: NATLAB GLP Portal</title>
+
+<script>
+  (function () {
+    var KEY = "natlab_supervisor_dashboard_cachebust_v1";
+    if (!sessionStorage.getItem(KEY)) {
+      sessionStorage.setItem(KEY, "1");
+      var url = new URL(window.location.href);
+      url.searchParams.set("v", "ba1b974");
+      window.location.replace(url.toString());
+    }
+  })();
+</script>
+
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
