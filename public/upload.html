@@ -377,97 +377,6 @@
             border-color: #2d5a87;
         }
 
-        /* Supervision Panel Styles (for Supervisors) */
-        .supervision-panel { display: none; }
-        .supervision-panel.visible { display: block; }
-
-        .supervision-grid {
-            display: grid;
-            grid-template-columns: 280px 1fr;
-            gap: 15px;
-            min-height: 400px;
-        }
-
-        .researcher-list-container {
-            background: #f8f9fa;
-            border-radius: 8px;
-            border: 1px solid #e0e0e0;
-            overflow: hidden;
-        }
-
-        .researcher-list-header {
-            padding: 12px 15px;
-            background: #17a2b8;
-            color: white;
-            font-weight: bold;
-            font-size: 13px;
-        }
-
-        .researcher-list {
-            list-style: none;
-            max-height: 350px;
-            overflow-y: auto;
-        }
-
-        .researcher-item {
-            padding: 12px 15px;
-            border-bottom: 1px solid #e0e0e0;
-            cursor: pointer;
-            transition: background 0.2s;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .researcher-item:hover { background: #e9ecef; }
-        .researcher-item.active { background: #d1ecf1; border-left: 3px solid #17a2b8; }
-        .researcher-item:last-child { border-bottom: none; }
-        .researcher-name { font-weight: bold; color: #333; font-size: 13px; }
-        .researcher-email { font-size: 11px; color: #666; }
-        .researcher-files { font-size: 11px; color: #17a2b8; }
-
-        .supervision-files-container {
-            background: white;
-            border-radius: 8px;
-            border: 1px solid #e0e0e0;
-            padding: 15px;
-        }
-
-        .supervision-select-prompt {
-            text-align: center;
-            padding: 40px 20px;
-            color: #666;
-        }
-
-        .supervision-select-prompt .icon {
-            font-size: 48px;
-            margin-bottom: 15px;
-            opacity: 0.5;
-        }
-
-        .selected-researcher-info {
-            background: #17a2b8;
-            color: white;
-            padding: 10px 15px;
-            border-radius: 6px;
-            margin-bottom: 15px;
-        }
-
-        .selected-researcher-info strong { display: block; font-size: 14px; }
-        .selected-researcher-info span { font-size: 12px; opacity: 0.9; }
-
-        .supervision-stats-bar {
-            display: flex;
-            gap: 15px;
-            padding: 10px 15px;
-            background: #e3f2fd;
-            border-radius: 6px;
-            margin-bottom: 15px;
-            font-size: 12px;
-        }
-
-        .supervision-file-tree { font-size: 13px; }
-
         /* Responsive */
         @media (max-width: 900px) {
             .main-container {
@@ -533,47 +442,32 @@
         .status-badge.Revision { background:#fd7e14; }
         .status-badge.Rejected { background:#dc3545; }
 
-        /* Supervisor Navigation Banner */
-        .supervisor-nav-banner {
-            display: none;
-            display: none;
-            background: linear-gradient(135deg, #e3f6f9 0%, #f0fafb 100%);
-            border-bottom: 2px solid #17a2b8;
-            padding: 12px 20px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-        }
-        .supervisor-nav-banner.visible { display: block; }
-        .supervisor-nav-content {
-            max-width: 1400px;
-            margin: 0 auto;
+        /* Supervision Section Styles */
+        .researcher-list { list-style: none; }
+        .researcher-item {
+            padding: 12px 15px;
+            border-bottom: 1px solid #e0e0e0;
+            cursor: pointer;
+            transition: background 0.2s;
             display: flex;
-            align-items: center;
             justify-content: space-between;
-            gap: 15px;
+            align-items: center;
         }
-        .supervisor-nav-text {
-            color: #0c5460;
-            font-size: 13px;
-            line-height: 1.4;
-        }
-        .supervisor-nav-text strong { color: #1a365d; }
-        .supervisor-dashboard-btn {
-            padding: 8px 18px;
+        .researcher-item:hover { background: #f0f2f5; }
+        .researcher-item.active { background: #e3f2fd; border-left: 3px solid #17a2b8; }
+        .researcher-item:last-child { border-bottom: none; }
+        .researcher-name { font-weight: bold; color: #333; }
+        .researcher-email { font-size: 12px; color: #666; }
+        .researcher-files { font-size: 11px; color: #17a2b8; }
+        .selected-researcher-info {
             background: #17a2b8;
             color: white;
-            border: none;
+            padding: 10px 15px;
             border-radius: 6px;
-            cursor: pointer;
-            font-size: 13px;
-            font-weight: 600;
-            white-space: nowrap;
-            transition: all 0.2s;
+            margin-bottom: 15px;
         }
-        .supervisor-dashboard-btn:hover {
-            background: #138496;
-            transform: translateY(-1px);
-            box-shadow: 0 2px 8px rgba(23,162,184,0.3);
-        }
+        .selected-researcher-info strong { display: block; font-size: 14px; }
+        .selected-researcher-info span { font-size: 12px; opacity: 0.9; }
     </style>
 </head>
 <body>
@@ -587,21 +481,10 @@
         </div>
     </div>
 
-    <!-- Supervisor Navigation Banner (visible only for supervisors) -->
-    <div id="supervisorNavBanner" class="supervisor-nav-banner">
-        <div class="supervisor-nav-content">
-            <div class="supervisor-nav-text">
-                <strong>Upload</strong> is your default workspace. To access <strong>Files &amp; Documents</strong>, <strong>Supervision</strong>, and <strong>Purchases &amp; Inventory</strong> tabs, open the Supervisor Dashboard.
-            </div>
-            <button class="supervisor-dashboard-btn" onclick="window.location.href='supervisor-dashboard.html'">
-                Open Supervisor Dashboard
-            </button>
-        </div>
-    </div>
-
     <!-- Section navigation for internal users (hidden for EXTERNAL) -->
     <div id="sectionNav" class="section-nav" style="display:none;">
         <button class="section-btn active" data-section="files" onclick="switchSection('files')">Files &amp; Documents</button>
+        <button id="supervisionTabBtn" class="section-btn" data-section="supervision" onclick="switchSection('supervision')" style="display:none;">Supervision</button>
         <button class="section-btn" data-section="inventory" onclick="switchSection('inventory')">Purchases &amp; Inventory</button>
     </div>
 
@@ -687,52 +570,6 @@
                     <div class="loading">
                         <div class="spinner"></div>
                         Loading group documents...
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Panel 4: Supervision (Full Width, Supervisors Only) -->
-        <div id="supervisionPanel" class="panel full-width-panel supervision-panel">
-            <div class="panel-header">
-                <h2><span class="icon">&#128101;</span> Supervision</h2>
-                <button onclick="loadAssignedResearchers()" style="padding:5px 10px;font-size:12px;cursor:pointer;border:1px solid #ddd;border-radius:4px;background:white;">Refresh</button>
-            </div>
-            <div class="panel-content">
-                <div class="supervision-grid">
-                    <!-- Left: Researcher List -->
-                    <div class="researcher-list-container">
-                        <div class="researcher-list-header">My Researchers</div>
-                        <ul id="assignedResearcherList" class="researcher-list">
-                            <li class="loading" style="padding:20px;text-align:center;">
-                                <div class="spinner"></div>
-                                Loading...
-                            </li>
-                        </ul>
-                    </div>
-
-                    <!-- Right: Selected Researcher's Files -->
-                    <div class="supervision-files-container">
-                        <div id="supervisionSelectPrompt" class="supervision-select-prompt">
-                            <div class="icon">&#128101;</div>
-                            <p>Select a researcher to view their files</p>
-                            <p style="font-size:12px;margin-top:10px;color:#999;">You can only view and download files. No editing or deletion is permitted.</p>
-                        </div>
-                        <div id="selectedResearcherInfo" class="selected-researcher-info" style="display:none;">
-                            <strong id="selectedResearcherName"></strong>
-                            <span id="selectedResearcherEmail"></span>
-                        </div>
-                        <div id="supervisionStatsBar" class="supervision-stats-bar" style="display:none;">
-                            <div class="stat-item">
-                                <span>Under Review:</span>
-                                <span class="stat-value" style="color:#856404;" id="supervisionStatPending">0</span>
-                            </div>
-                            <div class="stat-item">
-                                <span>Approved:</span>
-                                <span class="stat-value" style="color:#28a745;" id="supervisionStatApproved">0</span>
-                            </div>
-                        </div>
-                        <div id="supervisionFileTree" class="supervision-file-tree" style="display:none;"></div>
                     </div>
                 </div>
             </div>
@@ -1031,46 +868,6 @@
                 </div>
             </div>
 
-            <!-- Supervisor: Supervised Researcher Inventory (read-only) -->
-            <div class="panel" id="supInvPanel" style="grid-column:1/-1;display:none;">
-                <div class="panel-header">
-                    <h2><span class="icon">&#128101;</span> Supervision &mdash; Researcher Inventory</h2>
-                </div>
-                <div class="panel-content">
-                    <div style="display:flex;gap:12px;">
-                        <div style="width:240px;border-right:1px solid #eee;padding-right:12px;">
-                            <p style="font-size:12px;color:#666;margin-bottom:8px;">Select a researcher:</p>
-                            <ul id="supInvResearcherList" style="list-style:none;padding:0;margin:0;"></ul>
-                        </div>
-                        <div style="flex:1;">
-                            <div id="supInvPrompt" style="text-align:center;padding:20px;color:#999;">Select a researcher to view their inventory (read-only).</div>
-                            <div id="supInvContent" style="display:none;">
-                                <div style="display:flex;gap:8px;margin-bottom:10px;">
-                                    <button class="inv-toggle-btn active" id="supInvProducts" onclick="switchSupInvType('product')">Products</button>
-                                    <button class="inv-toggle-btn" id="supInvSamples" onclick="switchSupInvType('sample')">Samples</button>
-                                    <button class="inv-toggle-btn" id="supInvOligos" onclick="switchSupInvType('oligo')">Oligos</button>
-                                </div>
-                                <div id="supInvProductView">
-                                    <table class="data-table" style="font-size:13px;">
-                                        <thead><tr><th>Name</th><th>Vendor</th><th>ID</th><th>Qty</th><th>Unit</th><th>Storage</th><th>Location</th><th>Status</th></tr></thead>
-                                        <tbody id="supInvProductBody"><tr><td colspan="8" style="text-align:center;color:#999;">-</td></tr></tbody>
-                                    </table>
-                                </div>
-                                <div id="supInvSampleView" style="display:none;">
-                                    <table class="data-table" style="font-size:13px;">
-                                        <thead><tr><th>Name</th><th>Sample ID</th><th>Origin</th><th>Provider</th><th>Qty</th><th>Unit</th><th>Storage</th><th>Location</th><th>Status</th></tr></thead>
-                                        <tbody id="supInvSampleBody"><tr><td colspan="9" style="text-align:center;color:#999;">-</td></tr></tbody>
-                                    </table>
-                                </div>
-                                <div id="supInvOligoView" style="display:none;">
-                                    <div style="text-align:center;padding:20px;color:#999;">Oligo tracking coming soon</div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
             <!-- Group Inventory (standard theme) -->
             <div class="panel" style="grid-column:1/-1;">
                 <div class="panel-header">
@@ -1109,6 +906,74 @@
         </div>
     </div>
 
+    <!-- Supervision section (supervisors only) -->
+    <div id="section-supervision" class="section-content" style="display:none;">
+        <div class="main-container">
+            <!-- Left Panel: Assigned Researchers -->
+            <div class="panel">
+                <div class="panel-header">
+                    <h2><span class="icon">&#128101;</span> My Researchers</h2>
+                    <button onclick="loadSupervisionResearchers()" style="padding:5px 10px;font-size:12px;cursor:pointer;border:1px solid #ddd;border-radius:4px;background:white;">Refresh</button>
+                </div>
+                <div class="panel-content" style="padding:0;">
+                    <ul id="supervisionResearcherList" class="researcher-list">
+                        <li class="loading"><div class="spinner"></div>Loading...</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Right Panel: Supervision Views -->
+            <div class="panel">
+                <div class="panel-header">
+                    <h2><span class="icon">&#128269;</span> Supervision</h2>
+                </div>
+                <div class="panel-content">
+                    <div class="message info show" id="supSelectPrompt">
+                        Select a researcher from the list to view their files and inventory.<br>
+                        <small>All views are read-only for supervision purposes.</small>
+                    </div>
+                    <div id="supSelectedResearcherInfo" class="selected-researcher-info" style="display:none;">
+                        <strong id="supSelectedResearcherName"></strong>
+                        <span id="supSelectedResearcherEmail"></span>
+                    </div>
+
+                    <!-- Sub-tabs for Files / My Inventory -->
+                    <div id="supSubTabs" class="sub-tabs" style="display:none;">
+                        <button class="sub-tab active" onclick="switchSupervisionView('files')">Files</button>
+                        <button class="sub-tab" onclick="switchSupervisionView('inventory')">My Inventory</button>
+                    </div>
+
+                    <!-- Files View -->
+                    <div id="supFilesView" style="display:none;">
+                        <div id="supStatsBar" class="stats-bar" style="display:none;">
+                            <div class="stat-item">
+                                <span>Under Review:</span>
+                                <span class="stat-value" style="color:#856404;" id="supStatPending">0</span>
+                            </div>
+                            <div class="stat-item">
+                                <span>Approved:</span>
+                                <span class="stat-value" style="color:#28a745;" id="supStatApproved">0</span>
+                            </div>
+                        </div>
+                        <div id="supFileTree" class="file-tree"></div>
+                    </div>
+
+                    <!-- My Inventory View -->
+                    <div id="supInventoryView" style="display:none;">
+                        <div class="sub-tabs">
+                            <button class="sub-tab active" onclick="switchSupInvType('product')">Products</button>
+                            <button class="sub-tab" onclick="switchSupInvType('sample')">Samples</button>
+                            <button class="sub-tab" onclick="switchSupInvType('oligo')">Oligos</button>
+                        </div>
+                        <div id="supInvTableBody">
+                            <div class="loading"><div class="spinner"></div>Loading...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         let currentUserRole = null;
         let selectedSupervisionResearcherId = null;
@@ -1126,14 +991,12 @@
                 badge.textContent = user.affiliation;
                 badge.classList.add(user.affiliation);
 
-                // Check if user is a supervisor - show supervision panel
+                // Check if user is a supervisor - show supervision tab
                 currentUserRole = (user.role || '').toLowerCase();
                 if (currentUserRole === 'supervisor') {
                     document.getElementById('roleBadge').classList.remove('hidden');
-                    document.getElementById('supervisionPanel').classList.add('visible');
-                    const banner = document.getElementById('supervisorNavBanner');
-                    if (banner) banner.classList.add('visible');
-                    loadAssignedResearchers();
+                    const supTab = document.getElementById('supervisionTabBtn');
+                    if (supTab) supTab.style.display = 'block';
                 }
 
                 // Show purchase & inventory section nav for internal users
@@ -1532,13 +1395,47 @@ credentials: 'include'
         }
 
         // =====================================================
-        // SUPERVISION FUNCTIONS (for Supervisors only)
+        // SECTION SWITCHING & INVENTORY V2
         // =====================================================
 
-        // Load assigned researchers
-        async function loadAssignedResearchers() {
-            const list = document.getElementById('assignedResearcherList');
-            list.innerHTML = '<li class="loading" style="padding:20px;text-align:center;"><div class="spinner"></div>Loading...</li>';
+        let currentMyInvType = 'product';
+        let currentGrpInvType = 'product';
+        let currentSupInvType = 'product';
+        let selectedSupInvResearcher = null;
+
+        function switchSection(section) {
+            document.querySelectorAll('.section-btn').forEach(b => b.classList.remove('active'));
+            document.querySelector(`[data-section="${section}"]`).classList.add('active');
+            document.getElementById('section-files').style.display = section === 'files' ? 'block' : 'none';
+            document.getElementById('section-inventory').style.display = section === 'inventory' ? 'block' : 'none';
+            const supSection = document.getElementById('section-supervision');
+            if (supSection) supSection.style.display = section === 'supervision' ? 'block' : 'none';
+
+            if (section === 'supervision') {
+                loadSupervisionResearchers();
+            } else if (section === 'inventory') {
+                prInitForm();
+                loadApprovedToReceive();
+                loadMyPurchaseRequests();
+                loadMyInventoryV2('product');
+                loadGroupInventoryV2('product');
+            }
+        }
+
+        // =====================================================
+        // SUPERVISION SECTION
+        // =====================================================
+
+        let selectedSupResearcherId = null;
+        let selectedSupResearcherName = '';
+        let selectedSupResearcherEmail = '';
+        let currentSupervisionView = 'files';
+        let currentSupInvType = 'product';
+        let supResearchers = [];
+
+        async function loadSupervisionResearchers() {
+            const list = document.getElementById('supervisionResearcherList');
+            list.innerHTML = '<li class="loading"><div class="spinner"></div>Loading...</li>';
 
             try {
                 const response = await fetch('/api/di/supervision/researchers', { credentials: 'include' });
@@ -1547,18 +1444,20 @@ credentials: 'include'
 
                 if (!data.researchers || data.researchers.length === 0) {
                     list.innerHTML = `
-                        <li style="padding:40px 20px;text-align:center;color:#666;">
-                            <div style="font-size:32px;margin-bottom:10px;opacity:0.5;">&#128101;</div>
+                        <li class="empty-state" style="padding:40px 20px;">
+                            <div class="icon">&#128101;</div>
                             <p>No researchers assigned</p>
-                            <p style="font-size:11px;margin-top:10px;">Contact your PI to assign researchers to you</p>
+                            <p style="font-size:12px;margin-top:10px;">Contact your PI to assign researchers to you</p>
                         </li>
                     `;
                     return;
                 }
 
+                supResearchers = data.researchers;
+
                 list.innerHTML = data.researchers.map(r => `
-                    <li class="researcher-item ${selectedSupervisionResearcherId === r.researcher_id ? 'active' : ''}"
-                        onclick="selectSupervisionResearcher('${r.researcher_id}', '${escapeHtml(r.name)}', '${escapeHtml(r.institution_email)}', this)">
+                    <li class="researcher-item ${selectedSupResearcherId === r.researcher_id ? 'active' : ''}"
+                        onclick="selectSupervisionResearcher('${r.researcher_id}', '${escapeHtml(r.name)}', '${escapeHtml(r.institution_email)}')">
                         <div>
                             <div class="researcher-name">${escapeHtml(r.name)}</div>
                             <div class="researcher-email">${escapeHtml(r.institution_email)}</div>
@@ -1571,36 +1470,62 @@ credentials: 'include'
             }
         }
 
-        // Select a researcher and load their files
-        async function selectSupervisionResearcher(researcherId, name, email, element) {
-            selectedSupervisionResearcherId = researcherId;
+        function selectSupervisionResearcher(researcherId, name, email) {
+            selectedSupResearcherId = researcherId;
+            selectedSupResearcherName = name;
+            selectedSupResearcherEmail = email;
 
-            // Update UI to show selection
-            document.querySelectorAll('#assignedResearcherList .researcher-item').forEach(item => item.classList.remove('active'));
-            if (element) element.classList.add('active');
+            document.querySelectorAll('#supervisionResearcherList .researcher-item').forEach(item => item.classList.remove('active'));
+            event.currentTarget.classList.add('active');
 
-            document.getElementById('supervisionSelectPrompt').style.display = 'none';
-            document.getElementById('selectedResearcherInfo').style.display = 'block';
-            document.getElementById('selectedResearcherName').textContent = name;
-            document.getElementById('selectedResearcherEmail').textContent = email;
+            document.getElementById('supSelectPrompt').style.display = 'none';
+            document.getElementById('supSelectedResearcherInfo').style.display = 'block';
+            document.getElementById('supSelectedResearcherName').textContent = name;
+            document.getElementById('supSelectedResearcherEmail').textContent = email;
+            document.getElementById('supSubTabs').style.display = 'flex';
 
-            const fileTree = document.getElementById('supervisionFileTree');
-            const statsBar = document.getElementById('supervisionStatsBar');
-            fileTree.style.display = 'block';
+            currentSupervisionView = 'files';
+            document.querySelectorAll('#supSubTabs .sub-tab').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('#supSubTabs .sub-tab')[0].classList.add('active');
+
+            switchSupervisionView('files');
+        }
+
+        function switchSupervisionView(view) {
+            currentSupervisionView = view;
+
+            document.querySelectorAll('#supSubTabs .sub-tab').forEach(b => b.classList.remove('active'));
+            event.currentTarget.classList.add('active');
+
+            document.getElementById('supFilesView').style.display = view === 'files' ? 'block' : 'none';
+            document.getElementById('supInventoryView').style.display = view === 'inventory' ? 'block' : 'none';
+
+            if (view === 'files') {
+                loadSupervisionFiles();
+            } else if (view === 'inventory') {
+                currentSupInvType = 'product';
+                document.querySelectorAll('#supInventoryView .sub-tabs .sub-tab').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('#supInventoryView .sub-tabs .sub-tab')[0].classList.add('active');
+                loadSupInvItems();
+            }
+        }
+
+        async function loadSupervisionFiles() {
+            const fileTree = document.getElementById('supFileTree');
+            const statsBar = document.getElementById('supStatsBar');
             fileTree.innerHTML = '<div class="loading"><div class="spinner"></div>Loading files...</div>';
             statsBar.style.display = 'none';
 
             try {
-                const response = await fetch(`/api/di/supervision/researchers/${researcherId}/files`, { credentials: 'include' });
+                const response = await fetch(`/api/di/supervision/researchers/${selectedSupResearcherId}/files`, { credentials: 'include' });
                 if (!response.ok) {
                     const err = await response.json();
                     throw new Error(err.error || 'Failed to load files');
                 }
                 const data = await response.json();
 
-                // Update stats
-                document.getElementById('supervisionStatPending').textContent = data.pendingCount || 0;
-                document.getElementById('supervisionStatApproved').textContent = data.approvedCount || 0;
+                document.getElementById('supStatPending').textContent = data.pendingCount || 0;
+                document.getElementById('supStatApproved').textContent = data.approvedCount || 0;
                 statsBar.style.display = 'flex';
 
                 if (data.totalFiles === 0) {
@@ -1619,7 +1544,6 @@ credentials: 'include'
             }
         }
 
-        // Render file tree for supervision (read-only - View and Download only)
         function renderSupervisionTree(node, level = 0) {
             if (node.type === 'file') {
                 const statusClass = 'status-' + (node.status || 'PENDING');
@@ -1643,14 +1567,13 @@ credentials: 'include'
                 `;
             }
 
-            // Folder rendering
             const isSubmitted = node.name.includes('Submitted');
             const isApproved = node.name.includes('Approved');
             const folderClass = isSubmitted ? 'folder-submitted' : (isApproved ? 'folder-approved' : '');
             const childrenHtml = node.children ? node.children.map(child => renderSupervisionTree(child, level + 1)).join('') : '';
 
             return `
-                <div class="tree-item tree-folder ${folderClass}" style="padding-left:${level * 20}px" onclick="toggleSupervisionFolder(this)">
+                <div class="tree-item tree-folder ${folderClass}" style="padding-left:${level * 20}px" onclick="toggleSupFolder(this)">
                     <span class="icon">${isApproved ? '&#9989;' : (isSubmitted ? '&#128203;' : '&#128193;')}</span>
                     <span>${escapeHtml(node.name)}</span>
                 </div>
@@ -1660,43 +1583,72 @@ credentials: 'include'
             `;
         }
 
-        function toggleSupervisionFolder(element) {
+        function toggleSupFolder(element) {
             const children = element.nextElementSibling;
             if (children && children.classList.contains('tree-children')) {
                 children.classList.toggle('collapsed');
             }
         }
 
-        // Load group documents on page load (after user loads)
-        document.addEventListener('DOMContentLoaded', () => {
-            // Group docs will load after user auth check
-        });
+        function switchSupInvType(type) {
+            currentSupInvType = type;
+            document.querySelectorAll('#supInventoryView .sub-tabs .sub-tab').forEach(b => b.classList.remove('active'));
+            event.currentTarget.classList.add('active');
+            loadSupInvItems();
+        }
 
-        // =====================================================
-        // SECTION SWITCHING & INVENTORY V2
-        // =====================================================
+        async function loadSupInvItems() {
+            const container = document.getElementById('supInvTableBody');
+            if (!container) return;
+            container.innerHTML = '<div class="loading"><div class="spinner"></div>Loading...</div>';
 
-        let currentMyInvType = 'product';
-        let currentGrpInvType = 'product';
-        let currentSupInvType = 'product';
-        let selectedSupInvResearcher = null;
+            if (currentSupInvType === 'oligo') {
+                container.innerHTML = '<div class="empty-state"><div class="icon">&#129516;</div><p>Oligo inventory coming soon</p></div>';
+                return;
+            }
 
-        function switchSection(section) {
-            document.querySelectorAll('.section-btn').forEach(b => b.classList.remove('active'));
-            document.querySelector(`[data-section="${section}"]`).classList.add('active');
-            document.getElementById('section-files').style.display = section === 'files' ? 'block' : 'none';
-            document.getElementById('section-inventory').style.display = section === 'inventory' ? 'block' : 'none';
-            if (section === 'inventory') {
-                prInitForm();
-                loadApprovedToReceive();
-                loadMyPurchaseRequests();
-                loadMyInventoryV2('product');
-                loadGroupInventoryV2('product');
-                // Show supervisor inventory panel if supervisor
-                if (currentUserRole === 'supervisor') {
-                    document.getElementById('supInvPanel').style.display = 'block';
-                    loadSupInvResearcherList();
+            try {
+                const res = await fetch(`/api/di/inventory-v2/supervision/${selectedSupResearcherId}/inventory?item_type=${currentSupInvType}`, { credentials: 'include' });
+                if (!res.ok) throw new Error('Failed to load');
+                const data = await res.json();
+
+                if (!data.items || data.items.length === 0) {
+                    container.innerHTML = `<div class="empty-state"><div class="icon">&#128230;</div><p>No ${currentSupInvType}s found</p></div>`;
+                    return;
                 }
+
+                if (currentSupInvType === 'product') {
+                    container.innerHTML = `<table class="inv-table"><thead><tr>
+                        <th>Name</th><th>Vendor</th><th>ID</th><th>Qty</th><th>Unit</th><th>Storage</th><th>Location</th><th>Status</th><th>Visibility</th>
+                    </tr></thead><tbody>${data.items.map(it => `<tr>
+                        <td>${escapeHtml(it.item_name)}</td>
+                        <td>${escapeHtml(it.vendor_company||'')}</td>
+                        <td>${escapeHtml(it.item_identifier)}</td>
+                        <td>${it.quantity}</td>
+                        <td>${escapeHtml(it.quantity_unit)}</td>
+                        <td>${it.storage_temperature}</td>
+                        <td>${escapeHtml(it.storage_location)}</td>
+                        <td><span class="status-badge ${it.status}">${it.status}</span></td>
+                        <td>${it.visibility_scope}</td>
+                    </tr>`).join('')}</tbody></table>`;
+                } else {
+                    container.innerHTML = `<table class="inv-table"><thead><tr>
+                        <th>Name</th><th>ID</th><th>Origin</th><th>Provider</th><th>Qty</th><th>Unit</th><th>Storage</th><th>Location</th><th>Status</th><th>Visibility</th>
+                    </tr></thead><tbody>${data.items.map(it => `<tr>
+                        <td>${escapeHtml(it.item_name)}</td>
+                        <td>${escapeHtml(it.item_identifier)}</td>
+                        <td>${escapeHtml(it.sample_origin||'')}</td>
+                        <td>${escapeHtml(it.provider_or_collaborator||'')}</td>
+                        <td>${it.quantity}</td>
+                        <td>${escapeHtml(it.quantity_unit)}</td>
+                        <td>${it.storage_temperature}</td>
+                        <td>${escapeHtml(it.storage_location)}</td>
+                        <td><span class="status-badge ${it.status}">${it.status}</span></td>
+                        <td>${it.visibility_scope}</td>
+                    </tr>`).join('')}</tbody></table>`;
+                }
+            } catch (err) {
+                container.innerHTML = `<p style="color:#dc3545;text-align:center;">${err.message}</p>`;
             }
         }
 
@@ -1976,79 +1928,6 @@ credentials: 'include'
             } catch (err) {
                 tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#dc3545;">Error loading group inventory</td></tr>';
             }
-        }
-
-        // =====================================================
-        // SUPERVISOR: SUPERVISED RESEARCHER INVENTORY
-        // =====================================================
-
-        async function loadSupInvResearcherList() {
-            const ul = document.getElementById('supInvResearcherList');
-            try {
-                const resp = await fetch('/api/di/supervision/researchers', { credentials: 'include' });
-                if (!resp.ok) throw new Error('Failed');
-                const data = await resp.json();
-                const researchers = data.researchers || [];
-                if (researchers.length === 0) { ul.innerHTML = '<li style="color:#999;padding:6px;">No assigned researchers</li>'; return; }
-                ul.innerHTML = researchers.map(r => `
-                    <li class="researcher-item" onclick="selectSupInvResearcher('${r.researcher_id}', '${escapeHtml(r.name)}')" id="supInvR-${r.researcher_id}"
-                        style="padding:8px;cursor:pointer;border-bottom:1px solid #eee;font-size:13px;">
-                        <strong>${escapeHtml(r.name)}</strong><br><span style="font-size:11px;color:#666;">${escapeHtml(r.institution_email)}</span>
-                    </li>
-                `).join('');
-            } catch (err) { ul.innerHTML = '<li style="color:#dc3545;padding:6px;">Error loading</li>'; }
-        }
-
-        async function selectSupInvResearcher(researcherId, name) {
-            selectedSupInvResearcher = researcherId;
-            // Highlight active
-            document.querySelectorAll('#supInvResearcherList li').forEach(li => li.style.background = '');
-            const li = document.getElementById('supInvR-' + researcherId);
-            if (li) li.style.background = '#e7f1ff';
-            document.getElementById('supInvPrompt').style.display = 'none';
-            document.getElementById('supInvContent').style.display = 'block';
-            loadSupInvItems(researcherId, 'product');
-        }
-
-        function switchSupInvType(type) {
-            currentSupInvType = type;
-            document.getElementById('supInvProducts').classList.toggle('active', type === 'product');
-            document.getElementById('supInvSamples').classList.toggle('active', type === 'sample');
-            document.getElementById('supInvOligos').classList.toggle('active', type === 'oligo');
-            document.getElementById('supInvProductView').style.display = type === 'product' ? 'block' : 'none';
-            document.getElementById('supInvSampleView').style.display = type === 'sample' ? 'block' : 'none';
-            document.getElementById('supInvOligoView').style.display = type === 'oligo' ? 'block' : 'none';
-            if (type !== 'oligo' && selectedSupInvResearcher) loadSupInvItems(selectedSupInvResearcher, type);
-        }
-
-        async function loadSupInvItems(researcherId, itemType) {
-            const bodyId = itemType === 'product' ? 'supInvProductBody' : 'supInvSampleBody';
-            const tbody = document.getElementById(bodyId);
-            const cols = itemType === 'product' ? 8 : 9;
-            tbody.innerHTML = `<tr><td colspan="${cols}" style="text-align:center;"><div class="loading"><div class="spinner"></div></div></td></tr>`;
-            try {
-                const resp = await fetch(`/api/di/inventory-v2/supervision/${researcherId}/inventory?item_type=${itemType}`, { credentials: 'include' });
-                if (!resp.ok) throw new Error('Failed');
-                const data = await resp.json();
-                const items = data.items || [];
-                if (items.length === 0) { tbody.innerHTML = `<tr><td colspan="${cols}" style="text-align:center;color:#999;">No ${itemType}s</td></tr>`; return; }
-                if (itemType === 'product') {
-                    tbody.innerHTML = items.map(i => `<tr>
-                        <td>${escapeHtml(i.item_name)}</td><td>${escapeHtml(i.vendor_company||'')}</td>
-                        <td>${escapeHtml(i.item_identifier)}</td><td>${i.quantity}</td><td>${escapeHtml(i.quantity_unit)}</td>
-                        <td>${escapeHtml(i.storage_temperature)}</td><td>${escapeHtml(i.storage_location)}</td>
-                        <td><span class="status-badge ${i.status}">${i.status}</span></td>
-                    </tr>`).join('');
-                } else {
-                    tbody.innerHTML = items.map(i => `<tr>
-                        <td>${escapeHtml(i.item_name)}</td><td>${escapeHtml(i.item_identifier)}</td>
-                        <td>${escapeHtml(i.sample_origin||'')}</td><td>${escapeHtml(i.provider_or_collaborator||'')}</td>
-                        <td>${i.quantity}</td><td>${escapeHtml(i.quantity_unit)}</td>
-                        <td>${escapeHtml(i.storage_temperature)}</td><td>${escapeHtml(i.storage_location)}</td>
-                        <td><span class="status-badge ${i.status}">${i.status}</span></td>
-                    </tr>`).join('');
-                }
-            } catch (err) { tbody.innerHTML = `<tr><td colspan="${cols}" style="text-align:center;color:#dc3545;">Error</td></tr>`; }
         }
 
         // =====================================================
