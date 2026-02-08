@@ -827,12 +827,6 @@
             document.querySelectorAll('.section-content').forEach(s => s.classList.remove('active'));
             event.currentTarget.classList.add('active');
             document.getElementById('section-' + section).classList.add('active');
-
-            if (section === 'files') {
-              loadMyFiles();
-              loadGroupDocuments();
-            }
-
             if (section === 'files') {
                 loadMyFiles();
                 loadGroupDocuments();
