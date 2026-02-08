@@ -2531,7 +2531,7 @@
             } else {
                 for (const r of filtered) {
                     const checked = dlState.selected.includes(r.id) ? 'checked' : '';
-                    html += '<label style="display:flex;align-items:center;gap:6px;padding:5px 8px;cursor:pointer;border-bottom:1px solid #f5f5f5;">' +
+                    html += '<label style="display:flex;flex:1;max-width:360px;align-items:center;gap:6px;padding:5px 8px;cursor:pointer;border-bottom:1px solid #f5f5f5;">' +
                         '<input type="checkbox" value="' + escapeHtml(r.id) + '" ' + checked + ' onchange="dlToggleResearcher(\'' + escapeHtml(r.id) + '\', this.checked)">' +
                         '<span>' + escapeHtml(r.name) + '</span>' +
                         '<span style="color:#888;font-size:12px;margin-left:auto;">' + escapeHtml(r.affiliation) + ' &middot; ' + r.files + ' files</span>' +
@@ -2635,26 +2635,26 @@
                 '<div class="stat-card"><div class="stat-value">' + est.fileCount + '</div><div class="stat-label">Files</div></div>' +
                 '<div class="stat-card"><div class="stat-value">' + formatFileSize(est.totalBytes) + '</div><div class="stat-label">Total Size</div></div>' +
                 '</div>';
-            html += '<div class="form-group"><label>Download Mode</label>';
+            html += '<div class="form-group"><label>Download Mode</label><div id="dlModeRow" style="display:flex;gap:12px;flex-wrap:wrap;margin-top:6px;">';
             if (est.singleZipAvailable) {
-                html += '<label style="display:flex;align-items:center;gap:8px;padding:8px;cursor:pointer;border:1px solid #ddd;border-radius:6px;margin-bottom:8px;background:#f0f7ff;">' +
+                html += '<label style="display:flex;flex:1;max-width:360px;align-items:center;gap:8px;padding:8px;cursor:pointer;border:1px solid #ddd;border-radius:6px;margin:0;background:#f0f7ff;">' +
                     '<input type="radio" name="dlMode" value="single" checked onchange="dlSetMode(\'single\')"> Single ZIP download' +
                     (est.recommendedMode === 'single' ? ' <span style="color:#28a745;font-size:12px;">(Recommended)</span>' : '') +
                     '</label>';
             }
-            html += '<label style="display:flex;align-items:center;gap:8px;padding:8px;cursor:pointer;border:1px solid #ddd;border-radius:6px;margin-bottom:8px;' +
+            html += '<label style="display:flex;flex:1;max-width:360px;align-items:center;gap:8px;padding:8px;cursor:pointer;border:1px solid #ddd;border-radius:6px;margin:0;' +
                 (!est.singleZipAvailable ? 'background:#f0f7ff;' : '') + '">' +
                 '<input type="radio" name="dlMode" value="multi" ' + (!est.singleZipAvailable ? 'checked' : '') + ' onchange="dlSetMode(\'multi\')"> Multi-file download' +
                 (est.recommendedMode === 'multi' ? ' <span style="color:#28a745;font-size:12px;">(Recommended)</span>' : '') +
                 '</label>';
-            html += '<div id="dlChunkSize" style="' + (est.singleZipAvailable ? 'display:none;' : '') + 'margin-left:28px;margin-bottom:8px;">' +
+            html += '<div id="dlChunkSize" style="' + (est.singleZipAvailable ? 'display:none;' : '') + 'margin-left:28px;margin:0;">' +
                 '<label style="font-size:13px;color:#666;">Chunk size: </label>' +
                 '<select id="dlChunkSelect" style="padding:4px 8px;border:1px solid #ddd;border-radius:4px;" onchange="dlState.maxBytes=Number(this.value)">' +
                 '<option value="262144000">250 MB</option>' +
                 '<option value="524288000" selected>500 MB (Recommended)</option>' +
                 '<option value="1073741824">1 GB</option>' +
                 '</select></div>';
-            html += '</div>';
+            html += '</div></div>';
             dlState.downloadMode = est.singleZipAvailable ? 'single' : 'multi';
             document.getElementById('dlStepContent').innerHTML = html;
             document.getElementById('dlStepActions').innerHTML = '<button class="btn btn-primary" onclick="dlStartDownload()">Download</button>';
