@@ -12,3 +12,4 @@ patch-*.ps1
 nul
 
 # Track all public/ portal assets (never ignore)
+.claude/

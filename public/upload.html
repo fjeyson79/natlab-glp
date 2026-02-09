@@ -441,6 +441,11 @@
         .status-badge.Approved { background:#28a745; }
         .status-badge.Revision { background:#fd7e14; }
         .status-badge.Rejected { background:#dc3545; }
+        .status-badge.Received { background:#17a2b8; }
+        .status-badge.ConsumePending { background:#fd7e14; }
+        .status-badge.TransferPending { background:#6f42c1; }
+        .status-badge.ApprovedLinked { background:#20c997; }
+        .status-badge.DeletePending { background:#e83e8c; }
 
         /* Supervision Section Styles */
         .researcher-list { list-style: none; }
@@ -699,7 +704,10 @@
             <div class="panel" style="grid-column:1/-1;">
                 <div class="panel-header">
                     <h2><span class="icon">&#128230;</span> Approved Purchases to Receive</h2>
-                    <button class="btn btn-sm btn-secondary" onclick="loadApprovedToReceive()">Refresh</button>
+                    <div style="display:flex;gap:8px;">
+                        <button class="btn btn-sm btn-primary" id="copyPurchaseEmailBtn" style="display:none;" onclick="copyPurchaseEmail()">Copy Purchase Email</button>
+                        <button class="btn btn-sm btn-secondary" onclick="loadApprovedToReceive()">Refresh</button>
+                    </div>
                 </div>
                 <div class="panel-content">
                     <table class="data-table" style="font-size:13px;">
@@ -843,6 +851,8 @@
                     </div>
                 </div>
                 <div class="panel-content">
+                    <input type="text" id="myInvSearchInput" oninput="filterMyInvTable()" placeholder="Search My Inventory..."
+                           style="width:100%;padding:8px 12px;border:1px solid #ddd;border-radius:4px;font-size:13px;margin-bottom:12px;box-sizing:border-box;">
                     <div id="myInvProductView">
                         <table class="data-table" style="font-size:13px;">
                             <thead>
@@ -879,20 +889,22 @@
                     </div>
                 </div>
                 <div class="panel-content">
+                    <input type="text" id="grpInvSearchInput" oninput="filterGrpInvTable()" placeholder="Search Group Inventory..."
+                           style="width:100%;padding:8px 12px;border:1px solid #ddd;border-radius:4px;font-size:13px;margin-bottom:12px;box-sizing:border-box;">
                     <div id="grpInvProductView">
                         <table class="data-table" style="font-size:13px;">
                             <thead>
-                                <tr><th>Name</th><th>Vendor</th><th>Catalog ID</th><th>Affiliation</th><th>Owner</th><th>Qty</th><th>Unit</th><th>Storage</th><th>Location</th></tr>
+                                <tr><th>Name</th><th>Vendor</th><th>Catalog ID</th><th>Affiliation</th><th>Owner</th><th>Qty</th><th>Unit</th><th>Storage</th><th>Location</th><th>Actions</th></tr>
                             </thead>
-                            <tbody id="grpInvProductBody"><tr><td colspan="9" style="text-align:center;color:#999;">Loading...</td></tr></tbody>
+                            <tbody id="grpInvProductBody"><tr><td colspan="10" style="text-align:center;color:#999;">Loading...</td></tr></tbody>
                         </table>
                     </div>
                     <div id="grpInvSampleView" style="display:none;">
                         <table class="data-table" style="font-size:13px;">
                             <thead>
-                                <tr><th>Name</th><th>Sample ID</th><th>Origin</th><th>Affiliation</th><th>Owner</th><th>Qty</th><th>Unit</th><th>Storage</th><th>Location</th></tr>
+                                <tr><th>Name</th><th>Sample ID</th><th>Origin</th><th>Affiliation</th><th>Owner</th><th>Qty</th><th>Unit</th><th>Storage</th><th>Location</th><th>Actions</th></tr>
                             </thead>
-                            <tbody id="grpInvSampleBody"><tr><td colspan="9" style="text-align:center;color:#999;">Loading...</td></tr></tbody>
+                            <tbody id="grpInvSampleBody"><tr><td colspan="10" style="text-align:center;color:#999;">Loading...</td></tr></tbody>
                         </table>
                     </div>
                     <div id="grpInvOligoView" style="display:none;">
@@ -1002,6 +1014,12 @@
                 // Show purchase & inventory section nav for internal users
                 if (user.affiliation !== 'EXTERNAL') {
                     document.getElementById('sectionNav').style.display = 'flex';
+                }
+
+                // Show Copy Purchase Email button for LiU/UNAV
+                if (user.affiliation === 'LiU' || user.affiliation === 'UNAV') {
+                    const cpBtn = document.getElementById('copyPurchaseEmailBtn');
+                    if (cpBtn) cpBtn.style.display = 'inline-block';
                 }
 
                 // Load files and group documents after user info
@@ -1797,8 +1815,7 @@ credentials: 'include'
                             <td><span class="status-badge ${i.status}">${i.status}</span>${i.status_comment ? '<br><small style="color:#856404;">'+escapeHtml(i.status_comment)+'</small>' : ''}</td>
                             <td>
                                 <div style="display:flex;gap:4px;flex-wrap:wrap;">
-                                    ${i.status !== 'Rejected' ? '<button class="btn btn-sm btn-primary" onclick="editInvItem(\''+i.id+'\',\'product\')">Edit</button>' : ''}
-                                    ${i.status === 'Approved' ? '<button class="btn btn-sm btn-warning" onclick="markInvFinished(\''+i.id+'\',\'product\')">Finished</button>' : ''}
+                                    ${myInvActions(i, 'product')}
                                 </div>
                             </td>
                         </tr>
@@ -1817,8 +1834,7 @@ credentials: 'include'
                             <td><span class="status-badge ${i.status}">${i.status}</span>${i.status_comment ? '<br><small style="color:#856404;">'+escapeHtml(i.status_comment)+'</small>' : ''}</td>
                             <td>
                                 <div style="display:flex;gap:4px;flex-wrap:wrap;">
-                                    ${i.status !== 'Rejected' ? '<button class="btn btn-sm btn-primary" onclick="editInvItem(\''+i.id+'\',\'sample\')">Edit</button>' : ''}
-                                    ${i.status === 'Approved' ? '<button class="btn btn-sm btn-warning" onclick="markInvFinished(\''+i.id+'\',\'sample\')">Finished</button>' : ''}
+                                    ${myInvActions(i, 'sample')}
                                 </div>
                             </td>
                         </tr>
@@ -1879,6 +1895,115 @@ credentials: 'include'
         }
 
         // =====================================================
+        // MY INVENTORY ACTION HELPERS + NEW LIFECYCLE FUNCTIONS
+        // =====================================================
+
+        function myInvActions(i, itemType) {
+            let btns = '';
+            const id = i.id;
+            if (i.status === 'Received') {
+                btns += `<button class="btn btn-sm btn-primary" onclick="editInvItem('${id}','${itemType}')">Edit</button>`;
+                btns += `<button class="btn btn-sm btn-warning" onclick="requestConsume('${id}','${itemType}')">Consumed</button>`;
+                if (i.source === 'Online') btns += `<button class="btn btn-sm btn-info" style="color:#fff;" onclick="requestTransfer('${id}','${itemType}')">Transfer</button>`;
+            } else if (i.status === 'Approved' || i.status === 'ApprovedLinked') {
+                btns += `<button class="btn btn-sm btn-primary" onclick="editInvItem('${id}','${itemType}')">Edit</button>`;
+                btns += `<button class="btn btn-sm btn-warning" onclick="requestConsume('${id}','${itemType}')">Consumed</button>`;
+            } else if (i.status === 'ConsumePending' || i.status === 'TransferPending') {
+                btns += `<span class="status-badge ${i.status}" style="font-size:10px;">Awaiting PI</span>`;
+            } else if (i.status === 'Rejected') {
+                btns += `<button class="btn btn-sm btn-danger" onclick="removeRejectedItem('${id}','${itemType}')">Remove</button>`;
+            } else if (i.status === 'Pending' || i.status === 'Revision') {
+                btns += `<button class="btn btn-sm btn-primary" onclick="editInvItem('${id}','${itemType}')">Edit</button>`;
+            }
+            return btns;
+        }
+
+        function grpInvActions(i) {
+            if (i.status === 'DeletePending') return '<span class="status-badge DeletePending" style="font-size:10px;">Delete Pending</span>';
+            if (i.status === 'Approved' || i.status === 'Received') {
+                return `<button class="btn btn-sm btn-danger" onclick="requestGroupDelete('${i.id}')">Request Delete</button>`;
+            }
+            return '';
+        }
+
+        async function requestConsume(id, itemType) {
+            if (!confirm('Request to mark this item as consumed? PI approval is required.')) return;
+            try {
+                const resp = await fetch(`/api/di/inventory-v2/${id}/request-consume`, { method: 'POST', credentials: 'include' });
+                if (!resp.ok) { const d = await resp.json(); throw new Error(d.error || 'Failed'); }
+                loadMyInventoryV2(itemType);
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        async function requestTransfer(id, itemType) {
+            if (!confirm('Request to transfer this item to Group Inventory? PI approval is required.')) return;
+            try {
+                const resp = await fetch(`/api/di/inventory-v2/${id}/request-transfer`, { method: 'POST', credentials: 'include' });
+                if (!resp.ok) { const d = await resp.json(); throw new Error(d.error || 'Failed'); }
+                loadMyInventoryV2(itemType);
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        async function removeRejectedItem(id, itemType) {
+            if (!confirm('Remove this rejected item?')) return;
+            try {
+                const resp = await fetch(`/api/di/inventory-v2/${id}/remove-rejected`, { method: 'POST', credentials: 'include' });
+                if (!resp.ok) { const d = await resp.json(); throw new Error(d.error || 'Failed'); }
+                loadMyInventoryV2(itemType);
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        async function requestGroupDelete(id) {
+            const reason = prompt('Reason for deletion:\n1 = Consumed\n2 = Discarded\n3 = Lost\n\nEnter 1, 2, or 3:');
+            if (reason === null) return;
+            const reasonMap = { '1': 'Consumed', '2': 'Discarded', '3': 'Lost' };
+            const delete_reason = reasonMap[reason.trim()];
+            if (!delete_reason) { alert('Please enter 1, 2, or 3.'); return; }
+            const delete_reason_detail = prompt('Additional details (optional):') || '';
+            try {
+                const resp = await fetch(`/api/di/inventory-v2/${id}/request-delete`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ delete_reason, delete_reason_detail: delete_reason_detail.trim() }),
+                    credentials: 'include'
+                });
+                if (!resp.ok) { const d = await resp.json(); throw new Error(d.error || 'Failed'); }
+                loadGroupInventoryV2(currentGrpInvType || 'product');
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        // Search filter functions
+        function filterMyInvTable() {
+            const term = (document.getElementById('myInvSearchInput').value || '').toLowerCase();
+            const tables = document.querySelectorAll('#myInvProductView tbody tr, #myInvSampleView tbody tr');
+            tables.forEach(row => {
+                if (!row.id || !row.id.startsWith('inv2-row-')) return;
+                row.style.display = row.textContent.toLowerCase().includes(term) ? '' : 'none';
+            });
+        }
+
+        function filterGrpInvTable() {
+            const term = (document.getElementById('grpInvSearchInput').value || '').toLowerCase();
+            const tables = document.querySelectorAll('#grpInvProductView tbody tr, #grpInvSampleView tbody tr');
+            tables.forEach(row => {
+                row.style.display = row.textContent.toLowerCase().includes(term) ? '' : 'none';
+            });
+        }
+
+        // Copy Purchase Email
+        async function copyPurchaseEmail() {
+            try {
+                const resp = await fetch('/api/di/purchases/copy-email', { method: 'POST', credentials: 'include' });
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data.error || 'Failed');
+                await navigator.clipboard.writeText(data.email_text);
+                const btn = document.getElementById('copyPurchaseEmailBtn');
+                const orig = btn.textContent;
+                btn.textContent = 'Copied! PO: ' + data.po_number;
+                setTimeout(() => btn.textContent = orig, 3000);
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        // =====================================================
         // GROUP INVENTORY V2
         // =====================================================
 
@@ -1896,14 +2021,15 @@ credentials: 'include'
         async function loadGroupInventoryV2(itemType) {
             const bodyId = itemType === 'product' ? 'grpInvProductBody' : 'grpInvSampleBody';
             const tbody = document.getElementById(bodyId);
-            tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;"><div class="loading"><div class="spinner"></div></div></td></tr>';
+            const cols = 10;
+            tbody.innerHTML = `<tr><td colspan="${cols}" style="text-align:center;"><div class="loading"><div class="spinner"></div></div></td></tr>`;
             try {
                 const resp = await fetch(`/api/di/inventory-v2/group-items?item_type=${itemType}`, { credentials: 'include' });
                 if (!resp.ok) throw new Error('Failed');
                 const data = await resp.json();
                 const items = data.items || [];
                 if (items.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#999;">No group inventory items</td></tr>';
+                    tbody.innerHTML = `<tr><td colspan="${cols}" style="text-align:center;color:#999;">No group inventory items</td></tr>`;
                     return;
                 }
                 if (itemType === 'product') {
@@ -1916,7 +2042,9 @@ credentials: 'include'
                         <td>${escapeHtml(i.affiliation)}</td>
                         <td>${escapeHtml(i.created_by_name || i.created_by)}</td>
                         <td>${i.quantity}</td><td>${escapeHtml(i.quantity_unit)}</td>
-                        <td>${escapeHtml(i.storage_temperature)}</td><td>${escapeHtml(i.storage_location)}</td>
+                        <td>${escapeHtml(i.storage_temperature)}</td>
+                        <td style="background:#fff3cd;font-weight:600;">${escapeHtml(i.storage_location)}</td>
+                        <td>${grpInvActions(i)}</td>
                     </tr>`}).join('');
                 } else {
                     tbody.innerHTML = items.map(i => `<tr>
@@ -1926,11 +2054,13 @@ credentials: 'include'
                         <td>${escapeHtml(i.affiliation)}</td>
                         <td>${escapeHtml(i.created_by_name || i.created_by)}</td>
                         <td>${i.quantity}</td><td>${escapeHtml(i.quantity_unit)}</td>
-                        <td>${escapeHtml(i.storage_temperature)}</td><td>${escapeHtml(i.storage_location)}</td>
+                        <td>${escapeHtml(i.storage_temperature)}</td>
+                        <td style="background:#fff3cd;font-weight:600;">${escapeHtml(i.storage_location)}</td>
+                        <td>${grpInvActions(i)}</td>
                     </tr>`).join('');
                 }
             } catch (err) {
-                tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#dc3545;">Error loading group inventory</td></tr>';
+                tbody.innerHTML = `<tr><td colspan="${cols}" style="text-align:center;color:#dc3545;">Error loading group inventory</td></tr>`;
             }
         }
 

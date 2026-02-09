@@ -1138,6 +1138,13 @@
                         <option value="Approved">Approved</option>
                         <option value="Revision">Revision</option>
                         <option value="Rejected">Rejected</option>
+                        <option value="Received">Received</option>
+                        <option value="ConsumePending">ConsumePending</option>
+                        <option value="TransferPending">TransferPending</option>
+                        <option value="ApprovedLinked">ApprovedLinked</option>
+                        <option value="Consumed">Consumed</option>
+                        <option value="DeletePending">DeletePending</option>
+                        <option value="Deleted">Deleted</option>
                     </select>
                     <select id="invV2FilterSource" onchange="loadAllInventoryV2()" style="padding:6px;border-radius:4px;border:1px solid #ddd;">
                         <option value="">All Sources</option>
@@ -2966,18 +2973,38 @@
                 const items = data.items || [];
                 if (items.length === 0) { tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#999;">No inventory items found</td></tr>'; return; }
 
-                const statusColors = { Pending: '#ffc107', Approved: '#28a745', Revision: '#fd7e14', Rejected: '#dc3545' };
+                const statusColors = { Pending: '#ffc107', Approved: '#28a745', Revision: '#fd7e14', Rejected: '#dc3545', Received: '#17a2b8', ConsumePending: '#fd7e14', TransferPending: '#6f42c1', ApprovedLinked: '#20c997', Consumed: '#6c757d', DeletePending: '#e83e8c', Deleted: '#6c757d' };
                 tbody.innerHTML = items.map(i => {
                     let actions = '';
-                    if (i.status === 'Pending' || i.status === 'Revision') {
+                    if ((i.status === 'Pending' || i.status === 'Revision') && i.source === 'Offline') {
+                        // Offline pending: approve-as-new, show duplicates, reject
+                        actions += `<button class="btn btn-sm btn-success" onclick="piApproveAsNew('${i.id}')" title="Approve as New">&#10003; New</button> `;
+                        actions += `<button class="btn btn-sm btn-info" style="color:#fff;" onclick="piShowDuplicates('${i.id}')" title="Show Duplicates">&#128269; Dup</button> `;
+                        actions += `<button class="btn btn-sm btn-warning" onclick="piRevisionItem('${i.id}')" title="Revision">&#8635;</button> `;
+                        actions += `<button class="btn btn-sm btn-danger" onclick="piRejectItem('${i.id}')" title="Reject">&#10007;</button> `;
+                    } else if (i.status === 'Pending' || i.status === 'Revision') {
+                        // Online pending: existing approve/revision/reject
                         actions += `<button class="btn btn-sm btn-success" onclick="piApproveItem('${i.id}')" title="Approve">&#10003;</button> `;
                         actions += `<button class="btn btn-sm btn-warning" onclick="piRevisionItem('${i.id}')" title="Revision">&#8635;</button> `;
                         actions += `<button class="btn btn-sm btn-danger" onclick="piRejectItem('${i.id}')" title="Reject">&#10007;</button> `;
                     }
+                    if (i.status === 'ConsumePending') {
+                        actions += `<button class="btn btn-sm btn-success" onclick="piApproveConsume('${i.id}')" title="Approve Consume">&#10003; Consume</button> `;
+                        actions += `<button class="btn btn-sm btn-danger" onclick="piRejectConsume('${i.id}')" title="Reject Consume">&#10007; Consume</button> `;
+                    }
+                    if (i.status === 'TransferPending') {
+                        actions += `<button class="btn btn-sm btn-success" onclick="piApproveTransfer('${i.id}')" title="Approve Transfer">&#10003; Transfer</button> `;
+                        actions += `<button class="btn btn-sm btn-danger" onclick="piRejectTransfer('${i.id}')" title="Reject Transfer">&#10007; Transfer</button> `;
+                    }
+                    if (i.status === 'DeletePending') {
+                        actions += `<button class="btn btn-sm btn-success" onclick="piApproveDelete('${i.id}')" title="Approve Delete">&#10003; Delete</button> `;
+                        actions += `<button class="btn btn-sm btn-danger" onclick="piRejectDelete('${i.id}')" title="Reject Delete">&#10007; Delete</button> `;
+                        if (i.delete_reason) actions += `<br><small style="color:#856404;">Reason: ${escapeHtml(i.delete_reason)}${i.delete_reason_detail ? ' — '+escapeHtml(i.delete_reason_detail) : ''}</small>`;
+                    }
                     if (i.status === 'Approved' && i.visibility_scope === 'personal') {
                         actions += `<button class="btn btn-sm btn-primary" onclick="piPromoteToGroup('${i.id}')" title="Promote to Group">&#8593; Group</button>`;
                     }
-                    if (i.visibility_scope === 'group') {
+                    if (i.status === 'Approved' && i.visibility_scope === 'group') {
                         actions += `<button class="btn btn-sm btn-secondary" onclick="piDemoteFromGroup('${i.id}')" title="Remove from Group">&#8595; Personal</button>`;
                     }
                     return `<tr>
@@ -3049,6 +3076,145 @@
                 const resp = await fetch(`/api/di/inventory-v2/${id}/demote-from-group`, { method: 'POST', credentials: 'include' });
                 if (!resp.ok) { const d = await resp.json(); throw new Error(d.error || 'Failed'); }
                 loadAllInventoryV2();
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        // ==================== INVENTORY RULES — NEW PI FUNCTIONS ====================
+
+        async function piApproveConsume(id) {
+            if (!confirm('Approve consume request? Item will be marked as Consumed.')) return;
+            try {
+                const resp = await fetch(`/api/di/inventory-v2/${id}/approve-consume`, { method: 'POST', credentials: 'include' });
+                if (!resp.ok) { const d = await resp.json(); throw new Error(d.error || 'Failed'); }
+                loadAllInventoryV2();
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        async function piRejectConsume(id) {
+            const comment = prompt('Rejection reason for consume request (required):');
+            if (comment === null || !comment.trim()) return;
+            try {
+                const resp = await fetch(`/api/di/inventory-v2/${id}/reject-consume`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ comment: comment.trim() }), credentials: 'include'
+                });
+                if (!resp.ok) { const d = await resp.json(); throw new Error(d.error || 'Failed'); }
+                loadAllInventoryV2();
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        async function piApproveTransfer(id) {
+            if (!confirm('Approve transfer to Group Inventory?')) return;
+            try {
+                const resp = await fetch(`/api/di/inventory-v2/${id}/approve-transfer`, { method: 'POST', credentials: 'include' });
+                if (!resp.ok) { const d = await resp.json(); throw new Error(d.error || 'Failed'); }
+                loadAllInventoryV2();
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        async function piRejectTransfer(id) {
+            const comment = prompt('Rejection reason for transfer request (required):');
+            if (comment === null || !comment.trim()) return;
+            try {
+                const resp = await fetch(`/api/di/inventory-v2/${id}/reject-transfer`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ comment: comment.trim() }), credentials: 'include'
+                });
+                if (!resp.ok) { const d = await resp.json(); throw new Error(d.error || 'Failed'); }
+                loadAllInventoryV2();
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        async function piApproveDelete(id) {
+            if (!confirm('Approve deletion? Item will be permanently removed from active inventory.')) return;
+            try {
+                const resp = await fetch(`/api/di/inventory-v2/${id}/approve-delete`, { method: 'POST', credentials: 'include' });
+                if (!resp.ok) { const d = await resp.json(); throw new Error(d.error || 'Failed'); }
+                loadAllInventoryV2();
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        async function piRejectDelete(id) {
+            const comment = prompt('Rejection reason for delete request (required):');
+            if (comment === null || !comment.trim()) return;
+            try {
+                const resp = await fetch(`/api/di/inventory-v2/${id}/reject-delete`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ comment: comment.trim() }), credentials: 'include'
+                });
+                if (!resp.ok) { const d = await resp.json(); throw new Error(d.error || 'Failed'); }
+                loadAllInventoryV2();
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        async function piApproveAsNew(id) {
+            if (!confirm('Approve this offline item as a NEW Group Inventory entry?')) return;
+            try {
+                const resp = await fetch(`/api/di/inventory-v2/${id}/approve-as-new`, { method: 'POST', credentials: 'include' });
+                if (!resp.ok) { const d = await resp.json(); throw new Error(d.error || 'Failed'); }
+                loadAllInventoryV2();
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        async function piApproveAsDuplicate(itemId, dupId) {
+            if (!confirm('Link this item to the selected group inventory record as a duplicate?')) return;
+            try {
+                const resp = await fetch(`/api/di/inventory-v2/${itemId}/approve-as-duplicate`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ duplicate_of_inventory_id: dupId }), credentials: 'include'
+                });
+                if (!resp.ok) { const d = await resp.json(); throw new Error(d.error || 'Failed'); }
+                // Remove the suggestions row
+                const sugRow = document.getElementById('dup-suggestions-' + itemId);
+                if (sugRow) sugRow.remove();
+                loadAllInventoryV2();
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        async function piShowDuplicates(id) {
+            // Toggle: if suggestions row already exists, remove it
+            const existingRow = document.getElementById('dup-suggestions-' + id);
+            if (existingRow) { existingRow.remove(); return; }
+
+            try {
+                const resp = await fetch(`/api/di/inventory-v2/${id}/duplicate-suggestions`, { credentials: 'include' });
+                if (!resp.ok) { const d = await resp.json(); throw new Error(d.error || 'Failed'); }
+                const data = await resp.json();
+                const suggestions = data.suggestions || [];
+
+                // Find the row for this item and insert after it
+                const tbody = document.getElementById('invV2AllTableBody');
+                const rows = tbody.querySelectorAll('tr');
+                let targetRow = null;
+                for (const row of rows) {
+                    if (row.innerHTML.includes(id)) { targetRow = row; break; }
+                }
+                if (!targetRow) return;
+
+                const sugRow = document.createElement('tr');
+                sugRow.id = 'dup-suggestions-' + id;
+                sugRow.style.background = '#f8f9fa';
+
+                if (suggestions.length === 0) {
+                    sugRow.innerHTML = '<td colspan="11" style="padding:12px;text-align:center;color:#999;font-style:italic;">No duplicate suggestions found in Group Inventory.</td>';
+                } else {
+                    let html = '<td colspan="11" style="padding:12px;"><strong style="font-size:12px;">Duplicate Suggestions (up to 5):</strong><table style="width:100%;font-size:12px;border-collapse:collapse;margin-top:6px;"><thead><tr style="color:#666;"><th style="padding:4px 8px;text-align:left;">Name</th><th style="padding:4px 8px;text-align:left;">Vendor</th><th style="padding:4px 8px;text-align:left;">Catalog ID</th><th style="padding:4px 8px;text-align:left;">Location</th><th style="padding:4px 8px;text-align:left;">Lot/Batch</th><th style="padding:4px 8px;text-align:left;">Match</th><th style="padding:4px 8px;">Action</th></tr></thead><tbody>';
+                    suggestions.forEach(s => {
+                        html += `<tr>
+                            <td style="padding:4px 8px;">${escapeHtml(s.item_name)}</td>
+                            <td style="padding:4px 8px;">${escapeHtml(s.vendor_company || '')}</td>
+                            <td style="padding:4px 8px;">${escapeHtml(s.item_identifier || '')}</td>
+                            <td style="padding:4px 8px;background:#fff3cd;font-weight:600;">${escapeHtml(s.storage_location || '')}</td>
+                            <td style="padding:4px 8px;">${escapeHtml(s.lot_or_batch_number || '')}</td>
+                            <td style="padding:4px 8px;font-size:10px;color:#666;">${escapeHtml(s.match_type)}</td>
+                            <td style="padding:4px 8px;text-align:center;"><button class="btn btn-sm btn-primary" onclick="piApproveAsDuplicate('${id}','${s.id}')">Link</button></td>
+                        </tr>`;
+                    });
+                    html += '</tbody></table></td>';
+                    sugRow.innerHTML = html;
+                }
+
+                targetRow.after(sugRow);
             } catch (err) { alert('Error: ' + err.message); }
         }
     </script>

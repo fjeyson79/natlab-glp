@@ -4674,8 +4674,8 @@ app.post('/api/di/purchases/item/:itemId/receive', requireAuth, requireInternal,
                     quantity, quantity_unit, storage_location, storage_temperature,
                     vendor_company, product_link, internal_order_number, unit_price, currency,
                     lot_or_batch_number, expiry_date, opened_date, notes,
-                    visibility_scope, created_by, status
-                ) VALUES ($1, 'product', 'Online', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'group', $17, 'Approved')
+                    visibility_scope, created_by, status, owner_type
+                ) VALUES ($1, 'product', 'Online', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'group', $17, 'Received', 'researcher')
                 RETURNING id`,
                 [item.affiliation, item.product_name, item.catalog_id,
                  Number(quantity_received), unit, location.trim(), storage,
@@ -4882,7 +4882,7 @@ app.get('/api/di/inventory-v2/my-items', requireAuth, requireInternal, async (re
         const { item_type } = req.query;
         let query = `SELECT ii.*, a.name AS created_by_name FROM di_inventory_items ii
                      LEFT JOIN di_allowlist a ON a.researcher_id = ii.created_by
-                     WHERE ii.created_by = $1 AND (ii.visibility_scope = 'personal' OR (ii.visibility_scope = 'group' AND ii.source = 'Online'))`;
+                     WHERE ii.created_by = $1 AND ii.status NOT IN ('Consumed','Deleted') AND ii.transferred_at IS NULL`;
         const params = [user.researcher_id];
         if (item_type && VALID_ITEM_TYPES.includes(item_type)) {
             query += ` AND ii.item_type = $${params.length + 1}`;
@@ -4897,13 +4897,13 @@ app.get('/api/di/inventory-v2/my-items', requireAuth, requireInternal, async (re
     }
 });
 
-// GET /api/di/inventory-v2/group-items — group inventory (visibility_scope=group, status=Approved)
+// GET /api/di/inventory-v2/group-items — group inventory (visibility_scope=group, active statuses)
 app.get('/api/di/inventory-v2/group-items', requireAuth, requireInternal, async (req, res) => {
     try {
         const { item_type } = req.query;
         let query = `SELECT ii.*, a.name AS created_by_name FROM di_inventory_items ii
                      LEFT JOIN di_allowlist a ON a.researcher_id = ii.created_by
-                     WHERE ii.visibility_scope = 'group' AND ii.status = 'Approved'`;
+                     WHERE ii.visibility_scope = 'group' AND ii.status IN ('Approved', 'Received', 'DeletePending')`;
         const params = [];
         if (item_type && VALID_ITEM_TYPES.includes(item_type)) {
             query += ` AND ii.item_type = $${params.length + 1}`;
@@ -4944,8 +4944,8 @@ app.post('/api/di/inventory-v2/offline-entry', requireAuth, requireInternal, asy
                 quantity, quantity_unit, storage_location, storage_temperature,
                 vendor_company, product_link, lot_or_batch_number, expiry_date, opened_date, notes,
                 sample_origin, provider_or_collaborator, provider_detail, sample_status,
-                visibility_scope, created_by, status
-            ) VALUES ($1, $2, 'Offline', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, 'personal', $19, 'Pending')
+                visibility_scope, created_by, status, owner_type
+            ) VALUES ($1, $2, 'Offline', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, 'personal', $19, 'Pending', 'group')
             RETURNING *`,
             [user.affiliation, item_type, item_name.trim(), item_identifier.trim(),
              Number(quantity), quantity_unit, storage_location.trim(), storage_temperature,
@@ -5060,7 +5060,7 @@ app.get('/api/di/inventory-v2/all', requirePI, async (req, res) => {
         if (item_type && VALID_ITEM_TYPES.includes(item_type)) { params.push(item_type); query += ` AND ii.item_type = $${params.length}`; }
         if (affiliation && ['LiU', 'UNAV'].includes(affiliation)) { params.push(affiliation); query += ` AND ii.affiliation = $${params.length}`; }
         if (visibility_scope && ['personal', 'group'].includes(visibility_scope)) { params.push(visibility_scope); query += ` AND ii.visibility_scope = $${params.length}`; }
-        if (status && ['Pending', 'Approved', 'Revision', 'Rejected'].includes(status)) { params.push(status); query += ` AND ii.status = $${params.length}`; }
+        if (status && ['Pending', 'Approved', 'Revision', 'Rejected', 'Received', 'ConsumePending', 'TransferPending', 'ApprovedLinked', 'Consumed', 'DeletePending', 'Deleted'].includes(status)) { params.push(status); query += ` AND ii.status = $${params.length}`; }
         if (source && ['Online', 'Offline'].includes(source)) { params.push(source); query += ` AND ii.source = $${params.length}`; }
 
         query += ` ORDER BY ii.updated_at DESC`;
@@ -5235,6 +5235,521 @@ app.get('/api/di/inventory-v2/po-numbers', requirePI, async (req, res) => {
     }
 });
 
+// ==================== INVENTORY RULES — NEW LIFECYCLE ENDPOINTS ====================
+
+// POST /api/di/inventory-v2/:id/request-consume — researcher/supervisor requests consume
+app.post('/api/di/inventory-v2/:id/request-consume', requireAuth, requireInternal, async (req, res) => {
+    try {
+        const user = req.session.user;
+        const { id } = req.params;
+        const existing = await pool.query('SELECT * FROM di_inventory_items WHERE id = $1', [id]);
+        if (existing.rows.length === 0) return res.status(404).json({ error: 'Item not found' });
+        const item = existing.rows[0];
+        if (item.created_by !== user.researcher_id) return res.status(403).json({ error: 'You can only manage your own items' });
+        if (!['Received', 'Approved', 'ApprovedLinked'].includes(item.status)) {
+            return res.status(400).json({ error: 'Item must be Received, Approved, or ApprovedLinked to request consume' });
+        }
+
+        await pool.query(
+            `UPDATE di_inventory_items SET previous_status = status, status = 'ConsumePending', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+            [id]
+        );
+
+        await pool.query(
+            `INSERT INTO di_inventory_items_log (inventory_item_id, action, changed_by, old_values, new_values)
+             VALUES ($1, 'REQUEST_CONSUME', $2, $3, $4)`,
+            [id, user.researcher_id, JSON.stringify({ status: item.status }), JSON.stringify({ status: 'ConsumePending', previous_status: item.status })]
+        );
+
+        console.log(`[INV-V2] Consume requested for ${id} by ${user.researcher_id}`);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[INV-V2] request-consume error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/di/inventory-v2/:id/request-transfer — researcher/supervisor requests transfer to group
+app.post('/api/di/inventory-v2/:id/request-transfer', requireAuth, requireInternal, async (req, res) => {
+    try {
+        const user = req.session.user;
+        const { id } = req.params;
+        const existing = await pool.query('SELECT * FROM di_inventory_items WHERE id = $1', [id]);
+        if (existing.rows.length === 0) return res.status(404).json({ error: 'Item not found' });
+        const item = existing.rows[0];
+        if (item.created_by !== user.researcher_id) return res.status(403).json({ error: 'You can only manage your own items' });
+        if (item.source !== 'Online') return res.status(400).json({ error: 'Only online items can be transferred to group' });
+        if (item.status !== 'Received') return res.status(400).json({ error: 'Item must be Received to request transfer' });
+
+        await pool.query(
+            `UPDATE di_inventory_items SET previous_status = status, status = 'TransferPending', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+            [id]
+        );
+
+        await pool.query(
+            `INSERT INTO di_inventory_items_log (inventory_item_id, action, changed_by, old_values, new_values)
+             VALUES ($1, 'REQUEST_TRANSFER', $2, $3, $4)`,
+            [id, user.researcher_id, JSON.stringify({ status: item.status }), JSON.stringify({ status: 'TransferPending', previous_status: item.status })]
+        );
+
+        console.log(`[INV-V2] Transfer requested for ${id} by ${user.researcher_id}`);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[INV-V2] request-transfer error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/di/inventory-v2/:id/approve-consume — PI approves consume
+app.post('/api/di/inventory-v2/:id/approve-consume', requirePI, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const existing = await pool.query('SELECT * FROM di_inventory_items WHERE id = $1', [id]);
+        if (existing.rows.length === 0) return res.status(404).json({ error: 'Item not found' });
+        if (existing.rows[0].status !== 'ConsumePending') return res.status(400).json({ error: 'Item is not pending consume approval' });
+
+        await pool.query(
+            `UPDATE di_inventory_items SET status = 'Consumed', quantity = 0, previous_status = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+            [id]
+        );
+
+        await pool.query(
+            `INSERT INTO di_inventory_items_log (inventory_item_id, action, changed_by, old_values, new_values)
+             VALUES ($1, 'APPROVE_CONSUME', $2, $3, $4)`,
+            [id, req.session.user.researcher_id, JSON.stringify({ status: 'ConsumePending' }), JSON.stringify({ status: 'Consumed', quantity: 0 })]
+        );
+
+        console.log(`[INV-V2] Consume approved for ${id} by PI`);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[INV-V2] approve-consume error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/di/inventory-v2/:id/reject-consume — PI rejects consume
+app.post('/api/di/inventory-v2/:id/reject-consume', requirePI, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { comment } = req.body;
+        if (!comment || !comment.trim()) return res.status(400).json({ error: 'Comment is required for rejection' });
+
+        const existing = await pool.query('SELECT * FROM di_inventory_items WHERE id = $1', [id]);
+        if (existing.rows.length === 0) return res.status(404).json({ error: 'Item not found' });
+        if (existing.rows[0].status !== 'ConsumePending') return res.status(400).json({ error: 'Item is not pending consume approval' });
+
+        const revertStatus = existing.rows[0].previous_status || 'Received';
+        await pool.query(
+            `UPDATE di_inventory_items SET status = $2, previous_status = NULL, status_comment = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+            [id, revertStatus, comment.trim()]
+        );
+
+        await pool.query(
+            `INSERT INTO di_inventory_items_log (inventory_item_id, action, changed_by, old_values, new_values)
+             VALUES ($1, 'REJECT_CONSUME', $2, $3, $4)`,
+            [id, req.session.user.researcher_id, JSON.stringify({ status: 'ConsumePending' }), JSON.stringify({ status: revertStatus, status_comment: comment.trim() })]
+        );
+
+        console.log(`[INV-V2] Consume rejected for ${id} by PI`);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[INV-V2] reject-consume error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/di/inventory-v2/:id/approve-transfer — PI approves transfer to group
+app.post('/api/di/inventory-v2/:id/approve-transfer', requirePI, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const existing = await pool.query('SELECT * FROM di_inventory_items WHERE id = $1', [id]);
+        if (existing.rows.length === 0) return res.status(404).json({ error: 'Item not found' });
+        if (existing.rows[0].status !== 'TransferPending') return res.status(400).json({ error: 'Item is not pending transfer approval' });
+
+        await pool.query(
+            `UPDATE di_inventory_items SET owner_type = 'group', status = 'Received', transferred_at = CURRENT_TIMESTAMP, previous_status = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+            [id]
+        );
+
+        await pool.query(
+            `INSERT INTO di_inventory_items_log (inventory_item_id, action, changed_by, old_values, new_values)
+             VALUES ($1, 'APPROVE_TRANSFER', $2, $3, $4)`,
+            [id, req.session.user.researcher_id, JSON.stringify({ status: 'TransferPending', owner_type: existing.rows[0].owner_type }), JSON.stringify({ status: 'Received', owner_type: 'group', transferred_at: new Date().toISOString() })]
+        );
+
+        console.log(`[INV-V2] Transfer approved for ${id} by PI`);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[INV-V2] approve-transfer error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/di/inventory-v2/:id/reject-transfer — PI rejects transfer
+app.post('/api/di/inventory-v2/:id/reject-transfer', requirePI, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { comment } = req.body;
+        if (!comment || !comment.trim()) return res.status(400).json({ error: 'Comment is required for rejection' });
+
+        const existing = await pool.query('SELECT * FROM di_inventory_items WHERE id = $1', [id]);
+        if (existing.rows.length === 0) return res.status(404).json({ error: 'Item not found' });
+        if (existing.rows[0].status !== 'TransferPending') return res.status(400).json({ error: 'Item is not pending transfer approval' });
+
+        const revertStatus = existing.rows[0].previous_status || 'Received';
+        await pool.query(
+            `UPDATE di_inventory_items SET status = $2, previous_status = NULL, status_comment = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+            [id, revertStatus, comment.trim()]
+        );
+
+        await pool.query(
+            `INSERT INTO di_inventory_items_log (inventory_item_id, action, changed_by, old_values, new_values)
+             VALUES ($1, 'REJECT_TRANSFER', $2, $3, $4)`,
+            [id, req.session.user.researcher_id, JSON.stringify({ status: 'TransferPending' }), JSON.stringify({ status: revertStatus, status_comment: comment.trim() })]
+        );
+
+        console.log(`[INV-V2] Transfer rejected for ${id} by PI`);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[INV-V2] reject-transfer error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// ==================== DELETE WORKFLOW ====================
+
+// POST /api/di/inventory-v2/:id/request-delete — researcher/supervisor requests deletion of group item
+app.post('/api/di/inventory-v2/:id/request-delete', requireAuth, requireInternal, async (req, res) => {
+    try {
+        const user = req.session.user;
+        const { id } = req.params;
+        const { delete_reason, delete_reason_detail } = req.body;
+
+        if (!delete_reason || !['Consumed', 'Discarded', 'Lost'].includes(delete_reason)) {
+            return res.status(400).json({ error: 'delete_reason must be one of: Consumed, Discarded, Lost' });
+        }
+
+        const existing = await pool.query('SELECT * FROM di_inventory_items WHERE id = $1', [id]);
+        if (existing.rows.length === 0) return res.status(404).json({ error: 'Item not found' });
+        const item = existing.rows[0];
+        if (item.visibility_scope !== 'group') return res.status(400).json({ error: 'Only group inventory items can be requested for deletion' });
+        if (!['Approved', 'Received'].includes(item.status)) return res.status(400).json({ error: 'Item must be Approved or Received to request deletion' });
+
+        await pool.query(
+            `UPDATE di_inventory_items SET previous_status = status, status = 'DeletePending', delete_reason = $2, delete_reason_detail = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+            [id, delete_reason, delete_reason_detail || null]
+        );
+
+        await pool.query(
+            `INSERT INTO di_inventory_items_log (inventory_item_id, action, changed_by, old_values, new_values)
+             VALUES ($1, 'REQUEST_DELETE', $2, $3, $4)`,
+            [id, user.researcher_id, JSON.stringify({ status: item.status }), JSON.stringify({ status: 'DeletePending', delete_reason, delete_reason_detail: delete_reason_detail || null })]
+        );
+
+        console.log(`[INV-V2] Delete requested for ${id} by ${user.researcher_id} (reason: ${delete_reason})`);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[INV-V2] request-delete error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/di/inventory-v2/:id/approve-delete — PI approves deletion
+app.post('/api/di/inventory-v2/:id/approve-delete', requirePI, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const existing = await pool.query('SELECT * FROM di_inventory_items WHERE id = $1', [id]);
+        if (existing.rows.length === 0) return res.status(404).json({ error: 'Item not found' });
+        if (existing.rows[0].status !== 'DeletePending') return res.status(400).json({ error: 'Item is not pending delete approval' });
+
+        await pool.query(
+            `UPDATE di_inventory_items SET status = 'Deleted', previous_status = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+            [id]
+        );
+
+        await pool.query(
+            `INSERT INTO di_inventory_items_log (inventory_item_id, action, changed_by, old_values, new_values)
+             VALUES ($1, 'APPROVE_DELETE', $2, $3, $4)`,
+            [id, req.session.user.researcher_id, JSON.stringify({ status: 'DeletePending' }), JSON.stringify({ status: 'Deleted' })]
+        );
+
+        console.log(`[INV-V2] Delete approved for ${id} by PI`);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[INV-V2] approve-delete error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/di/inventory-v2/:id/reject-delete — PI rejects deletion
+app.post('/api/di/inventory-v2/:id/reject-delete', requirePI, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { comment } = req.body;
+        if (!comment || !comment.trim()) return res.status(400).json({ error: 'Comment is required for rejection' });
+
+        const existing = await pool.query('SELECT * FROM di_inventory_items WHERE id = $1', [id]);
+        if (existing.rows.length === 0) return res.status(404).json({ error: 'Item not found' });
+        if (existing.rows[0].status !== 'DeletePending') return res.status(400).json({ error: 'Item is not pending delete approval' });
+
+        const revertStatus = existing.rows[0].previous_status || 'Approved';
+        await pool.query(
+            `UPDATE di_inventory_items SET status = $2, previous_status = NULL, status_comment = $3, delete_reason = NULL, delete_reason_detail = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+            [id, revertStatus, comment.trim()]
+        );
+
+        await pool.query(
+            `INSERT INTO di_inventory_items_log (inventory_item_id, action, changed_by, old_values, new_values)
+             VALUES ($1, 'REJECT_DELETE', $2, $3, $4)`,
+            [id, req.session.user.researcher_id, JSON.stringify({ status: 'DeletePending' }), JSON.stringify({ status: revertStatus, status_comment: comment.trim() })]
+        );
+
+        console.log(`[INV-V2] Delete rejected for ${id} by PI`);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[INV-V2] reject-delete error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// ==================== DUPLICATE SUGGESTIONS + OFFLINE APPROVAL ====================
+
+// GET /api/di/inventory-v2/:id/duplicate-suggestions — PI checks for group duplicates
+app.get('/api/di/inventory-v2/:id/duplicate-suggestions', requirePI, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const existing = await pool.query('SELECT * FROM di_inventory_items WHERE id = $1', [id]);
+        if (existing.rows.length === 0) return res.status(404).json({ error: 'Item not found' });
+        const item = existing.rows[0];
+        if (item.source !== 'Offline' || !['Pending', 'Revision'].includes(item.status)) {
+            return res.status(400).json({ error: 'Duplicate suggestions only available for Pending/Revision Offline items' });
+        }
+
+        const suggestions = [];
+        const seenIds = new Set();
+
+        // Priority 1: exact catalog_id (item_identifier) match
+        if (item.item_identifier) {
+            const r1 = await pool.query(
+                `SELECT id, item_name, vendor_company, item_identifier, storage_location, lot_or_batch_number
+                 FROM di_inventory_items
+                 WHERE visibility_scope = 'group' AND status IN ('Approved','Received')
+                   AND LOWER(item_identifier) = LOWER($1) AND id != $2
+                 LIMIT 5`,
+                [item.item_identifier, id]
+            );
+            for (const row of r1.rows) {
+                if (!seenIds.has(row.id)) { suggestions.push({ ...row, match_type: 'catalog_id_exact' }); seenIds.add(row.id); }
+            }
+        }
+
+        // Priority 2: vendor + product name similarity
+        if (suggestions.length < 5 && item.vendor_company && item.item_name) {
+            const r2 = await pool.query(
+                `SELECT id, item_name, vendor_company, item_identifier, storage_location, lot_or_batch_number
+                 FROM di_inventory_items
+                 WHERE visibility_scope = 'group' AND status IN ('Approved','Received')
+                   AND LOWER(vendor_company) = LOWER($1) AND LOWER(item_name) ILIKE $2 AND id != $3
+                 LIMIT $4`,
+                [item.vendor_company, '%' + item.item_name.toLowerCase() + '%', id, 5 - suggestions.length]
+            );
+            for (const row of r2.rows) {
+                if (!seenIds.has(row.id)) { suggestions.push({ ...row, match_type: 'vendor_name' }); seenIds.add(row.id); }
+            }
+        }
+
+        // Priority 3: product name similarity only
+        if (suggestions.length < 5 && item.item_name) {
+            const r3 = await pool.query(
+                `SELECT id, item_name, vendor_company, item_identifier, storage_location, lot_or_batch_number
+                 FROM di_inventory_items
+                 WHERE visibility_scope = 'group' AND status IN ('Approved','Received')
+                   AND LOWER(item_name) ILIKE $1 AND id != $2
+                 LIMIT $3`,
+                ['%' + item.item_name.toLowerCase() + '%', id, 5 - suggestions.length]
+            );
+            for (const row of r3.rows) {
+                if (!seenIds.has(row.id)) { suggestions.push({ ...row, match_type: 'name_only' }); seenIds.add(row.id); }
+            }
+        }
+
+        res.json({ success: true, suggestions: suggestions.slice(0, 5) });
+    } catch (err) {
+        console.error('[INV-V2] duplicate-suggestions error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/di/inventory-v2/:id/approve-as-new — PI approves offline item as new group entry
+app.post('/api/di/inventory-v2/:id/approve-as-new', requirePI, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const existing = await pool.query('SELECT * FROM di_inventory_items WHERE id = $1', [id]);
+        if (existing.rows.length === 0) return res.status(404).json({ error: 'Item not found' });
+        const item = existing.rows[0];
+        if (item.source !== 'Offline') return res.status(400).json({ error: 'Only offline items can be approved as new' });
+        if (item.status !== 'Pending' && item.status !== 'Revision') return res.status(400).json({ error: 'Only Pending or Revision items can be approved' });
+
+        await pool.query(
+            `UPDATE di_inventory_items SET status = 'Approved', visibility_scope = 'group', status_comment = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+            [id]
+        );
+
+        await pool.query(
+            `INSERT INTO di_inventory_items_log (inventory_item_id, action, changed_by, old_values, new_values)
+             VALUES ($1, 'APPROVE_AS_NEW', $2, $3, $4)`,
+            [id, req.session.user.researcher_id, JSON.stringify({ status: item.status, visibility_scope: 'personal' }), JSON.stringify({ status: 'Approved', visibility_scope: 'group' })]
+        );
+
+        console.log(`[INV-V2] Offline item ${id} approved as NEW by PI`);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[INV-V2] approve-as-new error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/di/inventory-v2/:id/approve-as-duplicate — PI links offline item to existing group record
+app.post('/api/di/inventory-v2/:id/approve-as-duplicate', requirePI, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { duplicate_of_inventory_id } = req.body;
+        if (!duplicate_of_inventory_id) return res.status(400).json({ error: 'duplicate_of_inventory_id is required' });
+
+        const existing = await pool.query('SELECT * FROM di_inventory_items WHERE id = $1', [id]);
+        if (existing.rows.length === 0) return res.status(404).json({ error: 'Item not found' });
+        const item = existing.rows[0];
+        if (item.source !== 'Offline') return res.status(400).json({ error: 'Only offline items can be approved as duplicate' });
+        if (item.status !== 'Pending' && item.status !== 'Revision') return res.status(400).json({ error: 'Only Pending or Revision items can be approved' });
+
+        // Verify target exists in group inventory
+        const target = await pool.query(
+            'SELECT id FROM di_inventory_items WHERE id = $1 AND visibility_scope = $2',
+            [duplicate_of_inventory_id, 'group']
+        );
+        if (target.rows.length === 0) return res.status(400).json({ error: 'Target group inventory item not found' });
+
+        await pool.query(
+            `UPDATE di_inventory_items SET status = 'ApprovedLinked', duplicate_of_inventory_id = $2, status_comment = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+            [id, duplicate_of_inventory_id]
+        );
+
+        await pool.query(
+            `INSERT INTO di_inventory_items_log (inventory_item_id, action, changed_by, old_values, new_values)
+             VALUES ($1, 'APPROVE_AS_DUPLICATE', $2, $3, $4)`,
+            [id, req.session.user.researcher_id, JSON.stringify({ status: item.status }), JSON.stringify({ status: 'ApprovedLinked', duplicate_of_inventory_id })]
+        );
+
+        console.log(`[INV-V2] Offline item ${id} approved as DUPLICATE (linked to ${duplicate_of_inventory_id}) by PI`);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[INV-V2] approve-as-duplicate error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/di/inventory-v2/:id/remove-rejected — researcher/supervisor removes rejected item
+app.post('/api/di/inventory-v2/:id/remove-rejected', requireAuth, requireInternal, async (req, res) => {
+    try {
+        const user = req.session.user;
+        const { id } = req.params;
+        const existing = await pool.query('SELECT * FROM di_inventory_items WHERE id = $1', [id]);
+        if (existing.rows.length === 0) return res.status(404).json({ error: 'Item not found' });
+        if (existing.rows[0].created_by !== user.researcher_id) return res.status(403).json({ error: 'You can only remove your own items' });
+        if (existing.rows[0].status !== 'Rejected') return res.status(400).json({ error: 'Only rejected items can be removed' });
+
+        await pool.query(
+            `UPDATE di_inventory_items SET status = 'Deleted', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+            [id]
+        );
+
+        await pool.query(
+            `INSERT INTO di_inventory_items_log (inventory_item_id, action, changed_by, old_values, new_values)
+             VALUES ($1, 'REMOVE_REJECTED', $2, $3, $4)`,
+            [id, user.researcher_id, JSON.stringify({ status: 'Rejected' }), JSON.stringify({ status: 'Deleted' })]
+        );
+
+        console.log(`[INV-V2] Rejected item ${id} removed by ${user.researcher_id}`);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[INV-V2] remove-rejected error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// ==================== COPY PURCHASE EMAIL ====================
+
+// POST /api/di/purchases/copy-email — researcher/supervisor generates purchase email with batch PO
+app.post('/api/di/purchases/copy-email', requireAuth, requireInternal, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const user = req.session.user;
+        if (!['LiU', 'UNAV'].includes(user.affiliation)) {
+            return res.status(400).json({ error: 'Copy Purchase Email is only available for LiU and UNAV affiliations' });
+        }
+
+        // Find requester's approved items not yet ordered
+        const itemsResult = await client.query(
+            `SELECT i.id, i.vendor_company, i.product_name, i.catalog_id, i.product_link,
+                    i.quantity, i.unit_price, i.item_total, i.currency
+             FROM di_purchase_items i
+             JOIN di_purchase_requests r ON r.id = i.request_id
+             WHERE r.requester_id = $1 AND r.status = 'APPROVED' AND r.affiliation = $2 AND i.ordered_at IS NULL
+             ORDER BY i.created_at`,
+            [user.researcher_id, user.affiliation]
+        );
+
+        const items = itemsResult.rows;
+        if (items.length === 0) {
+            return res.status(400).json({ error: 'No approved items awaiting ordering' });
+        }
+
+        await client.query('BEGIN');
+
+        // Generate ONE PO for the batch
+        const poNumber = await generatePONumber(client);
+
+        // Mark all items with PO and ordered_at
+        const itemIds = items.map(i => i.id);
+        await client.query(
+            `UPDATE di_purchase_items SET internal_order_number = $1, ordered_at = CURRENT_TIMESTAMP
+             WHERE id = ANY($2)`,
+            [poNumber, itemIds]
+        );
+
+        await client.query('COMMIT');
+
+        // Build email text
+        const total = Math.round(items.reduce((s, i) => s + Number(i.item_total), 0) * 100) / 100;
+        const currency = items[0].currency;
+        const subject = `NATLAB purchase request (${user.affiliation}) — ${poNumber}`;
+        let body = `Hi,\n\nPlease find below the products that have been approved and need to be ordered as soon as possible.\n\nPO Number: ${poNumber}\n\n`;
+
+        items.forEach(i => {
+            body += `- Vendor: ${i.vendor_company}\n`;
+            body += `  Product name: ${i.product_name}\n`;
+            body += `  Catalog ID: ${i.catalog_id}\n`;
+            body += `  Quantity: ${i.quantity}\n`;
+            body += `  Unit price: ${Number(i.unit_price).toFixed(2)} ${i.currency}\n`;
+            body += `  Item total: ${Number(i.item_total).toFixed(2)} ${i.currency}\n`;
+            body += `  Product link: ${i.product_link}\n\n`;
+        });
+
+        body += `---\nTotal: ${total.toFixed(2)} ${currency}\nPO: ${poNumber}`;
+
+        const emailText = `Subject: ${subject}\n\n${body}`;
+
+        console.log(`[PURCHASES] Copy email generated by ${user.researcher_id}, PO: ${poNumber}, ${items.length} items`);
+        res.json({ success: true, email_text: emailText, po_number: poNumber, item_count: items.length });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('[PURCHASES] Copy email error:', err);
+        res.status(500).json({ error: 'Server error' });
+    } finally {
+        client.release();
+    }
+});
+
 // GET /api/di/inventory-v2/supervision/:researcherId/inventory — supervisor views researcher's inventory
 app.get('/api/di/inventory-v2/supervision/:researcherId/inventory', requireSupervisor, async (req, res) => {
     try {
@@ -5251,7 +5766,7 @@ app.get('/api/di/inventory-v2/supervision/:researcherId/inventory', requireSuper
         const { item_type } = req.query;
         let query = `SELECT ii.*, a.name AS created_by_name FROM di_inventory_items ii
                      LEFT JOIN di_allowlist a ON a.researcher_id = ii.created_by
-                     WHERE ii.created_by = $1 AND (ii.visibility_scope = 'personal' OR (ii.visibility_scope = 'group' AND ii.source = 'Online'))`;
+                     WHERE ii.created_by = $1 AND ii.status NOT IN ('Consumed','Deleted') AND ii.transferred_at IS NULL`;
         const params = [researcherId];
         if (item_type && VALID_ITEM_TYPES.includes(item_type)) {
             query += ` AND ii.item_type = $${params.length + 1}`;

@@ -198,7 +198,44 @@ async function migrate() {
             // Extend di_purchase_items for v2 inventory linkage and PO numbers
             `ALTER TABLE di_purchase_items ADD COLUMN IF NOT EXISTS new_inventory_item_id UUID REFERENCES di_inventory_items(id)`,
             `ALTER TABLE di_purchase_items ADD COLUMN IF NOT EXISTS internal_order_number VARCHAR(50)`,
-            `CREATE INDEX IF NOT EXISTS idx_di_purchase_items_new_inv ON di_purchase_items(new_inventory_item_id)`
+            `CREATE INDEX IF NOT EXISTS idx_di_purchase_items_new_inv ON di_purchase_items(new_inventory_item_id)`,
+
+            // ==================== INVENTORY RULES — ADDITIVE EXTENSIONS ====================
+
+            // Widen status CHECK to support new lifecycle statuses
+            `ALTER TABLE di_inventory_items DROP CONSTRAINT IF EXISTS di_inventory_items_status_check`,
+            `ALTER TABLE di_inventory_items ADD CONSTRAINT di_inventory_items_status_check
+                CHECK (status IN ('Pending','Approved','Revision','Rejected','Received',
+                    'ConsumePending','TransferPending','ApprovedLinked','Consumed',
+                    'DeletePending','Deleted'))`,
+
+            // owner_type: 'researcher' (personal) or 'group' (transferred / offline)
+            `ALTER TABLE di_inventory_items ADD COLUMN IF NOT EXISTS owner_type VARCHAR(10) DEFAULT 'researcher'`,
+            `ALTER TABLE di_inventory_items DROP CONSTRAINT IF EXISTS di_inventory_items_owner_type_check`,
+            `ALTER TABLE di_inventory_items ADD CONSTRAINT di_inventory_items_owner_type_check
+                CHECK (owner_type IN ('researcher','group'))`,
+
+            // duplicate link for approve-as-duplicate workflow
+            `ALTER TABLE di_inventory_items ADD COLUMN IF NOT EXISTS duplicate_of_inventory_id UUID`,
+
+            // previous_status for revert-on-reject workflows
+            `ALTER TABLE di_inventory_items ADD COLUMN IF NOT EXISTS previous_status VARCHAR(20)`,
+
+            // transferred_at: set when PI approves transfer; used to hide from My Inventory
+            `ALTER TABLE di_inventory_items ADD COLUMN IF NOT EXISTS transferred_at TIMESTAMP`,
+
+            // delete request fields
+            `ALTER TABLE di_inventory_items ADD COLUMN IF NOT EXISTS delete_reason VARCHAR(20)`,
+            `ALTER TABLE di_inventory_items ADD COLUMN IF NOT EXISTS delete_reason_detail TEXT`,
+
+            // Indexes for new columns
+            `CREATE INDEX IF NOT EXISTS idx_di_inv_items_owner_type ON di_inventory_items(owner_type)`,
+            `CREATE INDEX IF NOT EXISTS idx_di_inv_items_dup_ref ON di_inventory_items(duplicate_of_inventory_id)`,
+            `CREATE INDEX IF NOT EXISTS idx_di_inv_items_transferred ON di_inventory_items(transferred_at)`,
+
+            // Backfill owner_type for existing data
+            `UPDATE di_inventory_items SET owner_type = 'researcher' WHERE owner_type IS NULL AND source = 'Online'`,
+            `UPDATE di_inventory_items SET owner_type = 'group' WHERE owner_type IS NULL AND source = 'Offline'`
         ];
 
         for (const sql of migrations) {
