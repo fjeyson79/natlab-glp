@@ -1783,9 +1783,11 @@ credentials: 'include'
                 }
 
                 if (itemType === 'product') {
-                    tbody.innerHTML = items.map(i => `
+                    tbody.innerHTML = items.map(i => {
+                        const poTag = (i.source === 'Online' && i.internal_order_number) ? '<br><small style="color:#0c5460;">PO: '+escapeHtml(i.internal_order_number)+'</small>' : '';
+                        return `
                         <tr id="inv2-row-${i.id}">
-                            <td>${i.product_link ? '<a href="'+escapeHtml(i.product_link)+'" target="_blank">'+escapeHtml(i.item_name)+'</a>' : escapeHtml(i.item_name)}</td>
+                            <td>${i.product_link ? '<a href="'+escapeHtml(i.product_link)+'" target="_blank">'+escapeHtml(i.item_name)+'</a>' : escapeHtml(i.item_name)}${poTag}</td>
                             <td>${escapeHtml(i.vendor_company || '')}</td>
                             <td>${escapeHtml(i.item_identifier)}</td>
                             <td class="inv2-qty">${i.quantity}</td>
@@ -1800,7 +1802,7 @@ credentials: 'include'
                                 </div>
                             </td>
                         </tr>
-                    `).join('');
+                    `}).join('');
                 } else {
                     tbody.innerHTML = items.map(i => `
                         <tr id="inv2-row-${i.id}">
@@ -1905,15 +1907,17 @@ credentials: 'include'
                     return;
                 }
                 if (itemType === 'product') {
-                    tbody.innerHTML = items.map(i => `<tr>
-                        <td>${i.product_link ? '<a href="'+escapeHtml(i.product_link)+'" target="_blank">'+escapeHtml(i.item_name)+'</a>' : escapeHtml(i.item_name)}</td>
+                    tbody.innerHTML = items.map(i => {
+                        const poTag = (i.source === 'Online' && i.internal_order_number) ? '<br><small style="color:#0c5460;">PO: '+escapeHtml(i.internal_order_number)+'</small>' : '';
+                        return `<tr>
+                        <td>${i.product_link ? '<a href="'+escapeHtml(i.product_link)+'" target="_blank">'+escapeHtml(i.item_name)+'</a>' : escapeHtml(i.item_name)}${poTag}</td>
                         <td>${escapeHtml(i.vendor_company || '')}</td>
                         <td>${escapeHtml(i.item_identifier)}</td>
                         <td>${escapeHtml(i.affiliation)}</td>
                         <td>${escapeHtml(i.created_by_name || i.created_by)}</td>
                         <td>${i.quantity}</td><td>${escapeHtml(i.quantity_unit)}</td>
                         <td>${escapeHtml(i.storage_temperature)}</td><td>${escapeHtml(i.storage_location)}</td>
-                    </tr>`).join('');
+                    </tr>`}).join('');
                 } else {
                     tbody.innerHTML = items.map(i => `<tr>
                         <td>${escapeHtml(i.item_name)}</td>
@@ -2084,13 +2088,13 @@ credentials: 'include'
                         <td>${i.quantity}</td>
                         <td style="white-space:nowrap;">${Number(i.unit_price).toFixed(2)} ${escapeHtml(i.currency)}</td>
                         <td>${i.ordered_at ? '<span style="color:#28a745;" title="'+new Date(i.ordered_at).toLocaleDateString()+'">Yes</span>' : '<span style="color:#999;">No</span>'}</td>
-                        <td><button class="btn btn-sm btn-success" onclick="showReceiveForm('${i.id}', ${i.quantity})">Received</button></td>
+                        <td><button class="btn btn-sm btn-success" onclick="showReceiveForm('${i.id}', ${i.quantity}, ${i.internal_order_number ? '\''+escapeHtml(i.internal_order_number)+'\'' : 'null'})">Received</button></td>
                     </tr>
                 `).join('');
             } catch (err) { tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#dc3545;">Error loading items</td></tr>'; }
         }
 
-        function showReceiveForm(itemId, defaultQty) {
+        function showReceiveForm(itemId, defaultQty, poNumber) {
             const row = document.getElementById('pr-recv-' + itemId);
             if (!row) return;
             const actionCell = row.querySelector('td:last-child');
@@ -2134,6 +2138,11 @@ credentials: 'include'
                         <label style="width:50px;">Notes</label>
                         <input type="text" id="recv-notes-${itemId}" style="flex:1;padding:2px 4px;border:1px solid #ddd;border-radius:3px;" placeholder="Optional">
                     </div>
+                    <div style="display:flex;gap:4px;align-items:center;">
+                        <label style="width:50px;">PO#</label>
+                        <input type="checkbox" id="recv-po-toggle-${itemId}" ${poNumber ? 'checked' : ''} onchange="document.getElementById('recv-po-input-${itemId}').style.display=this.checked?'block':'none'" style="margin:0;">
+                        <input type="text" id="recv-po-input-${itemId}" value="${poNumber || ''}" style="flex:1;padding:2px 4px;border:1px solid #ddd;border-radius:3px;display:${poNumber ? 'block' : 'none'};" placeholder="PO Number" readonly>
+                    </div>
                     <div style="display:flex;gap:4px;margin-top:2px;">
                         <button class="btn btn-sm btn-success" onclick="submitReceive('${itemId}')">Confirm</button>
                         <button class="btn btn-sm btn-secondary" onclick="loadApprovedToReceive()">Cancel</button>
@@ -2150,6 +2159,8 @@ credentials: 'include'
             const expiry_date = document.getElementById('recv-exp-' + itemId).value || undefined;
             const opened_date = document.getElementById('recv-opened-' + itemId).value || undefined;
             const notes = document.getElementById('recv-notes-' + itemId).value.trim() || undefined;
+            const poToggle = document.getElementById('recv-po-toggle-' + itemId);
+            const internal_order_number = poToggle && poToggle.checked ? (document.getElementById('recv-po-input-' + itemId).value.trim() || undefined) : undefined;
 
             if (!quantity_received || quantity_received <= 0) { alert('Quantity must be positive'); return; }
             if (!location) { alert('Location is required'); return; }
@@ -2157,7 +2168,7 @@ credentials: 'include'
             try {
                 const resp = await fetch(`/api/di/purchases/item/${itemId}/receive`, {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ quantity_received, unit, storage, location, lot_or_batch_number, expiry_date, opened_date, notes }),
+                    body: JSON.stringify({ quantity_received, unit, storage, location, lot_or_batch_number, expiry_date, opened_date, notes, internal_order_number }),
                     credentials: 'include'
                 });
                 const data = await resp.json();
@@ -2165,6 +2176,7 @@ credentials: 'include'
                 alert('Item received and added to your inventory.');
                 loadApprovedToReceive();
                 loadMyInventoryV2('product');
+                loadGroupInventoryV2('product');
             } catch (err) { alert('Error: ' + err.message); }
         }
     </script>

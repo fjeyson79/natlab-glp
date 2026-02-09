@@ -4623,7 +4623,8 @@ app.post('/api/di/purchases/item/:itemId/receive', requireAuth, requireInternal,
         const user = req.session.user;
         const { itemId } = req.params;
         const { quantity_received, unit, storage, location, received_at,
-                lot_or_batch_number, expiry_date, opened_date, notes } = req.body;
+                lot_or_batch_number, expiry_date, opened_date, notes,
+                internal_order_number } = req.body;
 
         // Validate inputs
         if (!quantity_received || isNaN(quantity_received) || Number(quantity_received) <= 0) {
@@ -4674,11 +4675,11 @@ app.post('/api/di/purchases/item/:itemId/receive', requireAuth, requireInternal,
                     vendor_company, product_link, internal_order_number, unit_price, currency,
                     lot_or_batch_number, expiry_date, opened_date, notes,
                     visibility_scope, created_by, status
-                ) VALUES ($1, 'product', 'Online', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'personal', $17, 'Approved')
+                ) VALUES ($1, 'product', 'Online', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'group', $17, 'Approved')
                 RETURNING id`,
                 [item.affiliation, item.product_name, item.catalog_id,
                  Number(quantity_received), unit, location.trim(), storage,
-                 item.vendor_company, item.product_link, item.internal_order_number || null,
+                 item.vendor_company, item.product_link, internal_order_number || null,
                  item.unit_price, item.currency,
                  lot_or_batch_number || null, expiry_date || null, opened_date || null, notes || null,
                  user.researcher_id]
@@ -4881,7 +4882,7 @@ app.get('/api/di/inventory-v2/my-items', requireAuth, requireInternal, async (re
         const { item_type } = req.query;
         let query = `SELECT ii.*, a.name AS created_by_name FROM di_inventory_items ii
                      LEFT JOIN di_allowlist a ON a.researcher_id = ii.created_by
-                     WHERE ii.created_by = $1 AND ii.visibility_scope = 'personal'`;
+                     WHERE ii.created_by = $1 AND (ii.visibility_scope = 'personal' OR (ii.visibility_scope = 'group' AND ii.source = 'Online'))`;
         const params = [user.researcher_id];
         if (item_type && VALID_ITEM_TYPES.includes(item_type)) {
             query += ` AND ii.item_type = $${params.length + 1}`;
@@ -5250,7 +5251,7 @@ app.get('/api/di/inventory-v2/supervision/:researcherId/inventory', requireSuper
         const { item_type } = req.query;
         let query = `SELECT ii.*, a.name AS created_by_name FROM di_inventory_items ii
                      LEFT JOIN di_allowlist a ON a.researcher_id = ii.created_by
-                     WHERE ii.created_by = $1 AND ii.visibility_scope = 'personal'`;
+                     WHERE ii.created_by = $1 AND (ii.visibility_scope = 'personal' OR (ii.visibility_scope = 'group' AND ii.source = 'Online'))`;
         const params = [researcherId];
         if (item_type && VALID_ITEM_TYPES.includes(item_type)) {
             query += ` AND ii.item_type = $${params.length + 1}`;
