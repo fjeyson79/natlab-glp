@@ -705,7 +705,7 @@
                 <div class="panel-header">
                     <h2><span class="icon">&#128230;</span> Approved Purchases to Receive</h2>
                     <div style="display:flex;gap:8px;">
-                        <button class="btn btn-sm btn-primary" id="copyPurchaseEmailBtn" style="display:none;" onclick="copyPurchaseEmail()">Copy Purchase Email</button>
+                        
                         <button class="btn btn-sm btn-secondary" onclick="loadApprovedToReceive()">Refresh</button>
                     </div>
                 </div>
@@ -1014,12 +1014,6 @@
                 // Show purchase & inventory section nav for internal users
                 if (user.affiliation !== 'EXTERNAL') {
                     document.getElementById('sectionNav').style.display = 'flex';
-                }
-
-                // Show Copy Purchase Email button for LiU/UNAV
-                if (user.affiliation === 'LiU' || user.affiliation === 'UNAV') {
-                    const cpBtn = document.getElementById('copyPurchaseEmailBtn');
-                    if (cpBtn) cpBtn.style.display = 'inline-block';
                 }
 
                 // Load files and group documents after user info
@@ -1987,20 +1981,6 @@ credentials: 'include'
             tables.forEach(row => {
                 row.style.display = row.textContent.toLowerCase().includes(term) ? '' : 'none';
             });
-        }
-
-        // Copy Purchase Email
-        async function copyPurchaseEmail() {
-            try {
-                const resp = await fetch('/api/di/purchases/copy-email', { method: 'POST', credentials: 'include' });
-                const data = await resp.json();
-                if (!resp.ok) throw new Error(data.error || 'Failed');
-                await navigator.clipboard.writeText(data.email_text);
-                const btn = document.getElementById('copyPurchaseEmailBtn');
-                const orig = btn.textContent;
-                btn.textContent = 'Copied! PO: ' + data.po_number;
-                setTimeout(() => btn.textContent = orig, 3000);
-            } catch (err) { alert('Error: ' + err.message); }
         }
 
         // =====================================================
