@@ -1041,6 +1041,26 @@
                                 <div class="form-group" style="margin-bottom:8px;">
                                     <label style="font-size:12px;">Supervisor (Training Provider) *</label>
                                     <select id="teSupervisor"><option value="">Select...</option></select>
+                                      <div id="piDelegationPanel" style="display:none;margin-top:10px;padding:10px;border:1px solid #e3e6ea;border-radius:8px;background:#fff;">
+                                          <div style="font-size:12px;font-weight:600;margin-bottom:8px;">Trainer provider details</div>
+                                          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                                              <div class="form-group" style="margin-bottom:8px;">
+                                                  <label style="font-size:12px;">Trainer name *</label>
+                                                  <input type="text" id="piDelTrainerName" placeholder="Full name">
+                                              </div>
+                                              <div class="form-group" style="margin-bottom:8px;">
+                                                  <label style="font-size:12px;">Trainer email *</label>
+                                                  <input type="email" id="piDelTrainerEmail" placeholder="name@domain">
+                                              </div>
+                                              <div class="form-group" style="margin-bottom:8px;grid-column:1 / span 2;">
+                                                  <label style="font-size:12px;">Trainer affiliation *</label>
+                                                  <input type="text" id="piDelTrainerAffil" placeholder="e.g. University, Department, Company">
+                                              </div>
+                                          </div>
+                                          <div style="font-size:12px;color:#555;margin-top:8px;">
+                                              This training was delivered by the trainer listed above. The PI will review the record and certify it during approval and sealing.
+                                          </div>
+                                      </div>
                                 </div>
                                 <div class="form-group" style="margin-bottom:8px;">
                                     <label style="font-size:12px;">Notes (optional)</label>
@@ -1111,6 +1131,10 @@
 
     <script>
         let currentUserRole = null;
+          let currentUserId = null;
+          let piResearcherId = null;
+          let trainingSupervisors = [];
+
         let selectedSupervisionResearcherId = null;
 
         // Load user info
@@ -1120,6 +1144,9 @@
                 if (response.status === 401) { window.location.href = 'access.html'; return; }
                 const data = await response.json();
                 const user = data.user || data;
+                  currentUserId = user.researcher_id;
+                  if (((user.role || "").toLowerCase()) === "pi") { piResearcherId = user.researcher_id; }
+
 
                 document.getElementById('userName').textContent = user.researcher_id;
                 const badge = document.getElementById('affiliationBadge');
@@ -2395,7 +2422,7 @@ credentials: 'include'
             const lot_or_batch_number = document.getElementById('recv-lot-' + itemId).value.trim() || undefined;
             const expiry_date = document.getElementById('recv-exp-' + itemId).value || undefined;
             const opened_date = document.getElementById('recv-opened-' + itemId).value || undefined;
-            const notes = document.getElementById('recv-notes-' + itemId).value.trim() || undefined;
+            let notes = document.getElementById('recv-notes-' + itemId).value.trim() || undefined;
             const poToggle = document.getElementById('recv-po-toggle-' + itemId);
             const internal_order_number = poToggle && poToggle.checked ? (document.getElementById('recv-po-input-' + itemId).value.trim() || undefined) : undefined;
 
@@ -2447,18 +2474,35 @@ credentials: 'include'
             }
         }
 
-        async function loadTrainingSupervisors() {
-            try {
-                const resp = await fetch('/api/di/training/supervisors', { credentials: 'include' });
-                const data = await resp.json();
-                if (!data.success) return;
-                const sel = document.getElementById('teSupervisor');
-                sel.innerHTML = '<option value="">Select...</option>';
-                data.supervisors.forEach(s => {
-                    sel.innerHTML += `<option value="${s.researcher_id}">${escapeHtmlT(s.name)}</option>`;
-                });
-            } catch (err) { console.error('[TRAINING] load supervisors:', err); }
-        }
+          async function loadTrainingSupervisors() {
+              try {
+                  const resp = await fetch('/api/di/training/supervisors', { credentials: 'include' });
+                  const data = await resp.json();
+                  if (!data.success) return;
+
+                  trainingSupervisors = data.supervisors || [];
+
+                  // Best-effort PI inference from supervisor list if PI id is not known yet
+                  if (!piResearcherId && trainingSupervisors.length) {
+                      const cand = trainingSupervisors.find(s => {
+                          const rid = (s.researcher_id || '').toLowerCase();
+                          const nm = (s.name || '').toLowerCase();
+                          return rid === 'fjh' || nm.includes('frank') || nm.includes('hernandez');
+                      });
+                      if (cand && cand.researcher_id) piResearcherId = cand.researcher_id;
+                  }
+
+                  const sel = document.getElementById('teSupervisor');
+                  sel.innerHTML = '<option value="">Select...</option>';
+                  trainingSupervisors.forEach(s => {
+                      sel.innerHTML += `<option value="${s.researcher_id}">${escapeHtmlT(s.name)}</option>`;
+                  });
+
+                  // Delegation option
+                  sel.innerHTML += '<option value="__PI_DELEGATED__">Other supervisor, delegated delivery under PI oversight</option>';
+              } catch (err) { console.error('[TRAINING] load supervisors:', err); }
+          }
+
 
         async function loadTrainingMyPack() {
             try {
@@ -2596,9 +2640,22 @@ credentials: 'include'
               if (!isOther) otherEl.value = "";
           }
 
-          document.addEventListener("change", (e) => {
-              if (e && e.target && e.target.id === "teType") syncTrainingTypeOther();
-          });
+            document.addEventListener("change", (e) => {
+                if (e && e.target && e.target.id === "teType") syncTrainingTypeOther();
+
+                if (e && e.target && e.target.id === "teSupervisor") {
+                    const panel = document.getElementById("piDelegationPanel");
+                    if (!panel) return;
+                    const isDelegated = (e.target.value || "") === "__PI_DELEGATED__";
+                    panel.style.display = isDelegated ? "block" : "none";
+                    if (!isDelegated) {
+                        ["piDelTrainerName","piDelTrainerEmail","piDelTrainerAffil"].forEach(id => {
+                            const el = document.getElementById(id);
+                            if (el) el.value = "";
+                        });
+                    }
+                }
+            });
 
             async function addTrainingEntry() {
               if (!trainingPack) return;
@@ -2606,8 +2663,27 @@ credentials: 'include'
               let training_type = (document.getElementById("teType")?.value || "").trim();
               const training_type_other = (document.getElementById("teTypeOther")?.value || "").trim();
               const training_date = document.getElementById("teDate")?.value || "";
-              const supervisor_id = document.getElementById("teSupervisor")?.value || "";
-              const notes = (document.getElementById("teNotes")?.value || "").trim();
+              let supervisor_id = document.getElementById("teSupervisor")?.value || "";
+              let notes = (document.getElementById("teNotes")?.value || "").trim();
+
+                // Delegated delivery under PI oversight: seal-ready (PI certifies on approval and sealing)
+                const isDelegated = (supervisor_id === "__PI_DELEGATED__");
+                if (isDelegated) {
+                    if (!piResearcherId) { alert("PI certifier is not available. Please refresh the page or contact the administrator."); return; }
+
+                    const tn = (document.getElementById("piDelTrainerName")?.value || "").trim();
+                    const te = (document.getElementById("piDelTrainerEmail")?.value || "").trim();
+                    const ta = (document.getElementById("piDelTrainerAffil")?.value || "").trim();
+
+                    if (!tn || !te || !ta) { alert("Please provide trainer name, email, and affiliation."); return; }
+                    if (!(te.includes("@") && te.includes("."))) { alert("Please provide a valid trainer email."); return; }
+
+                    supervisor_id = piResearcherId;
+
+                    const prefix = `Trainer provider: ${tn}, ${te}, ${ta}. Delegated delivery, PI will certify at approval and sealing.`;
+                    notes = notes ? (prefix + " " + notes) : prefix;
+                }
+
 
               if (!training_type) { alert("Please select a training type to continue."); return; }
               if (training_type === "Other") {
@@ -2632,6 +2708,13 @@ credentials: 'include'
                   document.getElementById("teDate").value = "";
                   document.getElementById("teSupervisor").value = "";
                   document.getElementById("teNotes").value = "";
+                    const delPanel = document.getElementById("piDelegationPanel");
+                    if (delPanel) delPanel.style.display = "none";
+                    ["piDelTrainerName","piDelTrainerEmail","piDelTrainerAffil"].forEach(id => {
+                        const el = document.getElementById(id);
+                        if (el) el.value = "";
+                    });
+
 
                   alert("Training record successfully submitted and pending approval.");
                   await loadTrainingMyPack();
