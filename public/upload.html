@@ -491,6 +491,7 @@
         <button class="section-btn active" data-section="files" onclick="switchSection('files')">Files &amp; Documents</button>
         <button id="supervisionTabBtn" class="section-btn" data-section="supervision" onclick="switchSection('supervision')" style="display:none;">Supervision</button>
         <button class="section-btn" data-section="inventory" onclick="switchSection('inventory')">Purchases &amp; Inventory</button>
+        <button class="section-btn" data-section="training" onclick="switchSection('training')">Training &amp; Approvals</button>
     </div>
 
     <div id="section-files" class="section-content">
@@ -986,6 +987,118 @@
         </div>
     </div>
 
+    <!-- ==================== TRAINING & APPROVALS SECTION ==================== -->
+    <div id="section-training" class="section-content" style="display:none;">
+        <div class="main-container" style="grid-template-columns:1fr;">
+
+            <!-- RESEARCHER VIEW -->
+            <div id="trainingResearcherView">
+                <!-- Pack status banner -->
+                <div id="trainingPackBanner" class="panel" style="margin-bottom:15px;">
+                    <div class="panel-content" style="padding:12px 20px;">
+                        <span id="trainingPackStatus"></span>
+                        <span id="trainingPackRevisionMsg" style="display:none;color:#dc3545;margin-left:10px;font-size:13px;"></span>
+                    </div>
+                </div>
+
+                <!-- Step 1: Agreements -->
+                <div class="panel">
+                    <div class="panel-header">
+                        <h2><span class="icon">&#128196;</span> Step 1: Agreements</h2>
+                    </div>
+                    <div class="panel-content">
+                        <p style="font-size:13px;color:#666;margin-bottom:15px;">Read each document and confirm your acknowledgment.</p>
+                        <div id="agreementsList"></div>
+                    </div>
+                </div>
+
+                <!-- Step 2: Training Entries -->
+                <div class="panel" style="margin-top:15px;">
+                    <div class="panel-header">
+                        <h2><span class="icon">&#127891;</span> Step 2: Training</h2>
+                    </div>
+                    <div class="panel-content">
+                        <div id="trainingEntryForm" style="background:#f8f9fa;padding:15px;border-radius:8px;margin-bottom:15px;">
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                                <div class="form-group" style="margin-bottom:8px;">
+                                    <label style="font-size:12px;">Training Type *</label>
+                                    <input type="text" id="teType" placeholder="e.g. BSL2 Lab Training">
+                                </div>
+                                <div class="form-group" style="margin-bottom:8px;">
+                                    <label style="font-size:12px;">Date *</label>
+                                    <input type="date" id="teDate">
+                                </div>
+                                <div class="form-group" style="margin-bottom:8px;">
+                                    <label style="font-size:12px;">Supervisor (Training Provider) *</label>
+                                    <select id="teSupervisor"><option value="">Select...</option></select>
+                                </div>
+                                <div class="form-group" style="margin-bottom:8px;">
+                                    <label style="font-size:12px;">Notes (optional)</label>
+                                    <input type="text" id="teNotes" placeholder="Optional notes">
+                                </div>
+                            </div>
+                            <button class="btn btn-primary btn-sm" onclick="addTrainingEntry()">Add Training Entry</button>
+                        </div>
+                        <table class="data-table" style="font-size:12px;">
+                            <thead><tr><th>Type</th><th>Date</th><th>Supervisor</th><th>Status</th></tr></thead>
+                            <tbody id="trainingEntriesBody"><tr><td colspan="4" style="text-align:center;color:#999;">No entries yet</td></tr></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Step 3: Submit -->
+                <div class="panel" style="margin-top:15px;">
+                    <div class="panel-header">
+                        <h2><span class="icon">&#128228;</span> Step 3: Submit to PI</h2>
+                    </div>
+                    <div class="panel-content">
+                        <div id="submitTrainingMsg" class="message" style="margin-bottom:10px;"></div>
+                        <button class="btn btn-primary" id="submitTrainingBtn" onclick="submitTrainingPack()">Submit Training Pack to PI</button>
+                    </div>
+                </div>
+
+                <!-- Certificate (shown after seal) -->
+                <div id="trainingCertPanel" class="panel" style="margin-top:15px;display:none;">
+                    <div class="panel-header">
+                        <h2><span class="icon">&#127942;</span> Certificates</h2>
+                    </div>
+                    <div class="panel-content" id="trainingCertContent"></div>
+                </div>
+            </div>
+
+            <!-- SUPERVISOR VIEW -->
+            <div id="trainingSupervisorView" style="display:none;">
+                <!-- Pending certifications -->
+                <div class="panel">
+                    <div class="panel-header">
+                        <h2><span class="icon">&#128203;</span> Pending Certifications</h2>
+                        <button class="btn btn-sm btn-secondary" onclick="loadTrainingPendingCerts()">Refresh</button>
+                    </div>
+                    <div class="panel-content">
+                        <table class="data-table" style="font-size:12px;">
+                            <thead><tr><th>Trainee</th><th>Training Type</th><th>Date</th><th>Notes</th><th>Actions</th></tr></thead>
+                            <tbody id="pendingCertsBody"><tr><td colspan="5" style="text-align:center;color:#999;">Loading...</td></tr></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Sealed overview -->
+                <div class="panel" style="margin-top:15px;">
+                    <div class="panel-header">
+                        <h2><span class="icon">&#9989;</span> Sealed Training Packs</h2>
+                    </div>
+                    <div class="panel-content">
+                        <table class="data-table" style="font-size:12px;">
+                            <thead><tr><th>Trainee</th><th>Seal</th><th>Actions</th></tr></thead>
+                            <tbody id="sealedOverviewBody"><tr><td colspan="3" style="text-align:center;color:#999;">Loading...</td></tr></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
     <script>
         let currentUserRole = null;
         let selectedSupervisionResearcherId = null;
@@ -1422,8 +1535,12 @@ credentials: 'include'
             document.getElementById('section-inventory').style.display = section === 'inventory' ? 'block' : 'none';
             const supSection = document.getElementById('section-supervision');
             if (supSection) supSection.style.display = section === 'supervision' ? 'block' : 'none';
+            const trainSection = document.getElementById('section-training');
+            if (trainSection) trainSection.style.display = section === 'training' ? 'block' : 'none';
 
-            if (section === 'supervision') {
+            if (section === 'training') {
+                loadTrainingSection();
+            } else if (section === 'supervision') {
                 loadSupervisionResearchers();
             } else if (section === 'inventory') {
                 prInitForm();
@@ -2288,6 +2405,308 @@ credentials: 'include'
                 loadMyInventoryV2('product');
                 loadGroupInventoryV2('product');
             } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        // =====================================================
+        // TRAINING & APPROVALS SECTION
+        // =====================================================
+        let trainingPack = null;
+        let trainingDocuments = [];
+        let trainingAgreements = [];
+        let trainingEntries = [];
+        let trainingSealedPacks = [];
+
+        function escapeHtmlT(text) {
+            if (!text) return '';
+            return String(text).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+
+        async function loadTrainingSection() {
+            // Show appropriate view based on role
+            if (currentUserRole === 'supervisor') {
+                document.getElementById('trainingResearcherView').style.display = 'none';
+                document.getElementById('trainingSupervisorView').style.display = 'block';
+                loadTrainingPendingCerts();
+                loadTrainingSealedOverview();
+            } else {
+                document.getElementById('trainingResearcherView').style.display = 'block';
+                document.getElementById('trainingSupervisorView').style.display = 'none';
+                await loadTrainingSupervisors();
+                await loadTrainingMyPack();
+                await loadTrainingDocsList();
+            }
+        }
+
+        async function loadTrainingSupervisors() {
+            try {
+                const resp = await fetch('/api/di/training/supervisors', { credentials: 'include' });
+                const data = await resp.json();
+                if (!data.success) return;
+                const sel = document.getElementById('teSupervisor');
+                sel.innerHTML = '<option value="">Select...</option>';
+                data.supervisors.forEach(s => {
+                    sel.innerHTML += `<option value="${s.researcher_id}">${escapeHtmlT(s.name)}</option>`;
+                });
+            } catch (err) { console.error('[TRAINING] load supervisors:', err); }
+        }
+
+        async function loadTrainingMyPack() {
+            try {
+                const resp = await fetch('/api/di/training/my-pack', { credentials: 'include' });
+                if (resp.status === 501) { document.getElementById('trainingPackStatus').textContent = 'Training module not yet available.'; return; }
+                const data = await resp.json();
+                if (!data.success) return;
+                trainingPack = data.pack;
+                trainingAgreements = data.agreements || [];
+                trainingEntries = data.entries || [];
+                trainingSealedPacks = data.sealed_packs || [];
+                renderTrainingPackUI();
+            } catch (err) { console.error('[TRAINING] load my pack:', err); }
+        }
+
+        function renderTrainingPackUI() {
+            if (!trainingPack) return;
+            const p = trainingPack;
+
+            // Status banner
+            const statusEl = document.getElementById('trainingPackStatus');
+            const revEl = document.getElementById('trainingPackRevisionMsg');
+            const statusLabels = { DRAFT: 'Draft', SUBMITTED: 'Submitted — Awaiting PI Review', REVISION_NEEDED: 'Revision Needed', SEALED: 'Sealed' };
+            const statusColors = { DRAFT: '#ffc107', SUBMITTED: '#17a2b8', REVISION_NEEDED: '#dc3545', SEALED: '#28a745' };
+            statusEl.innerHTML = `<span style="display:inline-block;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:bold;background:${statusColors[p.status]};color:${p.status==='DRAFT'?'#333':'#fff'};">${statusLabels[p.status] || p.status}</span> <span style="font-size:12px;color:#666;margin-left:8px;">Pack v${p.version}</span>`;
+            if (p.status === 'REVISION_NEEDED' && p.revision_comments) {
+                revEl.style.display = 'inline';
+                revEl.textContent = 'PI comment: ' + p.revision_comments;
+            } else { revEl.style.display = 'none'; }
+
+            // Disable form inputs if sealed or submitted
+            const locked = (p.status === 'SEALED' || p.status === 'SUBMITTED');
+            document.getElementById('trainingEntryForm').style.display = locked ? 'none' : 'block';
+            document.getElementById('submitTrainingBtn').style.display = (p.status === 'SEALED' || p.status === 'SUBMITTED') ? 'none' : 'inline-block';
+
+            // Render entries
+            renderTrainingEntries();
+
+            // Render certificates
+            renderTrainingCertificates();
+        }
+
+        async function loadTrainingDocsList() {
+            try {
+                const resp = await fetch('/api/di/training/documents', { credentials: 'include' });
+                if (resp.status === 501) return;
+                const data = await resp.json();
+                if (!data.success) return;
+                trainingDocuments = data.documents || [];
+                renderAgreements();
+            } catch (err) { console.error('[TRAINING] load docs:', err); }
+        }
+
+        function renderAgreements() {
+            const container = document.getElementById('agreementsList');
+            if (!trainingPack || trainingDocuments.length === 0) {
+                container.innerHTML = '<p style="color:#999;font-size:13px;">No training documents available.</p>';
+                return;
+            }
+            const locked = (trainingPack.status === 'SEALED' || trainingPack.status === 'SUBMITTED');
+            const confirmedDocIds = new Set(trainingAgreements.map(a => a.document_id));
+
+            let html = '';
+            trainingDocuments.forEach(doc => {
+                const isConfirmed = confirmedDocIds.has(doc.id);
+                const agreement = trainingAgreements.find(a => a.document_id === doc.id);
+                const ruleColor = doc.requirement_rule === 'Always' ? '#dc3545' : doc.requirement_rule === 'Conditional' ? '#fd7e14' : '#6c757d';
+                const versionId = doc.version_id;
+
+                html += `<div style="border:1px solid #e0e0e0;border-radius:8px;padding:15px;margin-bottom:10px;${isConfirmed ? 'background:#f0fff0;' : ''}">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                        <div>
+                            <strong style="font-size:14px;">${escapeHtmlT(doc.title)}</strong>
+                            <span style="font-size:11px;color:#666;margin-left:8px;">${escapeHtmlT(doc.category)}</span>
+                            <span style="font-size:10px;color:${ruleColor};margin-left:8px;font-weight:600;">${escapeHtmlT(doc.requirement_rule)}</span>
+                            ${doc.condition_note ? `<span style="font-size:10px;color:#999;margin-left:5px;">(${escapeHtmlT(doc.condition_note)})</span>` : ''}
+                        </div>
+                        <a href="/api/di/training/document-versions/${versionId}/view" target="_blank" class="btn btn-sm btn-primary" style="text-decoration:none;">View PDF</a>
+                    </div>`;
+
+                if (isConfirmed) {
+                    html += `<div style="color:#28a745;font-size:12px;">&#9989; Confirmed by ${escapeHtmlT(agreement.confirmed_name)} on ${new Date(agreement.confirmed_at).toLocaleDateString()}</div>`;
+                } else if (!locked) {
+                    html += `<button class="btn btn-sm btn-success" onclick="confirmAgreement('${doc.id}','${versionId}')">I have read and accept this document</button>`;
+                } else {
+                    html += `<span style="color:#dc3545;font-size:12px;">Not confirmed</span>`;
+                }
+                html += '</div>';
+            });
+            container.innerHTML = html;
+        }
+
+        async function confirmAgreement(docId, versionId) {
+            if (!trainingPack) return;
+            try {
+                const resp = await fetch('/api/di/training/agreements', {
+                    method: 'POST', credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ pack_id: trainingPack.id, document_version_id: versionId })
+                });
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data.error || 'Failed');
+                await loadTrainingMyPack();
+                await loadTrainingDocsList();
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        function renderTrainingEntries() {
+            const tbody = document.getElementById('trainingEntriesBody');
+            if (trainingEntries.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#999;">No entries yet</td></tr>';
+                return;
+            }
+            tbody.innerHTML = trainingEntries.map(e => {
+                const badgeColors = { PENDING: '#ffc107', CERTIFIED: '#28a745', REJECTED: '#dc3545' };
+                const textColor = e.status === 'PENDING' ? '#333' : '#fff';
+                return `<tr>
+                    <td>${escapeHtmlT(e.training_type)}</td>
+                    <td>${new Date(e.training_date).toLocaleDateString()}</td>
+                    <td>${escapeHtmlT(e.supervisor_name || '')}</td>
+                    <td>
+                        <span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;background:${badgeColors[e.status]};color:${textColor};">${e.status}</span>
+                        ${e.status === 'REJECTED' && e.rejection_comment ? `<span style="font-size:11px;color:#dc3545;margin-left:5px;">— ${escapeHtmlT(e.rejection_comment)}</span>` : ''}
+                    </td>
+                </tr>`;
+            }).join('');
+        }
+
+        async function addTrainingEntry() {
+            if (!trainingPack) return;
+            const training_type = document.getElementById('teType').value.trim();
+            const training_date = document.getElementById('teDate').value;
+            const supervisor_id = document.getElementById('teSupervisor').value;
+            const notes = document.getElementById('teNotes').value.trim();
+            if (!training_type || !training_date || !supervisor_id) { alert('Fill in type, date, and supervisor'); return; }
+
+            try {
+                const resp = await fetch('/api/di/training/entries', {
+                    method: 'POST', credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ pack_id: trainingPack.id, training_type, training_date, notes, supervisor_id })
+                });
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data.error || 'Failed');
+                document.getElementById('teType').value = '';
+                document.getElementById('teDate').value = '';
+                document.getElementById('teSupervisor').value = '';
+                document.getElementById('teNotes').value = '';
+                await loadTrainingMyPack();
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        async function submitTrainingPack() {
+            if (!trainingPack) return;
+            if (!confirm('Submit your training pack to PI for review?')) return;
+            const msgEl = document.getElementById('submitTrainingMsg');
+            try {
+                const resp = await fetch('/api/di/training/submit', {
+                    method: 'POST', credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ pack_id: trainingPack.id })
+                });
+                const data = await resp.json();
+                if (!resp.ok) {
+                    let errMsg = data.error || 'Submission failed';
+                    if (data.missing) errMsg += '\nMissing agreements: ' + data.missing.join(', ');
+                    if (data.uncertified) errMsg += '\nUncertified entries: ' + data.uncertified.map(u => u.type + ' (' + u.status + ')').join(', ');
+                    msgEl.className = 'message error show'; msgEl.textContent = errMsg;
+                    return;
+                }
+                msgEl.className = 'message success show'; msgEl.textContent = 'Pack submitted to PI';
+                await loadTrainingMyPack();
+                await loadTrainingDocsList();
+            } catch (err) { msgEl.className = 'message error show'; msgEl.textContent = err.message; }
+        }
+
+        function renderTrainingCertificates() {
+            const panel = document.getElementById('trainingCertPanel');
+            const content = document.getElementById('trainingCertContent');
+            if (trainingSealedPacks.length === 0) { panel.style.display = 'none'; return; }
+            panel.style.display = 'block';
+            content.innerHTML = trainingSealedPacks.map(sp => `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #eee;">
+                <div>
+                    <span style="display:inline-block;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:bold;background:#28a745;color:#fff;">SEALED</span>
+                    <span style="font-size:13px;margin-left:10px;">v${sp.version} — ${new Date(sp.sealed_at).toLocaleDateString()}</span>
+                    <span style="font-size:11px;color:#666;margin-left:10px;">${escapeHtmlT(sp.verification_code)}</span>
+                </div>
+                <a href="/api/di/training/certificate/${sp.id}" class="btn btn-sm btn-primary" style="text-decoration:none;">Download Certificate</a>
+            </div>`).join('');
+        }
+
+        // --- Supervisor: Pending Certifications ---
+        async function loadTrainingPendingCerts() {
+            try {
+                const resp = await fetch('/api/di/training/pending-certifications', { credentials: 'include' });
+                if (resp.status === 501) return;
+                const data = await resp.json();
+                if (!data.success) return;
+                const tbody = document.getElementById('pendingCertsBody');
+                if (!data.entries || data.entries.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#999;">No pending certifications</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = data.entries.map(e => `<tr>
+                    <td>${escapeHtmlT(e.trainee_name)}</td>
+                    <td>${escapeHtmlT(e.training_type)}</td>
+                    <td>${new Date(e.training_date).toLocaleDateString()}</td>
+                    <td style="font-size:11px;color:#666;">${escapeHtmlT(e.notes || '-')}</td>
+                    <td>
+                        <button class="btn btn-sm btn-success" onclick="certifyEntry('${e.id}')">Certify</button>
+                        <button class="btn btn-sm btn-danger" onclick="rejectEntry('${e.id}')">Reject</button>
+                    </td>
+                </tr>`).join('');
+            } catch (err) { console.error('[TRAINING] load pending certs:', err); }
+        }
+
+        async function certifyEntry(entryId) {
+            if (!confirm('Certify this training entry?')) return;
+            try {
+                const resp = await fetch(`/api/di/training/entries/${entryId}/certify`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' } });
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data.error || 'Failed');
+                loadTrainingPendingCerts();
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        async function rejectEntry(entryId) {
+            const comment = prompt('Enter rejection reason (required):');
+            if (!comment) return;
+            try {
+                const resp = await fetch(`/api/di/training/entries/${entryId}/reject`, {
+                    method: 'POST', credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ comment })
+                });
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data.error || 'Failed');
+                loadTrainingPendingCerts();
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        async function loadTrainingSealedOverview() {
+            try {
+                const resp = await fetch('/api/di/training/sealed-overview', { credentials: 'include' });
+                if (resp.status === 501) return;
+                const data = await resp.json();
+                if (!data.success) return;
+                const tbody = document.getElementById('sealedOverviewBody');
+                if (!data.packs || data.packs.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#999;">No sealed packs yet</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = data.packs.map(p => `<tr>
+                    <td>${escapeHtmlT(p.researcher_name)}</td>
+                    <td><span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:bold;background:#28a745;color:#fff;">SEALED</span> ${new Date(p.sealed_at).toLocaleDateString()}</td>
+                    <td><a href="/api/di/training/certificate/${p.id}" class="btn btn-sm btn-primary" style="text-decoration:none;">Download</a></td>
+                </tr>`).join('');
+            } catch (err) { console.error('[TRAINING] load sealed overview:', err); }
         }
     </script>
 </body>

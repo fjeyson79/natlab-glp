@@ -5782,6 +5782,703 @@ app.get('/api/di/inventory-v2/supervision/:researcherId/inventory', requireSuper
 });
 
 
+// =====================================================================
+// TRAINING & APPROVALS
+// =====================================================================
+
+let trainingTablesExist = null;
+let trainingTablesLastCheck = 0;
+
+async function checkTrainingTables() {
+    const now = Date.now();
+    if (trainingTablesExist === null || trainingTablesExist === false || (now - trainingTablesLastCheck > 60000)) {
+        try {
+            const result = await pool.query(`SELECT table_name FROM information_schema.tables WHERE table_name = 'di_training_packs'`);
+            trainingTablesExist = result.rows.length > 0;
+            trainingTablesLastCheck = now;
+        } catch (err) {
+            trainingTablesExist = false;
+        }
+    }
+    return trainingTablesExist;
+}
+
+// --- PI: Training Design - Upload new document ---
+app.post('/api/di/training/documents', requirePI, upload.single('file'), async (req, res) => {
+    try {
+        if (!(await checkTrainingTables())) return res.status(501).json({ error: 'Training tables not available' });
+        const { title, category, affiliation, requirement_rule, condition_key, condition_note, display_order } = req.body;
+        const file = req.file;
+        if (!file) return res.status(400).json({ error: 'PDF file required' });
+        if (!title || !category || !affiliation || !requirement_rule) return res.status(400).json({ error: 'Missing required fields' });
+
+        const year = new Date().getFullYear();
+        const ts = Date.now();
+        const safeName = file.originalname.replace(/[^\w.\-]+/g, '_');
+        const r2Key = `di/Training/Documents/${year}/${ts}_${safeName}`;
+        await uploadToR2(file.buffer, r2Key, 'application/pdf');
+
+        const docResult = await pool.query(
+            `INSERT INTO di_training_documents (title, category, affiliation, requirement_rule, condition_key, condition_note, display_order)
+             VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+            [title, category, affiliation, requirement_rule, condition_key || null, condition_note || null, parseInt(display_order) || 0]
+        );
+        const docId = docResult.rows[0].id;
+
+        await pool.query(
+            `INSERT INTO di_training_document_versions (document_id, version, r2_object_key, original_filename, uploaded_by, is_current)
+             VALUES ($1, 1, $2, $3, $4, TRUE)`,
+            [docId, r2Key, file.originalname, req.session.user.researcher_id]
+        );
+
+        res.json({ success: true, document_id: docId });
+    } catch (err) {
+        console.error('[TRAINING] create document error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// --- PI: Upload new version of existing document ---
+app.post('/api/di/training/documents/:id/versions', requirePI, upload.single('file'), async (req, res) => {
+    try {
+        if (!(await checkTrainingTables())) return res.status(501).json({ error: 'Training tables not available' });
+        const docId = req.params.id;
+        const file = req.file;
+        if (!file) return res.status(400).json({ error: 'PDF file required' });
+
+        const doc = await pool.query('SELECT id FROM di_training_documents WHERE id = $1', [docId]);
+        if (doc.rows.length === 0) return res.status(404).json({ error: 'Document not found' });
+
+        const maxV = await pool.query('SELECT COALESCE(MAX(version),0) as mv FROM di_training_document_versions WHERE document_id = $1', [docId]);
+        const newVersion = maxV.rows[0].mv + 1;
+
+        const year = new Date().getFullYear();
+        const ts = Date.now();
+        const safeName = file.originalname.replace(/[^\w.\-]+/g, '_');
+        const r2Key = `di/Training/Documents/${year}/${ts}_v${newVersion}_${safeName}`;
+        await uploadToR2(file.buffer, r2Key, 'application/pdf');
+
+        // Mark previous current as not current
+        await pool.query('UPDATE di_training_document_versions SET is_current = FALSE WHERE document_id = $1 AND is_current = TRUE', [docId]);
+
+        await pool.query(
+            `INSERT INTO di_training_document_versions (document_id, version, r2_object_key, original_filename, uploaded_by, is_current)
+             VALUES ($1, $2, $3, $4, $5, TRUE)`,
+            [docId, newVersion, r2Key, file.originalname, req.session.user.researcher_id]
+        );
+
+        res.json({ success: true, version: newVersion });
+    } catch (err) {
+        console.error('[TRAINING] upload version error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// --- List training documents ---
+app.get('/api/di/training/documents', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkTrainingTables())) return res.status(501).json({ error: 'Training tables not available' });
+        const isPI = req.session.user.role === 'pi';
+
+        if (isPI) {
+            const docs = await pool.query(
+                `SELECT d.*, v.id as version_id, v.version, v.original_filename as version_filename, v.is_current, v.uploaded_at as version_uploaded_at
+                 FROM di_training_documents d
+                 LEFT JOIN di_training_document_versions v ON v.document_id = d.id
+                 ORDER BY d.display_order, d.created_at, v.version DESC`
+            );
+            // Group versions by document
+            const docMap = {};
+            for (const row of docs.rows) {
+                if (!docMap[row.id]) {
+                    docMap[row.id] = {
+                        id: row.id, title: row.title, category: row.category, affiliation: row.affiliation,
+                        requirement_rule: row.requirement_rule, condition_key: row.condition_key,
+                        condition_note: row.condition_note, display_order: row.display_order,
+                        is_active: row.is_active, created_at: row.created_at, versions: []
+                    };
+                }
+                if (row.version_id) {
+                    docMap[row.id].versions.push({
+                        id: row.version_id, version: row.version, filename: row.version_filename,
+                        is_current: row.is_current, uploaded_at: row.version_uploaded_at
+                    });
+                }
+            }
+            res.json({ success: true, documents: Object.values(docMap) });
+        } else {
+            // Non-PI: active documents with current version only
+            const docs = await pool.query(
+                `SELECT d.id, d.title, d.category, d.affiliation, d.requirement_rule, d.condition_key, d.condition_note, d.display_order,
+                        v.id as version_id, v.version, v.original_filename as version_filename
+                 FROM di_training_documents d
+                 JOIN di_training_document_versions v ON v.document_id = d.id AND v.is_current = TRUE
+                 WHERE d.is_active = TRUE
+                 ORDER BY d.display_order, d.created_at`
+            );
+            res.json({ success: true, documents: docs.rows });
+        }
+    } catch (err) {
+        console.error('[TRAINING] list documents error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// --- PI: Retire / Activate document ---
+app.put('/api/di/training/documents/:id/retire', requirePI, async (req, res) => {
+    try {
+        if (!(await checkTrainingTables())) return res.status(501).json({ error: 'Training tables not available' });
+        await pool.query('UPDATE di_training_documents SET is_active = FALSE WHERE id = $1', [req.params.id]);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[TRAINING] retire error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+app.put('/api/di/training/documents/:id/activate', requirePI, async (req, res) => {
+    try {
+        if (!(await checkTrainingTables())) return res.status(501).json({ error: 'Training tables not available' });
+        await pool.query('UPDATE di_training_documents SET is_active = TRUE WHERE id = $1', [req.params.id]);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[TRAINING] activate error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// --- View document version PDF (stream from R2) ---
+app.get('/api/di/training/document-versions/:versionId/view', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkTrainingTables())) return res.status(501).json({ error: 'Training tables not available' });
+        const v = await pool.query('SELECT r2_object_key, original_filename FROM di_training_document_versions WHERE id = $1', [req.params.versionId]);
+        if (v.rows.length === 0) return res.status(404).json({ error: 'Version not found' });
+
+        const r2Obj = await downloadFromR2(v.rows[0].r2_object_key);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="${v.rows[0].original_filename}"`);
+        if (r2Obj.Body.pipe) { r2Obj.Body.pipe(res); } else { res.send(Buffer.from(await r2Obj.Body.transformToByteArray())); }
+    } catch (err) {
+        console.error('[TRAINING] view version error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// --- List available supervisors ---
+app.get('/api/di/training/supervisors', requireAuth, async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT researcher_id, name FROM di_allowlist WHERE role = 'supervisor' AND active = TRUE ORDER BY name`
+        );
+        res.json({ success: true, supervisors: result.rows });
+    } catch (err) {
+        console.error('[TRAINING] list supervisors error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// --- Researcher: Get or create current training pack ---
+app.get('/api/di/training/my-pack', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkTrainingTables())) return res.status(501).json({ error: 'Training tables not available' });
+        const userId = req.session.user.researcher_id;
+
+        // Get latest pack
+        let pack = await pool.query(
+            'SELECT * FROM di_training_packs WHERE researcher_id = $1 ORDER BY version DESC LIMIT 1', [userId]
+        );
+
+        // If no pack or latest is SEALED, create new draft
+        if (pack.rows.length === 0 || pack.rows[0].status === 'SEALED') {
+            const newVersion = pack.rows.length === 0 ? 1 : pack.rows[0].version + 1;
+            pack = await pool.query(
+                `INSERT INTO di_training_packs (researcher_id, version, status) VALUES ($1, $2, 'DRAFT') RETURNING *`,
+                [userId, newVersion]
+            );
+        }
+
+        const currentPack = pack.rows[0];
+
+        // Get agreements for this pack
+        const agreements = await pool.query(
+            `SELECT a.*, d.title as document_title, d.category, dv.version as doc_version, dv.original_filename
+             FROM di_training_agreements a
+             JOIN di_training_documents d ON d.id = a.document_id
+             JOIN di_training_document_versions dv ON dv.id = a.document_version_id
+             WHERE a.pack_id = $1 ORDER BY a.confirmed_at`,
+            [currentPack.id]
+        );
+
+        // Get training entries for this pack
+        const entries = await pool.query(
+            `SELECT e.*, al.name as supervisor_name
+             FROM di_training_entries e
+             LEFT JOIN di_allowlist al ON al.researcher_id = e.supervisor_id
+             WHERE e.pack_id = $1 ORDER BY e.created_at`,
+            [currentPack.id]
+        );
+
+        // Get sealed packs for certificate display
+        const sealedPacks = await pool.query(
+            `SELECT id, version, sealed_at, verification_code FROM di_training_packs
+             WHERE researcher_id = $1 AND status = 'SEALED' ORDER BY version DESC`,
+            [userId]
+        );
+
+        res.json({
+            success: true,
+            pack: currentPack,
+            agreements: agreements.rows,
+            entries: entries.rows,
+            sealed_packs: sealedPacks.rows
+        });
+    } catch (err) {
+        console.error('[TRAINING] my-pack error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// --- Researcher: Confirm agreement ---
+app.post('/api/di/training/agreements', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkTrainingTables())) return res.status(501).json({ error: 'Training tables not available' });
+        const userId = req.session.user.researcher_id;
+        const { pack_id, document_version_id } = req.body;
+        if (!pack_id || !document_version_id) return res.status(400).json({ error: 'Missing pack_id or document_version_id' });
+
+        // Verify pack belongs to user and is editable
+        const pack = await pool.query('SELECT * FROM di_training_packs WHERE id = $1 AND researcher_id = $2', [pack_id, userId]);
+        if (pack.rows.length === 0) return res.status(404).json({ error: 'Pack not found' });
+        if (pack.rows[0].status === 'SEALED') return res.status(403).json({ error: 'Pack is sealed — no changes allowed' });
+        if (pack.rows[0].status === 'SUBMITTED') return res.status(403).json({ error: 'Pack is submitted — no changes allowed' });
+
+        // Get document_id from version
+        const ver = await pool.query('SELECT document_id FROM di_training_document_versions WHERE id = $1', [document_version_id]);
+        if (ver.rows.length === 0) return res.status(404).json({ error: 'Document version not found' });
+        const documentId = ver.rows[0].document_id;
+
+        // Check if already confirmed for this document in this pack
+        const existing = await pool.query(
+            'SELECT id FROM di_training_agreements WHERE pack_id = $1 AND document_id = $2', [pack_id, documentId]
+        );
+        if (existing.rows.length > 0) return res.status(409).json({ error: 'Agreement already confirmed for this document' });
+
+        await pool.query(
+            `INSERT INTO di_training_agreements (pack_id, document_id, document_version_id, confirmed_by, confirmed_name)
+             VALUES ($1, $2, $3, $4, $5)`,
+            [pack_id, documentId, document_version_id, userId, req.session.user.name]
+        );
+
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[TRAINING] confirm agreement error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// --- Researcher: Add training entry ---
+app.post('/api/di/training/entries', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkTrainingTables())) return res.status(501).json({ error: 'Training tables not available' });
+        const userId = req.session.user.researcher_id;
+        const { pack_id, training_type, training_date, notes, supervisor_id } = req.body;
+        if (!pack_id || !training_type || !training_date || !supervisor_id) return res.status(400).json({ error: 'Missing required fields' });
+
+        const pack = await pool.query('SELECT * FROM di_training_packs WHERE id = $1 AND researcher_id = $2', [pack_id, userId]);
+        if (pack.rows.length === 0) return res.status(404).json({ error: 'Pack not found' });
+        if (pack.rows[0].status === 'SEALED') return res.status(403).json({ error: 'Pack is sealed — no changes allowed' });
+        if (pack.rows[0].status === 'SUBMITTED') return res.status(403).json({ error: 'Pack is submitted — no changes allowed' });
+
+        const result = await pool.query(
+            `INSERT INTO di_training_entries (pack_id, training_type, training_date, notes, supervisor_id, trainee_declaration_name)
+             VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+            [pack_id, training_type, training_date, notes || null, supervisor_id, req.session.user.name]
+        );
+
+        res.json({ success: true, entry_id: result.rows[0].id });
+    } catch (err) {
+        console.error('[TRAINING] add entry error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// --- Researcher: Submit pack to PI ---
+app.post('/api/di/training/submit', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkTrainingTables())) return res.status(501).json({ error: 'Training tables not available' });
+        const userId = req.session.user.researcher_id;
+        const { pack_id } = req.body;
+        if (!pack_id) return res.status(400).json({ error: 'Missing pack_id' });
+
+        const pack = await pool.query('SELECT * FROM di_training_packs WHERE id = $1 AND researcher_id = $2', [pack_id, userId]);
+        if (pack.rows.length === 0) return res.status(404).json({ error: 'Pack not found' });
+        if (!['DRAFT', 'REVISION_NEEDED'].includes(pack.rows[0].status)) {
+            return res.status(400).json({ error: `Cannot submit pack with status ${pack.rows[0].status}` });
+        }
+
+        // Load required documents for this researcher
+        const userAff = req.session.user.affiliation;
+        const requiredDocs = await pool.query(
+            `SELECT id, title, condition_key FROM di_training_documents
+             WHERE is_active = TRUE AND requirement_rule IN ('Always', 'Conditional')
+             AND (affiliation = 'All' OR affiliation = $1)`,
+            [userAff]
+        );
+
+        // Check agreements
+        const agreements = await pool.query(
+            'SELECT document_id FROM di_training_agreements WHERE pack_id = $1', [pack_id]
+        );
+        const confirmedDocIds = new Set(agreements.rows.map(r => r.document_id));
+        const missingDocs = requiredDocs.rows.filter(d => !confirmedDocIds.has(d.id));
+        if (missingDocs.length > 0) {
+            return res.status(400).json({
+                error: 'Missing required agreements',
+                missing: missingDocs.map(d => d.title)
+            });
+        }
+
+        // Check all entries are CERTIFIED
+        const entries = await pool.query(
+            'SELECT id, training_type, status FROM di_training_entries WHERE pack_id = $1', [pack_id]
+        );
+        if (entries.rows.length === 0) {
+            return res.status(400).json({ error: 'Pack must contain at least one training entry' });
+        }
+        const uncertified = entries.rows.filter(e => e.status !== 'CERTIFIED');
+        if (uncertified.length > 0) {
+            return res.status(400).json({
+                error: 'All training entries must be certified before submission',
+                uncertified: uncertified.map(e => ({ id: e.id, type: e.training_type, status: e.status }))
+            });
+        }
+
+        await pool.query(
+            `UPDATE di_training_packs SET status = 'SUBMITTED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [pack_id]
+        );
+
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[TRAINING] submit pack error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// --- Supervisor: Pending certifications ---
+app.get('/api/di/training/pending-certifications', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkTrainingTables())) return res.status(501).json({ error: 'Training tables not available' });
+        const userId = req.session.user.researcher_id;
+        const result = await pool.query(
+            `SELECT e.*, al.name as trainee_name, p.version as pack_version, p.status as pack_status
+             FROM di_training_entries e
+             JOIN di_training_packs p ON p.id = e.pack_id
+             JOIN di_allowlist al ON al.researcher_id = p.researcher_id
+             WHERE e.supervisor_id = $1 AND e.status = 'PENDING' AND p.status IN ('DRAFT','REVISION_NEEDED')
+             ORDER BY e.created_at`,
+            [userId]
+        );
+        res.json({ success: true, entries: result.rows });
+    } catch (err) {
+        console.error('[TRAINING] pending certifications error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// --- Supervisor: Certify training entry ---
+app.post('/api/di/training/entries/:id/certify', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkTrainingTables())) return res.status(501).json({ error: 'Training tables not available' });
+        const userId = req.session.user.researcher_id;
+        const entry = await pool.query(
+            `SELECT e.*, p.status as pack_status FROM di_training_entries e
+             JOIN di_training_packs p ON p.id = e.pack_id WHERE e.id = $1`, [req.params.id]
+        );
+        if (entry.rows.length === 0) return res.status(404).json({ error: 'Entry not found' });
+        if (entry.rows[0].supervisor_id !== userId) return res.status(403).json({ error: 'Not your entry to certify' });
+        if (entry.rows[0].pack_status === 'SEALED') return res.status(403).json({ error: 'Pack is sealed' });
+        if (entry.rows[0].status !== 'PENDING') return res.status(400).json({ error: 'Entry is not pending' });
+
+        await pool.query(
+            `UPDATE di_training_entries SET status = 'CERTIFIED', certified_at = CURRENT_TIMESTAMP WHERE id = $1`, [req.params.id]
+        );
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[TRAINING] certify error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// --- Supervisor: Reject training entry ---
+app.post('/api/di/training/entries/:id/reject', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkTrainingTables())) return res.status(501).json({ error: 'Training tables not available' });
+        const userId = req.session.user.researcher_id;
+        const { comment } = req.body;
+        if (!comment) return res.status(400).json({ error: 'Rejection comment is required' });
+
+        const entry = await pool.query(
+            `SELECT e.*, p.status as pack_status FROM di_training_entries e
+             JOIN di_training_packs p ON p.id = e.pack_id WHERE e.id = $1`, [req.params.id]
+        );
+        if (entry.rows.length === 0) return res.status(404).json({ error: 'Entry not found' });
+        if (entry.rows[0].supervisor_id !== userId) return res.status(403).json({ error: 'Not your entry to reject' });
+        if (entry.rows[0].pack_status === 'SEALED') return res.status(403).json({ error: 'Pack is sealed' });
+
+        await pool.query(
+            `UPDATE di_training_entries SET status = 'REJECTED', rejection_comment = $1 WHERE id = $2`, [comment, req.params.id]
+        );
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[TRAINING] reject error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// --- PI: List pending packs ---
+app.get('/api/di/training/packs/pending', requirePI, async (req, res) => {
+    try {
+        if (!(await checkTrainingTables())) return res.status(501).json({ error: 'Training tables not available' });
+        const result = await pool.query(
+            `SELECT p.*, al.name as researcher_name, al.affiliation as researcher_affiliation,
+                    (SELECT COUNT(*) FROM di_training_agreements WHERE pack_id = p.id) as agreement_count,
+                    (SELECT COUNT(*) FROM di_training_entries WHERE pack_id = p.id) as entry_count
+             FROM di_training_packs p
+             JOIN di_allowlist al ON al.researcher_id = p.researcher_id
+             WHERE p.status = 'SUBMITTED'
+             ORDER BY p.updated_at`
+        );
+        res.json({ success: true, packs: result.rows });
+    } catch (err) {
+        console.error('[TRAINING] pending packs error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// --- Get pack details ---
+app.get('/api/di/training/packs/:id', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkTrainingTables())) return res.status(501).json({ error: 'Training tables not available' });
+        const pack = await pool.query(
+            `SELECT p.*, al.name as researcher_name, al.affiliation as researcher_affiliation
+             FROM di_training_packs p
+             JOIN di_allowlist al ON al.researcher_id = p.researcher_id
+             WHERE p.id = $1`, [req.params.id]
+        );
+        if (pack.rows.length === 0) return res.status(404).json({ error: 'Pack not found' });
+
+        const agreements = await pool.query(
+            `SELECT a.*, d.title as document_title, d.category, dv.version as doc_version, dv.original_filename
+             FROM di_training_agreements a
+             JOIN di_training_documents d ON d.id = a.document_id
+             JOIN di_training_document_versions dv ON dv.id = a.document_version_id
+             WHERE a.pack_id = $1 ORDER BY a.confirmed_at`, [req.params.id]
+        );
+        const entries = await pool.query(
+            `SELECT e.*, al.name as supervisor_name
+             FROM di_training_entries e
+             LEFT JOIN di_allowlist al ON al.researcher_id = e.supervisor_id
+             WHERE e.pack_id = $1 ORDER BY e.created_at`, [req.params.id]
+        );
+
+        res.json({ success: true, pack: pack.rows[0], agreements: agreements.rows, entries: entries.rows });
+    } catch (err) {
+        console.error('[TRAINING] pack details error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// --- PI: Seal pack ---
+app.post('/api/di/training/packs/:id/seal', requirePI, async (req, res) => {
+    try {
+        if (!(await checkTrainingTables())) return res.status(501).json({ error: 'Training tables not available' });
+        const packId = req.params.id;
+
+        const pack = await pool.query(
+            `SELECT p.*, al.name as researcher_name, al.affiliation as researcher_affiliation
+             FROM di_training_packs p JOIN di_allowlist al ON al.researcher_id = p.researcher_id
+             WHERE p.id = $1`, [packId]
+        );
+        if (pack.rows.length === 0) return res.status(404).json({ error: 'Pack not found' });
+        if (pack.rows[0].status !== 'SUBMITTED') return res.status(400).json({ error: 'Pack must be SUBMITTED to seal' });
+
+        const p = pack.rows[0];
+        const sealedAt = new Date().toISOString();
+        const signerName = req.session.user.name;
+
+        // Snapshot version IDs
+        const agreements = await pool.query(
+            'SELECT document_id, document_version_id FROM di_training_agreements WHERE pack_id = $1', [packId]
+        );
+        for (const ag of agreements.rows) {
+            await pool.query(
+                `INSERT INTO di_training_pack_snapshots (pack_id, document_id, document_version_id)
+                 VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+                [packId, ag.document_id, ag.document_version_id]
+            );
+        }
+
+        // Load full data for certificate
+        const agreeDetails = await pool.query(
+            `SELECT a.confirmed_name, a.confirmed_at, d.title, dv.version
+             FROM di_training_agreements a
+             JOIN di_training_documents d ON d.id = a.document_id
+             JOIN di_training_document_versions dv ON dv.id = a.document_version_id
+             WHERE a.pack_id = $1 ORDER BY a.confirmed_at`, [packId]
+        );
+        const entryDetails = await pool.query(
+            `SELECT e.training_type, e.training_date, e.certified_at, al.name as supervisor_name
+             FROM di_training_entries e
+             LEFT JOIN di_allowlist al ON al.researcher_id = e.supervisor_id
+             WHERE e.pack_id = $1 AND e.status = 'CERTIFIED' ORDER BY e.training_date`, [packId]
+        );
+
+        // Generate certificate PDF
+        const pdfDoc = await PDFDocument.create();
+        const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+        const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+        const page = pdfDoc.addPage([595, 842]); // A4
+        const { width, height } = page.getSize();
+        let y = height - 60;
+
+        // Header
+        page.drawText('NAT-Lab GLP', { x: 50, y, size: 20, font: fontBold, color: rgb(0.1, 0.21, 0.36) });
+        y -= 28;
+        page.drawText('Training & Agreements Certificate', { x: 50, y, size: 16, font: fontBold, color: rgb(0.1, 0.21, 0.36) });
+        y -= 8;
+        page.drawLine({ start: { x: 50, y }, end: { x: width - 50, y }, thickness: 1, color: rgb(0.1, 0.21, 0.36) });
+        y -= 25;
+
+        // Researcher info
+        page.drawText(`Researcher: ${p.researcher_name}`, { x: 50, y, size: 11, font });
+        y -= 16;
+        page.drawText(`Affiliation: ${p.researcher_affiliation}`, { x: 50, y, size: 11, font });
+        y -= 16;
+        page.drawText(`Pack Version: ${p.version}`, { x: 50, y, size: 11, font });
+        y -= 16;
+        page.drawText(`Sealed: ${sealedAt}`, { x: 50, y, size: 11, font });
+        y -= 30;
+
+        // Agreements section
+        page.drawText('Agreements', { x: 50, y, size: 13, font: fontBold, color: rgb(0.1, 0.21, 0.36) });
+        y -= 18;
+        for (const ag of agreeDetails.rows) {
+            if (y < 60) { y = height - 50; pdfDoc.addPage([595, 842]); }
+            const ts = new Date(ag.confirmed_at).toISOString().slice(0, 10);
+            page.drawText(`• ${ag.title} (v${ag.version}) — confirmed ${ts} by ${ag.confirmed_name}`, { x: 60, y, size: 10, font });
+            y -= 14;
+        }
+        y -= 15;
+
+        // Training entries section
+        page.drawText('Certified Trainings', { x: 50, y, size: 13, font: fontBold, color: rgb(0.1, 0.21, 0.36) });
+        y -= 18;
+        for (const en of entryDetails.rows) {
+            if (y < 60) { y = height - 50; pdfDoc.addPage([595, 842]); }
+            const d = new Date(en.training_date).toISOString().slice(0, 10);
+            page.drawText(`• ${en.training_type} — ${d} — certified by ${en.supervisor_name}`, { x: 60, y, size: 10, font });
+            y -= 14;
+        }
+        y -= 25;
+
+        // Seal stamp
+        const stampText = `Sealed by PI (${signerName}) — ${sealedAt}`;
+        page.drawRectangle({ x: 45, y: y - 5, width: font.widthOfTextAtSize(stampText, 10) + 20, height: 22, borderColor: rgb(0.2, 0.4, 0.2), borderWidth: 1.5 });
+        page.drawText(stampText, { x: 55, y, size: 10, font: fontBold, color: rgb(0.2, 0.4, 0.2) });
+
+        const certBuffer = await pdfDoc.save();
+
+        // Upload certificate
+        const year = new Date().getFullYear();
+        const certKey = `di/${p.researcher_affiliation}/Approved/Training/${year}/${p.researcher_id}_v${p.version}_certificate.pdf`;
+        await uploadToR2(Buffer.from(certBuffer), certKey, 'application/pdf');
+
+        // Signature hash + verification code
+        const crypto = require('crypto');
+        const signatureHash = crypto.createHmac('sha256', process.env.API_SECRET_KEY || 'natlab_glp_secret')
+            .update(JSON.stringify({ pack_id: packId, researcher_id: p.researcher_id, version: p.version, sealed_at: sealedAt, signer: signerName }))
+            .digest('hex');
+        const verificationCode = `NATLAB-T-${packId.substring(0, 8).toUpperCase()}-${signatureHash.substring(0, 8).toUpperCase()}`;
+
+        // Update pack
+        await pool.query(
+            `UPDATE di_training_packs SET status='SEALED', sealed_at=$1, sealed_by=$2, certificate_r2_key=$3,
+             signature_hash=$4, verification_code=$5, updated_at=CURRENT_TIMESTAMP WHERE id=$6`,
+            [sealedAt, req.session.user.researcher_id, certKey, signatureHash, verificationCode, packId]
+        );
+
+        res.json({ success: true, verification_code: verificationCode });
+    } catch (err) {
+        console.error('[TRAINING] seal pack error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// --- PI: Request revision ---
+app.post('/api/di/training/packs/:id/revise', requirePI, async (req, res) => {
+    try {
+        if (!(await checkTrainingTables())) return res.status(501).json({ error: 'Training tables not available' });
+        const { comments } = req.body;
+        if (!comments) return res.status(400).json({ error: 'Revision comments required' });
+
+        const pack = await pool.query('SELECT status FROM di_training_packs WHERE id = $1', [req.params.id]);
+        if (pack.rows.length === 0) return res.status(404).json({ error: 'Pack not found' });
+        if (pack.rows[0].status !== 'SUBMITTED') return res.status(400).json({ error: 'Pack must be SUBMITTED to request revision' });
+
+        await pool.query(
+            `UPDATE di_training_packs SET status='REVISION_NEEDED', revision_comments=$1, updated_at=CURRENT_TIMESTAMP WHERE id=$2`,
+            [comments, req.params.id]
+        );
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[TRAINING] revise pack error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// --- Download sealed certificate ---
+app.get('/api/di/training/certificate/:packId', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkTrainingTables())) return res.status(501).json({ error: 'Training tables not available' });
+        const pack = await pool.query(
+            'SELECT certificate_r2_key, researcher_id, version FROM di_training_packs WHERE id = $1 AND status = $2',
+            [req.params.packId, 'SEALED']
+        );
+        if (pack.rows.length === 0) return res.status(404).json({ error: 'Sealed pack not found' });
+        if (!pack.rows[0].certificate_r2_key) return res.status(404).json({ error: 'Certificate not generated' });
+
+        const r2Obj = await downloadFromR2(pack.rows[0].certificate_r2_key);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="training_certificate_v${pack.rows[0].version}.pdf"`);
+        if (r2Obj.Body.pipe) { r2Obj.Body.pipe(res); } else { res.send(Buffer.from(await r2Obj.Body.transformToByteArray())); }
+    } catch (err) {
+        console.error('[TRAINING] certificate download error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// --- Sealed overview (supervisor + PI) ---
+app.get('/api/di/training/sealed-overview', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkTrainingTables())) return res.status(501).json({ error: 'Training tables not available' });
+        // Latest sealed pack per researcher
+        const result = await pool.query(
+            `SELECT DISTINCT ON (p.researcher_id)
+                    p.id, p.researcher_id, p.version, p.sealed_at, p.verification_code,
+                    al.name as researcher_name
+             FROM di_training_packs p
+             JOIN di_allowlist al ON al.researcher_id = p.researcher_id
+             WHERE p.status = 'SEALED'
+             ORDER BY p.researcher_id, p.version DESC`
+        );
+        res.json({ success: true, packs: result.rows });
+    } catch (err) {
+        console.error('[TRAINING] sealed overview error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+
 //
 // Server start
 //

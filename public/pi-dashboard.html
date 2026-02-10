@@ -444,6 +444,7 @@
         <button class="tab-btn" data-tab="reports">Reports</button>
         <button class="tab-btn" data-tab="backup">Backup</button>
         <button class="tab-btn" data-tab="purchases-inventory">Purchases &amp; Inventory</button>
+        <button class="tab-btn" data-tab="training">Training &amp; Approvals</button>
     </div>
 
     <!-- ==================== DASHBOARD TAB ==================== -->
@@ -1178,6 +1179,159 @@
         </div>
     </div>
 
+    <!-- ==================== TRAINING & APPROVALS TAB ==================== -->
+    <div class="tab-content" id="tab-training">
+        <!-- Toggle between Design and Management -->
+        <div style="display:flex;gap:10px;margin-bottom:20px;">
+            <button class="btn btn-primary" id="toggleTrainingDesign" onclick="showTrainingToggle('design')" style="flex:1;">Training Design</button>
+            <button class="btn btn-secondary" id="toggleTrainingMgmt" onclick="showTrainingToggle('management')" style="flex:1;">Training Management</button>
+        </div>
+
+        <!-- TRAINING DESIGN -->
+        <div id="trainingDesignView">
+            <div class="panel">
+                <div class="panel-header">
+                    <h2><span class="icon">&#128218;</span> Training Documents</h2>
+                    <button class="btn btn-sm btn-secondary" onclick="loadTrainingDocuments()">Refresh</button>
+                </div>
+                <div class="panel-content">
+                    <!-- Upload form -->
+                    <div style="background:#f8f9fa;padding:20px;border-radius:8px;margin-bottom:20px;">
+                        <h3 style="font-size:14px;color:#1a365d;margin-bottom:15px;">Upload New Document</h3>
+                        <div id="trainDocMessage" class="message"></div>
+                        <form id="trainDocForm">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="trainDocTitle">Title *</label>
+                                    <input type="text" id="trainDocTitle" required placeholder="Document title">
+                                </div>
+                                <div class="form-group">
+                                    <label for="trainDocCategory">Category *</label>
+                                    <select id="trainDocCategory" required>
+                                        <option value="">Select...</option>
+                                        <option value="Guidelines">Guidelines</option>
+                                        <option value="Authorship">Authorship</option>
+                                        <option value="Safety">Safety</option>
+                                        <option value="Other">Other</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="trainDocAffiliation">Applies to *</label>
+                                    <select id="trainDocAffiliation" required>
+                                        <option value="All">All</option>
+                                        <option value="LiU">LiU</option>
+                                        <option value="UNAV">UNAV</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="trainDocRule">Requirement *</label>
+                                    <select id="trainDocRule" required>
+                                        <option value="Always">Always</option>
+                                        <option value="Conditional">Conditional</option>
+                                        <option value="Optional">Optional</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="trainDocCondKey">Condition Key</label>
+                                    <input type="text" id="trainDocCondKey" placeholder="e.g. MICROBIOLOGY_ACCESS">
+                                </div>
+                                <div class="form-group">
+                                    <label for="trainDocCondNote">Condition Note</label>
+                                    <input type="text" id="trainDocCondNote" placeholder="Display text for condition">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>PDF File *</label>
+                                <div class="file-upload" style="padding:15px;">
+                                    <input type="file" id="trainDocFile" accept=".pdf">
+                                    <p class="file-upload-text" style="margin:0;"><strong>Click to select</strong> or drag and drop</p>
+                                    <p class="file-name" id="trainDocFileName" style="margin:5px 0 0 0;"></p>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-primary" id="trainDocSubmitBtn">Upload Document</button>
+                        </form>
+                    </div>
+                    <!-- Document list -->
+                    <table class="data-table" id="trainDocsTable">
+                        <thead>
+                            <tr>
+                                <th>Title</th>
+                                <th>Category</th>
+                                <th>Applies to</th>
+                                <th>Rule</th>
+                                <th>Current Version</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="trainDocsTableBody">
+                            <tr><td colspan="7" style="text-align:center;color:#999;">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- TRAINING MANAGEMENT -->
+        <div id="trainingMgmtView" style="display:none;">
+            <div class="panel">
+                <div class="panel-header">
+                    <h2><span class="icon">&#128203;</span> Pending Training Packs</h2>
+                    <button class="btn btn-sm btn-secondary" onclick="loadPendingTrainingPacks()">Refresh</button>
+                </div>
+                <div class="panel-content">
+                    <div id="pendingPacksMessage" class="message"></div>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Researcher</th>
+                                <th>Affiliation</th>
+                                <th>Version</th>
+                                <th>Agreements</th>
+                                <th>Trainings</th>
+                                <th>Submitted</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="pendingPacksTableBody">
+                            <tr><td colspan="7" style="text-align:center;color:#999;">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                    <!-- Pack detail expansion area -->
+                    <div id="packDetailArea" style="display:none;margin-top:20px;background:#f8f9fa;padding:20px;border-radius:8px;">
+                        <h3 style="font-size:14px;color:#1a365d;margin-bottom:10px;" id="packDetailTitle">Pack Details</h3>
+                        <div id="packDetailContent"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sealed packs summary -->
+            <div class="panel" style="margin-top:20px;">
+                <div class="panel-header">
+                    <h2><span class="icon">&#9989;</span> Sealed Training Packs</h2>
+                </div>
+                <div class="panel-content">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Researcher</th>
+                                <th>Seal</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sealedPacksTableBody">
+                            <tr><td colspan="3" style="text-align:center;color:#999;">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         // =====================================================
         // GLOBAL STATE & INIT
@@ -1236,6 +1390,7 @@
                 if (tabId === 'lab-files') loadLabFiles();
                 if (tabId === 'reports') loadReportsData();
                 if (tabId === 'purchases-inventory') { loadAllPurchaseRequests(); loadAllInventoryV2(); loadPONumbers(); }
+                if (tabId === 'training') { loadTrainingDocuments(); loadPendingTrainingPacks(); loadSealedTrainingPacks(); }
             });
         });
 
@@ -3216,6 +3371,230 @@
 
                 targetRow.after(sugRow);
             } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        // =====================================================
+        // TRAINING & APPROVALS
+        // =====================================================
+        function showTrainingToggle(view) {
+            document.getElementById('trainingDesignView').style.display = view === 'design' ? 'block' : 'none';
+            document.getElementById('trainingMgmtView').style.display = view === 'management' ? 'block' : 'none';
+            document.getElementById('toggleTrainingDesign').className = 'btn ' + (view === 'design' ? 'btn-primary' : 'btn-secondary');
+            document.getElementById('toggleTrainingMgmt').className = 'btn ' + (view === 'management' ? 'btn-primary' : 'btn-secondary');
+            if (view === 'management') { loadPendingTrainingPacks(); loadSealedTrainingPacks(); }
+        }
+
+        // -- Training Document Upload --
+        document.getElementById('trainDocFile').addEventListener('change', function() {
+            document.getElementById('trainDocFileName').textContent = this.files[0] ? this.files[0].name : '';
+        });
+
+        document.getElementById('trainDocForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const msgEl = document.getElementById('trainDocMessage');
+            const btn = document.getElementById('trainDocSubmitBtn');
+            const file = document.getElementById('trainDocFile').files[0];
+            if (!file) { msgEl.className = 'message error show'; msgEl.textContent = 'Select a PDF file'; return; }
+
+            btn.disabled = true; btn.textContent = 'Uploading...';
+            const fd = new FormData();
+            fd.append('file', file);
+            fd.append('title', document.getElementById('trainDocTitle').value);
+            fd.append('category', document.getElementById('trainDocCategory').value);
+            fd.append('affiliation', document.getElementById('trainDocAffiliation').value);
+            fd.append('requirement_rule', document.getElementById('trainDocRule').value);
+            fd.append('condition_key', document.getElementById('trainDocCondKey').value);
+            fd.append('condition_note', document.getElementById('trainDocCondNote').value);
+
+            try {
+                const resp = await fetch('/api/di/training/documents', { method: 'POST', body: fd, credentials: 'include' });
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data.error || 'Upload failed');
+                msgEl.className = 'message success show'; msgEl.textContent = 'Document uploaded successfully';
+                document.getElementById('trainDocForm').reset();
+                document.getElementById('trainDocFileName').textContent = '';
+                loadTrainingDocuments();
+            } catch (err) {
+                msgEl.className = 'message error show'; msgEl.textContent = err.message;
+            } finally { btn.disabled = false; btn.textContent = 'Upload Document'; }
+        });
+
+        async function loadTrainingDocuments() {
+            try {
+                const resp = await fetch('/api/di/training/documents', { credentials: 'include' });
+                const data = await resp.json();
+                if (!data.success) return;
+                const tbody = document.getElementById('trainDocsTableBody');
+                if (!data.documents || data.documents.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#999;">No training documents yet</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = data.documents.map(d => {
+                    const currentV = d.versions ? d.versions.find(v => v.is_current) : null;
+                    const statusClass = d.is_active ? 'status-approved' : 'status-inactive';
+                    const statusText = d.is_active ? 'Active' : 'Retired';
+                    const versionList = d.versions ? d.versions.map(v =>
+                        `<span style="font-size:11px;${v.is_current ? 'font-weight:bold;' : 'color:#999;'}">v${v.version}</span>`
+                    ).join(' ') : '-';
+                    return `<tr>
+                        <td>${escapeHtml(d.title)}${d.condition_key ? ' <span style="font-size:10px;color:#666;">(' + escapeHtml(d.condition_key) + ')</span>' : ''}</td>
+                        <td>${escapeHtml(d.category)}</td>
+                        <td>${escapeHtml(d.affiliation)}</td>
+                        <td>${escapeHtml(d.requirement_rule)}</td>
+                        <td>${versionList}${currentV ? ' <a href="/api/di/training/document-versions/' + currentV.id + '/view" target="_blank" style="font-size:11px;">View</a>' : ''}</td>
+                        <td><span class="status-badge ${statusClass}">${statusText}</span></td>
+                        <td>
+                            ${d.is_active
+                                ? `<button class="btn btn-sm btn-warning" onclick="retireTrainDoc('${d.id}')">Retire</button>`
+                                : `<button class="btn btn-sm btn-success" onclick="activateTrainDoc('${d.id}')">Activate</button>`}
+                            <button class="btn btn-sm btn-primary" onclick="uploadNewVersion('${d.id}')">New Version</button>
+                        </td>
+                    </tr>`;
+                }).join('');
+            } catch (err) { console.error('[TRAINING] load docs error:', err); }
+        }
+
+        async function retireTrainDoc(id) {
+            if (!confirm('Retire this document? It will no longer appear to researchers.')) return;
+            try {
+                await fetch(`/api/di/training/documents/${id}/retire`, { method: 'PUT', credentials: 'include' });
+                loadTrainingDocuments();
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        async function activateTrainDoc(id) {
+            try {
+                await fetch(`/api/di/training/documents/${id}/activate`, { method: 'PUT', credentials: 'include' });
+                loadTrainingDocuments();
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        async function uploadNewVersion(docId) {
+            const input = document.createElement('input');
+            input.type = 'file'; input.accept = '.pdf';
+            input.onchange = async () => {
+                if (!input.files[0]) return;
+                const fd = new FormData();
+                fd.append('file', input.files[0]);
+                try {
+                    const resp = await fetch(`/api/di/training/documents/${docId}/versions`, { method: 'POST', body: fd, credentials: 'include' });
+                    const data = await resp.json();
+                    if (!resp.ok) throw new Error(data.error || 'Upload failed');
+                    alert('Version ' + data.version + ' uploaded');
+                    loadTrainingDocuments();
+                } catch (err) { alert('Error: ' + err.message); }
+            };
+            input.click();
+        }
+
+        // -- Training Management --
+        async function loadPendingTrainingPacks() {
+            try {
+                const resp = await fetch('/api/di/training/packs/pending', { credentials: 'include' });
+                const data = await resp.json();
+                if (!data.success) return;
+                const tbody = document.getElementById('pendingPacksTableBody');
+                if (!data.packs || data.packs.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#999;">No pending packs</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = data.packs.map(p => `<tr>
+                    <td>${escapeHtml(p.researcher_name)}</td>
+                    <td>${escapeHtml(p.researcher_affiliation)}</td>
+                    <td>v${p.version}</td>
+                    <td>${p.agreement_count}</td>
+                    <td>${p.entry_count}</td>
+                    <td>${new Date(p.updated_at).toLocaleDateString()}</td>
+                    <td>
+                        <button class="btn btn-sm btn-primary" onclick="viewPackDetails('${p.id}')">Review</button>
+                        <button class="btn btn-sm btn-success" onclick="sealPack('${p.id}')">Seal</button>
+                        <button class="btn btn-sm btn-warning" onclick="revisePack('${p.id}')">Revise</button>
+                    </td>
+                </tr>`).join('');
+            } catch (err) { console.error('[TRAINING] load pending packs error:', err); }
+        }
+
+        async function viewPackDetails(packId) {
+            try {
+                const resp = await fetch(`/api/di/training/packs/${packId}`, { credentials: 'include' });
+                const data = await resp.json();
+                if (!data.success) return;
+                const area = document.getElementById('packDetailArea');
+                area.style.display = 'block';
+                document.getElementById('packDetailTitle').textContent = `Pack Details — ${data.pack.researcher_name} v${data.pack.version}`;
+
+                let html = '<h4 style="font-size:13px;color:#333;margin:10px 0 5px;">Agreements</h4>';
+                if (data.agreements.length === 0) { html += '<p style="color:#999;font-size:12px;">No agreements</p>'; }
+                else {
+                    html += '<table class="data-table" style="font-size:12px;"><thead><tr><th>Document</th><th>Version</th><th>Confirmed by</th><th>Date</th></tr></thead><tbody>';
+                    data.agreements.forEach(a => {
+                        html += `<tr><td>${escapeHtml(a.document_title)}</td><td>v${a.doc_version}</td><td>${escapeHtml(a.confirmed_name)}</td><td>${new Date(a.confirmed_at).toLocaleDateString()}</td></tr>`;
+                    });
+                    html += '</tbody></table>';
+                }
+
+                html += '<h4 style="font-size:13px;color:#333;margin:15px 0 5px;">Training Entries</h4>';
+                if (data.entries.length === 0) { html += '<p style="color:#999;font-size:12px;">No entries</p>'; }
+                else {
+                    html += '<table class="data-table" style="font-size:12px;"><thead><tr><th>Type</th><th>Date</th><th>Supervisor</th><th>Status</th></tr></thead><tbody>';
+                    data.entries.forEach(e => {
+                        const badgeClass = e.status === 'CERTIFIED' ? 'status-approved' : e.status === 'REJECTED' ? 'status-revision' : 'status-pending';
+                        html += `<tr><td>${escapeHtml(e.training_type)}</td><td>${new Date(e.training_date).toLocaleDateString()}</td><td>${escapeHtml(e.supervisor_name || '')}</td><td><span class="status-badge ${badgeClass}">${e.status}</span></td></tr>`;
+                    });
+                    html += '</tbody></table>';
+                }
+                document.getElementById('packDetailContent').innerHTML = html;
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        async function sealPack(packId) {
+            if (!confirm('Seal this training pack? This action is permanent and will generate a certificate.')) return;
+            try {
+                const resp = await fetch(`/api/di/training/packs/${packId}/seal`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' } });
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data.error || 'Seal failed');
+                alert('Pack sealed. Verification: ' + data.verification_code);
+                loadPendingTrainingPacks();
+                loadSealedTrainingPacks();
+                document.getElementById('packDetailArea').style.display = 'none';
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        async function revisePack(packId) {
+            const comments = prompt('Enter revision comments:');
+            if (!comments) return;
+            try {
+                const resp = await fetch(`/api/di/training/packs/${packId}/revise`, {
+                    method: 'POST', credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ comments })
+                });
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data.error || 'Revision request failed');
+                alert('Revision requested');
+                loadPendingTrainingPacks();
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        async function loadSealedTrainingPacks() {
+            try {
+                const resp = await fetch('/api/di/training/sealed-overview', { credentials: 'include' });
+                const data = await resp.json();
+                if (!data.success) return;
+                const tbody = document.getElementById('sealedPacksTableBody');
+                if (!data.packs || data.packs.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#999;">No sealed packs yet</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = data.packs.map(p => `<tr>
+                    <td>${escapeHtml(p.researcher_name)}</td>
+                    <td><span class="status-badge status-approved">SEALED</span> ${new Date(p.sealed_at).toLocaleDateString()}</td>
+                    <td>
+                        <button class="btn btn-sm btn-primary" onclick="viewPackDetails('${p.id}')">View</button>
+                        <a href="/api/di/training/certificate/${p.id}" class="btn btn-sm btn-secondary" style="text-decoration:none;">Download</a>
+                    </td>
+                </tr>`).join('');
+            } catch (err) { console.error('[TRAINING] load sealed packs error:', err); }
         }
     </script>
 </body>
