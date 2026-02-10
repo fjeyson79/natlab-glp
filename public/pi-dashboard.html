@@ -1246,7 +1246,7 @@
                             </div>
                             <div class="form-group">
                                 <label>PDF File *</label>
-                                <div class="file-upload" style="padding:15px;">
+                                <div class="file-upload" id="trainDocUploadArea" style="padding:15px;">
                                     <input type="file" id="trainDocFile" accept=".pdf">
                                     <p class="file-upload-text" style="margin:0;"><strong>Click to select</strong> or drag and drop</p>
                                     <p class="file-name" id="trainDocFileName" style="margin:5px 0 0 0;"></p>
@@ -1970,6 +1970,36 @@
                 groupDocUploadArea.classList.add('has-file');
             }
         });
+
+          // Training Design document file upload
+          const trainDocUploadArea = document.getElementById('trainDocUploadArea');
+          const trainDocFileInput = document.getElementById('trainDocFile');
+          const trainDocFileName = document.getElementById('trainDocFileName');
+
+          if (trainDocUploadArea && trainDocFileInput) {
+              trainDocUploadArea.addEventListener('click', () => trainDocFileInput.click());
+              trainDocFileInput.addEventListener('change', () => {
+                  if (trainDocFileInput.files.length > 0) {
+                      if (trainDocFileName) trainDocFileName.textContent = trainDocFileInput.files[0].name;
+                      trainDocUploadArea.classList.add('has-file');
+                  } else {
+                      if (trainDocFileName) trainDocFileName.textContent = '';
+                      trainDocUploadArea.classList.remove('has-file');
+                  }
+              });
+
+              trainDocUploadArea.addEventListener('dragover', (e) => { e.preventDefault(); trainDocUploadArea.style.borderColor = '#2d5a87'; });
+              trainDocUploadArea.addEventListener('dragleave', () => { trainDocUploadArea.style.borderColor = '#ddd'; });
+              trainDocUploadArea.addEventListener('drop', (e) => {
+                  e.preventDefault();
+                  trainDocUploadArea.style.borderColor = '#ddd';
+                  if (e.dataTransfer.files.length > 0) {
+                      trainDocFileInput.files = e.dataTransfer.files;
+                      if (trainDocFileName) trainDocFileName.textContent = e.dataTransfer.files[0].name;
+                      trainDocUploadArea.classList.add('has-file');
+                  }
+              });
+          }
 
         document.getElementById('groupDocForm').addEventListener('submit', async (e) => {
             e.preventDefault();
