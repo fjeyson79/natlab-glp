@@ -6094,6 +6094,7 @@ app.post('/api/di/training/entries', requireAuth, async (req, res) => {
 
           const delegationMarker = 'Delegated delivery, PI will certify';
           const autoCertified = (String(supervisor_id) === String(userId)) || (String(notes || '').includes(delegationMarker));
+          console.log("[TRAINING DEBUG]", { supervisor_id, supervisor_id_type: typeof supervisor_id, userId, userId_type: typeof userId, session_user_id: req.session.user.id, session_user_role: req.session.user.role, supervisor_equals_user: String(supervisor_id) === String(userId) });
 
           const status = autoCertified ? 'CERTIFIED' : 'PENDING';
 
