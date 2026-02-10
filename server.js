@@ -6529,7 +6529,7 @@ app.get('/api/di/training/sealed-overview', requireAuth, async (req, res) => {
 //
 // Server start
 //
-app.listen(PORT, () => console.log("[STARTUP] Server listening on port " + PORT));
+app.listen(PORT, "0.0.0.0", () => console.log("[STARTUP] Server listening on port " + PORT));
 
 
 
