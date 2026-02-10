@@ -5908,15 +5908,18 @@ app.get('/api/di/training/documents', requireAuth, async (req, res) => {
             res.json({ success: true, documents: Object.values(docMap) });
         } else {
             // Non-PI: active documents with current version only
-            const docs = await pool.query(
-                `SELECT d.id, d.title, d.category, d.affiliation, d.requirement_rule, d.condition_key, d.condition_note, d.display_order,
-                        v.id as version_id, v.version, v.original_filename as version_filename
-                 FROM di_training_documents d
-                 JOIN di_training_document_versions v ON v.document_id = d.id AND v.is_current = TRUE
-                 WHERE d.is_active = TRUE
-                 ORDER BY d.display_order, d.created_at`
-            );
-            res.json({ success: true, documents: docs.rows });
+              const userAff = req.session.user.affiliation;
+              const docs = await pool.query(
+                  `SELECT d.id, d.title, d.category, d.affiliation, d.requirement_rule, d.condition_key, d.condition_note, d.display_order,
+                          v.id as version_id, v.version, v.original_filename as version_filename
+                   FROM di_training_documents d
+                   JOIN di_training_document_versions v ON v.document_id = d.id AND v.is_current = TRUE
+                   WHERE d.is_active = TRUE
+                     AND (d.affiliation = 'All' OR d.affiliation = $1)
+                   ORDER BY d.display_order, d.created_at`,
+                  [userAff]
+              );
+res.json({ success: true, documents: docs.rows });
         }
     } catch (err) {
         console.error('[TRAINING] list documents error:', err);
