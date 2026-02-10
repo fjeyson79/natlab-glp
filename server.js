@@ -6096,15 +6096,14 @@ app.post('/api/di/training/entries', requireAuth, async (req, res) => {
           const autoCertified = (String(supervisor_id) === String(userId)) || (String(notes || '').includes(delegationMarker));
 
           const status = autoCertified ? 'CERTIFIED' : 'PENDING';
-          const certified_by = autoCertified ? supervisor_id : null;
 
           const result = await pool.query(
               `INSERT INTO di_training_entries
-                 (pack_id, training_type, training_date, notes, supervisor_id, trainee_declaration_name, status, certified_at, certified_by)
+                 (pack_id, training_type, training_date, notes, supervisor_id, trainee_declaration_name, status, certified_at)
                VALUES
-                 ($1, $2, $3, $4, $5, $6, $7, CASE WHEN $7 = 'CERTIFIED' THEN CURRENT_TIMESTAMP ELSE NULL END, $8)
+                 ($1, $2, $3, $4, $5, $6, $7, CASE WHEN $7 = 'CERTIFIED' THEN CURRENT_TIMESTAMP ELSE NULL END)
                RETURNING id`,
-              [pack_id, training_type, training_date, notes || null, supervisor_id, req.session.user.name, status, certified_by]
+              [pack_id, training_type, training_date, notes || null, supervisor_id, req.session.user.name, status]
           );
 
         res.json({ success: true, entry_id: result.rows[0].id });
