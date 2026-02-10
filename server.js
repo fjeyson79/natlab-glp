@@ -5971,7 +5971,7 @@ app.get('/api/di/training/document-versions/:versionId/view', requireAuth, async
 app.get('/api/di/training/supervisors', requireAuth, async (req, res) => {
     try {
         const result = await pool.query(
-            `SELECT researcher_id, name FROM di_allowlist WHERE role = 'supervisor' AND active = TRUE ORDER BY name`
+            `SELECT DISTINCT researcher_id, name FROM di_allowlist WHERE role IN ('supervisor', 'pi') AND active = TRUE ORDER BY name`
         );
         res.json({ success: true, supervisors: result.rows });
     } catch (err) {
@@ -6093,9 +6093,24 @@ app.post('/api/di/training/entries', requireAuth, async (req, res) => {
         if (pack.rows[0].status === 'SUBMITTED') return res.status(403).json({ error: 'Pack is submitted — no changes allowed' });
 
           const delegationMarker = 'Delegated delivery, PI will certify';
-          const autoCertified = (String(supervisor_id) === String(userId)) || (String(notes || '').includes(delegationMarker));
-          console.log("[TRAINING DEBUG]", { supervisor_id, supervisor_id_type: typeof supervisor_id, userId, userId_type: typeof userId, session_user_id: req.session.user.id, session_user_role: req.session.user.role, supervisor_equals_user: String(supervisor_id) === String(userId) });
+          const isDelegated = String(notes || '').includes(delegationMarker);
+          const isPi = req.session.user.role === 'pi';
 
+          // Robust same-person check: researcher_id first, then email fallback
+          let isSelf = String(supervisor_id).toLowerCase() === String(userId).toLowerCase();
+          if (!isSelf && isPi) {
+              const supLookup = await pool.query(
+                  'SELECT institution_email FROM di_allowlist WHERE researcher_id = $1',
+                  [supervisor_id]
+              );
+              if (supLookup.rows.length > 0) {
+                  const supEmail = (supLookup.rows[0].institution_email || '').toLowerCase();
+                  const userEmail = (req.session.user.institution_email || '').toLowerCase();
+                  isSelf = !!(supEmail && userEmail && supEmail === userEmail);
+              }
+          }
+
+          const autoCertified = (isPi && isSelf) || isDelegated;
           const status = autoCertified ? 'CERTIFIED' : 'PENDING';
 
           const result = await pool.query(
@@ -6243,6 +6258,26 @@ app.post('/api/di/training/entries/:id/reject', requireAuth, async (req, res) =>
         res.json({ success: true });
     } catch (err) {
         console.error('[TRAINING] reject error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// --- PI: Clear stale PENDING entries from a pack ---
+app.post('/api/di/training/packs/:pack_id/clear-pending', requirePI, async (req, res) => {
+    try {
+        if (!(await checkTrainingTables())) return res.status(501).json({ error: 'Training tables not available' });
+        const packId = req.params.pack_id;
+        const pack = await pool.query('SELECT id, status FROM di_training_packs WHERE id = $1', [packId]);
+        if (pack.rows.length === 0) return res.status(404).json({ error: 'Pack not found' });
+        if (pack.rows[0].status === 'SEALED') return res.status(403).json({ error: 'Cannot modify sealed pack' });
+
+        const result = await pool.query(
+            `DELETE FROM di_training_entries WHERE pack_id = $1 AND status = 'PENDING' RETURNING id`,
+            [packId]
+        );
+        res.json({ success: true, deleted: result.rowCount });
+    } catch (err) {
+        console.error('[TRAINING] clear-pending error:', err);
         res.status(500).json({ error: 'Server error' });
     }
 });

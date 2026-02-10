@@ -474,6 +474,449 @@
         .selected-researcher-info strong { display: block; font-size: 14px; }
         .selected-researcher-info span { font-size: 12px; opacity: 0.9; }
     </style>
+    <!-- GLP Status styles -->
+    <style>
+        /* ── GLP Status Layout ── */
+        .glpWrap {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+        @media (max-width: 900px) {
+            .glpWrap { padding: 16px; }
+        }
+
+        /* ── GLP Card base ── */
+        .glpCard {
+            background: #fafbfc;
+            border: 1px solid #e4e7eb;
+            border-radius: 16px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+            padding: 28px 32px;
+            margin-bottom: 20px;
+            transition: box-shadow 0.25s ease;
+        }
+        .glpCard:hover {
+            box-shadow: 0 4px 16px rgba(0,0,0,0.07);
+        }
+        @media (max-width: 900px) {
+            .glpCard { padding: 20px 18px; }
+        }
+
+        .glpMicroTitle {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 1.6px;
+            text-transform: uppercase;
+            color: #8c95a1;
+            margin-bottom: 10px;
+        }
+
+        /* ── A. Header card ── */
+        .glpHeaderInner {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 32px;
+            flex-wrap: wrap;
+        }
+        .glpHeaderLeft { flex: 1; min-width: 220px; }
+        .glpHeaderRight {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 14px;
+            min-width: 220px;
+        }
+        @media (max-width: 700px) {
+            .glpHeaderRight { align-items: flex-start; }
+        }
+
+        .glpName {
+            font-size: 22px;
+            font-weight: 700;
+            color: #1e293b;
+            margin-bottom: 10px;
+            line-height: 1.25;
+        }
+
+        .glpBadgeRow {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-bottom: 8px;
+        }
+        .glpBadge {
+            display: inline-block;
+            padding: 3px 11px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.3px;
+        }
+        .glpBadge--role {
+            background: #e0ecf7;
+            color: #2b5a8a;
+        }
+        .glpBadge--aff {
+            background: #eae5f4;
+            color: #5b4399;
+        }
+
+        .glpActiveSince {
+            font-size: 12px;
+            color: #8c95a1;
+        }
+
+        /* State pill */
+        .glpStatePill {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            padding: 6px 16px;
+            border-radius: 20px;
+            background: #f0f4f8;
+            border: 1px solid #dce3eb;
+        }
+        .glpStateDot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #8ca8c4;
+        }
+        .glpStateText {
+            font-size: 13px;
+            font-weight: 600;
+            color: #3a5068;
+            letter-spacing: 0.3px;
+        }
+
+        /* Scope switch */
+        .glpScopeSwitch {
+            display: inline-flex;
+            border: 1px solid #dce3eb;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .glpScopeBtn {
+            padding: 7px 18px;
+            font-size: 12px;
+            font-weight: 600;
+            border: none;
+            background: #f6f7f9;
+            color: #6b7685;
+            cursor: pointer;
+            transition: background 0.2s, color 0.2s;
+        }
+        .glpScopeBtn + .glpScopeBtn {
+            border-left: 1px solid #dce3eb;
+        }
+        .glpScopeBtn.active {
+            background: #2b5a8a;
+            color: #fff;
+        }
+        .glpScopeHint {
+            font-size: 11px;
+            color: #9ba5b1;
+            margin-top: 6px;
+            text-align: right;
+        }
+        .glpScopeLabel {
+            font-size: 11px;
+            color: #9ba5b1;
+            margin-top: 4px;
+            text-align: right;
+        }
+
+        /* ── B. Evidence Harmony card ── */
+        .glpMiniCards {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            border: 1px solid #e0e4ea;
+            border-radius: 12px;
+            overflow: hidden;
+            background: #fff;
+        }
+        @media (max-width: 700px) {
+            .glpMiniCards { grid-template-columns: 1fr; }
+        }
+        .glpMiniCard {
+            padding: 22px 20px;
+            text-align: center;
+        }
+        .glpMiniCard + .glpMiniCard {
+            border-left: 1px solid #e0e4ea;
+        }
+        @media (max-width: 700px) {
+            .glpMiniCard + .glpMiniCard {
+                border-left: none;
+                border-top: 1px solid #e0e4ea;
+            }
+        }
+        .glpMiniCard__title {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 1.4px;
+            text-transform: uppercase;
+            color: #8c95a1;
+            margin-bottom: 8px;
+        }
+        .glpMiniCard__big {
+            font-size: 32px;
+            font-weight: 700;
+            color: #1e293b;
+            line-height: 1.1;
+            margin-bottom: 10px;
+        }
+        .glpMiniCard__row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+            color: #5f6b7a;
+            padding: 3px 0;
+        }
+        .glpMiniCard__row + .glpMiniCard__row {
+            border-top: 1px solid #f0f2f5;
+        }
+        .glpMiniCard__rowVal {
+            font-weight: 600;
+            color: #3a5068;
+        }
+
+        /* Harmony Map placeholder */
+        .glpHarmonyMap {
+            margin-top: 20px;
+            border-radius: 12px;
+            padding: 48px 32px;
+            text-align: center;
+            background:
+                radial-gradient(ellipse at 30% 50%, rgba(43,90,138,0.04) 0%, transparent 60%),
+                radial-gradient(ellipse at 70% 50%, rgba(91,67,153,0.03) 0%, transparent 60%),
+                linear-gradient(180deg, #f5f7fa 0%, #eef1f5 100%);
+            border: 1px solid #e0e4ea;
+        }
+        .glpHarmonyMap__title {
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 0.6px;
+            color: #3a5068;
+            margin-bottom: 6px;
+        }
+        .glpHarmonyMap__sub {
+            font-size: 12px;
+            color: #8c95a1;
+            margin-bottom: 12px;
+        }
+
+        /* Harmony SVG */
+        .glpHarmonySvg {
+            width: 100%;
+            max-width: 520px;
+            height: 260px;
+            display: block;
+            margin: 0 auto;
+            filter: drop-shadow(0 10px 18px rgba(0,0,0,0.10));
+        }
+        .glpHarmonyEdge {
+            stroke: #8ca8c4;
+            fill: none;
+            stroke-linecap: round;
+            transition: stroke-width 0.3s, opacity 0.3s;
+        }
+        .glpHarmonyNode {
+            stroke: #8ca8c4;
+            stroke-width: 1.5;
+            transition: fill-opacity 0.3s, stroke-width 0.3s;
+        }
+        .glpHarmonyLabel {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 1.2px;
+            text-transform: uppercase;
+            fill: #3a5068;
+            text-anchor: middle;
+            dominant-baseline: central;
+        }
+        /* Individual scope */
+        .glpHarmonyMap.isIndividual .glpHarmonyEdge {
+            stroke-width: 3;
+            opacity: 0.55;
+        }
+        .glpHarmonyMap.isIndividual .glpHarmonyNode {
+            fill: #c8d6e3;
+            fill-opacity: 0.6;
+        }
+        /* Group scope */
+        .glpHarmonyMap.isGroup .glpHarmonyEdge {
+            stroke-width: 5;
+            opacity: 0.8;
+        }
+        .glpHarmonyMap.isGroup .glpHarmonyNode {
+            fill: #8ca8c4;
+            fill-opacity: 0.8;
+        }
+
+        /* ── C. GLP Conformity card ── */
+        .glpConformityInner {
+            display: grid;
+            grid-template-columns: 260px 1fr;
+            gap: 40px;
+            align-items: center;
+        }
+        @media (max-width: 800px) {
+            .glpConformityInner {
+                grid-template-columns: 1fr;
+                gap: 24px;
+            }
+        }
+
+        /* Dial */
+        .glpDialWrap {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .glpDial {
+            width: 180px;
+            height: 180px;
+            border-radius: 50%;
+            background: #e4e9ef;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow:
+                0 4px 20px rgba(0,0,0,0.06),
+                inset 0 0 0 4px rgba(255,255,255,0.5);
+            position: relative;
+        }
+        .glpDial::before {
+            content: "";
+            position: absolute;
+            inset: 10px;
+            border-radius: 50%;
+            pointer-events: none;
+            background: radial-gradient(circle at 25% 20%, rgba(255,255,255,0.18), transparent 55%);
+            z-index: 1;
+            opacity: 0.12;
+        }
+        /* Decorative tick marks */
+        .glpDialTicks {
+            position: absolute;
+            inset: 4px;
+            border-radius: 50%;
+            background: repeating-conic-gradient(
+                rgba(58,80,104,0.12) 0deg 1.5deg,
+                transparent 1.5deg 9deg
+            );
+            -webkit-mask: radial-gradient(circle, transparent 60%, #000 60%, #000 100%);
+                    mask: radial-gradient(circle, transparent 60%, #000 60%, #000 100%);
+        }
+        /* Progress arc */
+        .glpDialArc {
+            position: absolute;
+            inset: 6px;
+            border-radius: 50%;
+            background: conic-gradient(
+                from -90deg,
+                #8ca8c4 calc(var(--dialFill,0.44) * 360deg),
+                transparent calc(var(--dialFill,0.44) * 360deg)
+            );
+            -webkit-mask: radial-gradient(circle, transparent 62%, #000 62%, #000 100%);
+                    mask: radial-gradient(circle, transparent 62%, #000 62%, #000 100%);
+            opacity: 0.55;
+            transition: opacity 0.4s, background 0.4s;
+        }
+        /* Needle indicator */
+        .glpDialNeedle {
+            position: absolute;
+            width: 2px;
+            height: 38px;
+            top: 8px;
+            left: calc(50% - 1px);
+            background: #5f6b7a;
+            border-radius: 1px;
+            opacity: 0.35;
+            transform-origin: bottom center;
+            transform: rotate(var(--dialNeedleDeg,158deg));
+            transition: transform 0.5s ease, opacity 0.4s;
+        }
+        .glpDialInner {
+            width: 130px;
+            height: 130px;
+            border-radius: 50%;
+            background: #fafbfc;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            box-shadow: inset 0 2px 6px rgba(0,0,0,0.04);
+            position: relative;
+            z-index: 2;
+        }
+        .glpDialState {
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 1.2px;
+            text-transform: uppercase;
+            color: #3a5068;
+        }
+        .glpDialSub {
+            font-size: 11px;
+            color: #8c95a1;
+            margin-top: 4px;
+            text-align: center;
+            max-width: 110px;
+            line-height: 1.3;
+        }
+        .glpDialNote {
+            font-size: 10px;
+            color: #aab3be;
+            margin-top: 12px;
+            font-style: italic;
+        }
+
+        /* Interpretation & guidance */
+        .glpInterpretation {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .glpInterpretation__title {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 1.4px;
+            text-transform: uppercase;
+            color: #8c95a1;
+        }
+        .glpInterpretationText {
+            font-size: 14px;
+            color: #3a5068;
+            line-height: 1.6;
+        }
+        .glpGuidance {
+            list-style: none;
+            padding: 0;
+        }
+        .glpGuidance li {
+            position: relative;
+            padding-left: 16px;
+            font-size: 13px;
+            color: #5f6b7a;
+            line-height: 1.6;
+            margin-bottom: 6px;
+        }
+        .glpGuidance li::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 8px;
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: #8ca8c4;
+        }
+    </style>
 </head>
 <body>
     <div class="header">
@@ -492,6 +935,7 @@
         <button id="supervisionTabBtn" class="section-btn" data-section="supervision" onclick="switchSection('supervision')" style="display:none;">Supervision</button>
         <button class="section-btn" data-section="inventory" onclick="switchSection('inventory')">Purchases &amp; Inventory</button>
         <button class="section-btn" data-section="training" onclick="switchSection('training')">Training &amp; Approvals</button>
+        <button id="tabGLPStatus" class="section-btn" data-section="glpStatus" onclick="switchSection('glpStatus')">GLP Status</button>
     </div>
 
     <div id="section-files" class="section-content">
@@ -1129,6 +1573,133 @@
         </div>
     </div>
 
+    <!-- GLP Status section -->
+    <div id="sectionGLPStatus" class="section-content" style="display:none;">
+        <div class="glpWrap">
+
+            <!-- A. Header card -->
+            <div class="glpCard" id="glpHeaderCard">
+                <div class="glpMicroTitle">GLP Status</div>
+                <div class="glpHeaderInner">
+                    <div class="glpHeaderLeft">
+                        <div class="glpName" id="glpName">Jane Researcher</div>
+                        <div class="glpBadgeRow">
+                            <span class="glpBadge glpBadge--role" id="glpRoleBadge">Researcher</span>
+                            <span class="glpBadge glpBadge--aff" id="glpAffiliationBadge">LiU</span>
+                        </div>
+                        <div class="glpActiveSince" id="glpActiveSince">Active since 2024</div>
+                    </div>
+                    <div class="glpHeaderRight">
+                        <div class="glpStatePill" id="glpStatePill">
+                            <span class="glpStateDot" id="glpStateDot"></span>
+                            <span class="glpStateText" id="glpStateText">Developing</span>
+                        </div>
+                        <div class="glpScopeSwitch">
+                            <button class="glpScopeBtn active" id="glpScopeIndividual" onclick="setGlpScope('individual')">Individual</button>
+                            <button class="glpScopeBtn" id="glpScopeGroup" onclick="setGlpScope('group')">Group</button>
+                        </div>
+                        <div class="glpScopeHint" id="glpScopeHint">Viewing your individual GLP posture</div>
+                        <div class="glpScopeLabel" id="glpScope">Individual</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- B. Evidence Harmony card -->
+            <div class="glpCard" id="glpEvidenceCard">
+                <div class="glpMicroTitle">Evidence Harmony</div>
+                <div class="glpMiniCards">
+                    <div class="glpMiniCard">
+                        <div class="glpMiniCard__title">SOPs</div>
+                        <div class="glpMiniCard__big" id="glpSopApproved">4</div>
+                        <div class="glpMiniCard__row">
+                            <span id="glpSopApprovedLabel">Approved</span>
+                            <span class="glpMiniCard__rowVal">4</span>
+                        </div>
+                        <div class="glpMiniCard__row">
+                            <span>Referenced in experiments</span>
+                            <span class="glpMiniCard__rowVal" id="glpSopReferenced">3</span>
+                        </div>
+                    </div>
+                    <div class="glpMiniCard">
+                        <div class="glpMiniCard__title">Experiments</div>
+                        <div class="glpMiniCard__big" id="glpExpReported">7</div>
+                        <div class="glpMiniCard__row">
+                            <span id="glpExpReportedLabel">Reported</span>
+                            <span class="glpMiniCard__rowVal">7</span>
+                        </div>
+                        <div class="glpMiniCard__row">
+                            <span>Linked to SOPs</span>
+                            <span class="glpMiniCard__rowVal" id="glpExpLinked">5</span>
+                        </div>
+                    </div>
+                    <div class="glpMiniCard">
+                        <div class="glpMiniCard__title">Inventory</div>
+                        <div class="glpMiniCard__big" id="glpInvTotal">18</div>
+                        <div class="glpMiniCard__row">
+                            <span>Products</span>
+                            <span class="glpMiniCard__rowVal" id="glpInvProducts">9</span>
+                        </div>
+                        <div class="glpMiniCard__row">
+                            <span>Samples</span>
+                            <span class="glpMiniCard__rowVal" id="glpInvSamples">6</span>
+                        </div>
+                        <div class="glpMiniCard__row">
+                            <span>Oligos</span>
+                            <span class="glpMiniCard__rowVal" id="glpInvOligos">3</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="glpHarmonyMap isIndividual">
+                    <div class="glpHarmonyMap__title">Harmony Map</div>
+                    <div class="glpHarmonyMap__sub">SOPs, Experiments, and Inventory alignment</div>
+                    <svg class="glpHarmonySvg" viewBox="0 0 520 260" xmlns="http://www.w3.org/2000/svg">
+                        <!-- edges -->
+                        <line class="glpHarmonyEdge" x1="260" y1="52" x2="105" y2="218"/>
+                        <line class="glpHarmonyEdge" x1="260" y1="52" x2="415" y2="218"/>
+                        <line class="glpHarmonyEdge" x1="105" y1="218" x2="415" y2="218"/>
+                        <!-- nodes -->
+                        <circle class="glpHarmonyNode" cx="260" cy="52" r="28"/>
+                        <circle class="glpHarmonyNode" cx="105" cy="218" r="28"/>
+                        <circle class="glpHarmonyNode" cx="415" cy="218" r="28"/>
+                        <!-- labels -->
+                        <text class="glpHarmonyLabel" x="260" y="56">SOPs</text>
+                        <text class="glpHarmonyLabel" x="105" y="222">Experiments</text>
+                        <text class="glpHarmonyLabel" x="415" y="222">Inventory</text>
+                    </svg>
+                </div>
+            </div>
+
+            <!-- C. GLP Conformity card -->
+            <div class="glpCard" id="glpConformityCard">
+                <div class="glpMicroTitle">GLP Conformity</div>
+                <div class="glpConformityInner">
+                    <div class="glpDialWrap">
+                        <div class="glpDial" style="--dialFill:0.44;--dialNeedleDeg:158deg;">
+                            <div class="glpDialTicks" aria-hidden="true"></div>
+                            <div class="glpDialArc" aria-hidden="true"></div>
+                            <div class="glpDialNeedle" aria-hidden="true"></div>
+                            <div class="glpDialInner">
+                                <span class="glpDialState" id="glpDialState">Developing</span>
+                                <span class="glpDialSub" id="glpDialSub">Foundations are forming</span>
+                            </div>
+                        </div>
+                        <div class="glpDialNote" id="glpDialNote">Internal score stored, not shown</div>
+                    </div>
+                    <div class="glpInterpretation">
+                        <div class="glpInterpretation__title">Interpretation</div>
+                        <p class="glpInterpretationText" id="glpInterpretationText">Your documentation practices are developing. SOPs and experiments are being established, with initial inventory tracking in place.</p>
+                        <div class="glpInterpretation__title" style="margin-top:8px;">Guidance</div>
+                        <ul class="glpGuidance" id="glpGuidance">
+                            <li>Continue linking experiments to approved SOPs to strengthen evidence alignment.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
     <script>
         let currentUserRole = null;
           let currentUserId = null;
@@ -1574,6 +2145,8 @@ credentials: 'include'
             if (supSection) supSection.style.display = section === 'supervision' ? 'block' : 'none';
             const trainSection = document.getElementById('section-training');
             if (trainSection) trainSection.style.display = section === 'training' ? 'block' : 'none';
+            const glpSection = document.getElementById('sectionGLPStatus');
+            if (glpSection) glpSection.style.display = section === 'glpStatus' ? 'block' : 'none';
 
             if (section === 'training') {
                 loadTrainingSection();
@@ -1585,6 +2158,53 @@ credentials: 'include'
                 loadMyPurchaseRequests();
                 loadMyInventoryV2('product');
                 loadGroupInventoryV2('product');
+            }
+        }
+
+        // =====================================================
+        // GLP STATUS – scope toggle (cosmetic only)
+        // =====================================================
+        function setGlpScope(scope) {
+            var indBtn = document.getElementById('glpScopeIndividual');
+            var grpBtn = document.getElementById('glpScopeGroup');
+            if (!indBtn || !grpBtn) return;
+
+            indBtn.classList.toggle('active', scope === 'individual');
+            grpBtn.classList.toggle('active', scope === 'group');
+
+            var hMap = document.querySelector('.glpHarmonyMap');
+            if (hMap) {
+                hMap.classList.toggle('isGroup', scope === 'group');
+                hMap.classList.toggle('isIndividual', scope === 'individual');
+            }
+
+            var dial = document.querySelector('.glpDial');
+            if (dial) {
+                dial.style.setProperty('--dialFill', scope === 'group' ? '0.60' : '0.44');
+                dial.style.setProperty('--dialNeedleDeg', scope === 'group' ? '126deg' : '158deg');
+            }
+
+            var scopeLabel = document.getElementById('glpScope');
+            var hint = document.getElementById('glpScopeHint');
+            var stateText = document.getElementById('glpStateText');
+            var dialState = document.getElementById('glpDialState');
+            var dialSub = document.getElementById('glpDialSub');
+            var interp = document.getElementById('glpInterpretationText');
+
+            if (scope === 'group') {
+                if (scopeLabel) scopeLabel.textContent = 'Group';
+                if (hint) hint.textContent = 'Viewing your research group\u2019s collective GLP posture';
+                if (stateText) stateText.textContent = 'Aligned';
+                if (dialState) dialState.textContent = 'Aligned';
+                if (dialSub) dialSub.textContent = 'Group practices converge';
+                if (interp) interp.textContent = 'The research group demonstrates aligned documentation practices. SOPs are shared and consistently referenced across experiments.';
+            } else {
+                if (scopeLabel) scopeLabel.textContent = 'Individual';
+                if (hint) hint.textContent = 'Viewing your individual GLP posture';
+                if (stateText) stateText.textContent = 'Developing';
+                if (dialState) dialState.textContent = 'Developing';
+                if (dialSub) dialSub.textContent = 'Foundations are forming';
+                if (interp) interp.textContent = 'Your documentation practices are developing. SOPs and experiments are being established, with initial inventory tracking in place.';
             }
         }
 
@@ -2482,14 +3102,10 @@ credentials: 'include'
 
                   trainingSupervisors = data.supervisors || [];
 
-                  // Best-effort PI inference from supervisor list if PI id is not known yet
-                  if (!piResearcherId && trainingSupervisors.length) {
-                      const cand = trainingSupervisors.find(s => {
-                          const rid = (s.researcher_id || '').toLowerCase();
-                          const nm = (s.name || '').toLowerCase();
-                          return rid === 'fjh' || nm.includes('frank') || nm.includes('hernandez');
-                      });
-                      if (cand && cand.researcher_id) piResearcherId = cand.researcher_id;
+                  // Set piResearcherId from supervisor list if current user appears there
+                  if (!piResearcherId && currentUserId && trainingSupervisors.length) {
+                      const self = trainingSupervisors.find(s => s.researcher_id === currentUserId);
+                      if (self) piResearcherId = self.researcher_id;
                   }
 
                   const sel = document.getElementById('teSupervisor');
