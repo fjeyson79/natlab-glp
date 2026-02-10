@@ -1022,8 +1022,18 @@
                             <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
                                 <div class="form-group" style="margin-bottom:8px;">
                                     <label style="font-size:12px;">Training Type *</label>
-                                    <input type="text" id="teType" placeholder="e.g. BSL2 Lab Training">
-                                </div>
+                                      <select id="teType">
+                                          <option value="">Select...</option>
+                                          <option value="Nuclease activity assay">Nuclease activity assay</option>
+                                          <option value="Basic microbiology techniques">Basic microbiology techniques</option>
+                                          <option value="Antimicrobial susceptibility testing">Antimicrobial susceptibility testing</option>
+                                          <option value="Basic cell culture techniques">Basic cell culture techniques</option>
+                                          <option value="Infection models in mice">Infection models in mice</option>
+                                          <option value="Infection model in chicken egg">Infection model in chicken egg</option>
+                                          <option value="Other">Other, specify</option>
+                                      </select>
+                                      <input type="text" id="teTypeOther" placeholder="Specify the training type" style="display:none;margin-top:6px;">
+                                  </div>
                                 <div class="form-group" style="margin-bottom:8px;">
                                     <label style="font-size:12px;">Date *</label>
                                     <input type="date" id="teDate">
@@ -2542,6 +2552,7 @@ credentials: 'include'
         }
 
         async function confirmAgreement(docId, versionId) {
+            if (!window.confirm("You are about to accept the content and confirm your understanding of this document. This is a binding confirmation. Click Confirm to proceed.")) return;
             if (!trainingPack) return;
             try {
                 const resp = await fetch('/api/di/training/agreements', {
@@ -2576,30 +2587,57 @@ credentials: 'include'
                 </tr>`;
             }).join('');
         }
+          function syncTrainingTypeOther() {
+              const typeEl = document.getElementById("teType");
+              const otherEl = document.getElementById("teTypeOther");
+              if (!typeEl || !otherEl) return;
+              const isOther = (typeEl.value || "") === "Other";
+              otherEl.style.display = isOther ? "block" : "none";
+              if (!isOther) otherEl.value = "";
+          }
 
-        async function addTrainingEntry() {
-            if (!trainingPack) return;
-            const training_type = document.getElementById('teType').value.trim();
-            const training_date = document.getElementById('teDate').value;
-            const supervisor_id = document.getElementById('teSupervisor').value;
-            const notes = document.getElementById('teNotes').value.trim();
-            if (!training_type || !training_date || !supervisor_id) { alert('Fill in type, date, and supervisor'); return; }
+          document.addEventListener("change", (e) => {
+              if (e && e.target && e.target.id === "teType") syncTrainingTypeOther();
+          });
 
-            try {
-                const resp = await fetch('/api/di/training/entries', {
-                    method: 'POST', credentials: 'include',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ pack_id: trainingPack.id, training_type, training_date, notes, supervisor_id })
-                });
-                const data = await resp.json();
-                if (!resp.ok) throw new Error(data.error || 'Failed');
-                document.getElementById('teType').value = '';
-                document.getElementById('teDate').value = '';
-                document.getElementById('teSupervisor').value = '';
-                document.getElementById('teNotes').value = '';
-                await loadTrainingMyPack();
-            } catch (err) { alert('Error: ' + err.message); }
-        }
+            async function addTrainingEntry() {
+              if (!trainingPack) return;
+
+              let training_type = (document.getElementById("teType")?.value || "").trim();
+              const training_type_other = (document.getElementById("teTypeOther")?.value || "").trim();
+              const training_date = document.getElementById("teDate")?.value || "";
+              const supervisor_id = document.getElementById("teSupervisor")?.value || "";
+              const notes = (document.getElementById("teNotes")?.value || "").trim();
+
+              if (!training_type) { alert("Please select a training type to continue."); return; }
+              if (training_type === "Other") {
+                  if (!training_type_other) { alert("Please specify the training type."); return; }
+                  training_type = training_type_other;
+              }
+              if (!training_date) { alert("Please select a date to continue."); return; }
+              if (!supervisor_id) { alert("Please select a supervisor to continue."); return; }
+
+              try {
+                  const resp = await fetch("/api/di/training/entries", {
+                      method: "POST", credentials: "include",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ pack_id: trainingPack.id, training_type, training_date, notes, supervisor_id })
+                  });
+                  const data = await resp.json();
+                  if (!resp.ok) throw new Error(data.error || "Failed");
+
+                  document.getElementById("teType").value = "";
+                  const otherEl = document.getElementById("teTypeOther");
+                  if (otherEl) { otherEl.value = ""; otherEl.style.display = "none"; }
+                  document.getElementById("teDate").value = "";
+                  document.getElementById("teSupervisor").value = "";
+                  document.getElementById("teNotes").value = "";
+
+                  alert("Training record successfully submitted and pending approval.");
+                  await loadTrainingMyPack();
+              } catch (err) { alert("Error: " + err.message); }
+            }
+
 
         async function submitTrainingPack() {
             if (!trainingPack) return;
