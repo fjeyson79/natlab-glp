@@ -2669,7 +2669,10 @@ credentials: 'include'
                 // Delegated delivery under PI oversight: seal-ready (PI certifies on approval and sealing)
                 const isDelegated = (supervisor_id === "__PI_DELEGATED__");
                 if (isDelegated) {
-                    if (!piResearcherId) { alert("PI certifier is not available. Please refresh the page or contact the administrator."); return; }
+                      if (!piResearcherId) {
+                          // Fallback: delegated delivery certifies under the current PI user
+                          piResearcherId = currentUserId;
+                      }
 
                     const tn = (document.getElementById("piDelTrainerName")?.value || "").trim();
                     const te = (document.getElementById("piDelTrainerEmail")?.value || "").trim();
