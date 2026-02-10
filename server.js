@@ -6101,7 +6101,7 @@ app.post('/api/di/training/entries', requireAuth, async (req, res) => {
               `INSERT INTO di_training_entries
                  (pack_id, training_type, training_date, notes, supervisor_id, trainee_declaration_name, status, certified_at)
                VALUES
-                 ($1, $2, $3, $4, $5, $6, $7, CASE WHEN $7 = 'CERTIFIED' THEN CURRENT_TIMESTAMP ELSE NULL END)
+                 ($1, $2, $3, $4, $5, $6, $7::varchar, CASE WHEN $7::varchar = 'CERTIFIED' THEN CURRENT_TIMESTAMP ELSE NULL END)
                RETURNING id`,
               [pack_id, training_type, training_date, notes || null, supervisor_id, req.session.user.name, status]
           );
