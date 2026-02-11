@@ -6580,6 +6580,247 @@ app.get('/api/di/training/sealed-overview', requireAuth, async (req, res) => {
 });
 
 
+// =====================================================
+// GLP STATUS – Harmony Map Coherence Engine
+// =====================================================
+
+function computeCoherence(sop, data, inv, training) {
+    // Pillar "has records at all" flags
+    const sopHas   = sop.approvedTotal > 0 || sop.thisWeek > 0;
+    const dataHas  = data.approvedTotal > 0 || data.thisWeek > 0;
+    const invHas   = inv.approvedTotal > 0 || inv.thisWeek > 0;
+    const trainHas = training.hasSealedPack || training.certifiedCount > 0 || training.thisWeek;
+
+    // Score a single link (0-3, internal only)
+    function linkScore(aHas, bHas, aTW, bTW) {
+        if (!aHas && !bHas) return 0;
+        if (!aHas || !bHas) return 1;
+        if (aTW > 0 && bTW > 0) return 3;
+        return 2;
+    }
+
+    const trainTW = training.thisWeek ? 1 : 0;
+
+    const links = {
+        sopData:  linkScore(sopHas,  dataHas,  sop.thisWeek,  data.thisWeek),
+        sopInv:   linkScore(sopHas,  invHas,   sop.thisWeek,  inv.thisWeek),
+        sopTrain: linkScore(sopHas,  trainHas, sop.thisWeek,  trainTW),
+        dataInv:  linkScore(dataHas, invHas,   data.thisWeek, inv.thisWeek),
+        dataTrain:linkScore(dataHas, trainHas, data.thisWeek, trainTW),
+        invTrain: linkScore(invHas,  trainHas, inv.thisWeek,  trainTW)
+    };
+
+    // Full chain: all 4 pillars active this week
+    const fullChain = sop.thisWeek > 0 && data.thisWeek > 0 && inv.thisWeek > 0 && training.thisWeek;
+
+    // Previous week for trend
+    const sopPrevHas   = sop.approvedTotal > 0 || sop.prevWeek > 0;
+    const dataPrevHas  = data.approvedTotal > 0 || data.prevWeek > 0;
+    const invPrevHas   = inv.approvedTotal > 0 || inv.prevWeek > 0;
+    const trainPrevHas = training.hasSealedPack || training.certifiedCount > 0 || training.prevWeek;
+    const trainPW      = training.prevWeek ? 1 : 0;
+
+    const prevLinks = {
+        sopData:  linkScore(sopPrevHas,  dataPrevHas,  sop.prevWeek,  data.prevWeek),
+        sopInv:   linkScore(sopPrevHas,  invPrevHas,   sop.prevWeek,  inv.prevWeek),
+        sopTrain: linkScore(sopPrevHas,  trainPrevHas, sop.prevWeek,  trainPW),
+        dataInv:  linkScore(dataPrevHas, invPrevHas,   data.prevWeek, inv.prevWeek),
+        dataTrain:linkScore(dataPrevHas, trainPrevHas, data.prevWeek, trainPW),
+        invTrain: linkScore(invPrevHas,  trainPrevHas, inv.prevWeek,  trainPW)
+    };
+
+    const currentTotal = Object.values(links).reduce((a, b) => a + b, 0);
+    const prevTotal    = Object.values(prevLinks).reduce((a, b) => a + b, 0);
+
+    // Sort links: score desc, then key name asc (deterministic)
+    const sorted = Object.entries(links).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    const top2    = sorted.slice(0, 2);
+    const weakest = sorted[sorted.length - 1];
+
+    // Readable pillar names per link key
+    const linkNames = {
+        sopData:   ['SOP', 'Data'],
+        sopInv:    ['SOP', 'Inventory'],
+        sopTrain:  ['SOP', 'Training'],
+        dataInv:   ['Data', 'Inventory'],
+        dataTrain: ['Data', 'Training'],
+        invTrain:  ['Inventory', 'Training']
+    };
+
+    // Check if total activity is essentially zero
+    const totalThisWeek = sop.thisWeek + data.thisWeek + inv.thisWeek + (training.thisWeek ? 1 : 0);
+    const limited = totalThisWeek === 0 && currentTotal <= 2;
+
+    // --- Text generation for wins (top 2 links) ---
+    const winTemplates3 = [
+        (a, b) => `${a} and ${b} were consistently linked in recorded work this week, improving traceability of outcomes.`,
+        (a, b) => `Activity in both ${a} and ${b} this week supports consistent documentation practices.`
+    ];
+    const winTemplates2 = [
+        (a, b) => `${a} and ${b} records are both established, providing a foundation for traceability.`,
+        (a, b) => `Both ${a} and ${b} have documented records, supporting alignment across these pillars.`
+    ];
+    const winTemplates1 = [
+        (a, b) => `${a} has active records; extending coverage to ${b} would create a coherence link.`,
+        (a, b) => `One of ${a} or ${b} has documented records; adding the other will strengthen alignment.`
+    ];
+
+    function winText(key, score, idx) {
+        const [a, b] = linkNames[key];
+        if (score >= 3) return winTemplates3[idx % 2](a, b);
+        if (score === 2) return winTemplates2[idx % 2](a, b);
+        if (score === 1) return winTemplates1[idx % 2](a, b);
+        return `${a} and ${b} are both awaiting initial documented activity.`;
+    }
+
+    const wins = top2.map(([key, score], idx) => winText(key, score, idx));
+
+    // --- Upgrade text (weakest link) ---
+    const [wk, ws] = [weakest[0], weakest[1]];
+    const [wa, wb] = linkNames[wk];
+    let upgrade;
+    if (ws >= 3) {
+        upgrade = `All links are active this week. Maintain momentum across ${wa} and ${wb} to sustain full coherence.`;
+    } else if (ws === 2) {
+        upgrade = `${wa} and ${wb} both have records but lacked joint activity this week. Working on both next week will strengthen this link.`;
+    } else if (ws === 1) {
+        upgrade = `Adding ${wa.toLowerCase() === wa ? wa : wa.toLowerCase()} or ${wb.toLowerCase() === wb ? wb : wb.toLowerCase()} activity next week would close the gap between ${wa} and ${wb}.`;
+    } else {
+        upgrade = `Starting documented activity in ${wa} and ${wb} next week will create the first link between these pillars.`;
+    }
+
+    // --- Trend ---
+    let trend;
+    const hasPrevActivity = Object.values(prevLinks).some(v => v > 0);
+    if (!hasPrevActivity && currentTotal <= 2) {
+        trend = 'Trend will be shown after a second week of recorded activity.';
+    } else if (currentTotal > prevTotal) {
+        trend = 'Coherence has improved compared to the previous week.';
+    } else if (currentTotal < prevTotal) {
+        trend = 'Minor regression in coherence compared to the previous week.';
+    } else {
+        trend = 'Coherence is stable compared to the previous week.';
+    }
+
+    // Emphasized edges: top 2 scored links
+    const emphasized = top2.map(e => e[0]);
+
+    return { wins, upgrade, trend, fullChain, emphasized, limited };
+}
+
+app.get('/api/di/glp-status/coherence', requireAuth, async (req, res) => {
+    try {
+        const rid = req.session.user.researcher_id;
+
+        // Week boundaries using ISO week (Monday start)
+        const boundsCTE = `
+            date_trunc('week', CURRENT_DATE) AS tw_start,
+            date_trunc('week', CURRENT_DATE) - INTERVAL '7 days' AS pw_start
+        `;
+
+        // A: Submissions (SOP + DATA)
+        const qSubs = pool.query(`
+            WITH b AS (SELECT ${boundsCTE})
+            SELECT
+                s.file_type,
+                COUNT(*) FILTER (WHERE s.created_at >= b.tw_start)::int AS this_week,
+                COUNT(*) FILTER (WHERE s.created_at >= b.pw_start AND s.created_at < b.tw_start)::int AS prev_week,
+                COUNT(*) FILTER (WHERE s.status = 'APPROVED')::int AS approved_total
+            FROM di_submissions s, b
+            WHERE s.researcher_id = $1
+            GROUP BY s.file_type, b.tw_start, b.pw_start
+        `, [rid]);
+
+        // B: Inventory activity (items created + log actions)
+        const qInv = pool.query(`
+            WITH b AS (SELECT ${boundsCTE})
+            SELECT
+                COUNT(*) FILTER (WHERE ii.created_at >= b.tw_start)::int AS items_tw,
+                COUNT(*) FILTER (WHERE ii.created_at >= b.pw_start AND ii.created_at < b.tw_start)::int AS items_pw,
+                COUNT(*) FILTER (WHERE ii.status = 'Approved')::int AS approved_total,
+                (SELECT COUNT(*)::int FROM di_inventory_items_log il
+                 JOIN di_inventory_items ix ON ix.id = il.inventory_item_id
+                 WHERE ix.created_by = $1 AND il.created_at >= b.tw_start) AS log_tw,
+                (SELECT COUNT(*)::int FROM di_inventory_items_log il
+                 JOIN di_inventory_items ix ON ix.id = il.inventory_item_id
+                 WHERE ix.created_by = $1
+                   AND il.created_at >= b.pw_start AND il.created_at < b.tw_start) AS log_pw
+            FROM di_inventory_items ii, b
+            WHERE ii.created_by = $1
+        `, [rid]);
+
+        // C: Training (guarded)
+        let trainingData = { thisWeek: false, prevWeek: false, hasSealedPack: false, certifiedCount: 0, agreementCount: 0 };
+        let qTrain = null;
+        if (await checkTrainingTables()) {
+            qTrain = pool.query(`
+                WITH b AS (SELECT ${boundsCTE})
+                SELECT
+                    (SELECT COUNT(*)::int FROM di_training_packs p
+                     WHERE p.researcher_id = $1 AND p.status = 'SEALED') AS sealed_count,
+                    (SELECT COUNT(*)::int FROM di_training_entries e
+                     JOIN di_training_packs p ON p.id = e.pack_id
+                     WHERE p.researcher_id = $1 AND e.status = 'CERTIFIED') AS certified_entries,
+                    (SELECT COUNT(*)::int FROM di_training_agreements a
+                     JOIN di_training_packs p ON p.id = a.pack_id
+                     WHERE p.researcher_id = $1) AS agreement_count,
+                    (SELECT COUNT(*)::int FROM di_training_entries e
+                     JOIN di_training_packs p ON p.id = e.pack_id
+                     WHERE p.researcher_id = $1
+                       AND (e.certified_at >= b.tw_start OR e.created_at >= b.tw_start)) AS entries_tw,
+                    (SELECT COUNT(*)::int FROM di_training_entries e
+                     JOIN di_training_packs p ON p.id = e.pack_id
+                     WHERE p.researcher_id = $1
+                       AND (e.certified_at >= b.pw_start OR e.created_at >= b.pw_start)
+                       AND (e.certified_at < b.tw_start OR (e.certified_at IS NULL AND e.created_at < b.tw_start))) AS entries_pw,
+                    (SELECT COUNT(*)::int FROM di_training_packs p
+                     WHERE p.researcher_id = $1
+                       AND p.status IN ('SUBMITTED','SEALED')
+                       AND (p.sealed_at >= b.tw_start OR p.updated_at >= b.tw_start)) AS packs_tw
+                FROM b
+            `, [rid]);
+        }
+
+        const [subsResult, invResult] = await Promise.all([qSubs, qInv]);
+        if (qTrain) {
+            const tr = (await qTrain).rows[0] || {};
+            trainingData = {
+                thisWeek: (parseInt(tr.entries_tw) || 0) > 0 || (parseInt(tr.packs_tw) || 0) > 0,
+                prevWeek: (parseInt(tr.entries_pw) || 0) > 0,
+                hasSealedPack: (parseInt(tr.sealed_count) || 0) > 0,
+                certifiedCount: parseInt(tr.certified_entries) || 0,
+                agreementCount: parseInt(tr.agreement_count) || 0
+            };
+        }
+
+        // Parse submissions
+        const subs = {};
+        for (const row of subsResult.rows) {
+            subs[row.file_type] = {
+                thisWeek: parseInt(row.this_week) || 0,
+                prevWeek: parseInt(row.prev_week) || 0,
+                approvedTotal: parseInt(row.approved_total) || 0
+            };
+        }
+        const sopData  = subs['SOP']  || { thisWeek: 0, prevWeek: 0, approvedTotal: 0 };
+        const dataData = subs['DATA'] || { thisWeek: 0, prevWeek: 0, approvedTotal: 0 };
+
+        // Parse inventory
+        const inv = invResult.rows[0] || {};
+        const invData = {
+            thisWeek: (parseInt(inv.items_tw) || 0) + (parseInt(inv.log_tw) || 0),
+            prevWeek: (parseInt(inv.items_pw) || 0) + (parseInt(inv.log_pw) || 0),
+            approvedTotal: parseInt(inv.approved_total) || 0
+        };
+
+        const coherence = computeCoherence(sopData, dataData, invData, trainingData);
+        res.json({ success: true, coherence });
+    } catch (err) {
+        console.error('[GLP-COHERENCE] error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
 //
 // Server start
 //

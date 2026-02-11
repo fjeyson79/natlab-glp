@@ -793,16 +793,17 @@
             margin-bottom: 4px;
         }
 
-        /* ── Futuristic Harmony Map ── */
+        /* ── Futuristic Harmony Map (4-node rhombus) ── */
         .glpHarmonyMap {
             margin-top: 20px;
             border-radius: 14px;
             padding: 36px 24px 28px;
             text-align: center;
             background:
-                radial-gradient(ellipse at 28% 38%, rgba(33,182,199,0.06) 0%, transparent 55%),
-                radial-gradient(ellipse at 72% 62%, rgba(124,77,255,0.05) 0%, transparent 55%),
-                radial-gradient(ellipse at 50% 82%, rgba(255,176,32,0.04) 0%, transparent 50%),
+                radial-gradient(ellipse at 28% 20%, rgba(33,182,199,0.06) 0%, transparent 55%),
+                radial-gradient(ellipse at 80% 50%, rgba(124,77,255,0.05) 0%, transparent 55%),
+                radial-gradient(ellipse at 50% 85%, rgba(255,176,32,0.04) 0%, transparent 50%),
+                radial-gradient(ellipse at 18% 50%, rgba(76,175,80,0.05) 0%, transparent 55%),
                 linear-gradient(180deg, #f4f6fa 0%, #eaedf2 100%);
             border: 1px solid #dce0e8;
         }
@@ -818,16 +819,22 @@
             color: #8c95a1;
             margin-bottom: 16px;
         }
+        .glpHarmonyMap__body {
+            display: grid;
+            grid-template-columns: 1fr auto 1fr;
+            gap: 18px;
+            align-items: center;
+        }
         .glpHarmonySvg {
             width: 100%;
-            max-width: 560px;
+            max-width: 280px;
             display: block;
             margin: 0 auto;
         }
         .hmEdgeGlow {
             fill: none;
             stroke-linecap: round;
-            transition: opacity 0.5s ease;
+            transition: opacity 0.5s ease, stroke-width 0.5s ease;
         }
         .hmEdge {
             fill: none;
@@ -836,7 +843,7 @@
         }
         .hmSphereGlow { transition: opacity 0.5s ease; }
         .hmLabel {
-            font-size: 11px;
+            font-size: 10px;
             font-weight: 800;
             letter-spacing: 0.10em;
             text-transform: uppercase;
@@ -847,15 +854,58 @@
             stroke-width: 2px;
         }
         /* Individual scope — softer */
-        .glpHarmonyMap.isIndividual .hmEdge      { stroke-width: 3.5; opacity: 0.70; }
-        .glpHarmonyMap.isIndividual .hmEdgeGlow   { opacity: 0.14; }
+        .glpHarmonyMap.isIndividual .hmEdge      { stroke-width: 2.5; opacity: 0.60; }
+        .glpHarmonyMap.isIndividual .hmEdgeGlow   { opacity: 0.12; }
         .glpHarmonyMap.isIndividual .hmSphereGlow { opacity: 0.22; }
         .glpHarmonyMap.isIndividual .hmSphere     { filter: saturate(0.88); }
         /* Group scope — intense */
-        .glpHarmonyMap.isGroup .hmEdge      { stroke-width: 5.5; opacity: 0.82; }
-        .glpHarmonyMap.isGroup .hmEdgeGlow   { opacity: 0.32; }
-        .glpHarmonyMap.isGroup .hmSphereGlow { opacity: 0.38; }
+        .glpHarmonyMap.isGroup .hmEdge      { stroke-width: 4; opacity: 0.78; }
+        .glpHarmonyMap.isGroup .hmEdgeGlow   { opacity: 0.28; }
+        .glpHarmonyMap.isGroup .hmSphereGlow { opacity: 0.36; }
         .glpHarmonyMap.isGroup .hmSphere     { filter: saturate(1.1); }
+        /* Edge emphasis (applied by JS from coherence data) */
+        .hmEdge.hmEdge--emphasized      { stroke-width: 4.5 !important; opacity: 0.92 !important; }
+        .hmEdgeGlow.hmEdge--emphasized  { opacity: 0.35 !important; stroke-width: 14 !important; }
+        .hmEdge.hmEdge--dimmed          { opacity: 0.28 !important; }
+        .hmEdgeGlow.hmEdge--dimmed      { opacity: 0.04 !important; }
+        /* Side panels */
+        .glpHarmonyPanel { padding: 4px 0; }
+        .glpHarmonyPanel--left  { text-align: right; }
+        .glpHarmonyPanel--right { text-align: left; }
+        .glpHarmonyPanel__title {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.6px;
+            text-transform: uppercase;
+            color: #8c95a1;
+            margin-bottom: 6px;
+        }
+        .glpHarmonyPanel__list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        .glpHarmonyPanel__item {
+            font-size: 12px;
+            color: #3a5068;
+            line-height: 1.55;
+            padding: 3px 0;
+        }
+        .glpHarmonyPanel__text {
+            font-size: 12px;
+            color: #5f6b7a;
+            line-height: 1.55;
+            margin: 0;
+        }
+        @media (max-width: 800px) {
+            .glpHarmonyMap__body {
+                grid-template-columns: 1fr;
+                grid-template-rows: auto auto auto;
+            }
+            .glpHarmonyPanel--left,
+            .glpHarmonyPanel--right { text-align: center; }
+            .glpHarmonySvg { max-width: 240px; }
+        }
         @media (max-width: 600px) {
             .glpHarmonyMap { padding: 24px 12px 20px; }
         }
@@ -874,142 +924,74 @@
             }
         }
 
-        /* Dial */
-        .glpDialWrap {
+        /* Conformity ring */
+        .glpConfRingWrap {
             display: flex;
             flex-direction: column;
             align-items: center;
         }
-        .glpDial {
-            width: 180px;
-            height: 180px;
+        .glpConfRing {
+            width: 160px;
+            height: 160px;
             border-radius: 50%;
-            background: #e4e9ef;
+            background: #1565c0;
             display: flex;
             align-items: center;
             justify-content: center;
-            box-shadow:
-                0 4px 20px rgba(0,0,0,0.06),
-                inset 0 0 0 4px rgba(255,255,255,0.5);
-            position: relative;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            transition: background-color 0.4s ease;
         }
-        .glpDial::before {
-            content: "";
-            position: absolute;
-            inset: 10px;
-            border-radius: 50%;
-            pointer-events: none;
-            background: radial-gradient(circle at 25% 20%, rgba(255,255,255,0.18), transparent 55%);
-            z-index: 1;
-            opacity: 0.12;
-        }
-        /* Decorative tick marks */
-        .glpDialTicks {
-            position: absolute;
-            inset: 4px;
-            border-radius: 50%;
-            background: repeating-conic-gradient(
-                rgba(58,80,104,0.12) 0deg 1.5deg,
-                transparent 1.5deg 9deg
-            );
-            -webkit-mask: radial-gradient(circle, transparent 60%, #000 60%, #000 100%);
-                    mask: radial-gradient(circle, transparent 60%, #000 60%, #000 100%);
-        }
-        /* Progress arc */
-        .glpDialArc {
-            position: absolute;
-            inset: 6px;
-            border-radius: 50%;
-            background: conic-gradient(
-                from -90deg,
-                #8ca8c4 calc(var(--dialFill,0.44) * 360deg),
-                transparent calc(var(--dialFill,0.44) * 360deg)
-            );
-            -webkit-mask: radial-gradient(circle, transparent 62%, #000 62%, #000 100%);
-                    mask: radial-gradient(circle, transparent 62%, #000 62%, #000 100%);
-            opacity: 0.55;
-            transition: opacity 0.4s, background 0.4s;
-        }
-        /* Needle indicator */
-        .glpDialNeedle {
-            position: absolute;
-            width: 2px;
-            height: 38px;
-            top: 8px;
-            left: calc(50% - 1px);
-            background: #5f6b7a;
-            border-radius: 1px;
-            opacity: 0.35;
-            transform-origin: bottom center;
-            transform: rotate(var(--dialNeedleDeg,158deg));
-            transition: transform 0.5s ease, opacity 0.4s;
-        }
-        .glpDialInner {
-            width: 130px;
-            height: 130px;
-            border-radius: 50%;
-            background: #fafbfc;
+        .glpConfRing__icon {
+            width: 64px;
+            height: 64px;
             display: flex;
-            flex-direction: column;
             align-items: center;
             justify-content: center;
-            box-shadow: inset 0 2px 6px rgba(0,0,0,0.04);
-            position: relative;
-            z-index: 2;
         }
-        .glpDialState {
-            font-size: 13px;
-            font-weight: 700;
-            letter-spacing: 1.2px;
-            text-transform: uppercase;
-            color: #3a5068;
-        }
-        .glpDialSub {
-            font-size: 11px;
-            color: #8c95a1;
-            margin-top: 4px;
-            text-align: center;
-            max-width: 110px;
-            line-height: 1.3;
-        }
-        .glpDialNote {
-            font-size: 10px;
-            color: #aab3be;
-            margin-top: 12px;
-            font-style: italic;
+        .glpConfRing__icon svg {
+            width: 64px;
+            height: 64px;
+            stroke: #fff;
+            fill: none;
+            stroke-width: 1.6;
+            stroke-linecap: round;
+            stroke-linejoin: round;
         }
 
-        /* Interpretation & guidance */
-        .glpInterpretation {
+        /* Conformity content sections */
+        .glpConfContent {
             display: flex;
             flex-direction: column;
-            gap: 16px;
+            gap: 14px;
         }
-        .glpInterpretation__title {
+        .glpConfSection__title {
             font-size: 10px;
             font-weight: 700;
             letter-spacing: 1.4px;
             text-transform: uppercase;
             color: #8c95a1;
+            margin-bottom: 6px;
         }
-        .glpInterpretationText {
+        .glpConfSection__text {
             font-size: 14px;
             color: #3a5068;
             line-height: 1.6;
+            margin: 0;
         }
-        .glpGuidance {
+        .glpConfSection__list {
             list-style: none;
             padding: 0;
+            margin: 0;
         }
-        .glpGuidance li {
+        .glpConfSection__list li {
             position: relative;
             padding-left: 16px;
             font-size: 13px;
             color: #5f6b7a;
             line-height: 1.6;
-            margin-bottom: 6px;
+            margin-bottom: 4px;
         }
-        .glpGuidance li::before {
+        .glpConfSection__list li::before {
             content: '';
             position: absolute;
             left: 0;
@@ -1018,6 +1000,75 @@
             height: 5px;
             border-radius: 50%;
             background: #8ca8c4;
+        }
+
+        /* GLP Conformity legend */
+        .glpLegend {
+            background: #f4f6f9;
+            border: 1px solid #e4e7eb;
+            border-radius: 14px;
+            padding: 24px 28px;
+            margin-top: 0;
+        }
+        .glpLegend__title {
+            font-size: 13px;
+            font-weight: 700;
+            color: #3a5068;
+            margin-bottom: 4px;
+        }
+        .glpLegend__sub {
+            font-size: 12px;
+            color: #8c95a1;
+            margin-bottom: 20px;
+            line-height: 1.5;
+        }
+        .glpLegendItem {
+            display: flex;
+            gap: 16px;
+            align-items: flex-start;
+            padding: 14px 0;
+        }
+        .glpLegendItem + .glpLegendItem {
+            border-top: 1px solid #e0e4ea;
+        }
+        .glpLegendItem__badge {
+            flex-shrink: 0;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .glpLegendItem__badge svg {
+            width: 22px;
+            height: 22px;
+            stroke: #fff;
+            fill: none;
+            stroke-width: 1.6;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+        .glpLegendItem__body { flex: 1; min-width: 0; }
+        .glpLegendItem__name {
+            font-size: 13px;
+            font-weight: 700;
+            color: #1e293b;
+            margin-bottom: 6px;
+        }
+        .glpLegendItem__label {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 1.2px;
+            text-transform: uppercase;
+            color: #8c95a1;
+            margin-bottom: 2px;
+        }
+        .glpLegendItem__text {
+            font-size: 13px;
+            color: #5f6b7a;
+            line-height: 1.5;
+            margin-bottom: 6px;
         }
     </style>
 </head>
@@ -1775,89 +1826,164 @@
                     </div>
                 </div>
 
-                <div class="glpHarmonyMap isIndividual">
+                <div class="glpHarmonyMap isIndividual" id="glpHarmonyMapWrap">
                     <div class="glpHarmonyMap__title">Harmony Map</div>
-                    <div class="glpHarmonyMap__sub">SOPs, Experiments, and Inventory alignment</div>
-                    <svg class="glpHarmonySvg" viewBox="0 0 560 300" xmlns="http://www.w3.org/2000/svg">
-                      <defs>
-                        <!-- Glow filters -->
-                        <filter id="hmGlowF" x="-80%" y="-80%" width="260%" height="260%">
-                          <feGaussianBlur in="SourceGraphic" stdDeviation="9"/>
-                        </filter>
-                        <filter id="hmEdgeGlowF" x="-25%" y="-25%" width="150%" height="150%">
-                          <feGaussianBlur in="SourceGraphic" stdDeviation="4"/>
-                        </filter>
+                    <div class="glpHarmonyMap__sub">SOPs, Data, Inventory, and Training alignment</div>
+                    <div class="glpHarmonyMap__body">
+                        <!-- Left panel: Wins -->
+                        <div class="glpHarmonyPanel glpHarmonyPanel--left" id="harmonyWins">
+                            <div class="glpHarmonyPanel__title">GLP coherence wins this week</div>
+                            <ul class="glpHarmonyPanel__list">
+                                <li class="glpHarmonyPanel__item" id="harmonyWin1">&mdash;</li>
+                                <li class="glpHarmonyPanel__item" id="harmonyWin2">&mdash;</li>
+                            </ul>
+                        </div>
 
-                        <!-- 3D sphere gradients (light from upper-left) -->
-                        <radialGradient id="hmGradSop" cx="0.38" cy="0.30" r="0.55" fx="0.32" fy="0.26">
-                          <stop offset="0%"   stop-color="#8DF0FC"/>
-                          <stop offset="38%"  stop-color="#21B6C7"/>
-                          <stop offset="88%"  stop-color="#0C6B7A"/>
-                          <stop offset="100%" stop-color="#074550"/>
-                        </radialGradient>
-                        <radialGradient id="hmGradExp" cx="0.38" cy="0.30" r="0.55" fx="0.32" fy="0.26">
-                          <stop offset="0%"   stop-color="#BEA3FF"/>
-                          <stop offset="38%"  stop-color="#7C4DFF"/>
-                          <stop offset="88%"  stop-color="#4A1DB8"/>
-                          <stop offset="100%" stop-color="#2C0E76"/>
-                        </radialGradient>
-                        <radialGradient id="hmGradInv" cx="0.38" cy="0.30" r="0.55" fx="0.32" fy="0.26">
-                          <stop offset="0%"   stop-color="#FFD88A"/>
-                          <stop offset="38%"  stop-color="#FFB020"/>
-                          <stop offset="88%"  stop-color="#CC7E00"/>
-                          <stop offset="100%" stop-color="#885200"/>
-                        </radialGradient>
+                        <!-- Center: Rhombus SVG -->
+                        <svg class="glpHarmonySvg" viewBox="0 0 300 300" xmlns="http://www.w3.org/2000/svg">
+                          <defs>
+                            <filter id="hm4GlowF" x="-80%" y="-80%" width="260%" height="260%">
+                              <feGaussianBlur in="SourceGraphic" stdDeviation="8"/>
+                            </filter>
+                            <filter id="hm4EdgeGlowF" x="-25%" y="-25%" width="150%" height="150%">
+                              <feGaussianBlur in="SourceGraphic" stdDeviation="3.5"/>
+                            </filter>
 
-                        <!-- Connector gradients (blend two sphere colors) -->
-                        <linearGradient id="hmEdgeSE" x1="280" y1="68" x2="115" y2="232" gradientUnits="userSpaceOnUse">
-                          <stop offset="0%" stop-color="#21B6C7"/><stop offset="100%" stop-color="#7C4DFF"/>
-                        </linearGradient>
-                        <linearGradient id="hmEdgeSI" x1="280" y1="68" x2="445" y2="232" gradientUnits="userSpaceOnUse">
-                          <stop offset="0%" stop-color="#21B6C7"/><stop offset="100%" stop-color="#FFB020"/>
-                        </linearGradient>
-                        <linearGradient id="hmEdgeEI" x1="115" y1="232" x2="445" y2="232" gradientUnits="userSpaceOnUse">
-                          <stop offset="0%" stop-color="#7C4DFF"/><stop offset="100%" stop-color="#FFB020"/>
-                        </linearGradient>
+                            <!-- 4 sphere gradients -->
+                            <radialGradient id="hm4GradSop" cx="0.38" cy="0.30" r="0.55" fx="0.32" fy="0.26">
+                              <stop offset="0%"   stop-color="#8DF0FC"/>
+                              <stop offset="38%"  stop-color="#21B6C7"/>
+                              <stop offset="88%"  stop-color="#0C6B7A"/>
+                              <stop offset="100%" stop-color="#074550"/>
+                            </radialGradient>
+                            <radialGradient id="hm4GradData" cx="0.38" cy="0.30" r="0.55" fx="0.32" fy="0.26">
+                              <stop offset="0%"   stop-color="#BEA3FF"/>
+                              <stop offset="38%"  stop-color="#7C4DFF"/>
+                              <stop offset="88%"  stop-color="#4A1DB8"/>
+                              <stop offset="100%" stop-color="#2C0E76"/>
+                            </radialGradient>
+                            <radialGradient id="hm4GradInv" cx="0.38" cy="0.30" r="0.55" fx="0.32" fy="0.26">
+                              <stop offset="0%"   stop-color="#FFD88A"/>
+                              <stop offset="38%"  stop-color="#FFB020"/>
+                              <stop offset="88%"  stop-color="#CC7E00"/>
+                              <stop offset="100%" stop-color="#885200"/>
+                            </radialGradient>
+                            <radialGradient id="hm4GradTrain" cx="0.38" cy="0.30" r="0.55" fx="0.32" fy="0.26">
+                              <stop offset="0%"   stop-color="#A5D6A7"/>
+                              <stop offset="38%"  stop-color="#4CAF50"/>
+                              <stop offset="88%"  stop-color="#2E7D32"/>
+                              <stop offset="100%" stop-color="#1B5E20"/>
+                            </radialGradient>
 
-                        <!-- Sci-fi grid pattern -->
-                        <pattern id="hmGridP" width="28" height="28" patternUnits="userSpaceOnUse">
-                          <path d="M 28 0 L 0 0 0 28" fill="none" stroke="rgba(80,115,160,0.07)" stroke-width="0.5"/>
-                        </pattern>
-                      </defs>
+                            <!-- 6 edge gradients -->
+                            <linearGradient id="hm4ESopData" x1="150" y1="40" x2="260" y2="150" gradientUnits="userSpaceOnUse">
+                              <stop offset="0%" stop-color="#21B6C7"/><stop offset="100%" stop-color="#7C4DFF"/>
+                            </linearGradient>
+                            <linearGradient id="hm4ESopInv" x1="150" y1="40" x2="150" y2="260" gradientUnits="userSpaceOnUse">
+                              <stop offset="0%" stop-color="#21B6C7"/><stop offset="100%" stop-color="#FFB020"/>
+                            </linearGradient>
+                            <linearGradient id="hm4ESopTrain" x1="150" y1="40" x2="40" y2="150" gradientUnits="userSpaceOnUse">
+                              <stop offset="0%" stop-color="#21B6C7"/><stop offset="100%" stop-color="#4CAF50"/>
+                            </linearGradient>
+                            <linearGradient id="hm4EDataInv" x1="260" y1="150" x2="150" y2="260" gradientUnits="userSpaceOnUse">
+                              <stop offset="0%" stop-color="#7C4DFF"/><stop offset="100%" stop-color="#FFB020"/>
+                            </linearGradient>
+                            <linearGradient id="hm4EDataTrain" x1="260" y1="150" x2="40" y2="150" gradientUnits="userSpaceOnUse">
+                              <stop offset="0%" stop-color="#7C4DFF"/><stop offset="100%" stop-color="#4CAF50"/>
+                            </linearGradient>
+                            <linearGradient id="hm4EInvTrain" x1="150" y1="260" x2="40" y2="150" gradientUnits="userSpaceOnUse">
+                              <stop offset="0%" stop-color="#FFB020"/><stop offset="100%" stop-color="#4CAF50"/>
+                            </linearGradient>
 
-                      <!-- Faint background grid -->
-                      <rect x="0" y="0" width="560" height="300" fill="url(#hmGridP)" rx="6"/>
+                            <pattern id="hm4GridP" width="28" height="28" patternUnits="userSpaceOnUse">
+                              <path d="M 28 0 L 0 0 0 28" fill="none" stroke="rgba(80,115,160,0.07)" stroke-width="0.5"/>
+                            </pattern>
+                          </defs>
 
-                      <!-- Edge glows (behind) -->
-                      <line class="hmEdgeGlow" x1="280" y1="68" x2="115" y2="232" stroke="url(#hmEdgeSE)" stroke-width="10" filter="url(#hmEdgeGlowF)"/>
-                      <line class="hmEdgeGlow" x1="280" y1="68" x2="445" y2="232" stroke="url(#hmEdgeSI)" stroke-width="10" filter="url(#hmEdgeGlowF)"/>
-                      <line class="hmEdgeGlow" x1="115" y1="232" x2="445" y2="232" stroke="url(#hmEdgeEI)" stroke-width="10" filter="url(#hmEdgeGlowF)"/>
+                          <!-- Background grid -->
+                          <rect x="0" y="0" width="300" height="300" fill="url(#hm4GridP)" rx="6"/>
 
-                      <!-- Main connector edges -->
-                      <line class="hmEdge" x1="280" y1="68" x2="115" y2="232" stroke="url(#hmEdgeSE)"/>
-                      <line class="hmEdge" x1="280" y1="68" x2="445" y2="232" stroke="url(#hmEdgeSI)"/>
-                      <line class="hmEdge" x1="115" y1="232" x2="445" y2="232" stroke="url(#hmEdgeEI)"/>
+                          <!-- Edge glows -->
+                          <line class="hmEdgeGlow" data-link="sopData"   x1="150" y1="40"  x2="260" y2="150" stroke="url(#hm4ESopData)"  stroke-width="9" filter="url(#hm4EdgeGlowF)"/>
+                          <line class="hmEdgeGlow" data-link="sopInv"    x1="150" y1="40"  x2="150" y2="260" stroke="url(#hm4ESopInv)"   stroke-width="9" filter="url(#hm4EdgeGlowF)"/>
+                          <line class="hmEdgeGlow" data-link="sopTrain"  x1="150" y1="40"  x2="40"  y2="150" stroke="url(#hm4ESopTrain)" stroke-width="9" filter="url(#hm4EdgeGlowF)"/>
+                          <line class="hmEdgeGlow" data-link="dataInv"   x1="260" y1="150" x2="150" y2="260" stroke="url(#hm4EDataInv)"  stroke-width="9" filter="url(#hm4EdgeGlowF)"/>
+                          <line class="hmEdgeGlow" data-link="dataTrain" x1="260" y1="150" x2="40"  y2="150" stroke="url(#hm4EDataTrain)" stroke-width="9" filter="url(#hm4EdgeGlowF)"/>
+                          <line class="hmEdgeGlow" data-link="invTrain"  x1="150" y1="260" x2="40"  y2="150" stroke="url(#hm4EInvTrain)" stroke-width="9" filter="url(#hm4EdgeGlowF)"/>
 
-                      <!-- Sphere glows -->
-                      <circle class="hmSphereGlow" cx="280" cy="68"  r="54" fill="#21B6C7" filter="url(#hmGlowF)"/>
-                      <circle class="hmSphereGlow" cx="115" cy="232" r="54" fill="#7C4DFF" filter="url(#hmGlowF)"/>
-                      <circle class="hmSphereGlow" cx="445" cy="232" r="54" fill="#FFB020" filter="url(#hmGlowF)"/>
+                          <!-- Main connector edges -->
+                          <line class="hmEdge" data-link="sopData"   x1="150" y1="40"  x2="260" y2="150" stroke="url(#hm4ESopData)"/>
+                          <line class="hmEdge" data-link="sopInv"    x1="150" y1="40"  x2="150" y2="260" stroke="url(#hm4ESopInv)"/>
+                          <line class="hmEdge" data-link="sopTrain"  x1="150" y1="40"  x2="40"  y2="150" stroke="url(#hm4ESopTrain)"/>
+                          <line class="hmEdge" data-link="dataInv"   x1="260" y1="150" x2="150" y2="260" stroke="url(#hm4EDataInv)"/>
+                          <line class="hmEdge" data-link="dataTrain" x1="260" y1="150" x2="40"  y2="150" stroke="url(#hm4EDataTrain)"/>
+                          <line class="hmEdge" data-link="invTrain"  x1="150" y1="260" x2="40"  y2="150" stroke="url(#hm4EInvTrain)"/>
 
-                      <!-- Main 3D spheres -->
-                      <circle class="hmSphere" cx="280" cy="68"  r="38" fill="url(#hmGradSop)"/>
-                      <circle class="hmSphere" cx="115" cy="232" r="38" fill="url(#hmGradExp)"/>
-                      <circle class="hmSphere" cx="445" cy="232" r="38" fill="url(#hmGradInv)"/>
+                          <!-- Sphere glows -->
+                          <circle class="hmSphereGlow" cx="150" cy="40"  r="44" fill="#21B6C7" filter="url(#hm4GlowF)"/>
+                          <circle class="hmSphereGlow" cx="260" cy="150" r="44" fill="#7C4DFF" filter="url(#hm4GlowF)"/>
+                          <circle class="hmSphereGlow" cx="150" cy="260" r="44" fill="#FFB020" filter="url(#hm4GlowF)"/>
+                          <circle class="hmSphereGlow" cx="40"  cy="150" r="44" fill="#4CAF50" filter="url(#hm4GlowF)"/>
 
-                      <!-- Specular highlights -->
-                      <ellipse cx="269" cy="56" rx="14" ry="8" fill="white" opacity="0.20" transform="rotate(-22,269,56)"/>
-                      <ellipse cx="104" cy="220" rx="14" ry="8" fill="white" opacity="0.20" transform="rotate(-22,104,220)"/>
-                      <ellipse cx="434" cy="220" rx="14" ry="8" fill="white" opacity="0.20" transform="rotate(-22,434,220)"/>
+                          <!-- Main 3D spheres -->
+                          <circle class="hmSphere" cx="150" cy="40"  r="30" fill="url(#hm4GradSop)"/>
+                          <circle class="hmSphere" cx="260" cy="150" r="30" fill="url(#hm4GradData)"/>
+                          <circle class="hmSphere" cx="150" cy="260" r="30" fill="url(#hm4GradInv)"/>
+                          <circle class="hmSphere" cx="40"  cy="150" r="30" fill="url(#hm4GradTrain)"/>
 
-                      <!-- Labels -->
-                      <text class="hmLabel" x="280" y="18">SOPs</text>
-                      <text class="hmLabel" x="115" y="286">Experiments</text>
-                      <text class="hmLabel" x="445" y="286">Inventory</text>
-                    </svg>
+                          <!-- Specular highlights -->
+                          <ellipse cx="141" cy="29"  rx="11" ry="6" fill="white" opacity="0.20" transform="rotate(-22,141,29)"/>
+                          <ellipse cx="251" cy="139" rx="11" ry="6" fill="white" opacity="0.20" transform="rotate(-22,251,139)"/>
+                          <ellipse cx="141" cy="249" rx="11" ry="6" fill="white" opacity="0.20" transform="rotate(-22,141,249)"/>
+                          <ellipse cx="31"  cy="139" rx="11" ry="6" fill="white" opacity="0.20" transform="rotate(-22,31,139)"/>
+
+                          <!-- Pillar icons inside spheres -->
+                          <!-- SOP: document icon -->
+                          <g transform="translate(150,40)" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="-7" y="-9" width="14" height="18" rx="1.5"/>
+                            <line x1="-4" y1="-4" x2="4" y2="-4"/>
+                            <line x1="-4" y1="0"  x2="4" y2="0"/>
+                            <line x1="-4" y1="4"  x2="2" y2="4"/>
+                          </g>
+                          <!-- DATA: bar-chart icon -->
+                          <g transform="translate(260,150)" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="-8" y="6" width="4" height="-8" rx="0.5"/>
+                            <rect x="-2" y="6" width="4" height="-14" rx="0.5"/>
+                            <rect x="4"  y="6" width="4" height="-10" rx="0.5"/>
+                          </g>
+                          <!-- Inventory: flask icon -->
+                          <g transform="translate(150,260)" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M-3,-9 L-3,-2 L-8,7 Q-8,9 -6,9 L6,9 Q8,9 8,7 L3,-2 L3,-9"/>
+                            <line x1="-5" y1="-9" x2="5" y2="-9"/>
+                          </g>
+                          <!-- Training: graduation-cap icon -->
+                          <g transform="translate(40,150)" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+                            <polygon points="0,-8 10,0 0,3 -10,0" fill="rgba(255,255,255,0.15)"/>
+                            <polyline points="-6,1 -6,7 0,10 6,7 6,1"/>
+                            <line x1="10" y1="0" x2="10" y2="8"/>
+                          </g>
+
+                          <!-- Labels -->
+                          <text class="hmLabel" x="150" y="3">SOP</text>
+                          <text class="hmLabel" x="296" y="154">DATA</text>
+                          <text class="hmLabel" x="150" y="298">Inventory</text>
+                          <text class="hmLabel" x="4"   y="154" text-anchor="start">Training</text>
+                        </svg>
+
+                        <!-- Right panel: Upgrade + Trend -->
+                        <div class="glpHarmonyPanel glpHarmonyPanel--right">
+                            <div id="harmonyUpgrade">
+                                <div class="glpHarmonyPanel__title">Best coherence upgrade next week</div>
+                                <ul class="glpHarmonyPanel__list">
+                                    <li class="glpHarmonyPanel__item" id="harmonyUpgradeText">&mdash;</li>
+                                </ul>
+                            </div>
+                            <div id="harmonyTrend" style="margin-top:14px;">
+                                <div class="glpHarmonyPanel__title">Trend vs previous weeks</div>
+                                <p class="glpHarmonyPanel__text" id="harmonyTrendText">&mdash;</p>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -1865,25 +1991,108 @@
             <div class="glpCard" id="glpConformityCard">
                 <div class="glpMicroTitle">GLP Conformity</div>
                 <div class="glpConformityInner">
-                    <div class="glpDialWrap">
-                        <div class="glpDial" style="--dialFill:0.44;--dialNeedleDeg:158deg;">
-                            <div class="glpDialTicks" aria-hidden="true"></div>
-                            <div class="glpDialArc" aria-hidden="true"></div>
-                            <div class="glpDialNeedle" aria-hidden="true"></div>
-                            <div class="glpDialInner">
-                                <span class="glpDialState" id="glpDialState">Developing</span>
-                                <span class="glpDialSub" id="glpDialSub">Foundations are forming</span>
-                            </div>
+                    <div class="glpConfRingWrap">
+                        <div class="glpConfRing" id="glpConfRing">
+                            <div class="glpConfRing__icon" id="glpConfRingIcon"></div>
                         </div>
-                        <div class="glpDialNote" id="glpDialNote">Internal score stored, not shown</div>
                     </div>
-                    <div class="glpInterpretation">
-                        <div class="glpInterpretation__title">Interpretation</div>
-                        <p class="glpInterpretationText" id="glpInterpretationText">Your documentation practices are developing. SOPs and experiments are being established, with initial inventory tracking in place.</p>
-                        <div class="glpInterpretation__title" style="margin-top:8px;">Guidance</div>
-                        <ul class="glpGuidance" id="glpGuidance">
-                            <li>Continue linking experiments to approved SOPs to strengthen evidence alignment.</li>
-                        </ul>
+                    <div class="glpConfContent">
+                        <div class="glpConfSection">
+                            <div class="glpConfSection__title">What is working well</div>
+                            <ul class="glpConfSection__list" id="glpConfWorking">
+                                <li>SOPs are being created and linked to experimental records.</li>
+                                <li>Inventory tracking is active with structured product and sample entries.</li>
+                            </ul>
+                        </div>
+                        <div class="glpConfSection">
+                            <div class="glpConfSection__title">Main improvement for next week</div>
+                            <ul class="glpConfSection__list" id="glpConfImprovement">
+                                <li>Link remaining experiments to their corresponding approved SOPs.</li>
+                            </ul>
+                        </div>
+                        <div class="glpConfSection">
+                            <div class="glpConfSection__title">Trend vs previous weeks</div>
+                            <p class="glpConfSection__text" id="glpConfTrend">Documentation practices have been stable over recent weeks.</p>
+                        </div>
+                        <div class="glpConfSection">
+                            <div class="glpConfSection__title">Focus for the coming week</div>
+                            <ul class="glpConfSection__list" id="glpConfFocus">
+                                <li>Continue linking experiments to approved SOPs to strengthen evidence alignment.</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- D. GLP Conformity legend (static) -->
+            <div class="glpCard">
+                <div class="glpLegend">
+                    <div class="glpLegend__title">How GLP Conformity levels are defined</div>
+                    <div class="glpLegend__sub">GLP Conformity reflects the completeness and internal consistency of documented GLP practices.</div>
+
+                    <div class="glpLegendItem">
+                        <div class="glpLegendItem__badge" style="background:#8ca8c4;">
+                            <svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><ellipse cx="16" cy="22" rx="8" ry="6"/><path d="M10 18 Q10 10 16 8 Q22 10 22 18"/><circle cx="14" cy="15" r="1.2" fill="currentColor" stroke="none"/><circle cx="18" cy="15" r="1.2" fill="currentColor" stroke="none"/><path d="M15 17.5 L16 18.5 L17 17.5"/><path d="M8 22 Q8 28 16 28 Q24 28 24 22"/></svg>
+                        </div>
+                        <div class="glpLegendItem__body">
+                            <div class="glpLegendItem__name">GLP initiation phase &mdash; Hatchling</div>
+                            <div class="glpLegendItem__label">Interpretation</div>
+                            <div class="glpLegendItem__text">GLP structures are at an early stage. Documentation, SOPs, and traceability practices are being introduced, but are not yet consistently applied.</div>
+                            <div class="glpLegendItem__label">Guidance</div>
+                            <div class="glpLegendItem__text">Establish core SOPs and begin structured documentation of experiments and materials.</div>
+                        </div>
+                    </div>
+
+                    <div class="glpLegendItem">
+                        <div class="glpLegendItem__badge" style="background:#5f9ea0;">
+                            <svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><circle cx="16" cy="12" r="6"/><circle cx="14" cy="11" r="1.2" fill="currentColor" stroke="none"/><circle cx="18" cy="11" r="1.2" fill="currentColor" stroke="none"/><path d="M14.8 14 L16 15 L17.2 14"/><path d="M12 17 Q12 24 16 26 Q20 24 20 17"/><path d="M12 20 L8 18 M20 20 L24 18"/><path d="M13 26 L13 29 M16 26 L16 30 M19 26 L19 29"/></svg>
+                        </div>
+                        <div class="glpLegendItem__body">
+                            <div class="glpLegendItem__name">GLP emerging &mdash; Fledgling</div>
+                            <div class="glpLegendItem__label">Interpretation</div>
+                            <div class="glpLegendItem__text">Initial GLP elements are in place. Documentation practices exist, and selected SOPs, records, or inventories are being used, but coverage and consistency remain limited.</div>
+                            <div class="glpLegendItem__label">Guidance</div>
+                            <div class="glpLegendItem__text">Expand SOP coverage and ensure regular use across ongoing experiments.</div>
+                        </div>
+                    </div>
+
+                    <div class="glpLegendItem">
+                        <div class="glpLegendItem__badge" style="background:#1565c0;">
+                            <svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><circle cx="16" cy="13" r="9"/><circle cx="13" cy="11.5" r="2.5"/><circle cx="19" cy="11.5" r="2.5"/><circle cx="13" cy="11.5" r="1" fill="currentColor" stroke="none"/><circle cx="19" cy="11.5" r="1" fill="currentColor" stroke="none"/><path d="M14.5 15.5 L16 17 L17.5 15.5"/><path d="M7.5 8 L10 11"/><path d="M24.5 8 L22 11"/><path d="M12 22 L12 28 M16 22 L16 29 M20 22 L20 28"/></svg>
+                        </div>
+                        <div class="glpLegendItem__body">
+                            <div class="glpLegendItem__name">GLP in development &mdash; Owl</div>
+                            <div class="glpLegendItem__label">Interpretation</div>
+                            <div class="glpLegendItem__text">Your documentation practices are developing. SOPs and experimental records are being established, with initial inventory tracking and structured workflows in place.</div>
+                            <div class="glpLegendItem__label">Guidance</div>
+                            <div class="glpLegendItem__text">Continue linking experiments to approved SOPs to strengthen evidence alignment.</div>
+                        </div>
+                    </div>
+
+                    <div class="glpLegendItem">
+                        <div class="glpLegendItem__badge" style="background:#2e7d32;">
+                            <svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><path d="M16 6 Q12 8 12 13 Q12 17 16 19 Q20 17 20 13 Q20 8 16 6Z"/><circle cx="14.5" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="17.5" cy="12" r="1" fill="currentColor" stroke="none"/><path d="M15 14.5 L16 15.5 L17 14.5"/><path d="M12 14 Q6 10 3 12"/><path d="M20 14 Q26 10 29 12"/><path d="M14 19 L12 26 L14 25 L16 28 L18 25 L20 26 L18 19"/></svg>
+                        </div>
+                        <div class="glpLegendItem__body">
+                            <div class="glpLegendItem__name">GLP consolidated &mdash; Eagle</div>
+                            <div class="glpLegendItem__label">Interpretation</div>
+                            <div class="glpLegendItem__text">GLP practices are well established. SOPs, experimental records, training, and inventory systems are consistently applied, with clear traceability across workflows.</div>
+                            <div class="glpLegendItem__label">Guidance</div>
+                            <div class="glpLegendItem__text">Maintain consistency and regularly review documentation quality and approvals.</div>
+                        </div>
+                    </div>
+
+                    <div class="glpLegendItem">
+                        <div class="glpLegendItem__badge" style="background:#6a1b9a;">
+                            <svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><path d="M16 7 Q13 9 13 13 Q13 17 16 19 Q19 17 19 13 Q19 9 16 7Z"/><circle cx="15" cy="12.5" r="1" fill="currentColor" stroke="none"/><circle cx="17" cy="12.5" r="1" fill="currentColor" stroke="none"/><path d="M15.2 15 L16 16 L16.8 15"/><path d="M13 12 Q7 7 5 9 Q6 11 9 12"/><path d="M19 12 Q25 7 27 9 Q26 11 23 12"/><path d="M13 14 Q8 12 6 14 L10 16"/><path d="M19 14 Q24 12 26 14 L22 16"/><path d="M14 19 L13 25 M16 19 L16 27 M18 19 L19 25"/><path d="M14 20 Q16 22 18 20"/></svg>
+                        </div>
+                        <div class="glpLegendItem__body">
+                            <div class="glpLegendItem__name">GLP fully integrated &mdash; Winged Dragon</div>
+                            <div class="glpLegendItem__label">Interpretation</div>
+                            <div class="glpLegendItem__text">GLP is fully integrated into daily laboratory operations. Documentation, approvals, training, and traceability are comprehensive, auditable, and embedded across all activities.</div>
+                            <div class="glpLegendItem__label">Guidance</div>
+                            <div class="glpLegendItem__text">Sustain GLP practices and support external audits, collaborations, or regulatory alignment.</div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -2352,6 +2561,8 @@ credentials: 'include'
                 loadMyPurchaseRequests();
                 loadMyInventoryV2('product');
                 loadGroupInventoryV2('product');
+            } else if (section === 'glpStatus') {
+                loadGlpCoherence();
             }
         }
 
@@ -2373,12 +2584,31 @@ credentials: 'include'
             if (el && glpMaturityIcons[level]) el.innerHTML = glpMaturityIcons[level];
         }
 
+        // Canonical GLP level → color mapping
+        var glpLevelConfig = {
+            hatchling: { color: '#8ca8c4' },
+            fledgling: { color: '#5f9ea0' },
+            owl:       { color: '#1565c0' },
+            eagle:     { color: '#2e7d32' },
+            dragon:    { color: '#6a1b9a' }
+        };
+
+        function glpSetConformityRing(iconKey) {
+            var ring = document.getElementById('glpConfRing');
+            var iconEl = document.getElementById('glpConfRingIcon');
+            var cfg = glpLevelConfig[iconKey];
+            if (ring && cfg) ring.style.backgroundColor = cfg.color;
+            if (iconEl && glpMaturityIcons[iconKey]) iconEl.innerHTML = glpMaturityIcons[iconKey];
+        }
+
         function glpMarkUpdated() {
             var el = document.getElementById('glpLastUpdated');
             if (el) el.textContent = 'Updated just now';
+            glpCoherenceLoaded = false;
+            loadGlpCoherence();
         }
 
-        /* Set GLP maturity/qualifier state on the header + dial.
+        /* Set GLP maturity/qualifier state on the header + conformity ring.
            Called from setGlpScope() with placeholder data now;
            Step 4 will call it with data-driven values. */
         function glpSetMockState(maturity, qualifier, iconKey) {
@@ -2387,6 +2617,18 @@ credentials: 'include'
             if (stateText) stateText.textContent = maturity;
             if (qualEl)    qualEl.textContent     = qualifier;
             glpSetMaturityIcon(iconKey);
+            glpSetConformityRing(iconKey);
+        }
+
+        function glpSetConfContent(working, improvement, trend, focus) {
+            var wEl = document.getElementById('glpConfWorking');
+            var iEl = document.getElementById('glpConfImprovement');
+            var tEl = document.getElementById('glpConfTrend');
+            var fEl = document.getElementById('glpConfFocus');
+            if (wEl) wEl.innerHTML = working.map(function(t){ return '<li>' + t + '</li>'; }).join('');
+            if (iEl) iEl.innerHTML = '<li>' + improvement + '</li>';
+            if (tEl) tEl.textContent = trend;
+            if (fEl) fEl.innerHTML = '<li>' + focus + '</li>';
         }
 
         function setGlpScope(scope) {
@@ -2403,33 +2645,110 @@ credentials: 'include'
                 hMap.classList.toggle('isIndividual', scope === 'individual');
             }
 
-            var dial = document.querySelector('.glpDial');
-            if (dial) {
-                dial.style.setProperty('--dialFill', scope === 'group' ? '0.60' : '0.44');
-                dial.style.setProperty('--dialNeedleDeg', scope === 'group' ? '126deg' : '158deg');
-            }
-
             var scopeLabel = document.getElementById('glpScope');
             var hint = document.getElementById('glpScopeHint');
-            var dialState = document.getElementById('glpDialState');
-            var dialSub = document.getElementById('glpDialSub');
-            var interp = document.getElementById('glpInterpretationText');
 
             if (scope === 'group') {
                 if (scopeLabel) scopeLabel.textContent = 'Group';
                 if (hint) hint.textContent = 'Viewing your research group\u2019s collective GLP posture';
-                if (dialState) dialState.textContent = 'Consolidated';
-                if (dialSub) dialSub.textContent = 'Group practices converge';
-                if (interp) interp.textContent = 'The research group demonstrates aligned documentation practices. SOPs are shared and consistently referenced across experiments.';
                 glpSetMockState('GLP consolidated', 'Consistent implementation', 'eagle');
+                glpSetConfContent(
+                    ['SOPs are shared and consistently referenced across group experiments.',
+                     'Training records and inventory tracking are well maintained across the group.'],
+                    'Review and update expiring SOPs to maintain full documentation coverage.',
+                    'Group documentation alignment has improved over recent weeks.',
+                    'Maintain consistency and regularly review documentation quality and approvals.'
+                );
             } else {
                 if (scopeLabel) scopeLabel.textContent = 'Individual';
                 if (hint) hint.textContent = 'Viewing your individual GLP posture';
-                if (dialState) dialState.textContent = 'Developing';
-                if (dialSub) dialSub.textContent = 'Foundations are forming';
-                if (interp) interp.textContent = 'Your documentation practices are developing. SOPs and experiments are being established, with initial inventory tracking in place.';
                 glpSetMockState('GLP in development', 'Partial implementation', 'owl');
+                glpSetConfContent(
+                    ['SOPs are being created and linked to experimental records.',
+                     'Inventory tracking is active with structured product and sample entries.'],
+                    'Link remaining experiments to their corresponding approved SOPs.',
+                    'Documentation practices have been stable over recent weeks.',
+                    'Continue linking experiments to approved SOPs to strengthen evidence alignment.'
+                );
             }
+        }
+
+        // Initialize conformity ring with default level (owl)
+        glpSetConformityRing('owl');
+
+        // =====================================================
+        // GLP STATUS – Harmony Map coherence data loading
+        // =====================================================
+
+        var glpCoherenceLoaded = false;
+
+        async function loadGlpCoherence() {
+            if (glpCoherenceLoaded) return;
+            try {
+                var resp = await fetch('/api/di/glp-status/coherence', { credentials: 'include' });
+                if (!resp.ok) {
+                    console.warn('[GLP-COHERENCE] endpoint returned', resp.status);
+                    return;
+                }
+                var result = await resp.json();
+                if (!result.success || !result.coherence) return;
+
+                var c = result.coherence;
+
+                // Populate wins panel
+                var win1 = document.getElementById('harmonyWin1');
+                var win2 = document.getElementById('harmonyWin2');
+                if (win1 && c.wins && c.wins[0]) win1.textContent = c.wins[0];
+                if (win2 && c.wins && c.wins[1]) win2.textContent = c.wins[1];
+
+                // Populate upgrade panel
+                var upText = document.getElementById('harmonyUpgradeText');
+                if (upText && c.upgrade) upText.textContent = c.upgrade;
+
+                // Populate trend
+                var trText = document.getElementById('harmonyTrendText');
+                if (trText && c.trend) trText.textContent = c.trend;
+
+                // Limited data notice
+                if (c.limited) {
+                    var sub = document.querySelector('.glpHarmonyMap__sub');
+                    if (sub) sub.textContent = 'Limited recorded activity this week \u2014 coherence insights are based on available records.';
+                }
+
+                // Apply edge emphasis on the rhombus
+                applyEdgeEmphasis(c.emphasized);
+
+                glpCoherenceLoaded = true;
+            } catch (err) {
+                console.warn('[GLP-COHERENCE] fetch error:', err);
+            }
+        }
+
+        function applyEdgeEmphasis(emphasizedKeys) {
+            if (!emphasizedKeys || !emphasizedKeys.length) return;
+
+            var allEdges = document.querySelectorAll('.hmEdge[data-link]');
+            var allGlows = document.querySelectorAll('.hmEdgeGlow[data-link]');
+
+            allEdges.forEach(function(el) {
+                var key = el.getAttribute('data-link');
+                el.classList.remove('hmEdge--emphasized', 'hmEdge--dimmed');
+                if (emphasizedKeys.indexOf(key) !== -1) {
+                    el.classList.add('hmEdge--emphasized');
+                } else {
+                    el.classList.add('hmEdge--dimmed');
+                }
+            });
+
+            allGlows.forEach(function(el) {
+                var key = el.getAttribute('data-link');
+                el.classList.remove('hmEdge--emphasized', 'hmEdge--dimmed');
+                if (emphasizedKeys.indexOf(key) !== -1) {
+                    el.classList.add('hmEdge--emphasized');
+                } else {
+                    el.classList.add('hmEdge--dimmed');
+                }
+            });
         }
 
         // =====================================================
