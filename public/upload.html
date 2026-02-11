@@ -793,18 +793,13 @@
             margin-bottom: 4px;
         }
 
-        /* ── Futuristic Harmony Map (4-node rhombus) ── */
+        /* ── Harmony Map (4-node rhombus) ── */
         .glpHarmonyMap {
             margin-top: 20px;
             border-radius: 14px;
             padding: 36px 24px 28px;
             text-align: center;
-            background:
-                radial-gradient(ellipse at 28% 20%, rgba(33,182,199,0.06) 0%, transparent 55%),
-                radial-gradient(ellipse at 80% 50%, rgba(124,77,255,0.05) 0%, transparent 55%),
-                radial-gradient(ellipse at 50% 85%, rgba(255,176,32,0.04) 0%, transparent 50%),
-                radial-gradient(ellipse at 18% 50%, rgba(76,175,80,0.05) 0%, transparent 55%),
-                linear-gradient(180deg, #f4f6fa 0%, #eaedf2 100%);
+            background: linear-gradient(180deg, #f4f6fa 0%, #eaedf2 100%);
             border: 1px solid #dce0e8;
         }
         .glpHarmonyMap__title {
@@ -822,19 +817,19 @@
         .glpHarmonyMap__body {
             display: grid;
             grid-template-columns: 1fr auto 1fr;
-            gap: 18px;
+            gap: 20px;
             align-items: center;
         }
         .glpHarmonySvg {
             width: 100%;
-            max-width: 280px;
+            max-width: 340px;
             display: block;
             margin: 0 auto;
         }
         .hmEdgeGlow {
             fill: none;
             stroke-linecap: round;
-            transition: opacity 0.5s ease, stroke-width 0.5s ease;
+            transition: opacity 0.5s ease;
         }
         .hmEdge {
             fill: none;
@@ -843,7 +838,7 @@
         }
         .hmSphereGlow { transition: opacity 0.5s ease; }
         .hmLabel {
-            font-size: 10px;
+            font-size: 11px;
             font-weight: 800;
             letter-spacing: 0.10em;
             text-transform: uppercase;
@@ -854,31 +849,31 @@
             stroke-width: 2px;
         }
         /* Individual scope — softer */
-        .glpHarmonyMap.isIndividual .hmEdge      { stroke-width: 2.5; opacity: 0.60; }
-        .glpHarmonyMap.isIndividual .hmEdgeGlow   { opacity: 0.12; }
+        .glpHarmonyMap.isIndividual .hmEdge      { stroke-width: 3.5; opacity: 0.70; }
+        .glpHarmonyMap.isIndividual .hmEdgeGlow   { opacity: 0.14; }
         .glpHarmonyMap.isIndividual .hmSphereGlow { opacity: 0.22; }
         .glpHarmonyMap.isIndividual .hmSphere     { filter: saturate(0.88); }
         /* Group scope — intense */
-        .glpHarmonyMap.isGroup .hmEdge      { stroke-width: 4; opacity: 0.78; }
-        .glpHarmonyMap.isGroup .hmEdgeGlow   { opacity: 0.28; }
-        .glpHarmonyMap.isGroup .hmSphereGlow { opacity: 0.36; }
+        .glpHarmonyMap.isGroup .hmEdge      { stroke-width: 5.5; opacity: 0.82; }
+        .glpHarmonyMap.isGroup .hmEdgeGlow   { opacity: 0.32; }
+        .glpHarmonyMap.isGroup .hmSphereGlow { opacity: 0.38; }
         .glpHarmonyMap.isGroup .hmSphere     { filter: saturate(1.1); }
         /* Edge emphasis (applied by JS from coherence data) */
-        .hmEdge.hmEdge--emphasized      { stroke-width: 4.5 !important; opacity: 0.92 !important; }
-        .hmEdgeGlow.hmEdge--emphasized  { opacity: 0.35 !important; stroke-width: 14 !important; }
-        .hmEdge.hmEdge--dimmed          { opacity: 0.28 !important; }
-        .hmEdgeGlow.hmEdge--dimmed      { opacity: 0.04 !important; }
-        /* Side panels */
+        .hmEdge.hmEdge--emphasized      { stroke-width: 5; opacity: 0.88 !important; }
+        .hmEdgeGlow.hmEdge--emphasized  { opacity: 0.30 !important; stroke-width: 12; }
+        .hmEdge.hmEdge--dimmed          { opacity: 0.32 !important; }
+        .hmEdgeGlow.hmEdge--dimmed      { opacity: 0.05 !important; }
+        /* Coherence side panels */
         .glpHarmonyPanel { padding: 4px 0; }
         .glpHarmonyPanel--left  { text-align: right; }
         .glpHarmonyPanel--right { text-align: left; }
         .glpHarmonyPanel__title {
             font-size: 10px;
             font-weight: 700;
-            letter-spacing: 0.6px;
+            letter-spacing: 1.2px;
             text-transform: uppercase;
             color: #8c95a1;
-            margin-bottom: 6px;
+            margin-bottom: 8px;
         }
         .glpHarmonyPanel__list {
             list-style: none;
@@ -886,31 +881,31 @@
             margin: 0;
         }
         .glpHarmonyPanel__item {
-            font-size: 12px;
+            font-size: 12.5px;
             color: #3a5068;
-            line-height: 1.55;
+            line-height: 1.6;
             padding: 3px 0;
         }
         .glpHarmonyPanel__text {
-            font-size: 12px;
+            font-size: 12.5px;
             color: #5f6b7a;
-            line-height: 1.55;
+            line-height: 1.6;
             margin: 0;
         }
-        @media (max-width: 800px) {
+        @media (max-width: 900px) {
             .glpHarmonyMap__body {
                 grid-template-columns: 1fr;
                 grid-template-rows: auto auto auto;
             }
             .glpHarmonyPanel--left,
             .glpHarmonyPanel--right { text-align: center; }
-            .glpHarmonySvg { max-width: 240px; }
+            .glpHarmonySvg { max-width: 280px; }
         }
         @media (max-width: 600px) {
             .glpHarmonyMap { padding: 24px 12px 20px; }
         }
 
-        /* ── C. GLP Conformity card ── */
+        /* ── C. GLP Conformity card (premium dial) ── */
         .glpConformityInner {
             display: grid;
             grid-template-columns: 260px 1fr;
@@ -923,39 +918,90 @@
                 gap: 24px;
             }
         }
-
-        /* Conformity ring */
-        .glpConfRingWrap {
+        .glpDialWrap {
             display: flex;
             flex-direction: column;
             align-items: center;
         }
-        .glpConfRing {
-            width: 160px;
-            height: 160px;
+        .glpDial {
+            width: 180px;
+            height: 180px;
             border-radius: 50%;
-            background: #1565c0;
+            background: #e4e9ef;
             display: flex;
             align-items: center;
             justify-content: center;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-            transition: background-color 0.4s ease;
+            box-shadow:
+                0 4px 20px rgba(0,0,0,0.06),
+                inset 0 0 0 4px rgba(255,255,255,0.5);
+            position: relative;
         }
-        .glpConfRing__icon {
-            width: 64px;
-            height: 64px;
+        .glpDialTicks {
+            position: absolute;
+            inset: 4px;
+            border-radius: 50%;
+            background: repeating-conic-gradient(
+                rgba(58,80,104,0.12) 0deg 1.5deg,
+                transparent 1.5deg 9deg
+            );
+            -webkit-mask: radial-gradient(circle, transparent 60%, #000 60%, #000 100%);
+                    mask: radial-gradient(circle, transparent 60%, #000 60%, #000 100%);
+        }
+        .glpDialAccent {
+            position: absolute;
+            inset: 6px;
+            border-radius: 50%;
+            background: #8ca8c4;
+            -webkit-mask: radial-gradient(circle, transparent 65%, #000 65%, #000 100%);
+                    mask: radial-gradient(circle, transparent 65%, #000 65%, #000 100%);
+            opacity: 0.35;
+            transition: background-color 0.4s ease, opacity 0.4s ease;
+        }
+        .glpDialInner {
+            width: 130px;
+            height: 130px;
+            border-radius: 50%;
+            background: #fafbfc;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            box-shadow: inset 0 2px 6px rgba(0,0,0,0.04);
+            position: relative;
+            z-index: 2;
+        }
+        .glpDialIcon {
+            width: 54px;
+            height: 54px;
             display: flex;
             align-items: center;
             justify-content: center;
+            color: #3a5068;
+            margin-bottom: 4px;
         }
-        .glpConfRing__icon svg {
-            width: 64px;
-            height: 64px;
-            stroke: #fff;
+        .glpDialIcon svg {
+            width: 50px;
+            height: 50px;
+            stroke: currentColor;
             fill: none;
             stroke-width: 1.6;
             stroke-linecap: round;
             stroke-linejoin: round;
+        }
+        .glpDialState {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: #3a5068;
+        }
+        .glpDialSub {
+            font-size: 10px;
+            color: #8c95a1;
+            margin-top: 2px;
+            text-align: center;
+            max-width: 110px;
+            line-height: 1.3;
         }
 
         /* Conformity content sections */
@@ -1840,16 +1886,17 @@
                         </div>
 
                         <!-- Center: Rhombus SVG -->
-                        <svg class="glpHarmonySvg" viewBox="0 0 300 300" xmlns="http://www.w3.org/2000/svg">
+                        <svg class="glpHarmonySvg" viewBox="0 0 400 340" xmlns="http://www.w3.org/2000/svg">
                           <defs>
+                            <!-- Glow filters (matching original triangle spec) -->
                             <filter id="hm4GlowF" x="-80%" y="-80%" width="260%" height="260%">
-                              <feGaussianBlur in="SourceGraphic" stdDeviation="8"/>
+                              <feGaussianBlur in="SourceGraphic" stdDeviation="9"/>
                             </filter>
                             <filter id="hm4EdgeGlowF" x="-25%" y="-25%" width="150%" height="150%">
-                              <feGaussianBlur in="SourceGraphic" stdDeviation="3.5"/>
+                              <feGaussianBlur in="SourceGraphic" stdDeviation="4"/>
                             </filter>
 
-                            <!-- 4 sphere gradients -->
+                            <!-- 3D sphere gradients (light from upper-left) -->
                             <radialGradient id="hm4GradSop" cx="0.38" cy="0.30" r="0.55" fx="0.32" fy="0.26">
                               <stop offset="0%"   stop-color="#8DF0FC"/>
                               <stop offset="38%"  stop-color="#21B6C7"/>
@@ -1875,99 +1922,92 @@
                               <stop offset="100%" stop-color="#1B5E20"/>
                             </radialGradient>
 
-                            <!-- 6 edge gradients -->
-                            <linearGradient id="hm4ESopData" x1="150" y1="40" x2="260" y2="150" gradientUnits="userSpaceOnUse">
+                            <!-- Connector gradients (blend two sphere colors) -->
+                            <linearGradient id="hm4ESopData" x1="200" y1="54" x2="354" y2="170" gradientUnits="userSpaceOnUse">
                               <stop offset="0%" stop-color="#21B6C7"/><stop offset="100%" stop-color="#7C4DFF"/>
                             </linearGradient>
-                            <linearGradient id="hm4ESopInv" x1="150" y1="40" x2="150" y2="260" gradientUnits="userSpaceOnUse">
+                            <linearGradient id="hm4ESopInv" x1="200" y1="54" x2="200" y2="286" gradientUnits="userSpaceOnUse">
                               <stop offset="0%" stop-color="#21B6C7"/><stop offset="100%" stop-color="#FFB020"/>
                             </linearGradient>
-                            <linearGradient id="hm4ESopTrain" x1="150" y1="40" x2="40" y2="150" gradientUnits="userSpaceOnUse">
+                            <linearGradient id="hm4ESopTrain" x1="200" y1="54" x2="46" y2="170" gradientUnits="userSpaceOnUse">
                               <stop offset="0%" stop-color="#21B6C7"/><stop offset="100%" stop-color="#4CAF50"/>
                             </linearGradient>
-                            <linearGradient id="hm4EDataInv" x1="260" y1="150" x2="150" y2="260" gradientUnits="userSpaceOnUse">
+                            <linearGradient id="hm4EDataInv" x1="354" y1="170" x2="200" y2="286" gradientUnits="userSpaceOnUse">
                               <stop offset="0%" stop-color="#7C4DFF"/><stop offset="100%" stop-color="#FFB020"/>
                             </linearGradient>
-                            <linearGradient id="hm4EDataTrain" x1="260" y1="150" x2="40" y2="150" gradientUnits="userSpaceOnUse">
+                            <linearGradient id="hm4EDataTrain" x1="354" y1="170" x2="46" y2="170" gradientUnits="userSpaceOnUse">
                               <stop offset="0%" stop-color="#7C4DFF"/><stop offset="100%" stop-color="#4CAF50"/>
                             </linearGradient>
-                            <linearGradient id="hm4EInvTrain" x1="150" y1="260" x2="40" y2="150" gradientUnits="userSpaceOnUse">
+                            <linearGradient id="hm4EInvTrain" x1="200" y1="286" x2="46" y2="170" gradientUnits="userSpaceOnUse">
                               <stop offset="0%" stop-color="#FFB020"/><stop offset="100%" stop-color="#4CAF50"/>
                             </linearGradient>
-
-                            <pattern id="hm4GridP" width="28" height="28" patternUnits="userSpaceOnUse">
-                              <path d="M 28 0 L 0 0 0 28" fill="none" stroke="rgba(80,115,160,0.07)" stroke-width="0.5"/>
-                            </pattern>
                           </defs>
 
-                          <!-- Background grid -->
-                          <rect x="0" y="0" width="300" height="300" fill="url(#hm4GridP)" rx="6"/>
-
-                          <!-- Edge glows -->
-                          <line class="hmEdgeGlow" data-link="sopData"   x1="150" y1="40"  x2="260" y2="150" stroke="url(#hm4ESopData)"  stroke-width="9" filter="url(#hm4EdgeGlowF)"/>
-                          <line class="hmEdgeGlow" data-link="sopInv"    x1="150" y1="40"  x2="150" y2="260" stroke="url(#hm4ESopInv)"   stroke-width="9" filter="url(#hm4EdgeGlowF)"/>
-                          <line class="hmEdgeGlow" data-link="sopTrain"  x1="150" y1="40"  x2="40"  y2="150" stroke="url(#hm4ESopTrain)" stroke-width="9" filter="url(#hm4EdgeGlowF)"/>
-                          <line class="hmEdgeGlow" data-link="dataInv"   x1="260" y1="150" x2="150" y2="260" stroke="url(#hm4EDataInv)"  stroke-width="9" filter="url(#hm4EdgeGlowF)"/>
-                          <line class="hmEdgeGlow" data-link="dataTrain" x1="260" y1="150" x2="40"  y2="150" stroke="url(#hm4EDataTrain)" stroke-width="9" filter="url(#hm4EdgeGlowF)"/>
-                          <line class="hmEdgeGlow" data-link="invTrain"  x1="150" y1="260" x2="40"  y2="150" stroke="url(#hm4EInvTrain)" stroke-width="9" filter="url(#hm4EdgeGlowF)"/>
+                          <!-- Edge glows (behind) -->
+                          <line class="hmEdgeGlow" data-link="sopData"   x1="200" y1="54"  x2="354" y2="170" stroke="url(#hm4ESopData)"   stroke-width="10" filter="url(#hm4EdgeGlowF)"/>
+                          <line class="hmEdgeGlow" data-link="sopInv"    x1="200" y1="54"  x2="200" y2="286" stroke="url(#hm4ESopInv)"    stroke-width="10" filter="url(#hm4EdgeGlowF)"/>
+                          <line class="hmEdgeGlow" data-link="sopTrain"  x1="200" y1="54"  x2="46"  y2="170" stroke="url(#hm4ESopTrain)"  stroke-width="10" filter="url(#hm4EdgeGlowF)"/>
+                          <line class="hmEdgeGlow" data-link="dataInv"   x1="354" y1="170" x2="200" y2="286" stroke="url(#hm4EDataInv)"   stroke-width="10" filter="url(#hm4EdgeGlowF)"/>
+                          <line class="hmEdgeGlow" data-link="dataTrain" x1="354" y1="170" x2="46"  y2="170" stroke="url(#hm4EDataTrain)"  stroke-width="10" filter="url(#hm4EdgeGlowF)"/>
+                          <line class="hmEdgeGlow" data-link="invTrain"  x1="200" y1="286" x2="46"  y2="170" stroke="url(#hm4EInvTrain)"  stroke-width="10" filter="url(#hm4EdgeGlowF)"/>
 
                           <!-- Main connector edges -->
-                          <line class="hmEdge" data-link="sopData"   x1="150" y1="40"  x2="260" y2="150" stroke="url(#hm4ESopData)"/>
-                          <line class="hmEdge" data-link="sopInv"    x1="150" y1="40"  x2="150" y2="260" stroke="url(#hm4ESopInv)"/>
-                          <line class="hmEdge" data-link="sopTrain"  x1="150" y1="40"  x2="40"  y2="150" stroke="url(#hm4ESopTrain)"/>
-                          <line class="hmEdge" data-link="dataInv"   x1="260" y1="150" x2="150" y2="260" stroke="url(#hm4EDataInv)"/>
-                          <line class="hmEdge" data-link="dataTrain" x1="260" y1="150" x2="40"  y2="150" stroke="url(#hm4EDataTrain)"/>
-                          <line class="hmEdge" data-link="invTrain"  x1="150" y1="260" x2="40"  y2="150" stroke="url(#hm4EInvTrain)"/>
+                          <line class="hmEdge" data-link="sopData"   x1="200" y1="54"  x2="354" y2="170" stroke="url(#hm4ESopData)"/>
+                          <line class="hmEdge" data-link="sopInv"    x1="200" y1="54"  x2="200" y2="286" stroke="url(#hm4ESopInv)"/>
+                          <line class="hmEdge" data-link="sopTrain"  x1="200" y1="54"  x2="46"  y2="170" stroke="url(#hm4ESopTrain)"/>
+                          <line class="hmEdge" data-link="dataInv"   x1="354" y1="170" x2="200" y2="286" stroke="url(#hm4EDataInv)"/>
+                          <line class="hmEdge" data-link="dataTrain" x1="354" y1="170" x2="46"  y2="170" stroke="url(#hm4EDataTrain)"/>
+                          <line class="hmEdge" data-link="invTrain"  x1="200" y1="286" x2="46"  y2="170" stroke="url(#hm4EInvTrain)"/>
 
                           <!-- Sphere glows -->
-                          <circle class="hmSphereGlow" cx="150" cy="40"  r="44" fill="#21B6C7" filter="url(#hm4GlowF)"/>
-                          <circle class="hmSphereGlow" cx="260" cy="150" r="44" fill="#7C4DFF" filter="url(#hm4GlowF)"/>
-                          <circle class="hmSphereGlow" cx="150" cy="260" r="44" fill="#FFB020" filter="url(#hm4GlowF)"/>
-                          <circle class="hmSphereGlow" cx="40"  cy="150" r="44" fill="#4CAF50" filter="url(#hm4GlowF)"/>
+                          <circle class="hmSphereGlow" cx="200" cy="54"  r="54" fill="#21B6C7" filter="url(#hm4GlowF)"/>
+                          <circle class="hmSphereGlow" cx="354" cy="170" r="54" fill="#7C4DFF" filter="url(#hm4GlowF)"/>
+                          <circle class="hmSphereGlow" cx="200" cy="286" r="54" fill="#FFB020" filter="url(#hm4GlowF)"/>
+                          <circle class="hmSphereGlow" cx="46"  cy="170" r="54" fill="#4CAF50" filter="url(#hm4GlowF)"/>
 
                           <!-- Main 3D spheres -->
-                          <circle class="hmSphere" cx="150" cy="40"  r="30" fill="url(#hm4GradSop)"/>
-                          <circle class="hmSphere" cx="260" cy="150" r="30" fill="url(#hm4GradData)"/>
-                          <circle class="hmSphere" cx="150" cy="260" r="30" fill="url(#hm4GradInv)"/>
-                          <circle class="hmSphere" cx="40"  cy="150" r="30" fill="url(#hm4GradTrain)"/>
+                          <circle class="hmSphere" cx="200" cy="54"  r="38" fill="url(#hm4GradSop)"/>
+                          <circle class="hmSphere" cx="354" cy="170" r="38" fill="url(#hm4GradData)"/>
+                          <circle class="hmSphere" cx="200" cy="286" r="38" fill="url(#hm4GradInv)"/>
+                          <circle class="hmSphere" cx="46"  cy="170" r="38" fill="url(#hm4GradTrain)"/>
 
                           <!-- Specular highlights -->
-                          <ellipse cx="141" cy="29"  rx="11" ry="6" fill="white" opacity="0.20" transform="rotate(-22,141,29)"/>
-                          <ellipse cx="251" cy="139" rx="11" ry="6" fill="white" opacity="0.20" transform="rotate(-22,251,139)"/>
-                          <ellipse cx="141" cy="249" rx="11" ry="6" fill="white" opacity="0.20" transform="rotate(-22,141,249)"/>
-                          <ellipse cx="31"  cy="139" rx="11" ry="6" fill="white" opacity="0.20" transform="rotate(-22,31,139)"/>
+                          <ellipse cx="189" cy="42"  rx="14" ry="8" fill="white" opacity="0.20" transform="rotate(-22,189,42)"/>
+                          <ellipse cx="343" cy="158" rx="14" ry="8" fill="white" opacity="0.20" transform="rotate(-22,343,158)"/>
+                          <ellipse cx="189" cy="274" rx="14" ry="8" fill="white" opacity="0.20" transform="rotate(-22,189,274)"/>
+                          <ellipse cx="35"  cy="158" rx="14" ry="8" fill="white" opacity="0.20" transform="rotate(-22,35,158)"/>
 
-                          <!-- Pillar icons inside spheres -->
-                          <!-- SOP: document icon -->
-                          <g transform="translate(150,40)" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
-                            <rect x="-7" y="-9" width="14" height="18" rx="1.5"/>
-                            <line x1="-4" y1="-4" x2="4" y2="-4"/>
+                          <!-- Pillar icons inside spheres (line-art, stroke 1.5) -->
+                          <!-- SOP: document -->
+                          <g transform="translate(200,54)" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="-8" y="-11" width="16" height="22" rx="2"/>
+                            <line x1="-4" y1="-5" x2="4" y2="-5"/>
                             <line x1="-4" y1="0"  x2="4" y2="0"/>
-                            <line x1="-4" y1="4"  x2="2" y2="4"/>
+                            <line x1="-4" y1="5"  x2="2" y2="5"/>
                           </g>
-                          <!-- DATA: bar-chart icon -->
-                          <g transform="translate(260,150)" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
-                            <rect x="-8" y="6" width="4" height="-8" rx="0.5"/>
-                            <rect x="-2" y="6" width="4" height="-14" rx="0.5"/>
-                            <rect x="4"  y="6" width="4" height="-10" rx="0.5"/>
+                          <!-- DATA: bar chart -->
+                          <g transform="translate(354,170)" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="-9" y="8" width="5" height="-10" rx="0.5"/>
+                            <rect x="-2" y="8" width="5" height="-17" rx="0.5"/>
+                            <rect x="5"  y="8" width="5" height="-12" rx="0.5"/>
                           </g>
-                          <!-- Inventory: flask icon -->
-                          <g transform="translate(150,260)" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M-3,-9 L-3,-2 L-8,7 Q-8,9 -6,9 L6,9 Q8,9 8,7 L3,-2 L3,-9"/>
-                            <line x1="-5" y1="-9" x2="5" y2="-9"/>
+                          <!-- Inventory: flask -->
+                          <g transform="translate(200,286)" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M-4,-11 L-4,-3 L-9,8 Q-9,10 -7,10 L7,10 Q9,10 9,8 L4,-3 L4,-11"/>
+                            <line x1="-5" y1="-11" x2="5" y2="-11"/>
                           </g>
-                          <!-- Training: graduation-cap icon -->
-                          <g transform="translate(40,150)" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
-                            <polygon points="0,-8 10,0 0,3 -10,0" fill="rgba(255,255,255,0.15)"/>
-                            <polyline points="-6,1 -6,7 0,10 6,7 6,1"/>
-                            <line x1="10" y1="0" x2="10" y2="8"/>
+                          <!-- Training: graduation cap -->
+                          <g transform="translate(46,170)" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <polygon points="0,-10 12,0 0,4 -12,0" fill="rgba(255,255,255,0.12)"/>
+                            <polyline points="-7,1 -7,8 0,12 7,8 7,1"/>
+                            <line x1="12" y1="0" x2="12" y2="9"/>
                           </g>
 
                           <!-- Labels -->
-                          <text class="hmLabel" x="150" y="3">SOP</text>
-                          <text class="hmLabel" x="296" y="154">DATA</text>
-                          <text class="hmLabel" x="150" y="298">Inventory</text>
-                          <text class="hmLabel" x="4"   y="154" text-anchor="start">Training</text>
+                          <text class="hmLabel" x="200" y="6">SOP</text>
+                          <text class="hmLabel" x="354" y="126">DATA</text>
+                          <text class="hmLabel" x="200" y="336">INVENTORY</text>
+                          <text class="hmLabel" x="46"  y="126">TRAINING</text>
                         </svg>
 
                         <!-- Right panel: Upgrade + Trend -->
@@ -1987,13 +2027,19 @@
                 </div>
             </div>
 
-            <!-- C. GLP Conformity card -->
+            <!-- C. GLP Conformity card (premium dial) -->
             <div class="glpCard" id="glpConformityCard">
                 <div class="glpMicroTitle">GLP Conformity</div>
                 <div class="glpConformityInner">
-                    <div class="glpConfRingWrap">
-                        <div class="glpConfRing" id="glpConfRing">
-                            <div class="glpConfRing__icon" id="glpConfRingIcon"></div>
+                    <div class="glpDialWrap">
+                        <div class="glpDial" id="glpDial">
+                            <div class="glpDialTicks" aria-hidden="true"></div>
+                            <div class="glpDialAccent" id="glpDialAccent" aria-hidden="true"></div>
+                            <div class="glpDialInner">
+                                <div class="glpDialIcon" id="glpDialIcon"></div>
+                                <span class="glpDialState" id="glpDialState">Developing</span>
+                                <span class="glpDialSub" id="glpDialSub">Foundations are forming</span>
+                            </div>
                         </div>
                     </div>
                     <div class="glpConfContent">
@@ -2594,10 +2640,11 @@ credentials: 'include'
         };
 
         function glpSetConformityRing(iconKey) {
-            var ring = document.getElementById('glpConfRing');
-            var iconEl = document.getElementById('glpConfRingIcon');
+            var accent = document.getElementById('glpDialAccent');
+            var iconEl = document.getElementById('glpDialIcon');
             var cfg = glpLevelConfig[iconKey];
-            if (ring && cfg) ring.style.backgroundColor = cfg.color;
+            if (accent && cfg) accent.style.backgroundColor = cfg.color;
+            if (iconEl && cfg) iconEl.style.color = cfg.color;
             if (iconEl && glpMaturityIcons[iconKey]) iconEl.innerHTML = glpMaturityIcons[iconKey];
         }
 
@@ -2608,7 +2655,7 @@ credentials: 'include'
             loadGlpCoherence();
         }
 
-        /* Set GLP maturity/qualifier state on the header + conformity ring.
+        /* Set GLP maturity/qualifier state on the header + conformity dial.
            Called from setGlpScope() with placeholder data now;
            Step 4 will call it with data-driven values. */
         function glpSetMockState(maturity, qualifier, iconKey) {
@@ -2618,6 +2665,11 @@ credentials: 'include'
             if (qualEl)    qualEl.textContent     = qualifier;
             glpSetMaturityIcon(iconKey);
             glpSetConformityRing(iconKey);
+            // Update dial center text
+            var dialState = document.getElementById('glpDialState');
+            var dialSub   = document.getElementById('glpDialSub');
+            if (dialState) dialState.textContent = qualifier || maturity;
+            if (dialSub) dialSub.textContent = maturity;
         }
 
         function glpSetConfContent(working, improvement, trend, focus) {
