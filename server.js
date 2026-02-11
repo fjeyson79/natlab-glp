@@ -6234,7 +6234,7 @@ app.post('/api/di/training/entries/:id/certify', requireSupervisor, async (req, 
 
         await pool.query(
             `UPDATE di_training_entries SET status = 'CERTIFIED', certified_at = CURRENT_TIMESTAMP, certified_by = $1 WHERE id = $2`,
-            [req.session.user.institution_email || userId, req.params.id]
+            [userId, req.params.id]
         );
         res.json({ success: true });
     } catch (err) {
@@ -6260,7 +6260,7 @@ app.post('/api/di/training/entries/:id/pi-certify', requirePI, async (req, res) 
         const piId = req.session.user.researcher_id;
         await pool.query(
             `UPDATE di_training_entries SET status = 'CERTIFIED', certified_at = CURRENT_TIMESTAMP, certified_by = $1 WHERE id = $2`,
-            [req.session.user.institution_email || piId, req.params.id]
+            [piId, req.params.id]
         );
         res.json({ success: true });
     } catch (err) {

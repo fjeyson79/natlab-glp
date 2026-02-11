@@ -1485,24 +1485,17 @@
                                 <div class="form-group" style="margin-bottom:8px;">
                                     <label style="font-size:12px;">Supervisor (Training Provider) *</label>
                                     <select id="teSupervisor"><option value="">Select...</option></select>
-                                      <div id="piDelegationPanel" style="display:none;margin-top:10px;padding:10px;border:1px solid #e3e6ea;border-radius:8px;background:#fff;">
-                                          <div style="font-size:12px;font-weight:600;margin-bottom:8px;">Trainer provider details</div>
+                                      <div id="otherSupervisorPanel" style="display:none;margin-top:10px;padding:10px;border:1px solid #e3e6ea;border-radius:8px;background:#fff;">
+                                          <div style="font-size:12px;font-weight:600;color:#856404;background:#fff3cd;padding:6px 10px;border-radius:4px;margin-bottom:10px;">Certification will be completed under PI oversight.</div>
                                           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
                                               <div class="form-group" style="margin-bottom:8px;">
-                                                  <label style="font-size:12px;">Trainer name *</label>
-                                                  <input type="text" id="piDelTrainerName" placeholder="Full name">
+                                                  <label style="font-size:12px;">Other supervisor name: *</label>
+                                                  <input type="text" id="otherSupName" placeholder="Full name">
                                               </div>
                                               <div class="form-group" style="margin-bottom:8px;">
-                                                  <label style="font-size:12px;">Trainer email *</label>
-                                                  <input type="email" id="piDelTrainerEmail" placeholder="name@domain">
+                                                  <label style="font-size:12px;">Other supervisor email: *</label>
+                                                  <input type="email" id="otherSupEmail" placeholder="name@domain">
                                               </div>
-                                              <div class="form-group" style="margin-bottom:8px;grid-column:1 / span 2;">
-                                                  <label style="font-size:12px;">Trainer affiliation *</label>
-                                                  <input type="text" id="piDelTrainerAffil" placeholder="e.g. University, Department, Company">
-                                              </div>
-                                          </div>
-                                          <div style="font-size:12px;color:#555;margin-top:8px;">
-                                              This training was delivered by the trainer listed above. The PI will review the record and certify it during approval and sealing.
                                           </div>
                                       </div>
                                 </div>
@@ -1703,7 +1696,6 @@
     <script>
         let currentUserRole = null;
           let currentUserId = null;
-          let piResearcherId = null;
           let trainingSupervisors = [];
 
         let selectedSupervisionResearcherId = null;
@@ -1716,7 +1708,7 @@
                 const data = await response.json();
                 const user = data.user || data;
                   currentUserId = user.researcher_id;
-                  if (((user.role || "").toLowerCase()) === "pi") { piResearcherId = user.researcher_id; }
+                  // role set above in currentUserRole
 
 
                 document.getElementById('userName').textContent = user.researcher_id;
@@ -1740,6 +1732,10 @@
                 // Load files and group documents after user info
                 loadMyFiles();
                 loadGroupDocuments();
+
+                // Handle ?section= URL param (e.g. PI navigating from pi-dashboard)
+                const urlSection = new URLSearchParams(window.location.search).get('section');
+                if (urlSection) switchSection(urlSection);
 
             } catch (err) {
                 window.location.href = 'access.html';
@@ -3079,18 +3075,19 @@ credentials: 'include'
         }
 
         async function loadTrainingSection() {
-            // Show appropriate view based on role
+            // Show own training pack for ALL roles (researcher, supervisor, PI)
+            document.getElementById('trainingResearcherView').style.display = 'block';
+            await loadTrainingSupervisors();
+            await loadTrainingMyPack();
+            await loadTrainingDocsList();
+
+            // Additionally show supervisor duties panel for supervisors
             if (currentUserRole === 'supervisor') {
-                document.getElementById('trainingResearcherView').style.display = 'none';
                 document.getElementById('trainingSupervisorView').style.display = 'block';
                 loadTrainingPendingCerts();
                 loadTrainingSealedOverview();
             } else {
-                document.getElementById('trainingResearcherView').style.display = 'block';
                 document.getElementById('trainingSupervisorView').style.display = 'none';
-                await loadTrainingSupervisors();
-                await loadTrainingMyPack();
-                await loadTrainingDocsList();
             }
         }
 
@@ -3102,20 +3099,14 @@ credentials: 'include'
 
                   trainingSupervisors = data.supervisors || [];
 
-                  // Set piResearcherId from supervisor list if current user appears there
-                  if (!piResearcherId && currentUserId && trainingSupervisors.length) {
-                      const self = trainingSupervisors.find(s => s.researcher_id === currentUserId);
-                      if (self) piResearcherId = self.researcher_id;
-                  }
-
                   const sel = document.getElementById('teSupervisor');
                   sel.innerHTML = '<option value="">Select...</option>';
                   trainingSupervisors.forEach(s => {
                       sel.innerHTML += `<option value="${s.researcher_id}">${escapeHtmlT(s.name)}</option>`;
                   });
 
-                  // Delegation option
-                  sel.innerHTML += '<option value="__PI_DELEGATED__">Other supervisor, delegated delivery under PI oversight</option>';
+                  // Other supervisor option (PI certification route)
+                  sel.innerHTML += '<option value="__OTHER_SUPERVISOR__">Other supervisor, delegated delivery under PI oversight</option>';
               } catch (err) { console.error('[TRAINING] load supervisors:', err); }
           }
 
@@ -3236,10 +3227,13 @@ credentials: 'include'
             tbody.innerHTML = trainingEntries.map(e => {
                 const badgeColors = { PENDING: '#ffc107', CERTIFIED: '#28a745', REJECTED: '#dc3545' };
                 const textColor = e.status === 'PENDING' ? '#333' : '#fff';
+                const supLabel = e.certification_route === 'PI'
+                    ? `${escapeHtmlT(e.supervisor_name || '')} <span style="font-size:10px;color:#856404;">(PI oversight)</span>`
+                    : escapeHtmlT(e.supervisor_name || '');
                 return `<tr>
                     <td>${escapeHtmlT(e.training_type)}</td>
                     <td>${new Date(e.training_date).toLocaleDateString()}</td>
-                    <td>${escapeHtmlT(e.supervisor_name || '')}</td>
+                    <td>${supLabel}</td>
                     <td>
                         <span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;background:${badgeColors[e.status]};color:${textColor};">${e.status}</span>
                         ${e.status === 'REJECTED' && e.rejection_comment ? `<span style="font-size:11px;color:#dc3545;margin-left:5px;">— ${escapeHtmlT(e.rejection_comment)}</span>` : ''}
@@ -3260,12 +3254,12 @@ credentials: 'include'
                 if (e && e.target && e.target.id === "teType") syncTrainingTypeOther();
 
                 if (e && e.target && e.target.id === "teSupervisor") {
-                    const panel = document.getElementById("piDelegationPanel");
+                    const panel = document.getElementById("otherSupervisorPanel");
                     if (!panel) return;
-                    const isDelegated = (e.target.value || "") === "__PI_DELEGATED__";
-                    panel.style.display = isDelegated ? "block" : "none";
-                    if (!isDelegated) {
-                        ["piDelTrainerName","piDelTrainerEmail","piDelTrainerAffil"].forEach(id => {
+                    const isOther = (e.target.value || "") === "__OTHER_SUPERVISOR__";
+                    panel.style.display = isOther ? "block" : "none";
+                    if (!isOther) {
+                        ["otherSupName","otherSupEmail"].forEach(id => {
                             const el = document.getElementById(id);
                             if (el) el.value = "";
                         });
@@ -3279,30 +3273,20 @@ credentials: 'include'
               let training_type = (document.getElementById("teType")?.value || "").trim();
               const training_type_other = (document.getElementById("teTypeOther")?.value || "").trim();
               const training_date = document.getElementById("teDate")?.value || "";
-              let supervisor_id = document.getElementById("teSupervisor")?.value || "";
-              let notes = (document.getElementById("teNotes")?.value || "").trim();
+              const supervisor_id = document.getElementById("teSupervisor")?.value || "";
+              const notes = (document.getElementById("teNotes")?.value || "").trim();
 
-                // Delegated delivery under PI oversight: seal-ready (PI certifies on approval and sealing)
-                const isDelegated = (supervisor_id === "__PI_DELEGATED__");
-                if (isDelegated) {
-                      if (!piResearcherId) {
-                          // Fallback: delegated delivery certifies under the current PI user
-                          piResearcherId = currentUserId;
-                      }
+              // Other supervisor (PI certification route)
+              const isOtherSupervisor = (supervisor_id === "__OTHER_SUPERVISOR__");
+              let other_supervisor_name = null;
+              let other_supervisor_email = null;
 
-                    const tn = (document.getElementById("piDelTrainerName")?.value || "").trim();
-                    const te = (document.getElementById("piDelTrainerEmail")?.value || "").trim();
-                    const ta = (document.getElementById("piDelTrainerAffil")?.value || "").trim();
-
-                    if (!tn || !te || !ta) { alert("Please provide trainer name, email, and affiliation."); return; }
-                    if (!(te.includes("@") && te.includes("."))) { alert("Please provide a valid trainer email."); return; }
-
-                    supervisor_id = piResearcherId;
-
-                    const prefix = `Trainer provider: ${tn}, ${te}, ${ta}. Delegated delivery, PI will certify at approval and sealing.`;
-                    notes = notes ? (prefix + " " + notes) : prefix;
-                }
-
+              if (isOtherSupervisor) {
+                  other_supervisor_name = (document.getElementById("otherSupName")?.value || "").trim();
+                  other_supervisor_email = (document.getElementById("otherSupEmail")?.value || "").trim();
+                  if (!other_supervisor_name || !other_supervisor_email) { alert("Please provide other supervisor name and email."); return; }
+                  if (!(other_supervisor_email.includes("@") && other_supervisor_email.includes("."))) { alert("Please provide a valid email address."); return; }
+              }
 
               if (!training_type) { alert("Please select a training type to continue."); return; }
               if (training_type === "Other") {
@@ -3313,10 +3297,15 @@ credentials: 'include'
               if (!supervisor_id) { alert("Please select a supervisor to continue."); return; }
 
               try {
+                  const body = { pack_id: trainingPack.id, training_type, training_date, notes, supervisor_id };
+                  if (isOtherSupervisor) {
+                      body.other_supervisor_name = other_supervisor_name;
+                      body.other_supervisor_email = other_supervisor_email;
+                  }
                   const resp = await fetch("/api/di/training/entries", {
                       method: "POST", credentials: "include",
                       headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ pack_id: trainingPack.id, training_type, training_date, notes, supervisor_id })
+                      body: JSON.stringify(body)
                   });
                   const data = await resp.json();
                   if (!resp.ok) throw new Error(data.error || "Failed");
@@ -3327,13 +3316,12 @@ credentials: 'include'
                   document.getElementById("teDate").value = "";
                   document.getElementById("teSupervisor").value = "";
                   document.getElementById("teNotes").value = "";
-                    const delPanel = document.getElementById("piDelegationPanel");
-                    if (delPanel) delPanel.style.display = "none";
-                    ["piDelTrainerName","piDelTrainerEmail","piDelTrainerAffil"].forEach(id => {
-                        const el = document.getElementById(id);
-                        if (el) el.value = "";
-                    });
-
+                  const osPanel = document.getElementById("otherSupervisorPanel");
+                  if (osPanel) osPanel.style.display = "none";
+                  ["otherSupName","otherSupEmail"].forEach(id => {
+                      const el = document.getElementById(id);
+                      if (el) el.value = "";
+                  });
 
                   alert("Training record successfully submitted and pending approval.");
                   await loadTrainingMyPack();

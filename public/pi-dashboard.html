@@ -1181,10 +1181,12 @@
 
     <!-- ==================== TRAINING & APPROVALS TAB ==================== -->
     <div class="tab-content" id="tab-training">
-        <!-- Toggle between Design and Management -->
+        <!-- Toggle between Design, Management, Certifications, and My Training -->
         <div style="display:flex;gap:10px;margin-bottom:20px;">
             <button class="btn btn-primary" id="toggleTrainingDesign" onclick="showTrainingToggle('design')" style="flex:1;">Training Design</button>
             <button class="btn btn-secondary" id="toggleTrainingMgmt" onclick="showTrainingToggle('management')" style="flex:1;">Training Management</button>
+            <button class="btn btn-secondary" id="toggleTrainingCerts" onclick="showTrainingToggle('certifications')" style="flex:1;">Certifications</button>
+            <a href="upload.html?section=training" class="btn btn-secondary" style="flex:1;text-align:center;text-decoration:none;">My Training Pack</a>
         </div>
 
         <!-- TRAINING DESIGN -->
@@ -1325,6 +1327,34 @@
                         </thead>
                         <tbody id="sealedPacksTableBody">
                             <tr><td colspan="3" style="text-align:center;color:#999;">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- CERTIFICATIONS (PI route entries awaiting PI certification) -->
+        <div id="trainingCertsView" style="display:none;">
+            <div class="panel">
+                <div class="panel-header">
+                    <h2><span class="icon">&#128203;</span> Pending PI Certifications</h2>
+                    <button class="btn btn-sm btn-secondary" onclick="loadPiPendingCerts()">Refresh</button>
+                </div>
+                <div class="panel-content">
+                    <p style="font-size:12px;color:#666;margin-bottom:10px;">Training entries routed to PI for certification (other supervisor / delegated delivery).</p>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Trainee</th>
+                                <th>Training Type</th>
+                                <th>Date</th>
+                                <th>Other Supervisor</th>
+                                <th>Notes</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="piCertsTableBody">
+                            <tr><td colspan="6" style="text-align:center;color:#999;">Loading...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -3409,9 +3439,12 @@
         function showTrainingToggle(view) {
             document.getElementById('trainingDesignView').style.display = view === 'design' ? 'block' : 'none';
             document.getElementById('trainingMgmtView').style.display = view === 'management' ? 'block' : 'none';
+            document.getElementById('trainingCertsView').style.display = view === 'certifications' ? 'block' : 'none';
             document.getElementById('toggleTrainingDesign').className = 'btn ' + (view === 'design' ? 'btn-primary' : 'btn-secondary');
             document.getElementById('toggleTrainingMgmt').className = 'btn ' + (view === 'management' ? 'btn-primary' : 'btn-secondary');
+            document.getElementById('toggleTrainingCerts').className = 'btn ' + (view === 'certifications' ? 'btn-primary' : 'btn-secondary');
             if (view === 'management') { loadPendingTrainingPacks(); loadSealedTrainingPacks(); }
+            if (view === 'certifications') { loadPiPendingCerts(); }
         }
 
         // -- Training Document Upload --
@@ -3569,7 +3602,8 @@
                     html += '<table class="data-table" style="font-size:12px;"><thead><tr><th>Type</th><th>Date</th><th>Supervisor</th><th>Status</th></tr></thead><tbody>';
                     data.entries.forEach(e => {
                         const badgeClass = e.status === 'CERTIFIED' ? 'status-approved' : e.status === 'REJECTED' ? 'status-revision' : 'status-pending';
-                        html += `<tr><td>${escapeHtml(e.training_type)}</td><td>${new Date(e.training_date).toLocaleDateString()}</td><td>${escapeHtml(e.supervisor_name || '')}</td><td><span class="status-badge ${badgeClass}">${e.status}</span></td></tr>`;
+                        const supText = e.certification_route === 'PI' ? `${escapeHtml(e.supervisor_name || '')} <span style="font-size:10px;color:#856404;">(PI oversight)</span>` : escapeHtml(e.supervisor_name || '');
+                        html += `<tr><td>${escapeHtml(e.training_type)}</td><td>${new Date(e.training_date).toLocaleDateString()}</td><td>${supText}</td><td><span class="status-badge ${badgeClass}">${e.status}</span></td></tr>`;
                     });
                     html += '</tbody></table>';
                 }
@@ -3625,6 +3659,41 @@
                     </td>
                 </tr>`).join('');
             } catch (err) { console.error('[TRAINING] load sealed packs error:', err); }
+        }
+
+        // -- PI Certifications (PI-route entries) --
+        async function loadPiPendingCerts() {
+            try {
+                const resp = await fetch('/api/di/training/pi-pending-certifications', { credentials: 'include' });
+                if (resp.status === 501) return;
+                const data = await resp.json();
+                if (!data.success) return;
+                const tbody = document.getElementById('piCertsTableBody');
+                if (!data.entries || data.entries.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;">No pending PI certifications</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = data.entries.map(e => `<tr>
+                    <td>${escapeHtml(e.trainee_name)}</td>
+                    <td>${escapeHtml(e.training_type)}</td>
+                    <td>${new Date(e.training_date).toLocaleDateString()}</td>
+                    <td>${escapeHtml(e.other_supervisor_name || '')} ${e.other_supervisor_email ? '(' + escapeHtml(e.other_supervisor_email) + ')' : ''}</td>
+                    <td style="font-size:11px;color:#666;">${escapeHtml(e.notes || '-')}</td>
+                    <td>
+                        <button class="btn btn-sm btn-success" onclick="piCertifyEntry('${e.id}')">Certify</button>
+                    </td>
+                </tr>`).join('');
+            } catch (err) { console.error('[TRAINING] load PI pending certs:', err); }
+        }
+
+        async function piCertifyEntry(entryId) {
+            if (!confirm('Certify this training entry under PI oversight?')) return;
+            try {
+                const resp = await fetch(`/api/di/training/entries/${entryId}/pi-certify`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' } });
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data.error || 'Failed');
+                loadPiPendingCerts();
+            } catch (err) { alert('Error: ' + err.message); }
         }
     </script>
 </body>
