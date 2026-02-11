@@ -684,77 +684,68 @@
             color: #3a5068;
         }
 
-        /* Harmony Map placeholder */
+        /* ── Futuristic Harmony Map ── */
         .glpHarmonyMap {
             margin-top: 20px;
-            border-radius: 12px;
-            padding: 48px 32px;
+            border-radius: 14px;
+            padding: 36px 24px 28px;
             text-align: center;
             background:
-                radial-gradient(ellipse at 30% 50%, rgba(43,90,138,0.04) 0%, transparent 60%),
-                radial-gradient(ellipse at 70% 50%, rgba(91,67,153,0.03) 0%, transparent 60%),
-                linear-gradient(180deg, #f5f7fa 0%, #eef1f5 100%);
-            border: 1px solid #e0e4ea;
+                radial-gradient(ellipse at 28% 38%, rgba(33,182,199,0.06) 0%, transparent 55%),
+                radial-gradient(ellipse at 72% 62%, rgba(124,77,255,0.05) 0%, transparent 55%),
+                radial-gradient(ellipse at 50% 82%, rgba(255,176,32,0.04) 0%, transparent 50%),
+                linear-gradient(180deg, #f4f6fa 0%, #eaedf2 100%);
+            border: 1px solid #dce0e8;
         }
         .glpHarmonyMap__title {
             font-size: 13px;
             font-weight: 700;
             letter-spacing: 0.6px;
             color: #3a5068;
-            margin-bottom: 6px;
+            margin-bottom: 4px;
         }
         .glpHarmonyMap__sub {
             font-size: 12px;
             color: #8c95a1;
-            margin-bottom: 12px;
+            margin-bottom: 16px;
         }
-
-        /* Harmony SVG */
         .glpHarmonySvg {
             width: 100%;
-            max-width: 520px;
-            height: 260px;
+            max-width: 560px;
             display: block;
             margin: 0 auto;
-            filter: drop-shadow(0 10px 18px rgba(0,0,0,0.10));
         }
-        .glpHarmonyEdge {
-            stroke: #8ca8c4;
+        .hmEdgeGlow {
             fill: none;
             stroke-linecap: round;
-            transition: stroke-width 0.3s, opacity 0.3s;
+            transition: opacity 0.5s ease;
         }
-        .glpHarmonyNode {
-            stroke: #8ca8c4;
-            stroke-width: 1.5;
-            transition: fill-opacity 0.3s, stroke-width 0.3s;
+        .hmEdge {
+            fill: none;
+            stroke-linecap: round;
+            transition: stroke-width 0.5s ease;
         }
-        .glpHarmonyLabel {
+        .hmSphereGlow { transition: opacity 0.5s ease; }
+        .hmLabel {
             font-size: 11px;
             font-weight: 700;
-            letter-spacing: 1.2px;
+            letter-spacing: 2.2px;
             text-transform: uppercase;
-            fill: #3a5068;
+            fill: #3e5164;
             text-anchor: middle;
-            dominant-baseline: central;
         }
-        /* Individual scope */
-        .glpHarmonyMap.isIndividual .glpHarmonyEdge {
-            stroke-width: 3;
-            opacity: 0.55;
-        }
-        .glpHarmonyMap.isIndividual .glpHarmonyNode {
-            fill: #c8d6e3;
-            fill-opacity: 0.6;
-        }
-        /* Group scope */
-        .glpHarmonyMap.isGroup .glpHarmonyEdge {
-            stroke-width: 5;
-            opacity: 0.8;
-        }
-        .glpHarmonyMap.isGroup .glpHarmonyNode {
-            fill: #8ca8c4;
-            fill-opacity: 0.8;
+        /* Individual scope — softer */
+        .glpHarmonyMap.isIndividual .hmEdge      { stroke-width: 3.5; }
+        .glpHarmonyMap.isIndividual .hmEdgeGlow   { opacity: 0.18; }
+        .glpHarmonyMap.isIndividual .hmSphereGlow { opacity: 0.28; }
+        .glpHarmonyMap.isIndividual .hmSphere     { filter: saturate(0.88); }
+        /* Group scope — intense */
+        .glpHarmonyMap.isGroup .hmEdge      { stroke-width: 5.5; }
+        .glpHarmonyMap.isGroup .hmEdgeGlow   { opacity: 0.42; }
+        .glpHarmonyMap.isGroup .hmSphereGlow { opacity: 0.58; }
+        .glpHarmonyMap.isGroup .hmSphere     { filter: saturate(1.1); }
+        @media (max-width: 600px) {
+            .glpHarmonyMap { padding: 24px 12px 20px; }
         }
 
         /* ── C. GLP Conformity card ── */
@@ -1646,19 +1637,85 @@
                 <div class="glpHarmonyMap isIndividual">
                     <div class="glpHarmonyMap__title">Harmony Map</div>
                     <div class="glpHarmonyMap__sub">SOPs, Experiments, and Inventory alignment</div>
-                    <svg class="glpHarmonySvg" viewBox="0 0 520 260" xmlns="http://www.w3.org/2000/svg">
-                        <!-- edges -->
-                        <line class="glpHarmonyEdge" x1="260" y1="52" x2="105" y2="218"/>
-                        <line class="glpHarmonyEdge" x1="260" y1="52" x2="415" y2="218"/>
-                        <line class="glpHarmonyEdge" x1="105" y1="218" x2="415" y2="218"/>
-                        <!-- nodes -->
-                        <circle class="glpHarmonyNode" cx="260" cy="52" r="28"/>
-                        <circle class="glpHarmonyNode" cx="105" cy="218" r="28"/>
-                        <circle class="glpHarmonyNode" cx="415" cy="218" r="28"/>
-                        <!-- labels -->
-                        <text class="glpHarmonyLabel" x="260" y="56">SOPs</text>
-                        <text class="glpHarmonyLabel" x="105" y="222">Experiments</text>
-                        <text class="glpHarmonyLabel" x="415" y="222">Inventory</text>
+                    <svg class="glpHarmonySvg" viewBox="0 0 560 300" xmlns="http://www.w3.org/2000/svg">
+                      <defs>
+                        <!-- Glow filters -->
+                        <filter id="hmGlowF" x="-80%" y="-80%" width="260%" height="260%">
+                          <feGaussianBlur in="SourceGraphic" stdDeviation="12"/>
+                        </filter>
+                        <filter id="hmEdgeGlowF" x="-25%" y="-25%" width="150%" height="150%">
+                          <feGaussianBlur in="SourceGraphic" stdDeviation="6"/>
+                        </filter>
+
+                        <!-- 3D sphere gradients (light from upper-left) -->
+                        <radialGradient id="hmGradSop" cx="0.38" cy="0.30" r="0.55" fx="0.32" fy="0.26">
+                          <stop offset="0%"   stop-color="#8DF0FC"/>
+                          <stop offset="38%"  stop-color="#21B6C7"/>
+                          <stop offset="88%"  stop-color="#0C6B7A"/>
+                          <stop offset="100%" stop-color="#074550"/>
+                        </radialGradient>
+                        <radialGradient id="hmGradExp" cx="0.38" cy="0.30" r="0.55" fx="0.32" fy="0.26">
+                          <stop offset="0%"   stop-color="#BEA3FF"/>
+                          <stop offset="38%"  stop-color="#7C4DFF"/>
+                          <stop offset="88%"  stop-color="#4A1DB8"/>
+                          <stop offset="100%" stop-color="#2C0E76"/>
+                        </radialGradient>
+                        <radialGradient id="hmGradInv" cx="0.38" cy="0.30" r="0.55" fx="0.32" fy="0.26">
+                          <stop offset="0%"   stop-color="#FFD88A"/>
+                          <stop offset="38%"  stop-color="#FFB020"/>
+                          <stop offset="88%"  stop-color="#CC7E00"/>
+                          <stop offset="100%" stop-color="#885200"/>
+                        </radialGradient>
+
+                        <!-- Connector gradients (blend two sphere colors) -->
+                        <linearGradient id="hmEdgeSE" x1="280" y1="68" x2="115" y2="232" gradientUnits="userSpaceOnUse">
+                          <stop offset="0%" stop-color="#21B6C7"/><stop offset="100%" stop-color="#7C4DFF"/>
+                        </linearGradient>
+                        <linearGradient id="hmEdgeSI" x1="280" y1="68" x2="445" y2="232" gradientUnits="userSpaceOnUse">
+                          <stop offset="0%" stop-color="#21B6C7"/><stop offset="100%" stop-color="#FFB020"/>
+                        </linearGradient>
+                        <linearGradient id="hmEdgeEI" x1="115" y1="232" x2="445" y2="232" gradientUnits="userSpaceOnUse">
+                          <stop offset="0%" stop-color="#7C4DFF"/><stop offset="100%" stop-color="#FFB020"/>
+                        </linearGradient>
+
+                        <!-- Sci-fi grid pattern -->
+                        <pattern id="hmGridP" width="28" height="28" patternUnits="userSpaceOnUse">
+                          <path d="M 28 0 L 0 0 0 28" fill="none" stroke="rgba(80,115,160,0.07)" stroke-width="0.5"/>
+                        </pattern>
+                      </defs>
+
+                      <!-- Faint background grid -->
+                      <rect x="0" y="0" width="560" height="300" fill="url(#hmGridP)" rx="6"/>
+
+                      <!-- Edge glows (behind) -->
+                      <line class="hmEdgeGlow" x1="280" y1="68" x2="115" y2="232" stroke="url(#hmEdgeSE)" stroke-width="10" filter="url(#hmEdgeGlowF)"/>
+                      <line class="hmEdgeGlow" x1="280" y1="68" x2="445" y2="232" stroke="url(#hmEdgeSI)" stroke-width="10" filter="url(#hmEdgeGlowF)"/>
+                      <line class="hmEdgeGlow" x1="115" y1="232" x2="445" y2="232" stroke="url(#hmEdgeEI)" stroke-width="10" filter="url(#hmEdgeGlowF)"/>
+
+                      <!-- Main connector edges -->
+                      <line class="hmEdge" x1="280" y1="68" x2="115" y2="232" stroke="url(#hmEdgeSE)"/>
+                      <line class="hmEdge" x1="280" y1="68" x2="445" y2="232" stroke="url(#hmEdgeSI)"/>
+                      <line class="hmEdge" x1="115" y1="232" x2="445" y2="232" stroke="url(#hmEdgeEI)"/>
+
+                      <!-- Sphere glows -->
+                      <circle class="hmSphereGlow" cx="280" cy="68"  r="54" fill="#21B6C7" filter="url(#hmGlowF)"/>
+                      <circle class="hmSphereGlow" cx="115" cy="232" r="54" fill="#7C4DFF" filter="url(#hmGlowF)"/>
+                      <circle class="hmSphereGlow" cx="445" cy="232" r="54" fill="#FFB020" filter="url(#hmGlowF)"/>
+
+                      <!-- Main 3D spheres -->
+                      <circle class="hmSphere" cx="280" cy="68"  r="38" fill="url(#hmGradSop)"/>
+                      <circle class="hmSphere" cx="115" cy="232" r="38" fill="url(#hmGradExp)"/>
+                      <circle class="hmSphere" cx="445" cy="232" r="38" fill="url(#hmGradInv)"/>
+
+                      <!-- Specular highlights -->
+                      <ellipse cx="269" cy="56" rx="14" ry="8" fill="white" opacity="0.20" transform="rotate(-22,269,56)"/>
+                      <ellipse cx="104" cy="220" rx="14" ry="8" fill="white" opacity="0.20" transform="rotate(-22,104,220)"/>
+                      <ellipse cx="434" cy="220" rx="14" ry="8" fill="white" opacity="0.20" transform="rotate(-22,434,220)"/>
+
+                      <!-- Labels -->
+                      <text class="hmLabel" x="280" y="18">SOPs</text>
+                      <text class="hmLabel" x="115" y="286">Experiments</text>
+                      <text class="hmLabel" x="445" y="286">Inventory</text>
                     </svg>
                 </div>
             </div>
