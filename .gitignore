@@ -13,3 +13,5 @@ nul
 
 # Track all public/ portal assets (never ignore)
 .claude/
+SEALED
+local_notes/
