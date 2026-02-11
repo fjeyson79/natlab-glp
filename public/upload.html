@@ -723,26 +723,29 @@
         .hmEdge {
             fill: none;
             stroke-linecap: round;
-            transition: stroke-width 0.5s ease;
+            transition: stroke-width 0.5s ease, opacity 0.5s ease;
         }
         .hmSphereGlow { transition: opacity 0.5s ease; }
         .hmLabel {
             font-size: 11px;
-            font-weight: 700;
-            letter-spacing: 2.2px;
+            font-weight: 800;
+            letter-spacing: 0.10em;
             text-transform: uppercase;
-            fill: #3e5164;
+            fill: rgba(31,42,55,0.92);
             text-anchor: middle;
+            paint-order: stroke;
+            stroke: rgba(255,255,255,0.40);
+            stroke-width: 2px;
         }
         /* Individual scope — softer */
-        .glpHarmonyMap.isIndividual .hmEdge      { stroke-width: 3.5; }
-        .glpHarmonyMap.isIndividual .hmEdgeGlow   { opacity: 0.18; }
-        .glpHarmonyMap.isIndividual .hmSphereGlow { opacity: 0.28; }
+        .glpHarmonyMap.isIndividual .hmEdge      { stroke-width: 3.5; opacity: 0.70; }
+        .glpHarmonyMap.isIndividual .hmEdgeGlow   { opacity: 0.14; }
+        .glpHarmonyMap.isIndividual .hmSphereGlow { opacity: 0.22; }
         .glpHarmonyMap.isIndividual .hmSphere     { filter: saturate(0.88); }
         /* Group scope — intense */
-        .glpHarmonyMap.isGroup .hmEdge      { stroke-width: 5.5; }
-        .glpHarmonyMap.isGroup .hmEdgeGlow   { opacity: 0.42; }
-        .glpHarmonyMap.isGroup .hmSphereGlow { opacity: 0.58; }
+        .glpHarmonyMap.isGroup .hmEdge      { stroke-width: 5.5; opacity: 0.82; }
+        .glpHarmonyMap.isGroup .hmEdgeGlow   { opacity: 0.32; }
+        .glpHarmonyMap.isGroup .hmSphereGlow { opacity: 0.38; }
         .glpHarmonyMap.isGroup .hmSphere     { filter: saturate(1.1); }
         @media (max-width: 600px) {
             .glpHarmonyMap { padding: 24px 12px 20px; }
@@ -1641,10 +1644,10 @@
                       <defs>
                         <!-- Glow filters -->
                         <filter id="hmGlowF" x="-80%" y="-80%" width="260%" height="260%">
-                          <feGaussianBlur in="SourceGraphic" stdDeviation="12"/>
+                          <feGaussianBlur in="SourceGraphic" stdDeviation="9"/>
                         </filter>
                         <filter id="hmEdgeGlowF" x="-25%" y="-25%" width="150%" height="150%">
-                          <feGaussianBlur in="SourceGraphic" stdDeviation="6"/>
+                          <feGaussianBlur in="SourceGraphic" stdDeviation="4"/>
                         </filter>
 
                         <!-- 3D sphere gradients (light from upper-left) -->
