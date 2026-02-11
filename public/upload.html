@@ -512,86 +512,90 @@
             margin-bottom: 10px;
         }
 
-        /* ── A. Header card ── */
-        .glpHeaderInner {
+        /* ===== GLP Header Instrument Panel ===== */
+        #glpHeaderCard {
+            background: linear-gradient(180deg, #f2f4f8 0%, #eceef3 100%);
+            border-color: #d4d9e2;
+            box-shadow: 0 2px 10px rgba(30,41,59,0.06);
+        }
+        .glpHdr__topRow {
             display: flex;
             justify-content: space-between;
-            align-items: flex-start;
-            gap: 32px;
-            flex-wrap: wrap;
+            align-items: center;
+            margin-bottom: 2px;
         }
-        .glpHeaderLeft { flex: 1; min-width: 220px; }
-        .glpHeaderRight {
+        .glpHdr__title {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 1.6px;
+            text-transform: uppercase;
+            color: #8c95a1;
+        }
+        .glpUpdateBtn {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 10px;
+            font-size: 11px;
+            font-weight: 600;
+            color: #6b7685;
+            background: transparent;
+            border: 1px solid transparent;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: color 0.2s, border-color 0.2s;
+        }
+        .glpUpdateBtn:hover {
+            color: #2b5a8a;
+            border-color: #cbd2dc;
+        }
+        .glpUpdateBtn__glyph {
+            font-size: 14px;
+            line-height: 1;
+        }
+        .glpHdr__mainRow {
             display: flex;
-            flex-direction: column;
-            align-items: flex-end;
-            gap: 14px;
-            min-width: 220px;
+            justify-content: space-between;
+            align-items: center;
+            gap: 20px;
+            flex-wrap: wrap;
+            margin-bottom: 14px;
         }
-        @media (max-width: 700px) {
-            .glpHeaderRight { align-items: flex-start; }
+        .glpHdr__mainLeft {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            min-width: 0;
         }
-
         .glpName {
-            font-size: 22px;
+            font-size: 20px;
             font-weight: 700;
             color: #1e293b;
-            margin-bottom: 10px;
             line-height: 1.25;
+            white-space: nowrap;
         }
-
         .glpBadgeRow {
             display: flex;
-            gap: 8px;
+            gap: 6px;
             flex-wrap: wrap;
-            margin-bottom: 8px;
         }
         .glpBadge {
             display: inline-block;
-            padding: 3px 11px;
-            border-radius: 10px;
-            font-size: 11px;
+            padding: 2px 9px;
+            border-radius: 8px;
+            font-size: 10px;
             font-weight: 600;
             letter-spacing: 0.3px;
         }
-        .glpBadge--role {
-            background: #e0ecf7;
-            color: #2b5a8a;
-        }
-        .glpBadge--aff {
-            background: #eae5f4;
-            color: #5b4399;
-        }
-
-        .glpActiveSince {
-            font-size: 12px;
-            color: #8c95a1;
-        }
-
-        /* State pill */
-        .glpStatePill {
-            display: inline-flex;
+        .glpBadge--role { background: #e0ecf7; color: #2b5a8a; }
+        .glpBadge--aff  { background: #eae5f4; color: #5b4399; }
+        .glpActiveSince { display: none; }
+        .glpHdr__mainRight {
+            display: flex;
             align-items: center;
-            gap: 7px;
-            padding: 6px 16px;
-            border-radius: 20px;
-            background: #f0f4f8;
-            border: 1px solid #dce3eb;
+            gap: 0;
         }
-        .glpStateDot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: #8ca8c4;
-        }
-        .glpStateText {
-            font-size: 13px;
-            font-weight: 600;
-            color: #3a5068;
-            letter-spacing: 0.3px;
-        }
-
-        /* Scope switch */
         .glpScopeSwitch {
             display: inline-flex;
             border: 1px solid #dce3eb;
@@ -599,8 +603,8 @@
             overflow: hidden;
         }
         .glpScopeBtn {
-            padding: 7px 18px;
-            font-size: 12px;
+            padding: 6px 16px;
+            font-size: 11px;
             font-weight: 600;
             border: none;
             background: #f6f7f9;
@@ -608,24 +612,70 @@
             cursor: pointer;
             transition: background 0.2s, color 0.2s;
         }
-        .glpScopeBtn + .glpScopeBtn {
-            border-left: 1px solid #dce3eb;
+        .glpScopeBtn + .glpScopeBtn { border-left: 1px solid #dce3eb; }
+        .glpScopeBtn.active { background: #2b5a8a; color: #fff; }
+        .glpScopeHint { display: none; }
+        .glpScopeLabel { display: none; }
+
+        .glpHdr__divider {
+            height: 1px;
+            background: rgba(30,41,59,0.08);
+            margin-bottom: 14px;
         }
-        .glpScopeBtn.active {
-            background: #2b5a8a;
-            color: #fff;
+        .glpHdr__statusRow {
+            display: flex;
+            align-items: center;
+            gap: 14px;
         }
-        .glpScopeHint {
+        #glpMaturityIcon {
+            flex-shrink: 0;
+            width: 34px;
+            height: 34px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #3a5068;
+        }
+        #glpMaturityIcon svg {
+            width: 30px;
+            height: 30px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 1.6;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+        .glpHdr__statusText { flex: 1; min-width: 0; }
+        .glpHdr__maturityLine {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: #3a5068;
+            line-height: 1.3;
+        }
+        .glpHdr__qualifierLine {
+            font-size: 16px;
+            font-weight: 800;
+            color: #1e293b;
+            line-height: 1.3;
+            margin-top: 1px;
+        }
+        .glpHdr__timestamp {
+            flex-shrink: 0;
             font-size: 11px;
             color: #9ba5b1;
-            margin-top: 6px;
-            text-align: right;
+            white-space: nowrap;
+            align-self: flex-end;
         }
-        .glpScopeLabel {
-            font-size: 11px;
-            color: #9ba5b1;
-            margin-top: 4px;
-            text-align: right;
+        /* State pill — hidden in new layout, kept for JS compat */
+        .glpStatePill { display: none; }
+        .glpStateDot  { display: none; }
+        .glpStateText { display: none; }
+        @media (max-width: 700px) {
+            .glpHdr__mainRow { flex-direction: column; align-items: flex-start; gap: 10px; }
+            .glpHdr__statusRow { flex-wrap: wrap; }
+            .glpHdr__timestamp { align-self: flex-start; margin-top: 6px; }
         }
 
         /* ── B. Evidence Harmony card ── */
@@ -1564,31 +1614,58 @@
     <div id="sectionGLPStatus" class="section-content" style="display:none;">
         <div class="glpWrap">
 
-            <!-- A. Header card -->
+            <!-- A. Header card (Instrument Panel) -->
             <div class="glpCard" id="glpHeaderCard">
-                <div class="glpMicroTitle">GLP Status</div>
-                <div class="glpHeaderInner">
-                    <div class="glpHeaderLeft">
+                <!-- Row 1: title + update -->
+                <div class="glpHdr__topRow">
+                    <span class="glpHdr__title">GLP Status</span>
+                    <button class="glpUpdateBtn" onclick="glpMarkUpdated()">
+                        <span class="glpUpdateBtn__glyph">&#x27F3;</span> Update
+                    </button>
+                </div>
+                <!-- Row 2: name + badges + scope toggle -->
+                <div class="glpHdr__mainRow">
+                    <div class="glpHdr__mainLeft">
                         <div class="glpName" id="glpName">Jane Researcher</div>
                         <div class="glpBadgeRow">
                             <span class="glpBadge glpBadge--role" id="glpRoleBadge">Researcher</span>
                             <span class="glpBadge glpBadge--aff" id="glpAffiliationBadge">LiU</span>
                         </div>
-                        <div class="glpActiveSince" id="glpActiveSince">Active since 2024</div>
                     </div>
-                    <div class="glpHeaderRight">
-                        <div class="glpStatePill" id="glpStatePill">
-                            <span class="glpStateDot" id="glpStateDot"></span>
-                            <span class="glpStateText" id="glpStateText">Developing</span>
-                        </div>
+                    <div class="glpHdr__mainRight">
                         <div class="glpScopeSwitch">
                             <button class="glpScopeBtn active" id="glpScopeIndividual" onclick="setGlpScope('individual')">Individual</button>
                             <button class="glpScopeBtn" id="glpScopeGroup" onclick="setGlpScope('group')">Group</button>
                         </div>
-                        <div class="glpScopeHint" id="glpScopeHint">Viewing your individual GLP posture</div>
-                        <div class="glpScopeLabel" id="glpScope">Individual</div>
                     </div>
                 </div>
+                <!-- Divider -->
+                <div class="glpHdr__divider"></div>
+                <!-- Status block: icon + maturity/qualifier + timestamp -->
+                <div class="glpHdr__statusRow">
+                    <div id="glpMaturityIcon">
+                        <!-- Owl (GLP in development) — default icon -->
+                        <svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="16" cy="13" r="9"/>
+                            <circle cx="13" cy="11.5" r="2.5"/><circle cx="19" cy="11.5" r="2.5"/>
+                            <circle cx="13" cy="11.5" r="1" fill="currentColor" stroke="none"/>
+                            <circle cx="19" cy="11.5" r="1" fill="currentColor" stroke="none"/>
+                            <path d="M14.5 15.5 L16 17 L17.5 15.5"/>
+                            <path d="M7.5 8 L10 11" /><path d="M24.5 8 L22 11"/>
+                            <path d="M12 22 L12 28 M16 22 L16 29 M20 22 L20 28"/>
+                        </svg>
+                    </div>
+                    <div class="glpHdr__statusText">
+                        <div class="glpHdr__maturityLine" id="glpStateText">GLP in development</div>
+                        <div class="glpHdr__qualifierLine" id="glpQualifier">Partial implementation</div>
+                    </div>
+                    <div class="glpHdr__timestamp" id="glpLastUpdated">Last updated: &mdash;</div>
+                </div>
+                <!-- Hidden elements kept for JS compat -->
+                <div class="glpStatePill" id="glpStatePill"><span class="glpStateDot" id="glpStateDot"></span></div>
+                <div class="glpScopeHint" id="glpScopeHint">Viewing your individual GLP posture</div>
+                <div class="glpScopeLabel" id="glpScope">Individual</div>
+                <div class="glpActiveSince" id="glpActiveSince">Active since 2024</div>
             </div>
 
             <!-- B. Evidence Harmony card -->
@@ -2220,6 +2297,37 @@ credentials: 'include'
         // =====================================================
         // GLP STATUS – scope toggle (cosmetic only)
         // =====================================================
+
+        // Maturity icon SVGs (line-art, monochrome)
+        var glpMaturityIcons = {
+            hatchling: '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><ellipse cx="16" cy="22" rx="8" ry="6"/><path d="M10 18 Q10 10 16 8 Q22 10 22 18"/><circle cx="14" cy="15" r="1.2" fill="currentColor" stroke="none"/><circle cx="18" cy="15" r="1.2" fill="currentColor" stroke="none"/><path d="M15 17.5 L16 18.5 L17 17.5"/><path d="M8 22 Q8 28 16 28 Q24 28 24 22"/></svg>',
+            fledgling: '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><circle cx="16" cy="12" r="6"/><circle cx="14" cy="11" r="1.2" fill="currentColor" stroke="none"/><circle cx="18" cy="11" r="1.2" fill="currentColor" stroke="none"/><path d="M14.8 14 L16 15 L17.2 14"/><path d="M12 17 Q12 24 16 26 Q20 24 20 17"/><path d="M12 20 L8 18 M20 20 L24 18"/><path d="M13 26 L13 29 M16 26 L16 30 M19 26 L19 29"/></svg>',
+            owl: '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><circle cx="16" cy="13" r="9"/><circle cx="13" cy="11.5" r="2.5"/><circle cx="19" cy="11.5" r="2.5"/><circle cx="13" cy="11.5" r="1" fill="currentColor" stroke="none"/><circle cx="19" cy="11.5" r="1" fill="currentColor" stroke="none"/><path d="M14.5 15.5 L16 17 L17.5 15.5"/><path d="M7.5 8 L10 11"/><path d="M24.5 8 L22 11"/><path d="M12 22 L12 28 M16 22 L16 29 M20 22 L20 28"/></svg>',
+            eagle: '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><path d="M16 6 Q12 8 12 13 Q12 17 16 19 Q20 17 20 13 Q20 8 16 6Z"/><circle cx="14.5" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="17.5" cy="12" r="1" fill="currentColor" stroke="none"/><path d="M15 14.5 L16 15.5 L17 14.5"/><path d="M12 14 Q6 10 3 12"/><path d="M20 14 Q26 10 29 12"/><path d="M14 19 L12 26 L14 25 L16 28 L18 25 L20 26 L18 19"/></svg>',
+            dragon: '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><path d="M16 7 Q13 9 13 13 Q13 17 16 19 Q19 17 19 13 Q19 9 16 7Z"/><circle cx="15" cy="12.5" r="1" fill="currentColor" stroke="none"/><circle cx="17" cy="12.5" r="1" fill="currentColor" stroke="none"/><path d="M15.2 15 L16 16 L16.8 15"/><path d="M13 12 Q7 7 5 9 Q6 11 9 12"/><path d="M19 12 Q25 7 27 9 Q26 11 23 12"/><path d="M13 14 Q8 12 6 14 L10 16"/><path d="M19 14 Q24 12 26 14 L22 16"/><path d="M14 19 L13 25 M16 19 L16 27 M18 19 L19 25"/><path d="M14 20 Q16 22 18 20"/></svg>'
+        };
+
+        function glpSetMaturityIcon(level) {
+            var el = document.getElementById('glpMaturityIcon');
+            if (el && glpMaturityIcons[level]) el.innerHTML = glpMaturityIcons[level];
+        }
+
+        function glpMarkUpdated() {
+            var el = document.getElementById('glpLastUpdated');
+            if (el) el.textContent = 'Updated just now';
+        }
+
+        /* Set GLP maturity/qualifier state on the header + dial.
+           Called from setGlpScope() with placeholder data now;
+           Step 4 will call it with data-driven values. */
+        function glpSetMockState(maturity, qualifier, iconKey) {
+            var stateText = document.getElementById('glpStateText');
+            var qualEl    = document.getElementById('glpQualifier');
+            if (stateText) stateText.textContent = maturity;
+            if (qualEl)    qualEl.textContent     = qualifier;
+            glpSetMaturityIcon(iconKey);
+        }
+
         function setGlpScope(scope) {
             var indBtn = document.getElementById('glpScopeIndividual');
             var grpBtn = document.getElementById('glpScopeGroup');
@@ -2242,7 +2350,6 @@ credentials: 'include'
 
             var scopeLabel = document.getElementById('glpScope');
             var hint = document.getElementById('glpScopeHint');
-            var stateText = document.getElementById('glpStateText');
             var dialState = document.getElementById('glpDialState');
             var dialSub = document.getElementById('glpDialSub');
             var interp = document.getElementById('glpInterpretationText');
@@ -2250,17 +2357,17 @@ credentials: 'include'
             if (scope === 'group') {
                 if (scopeLabel) scopeLabel.textContent = 'Group';
                 if (hint) hint.textContent = 'Viewing your research group\u2019s collective GLP posture';
-                if (stateText) stateText.textContent = 'Aligned';
-                if (dialState) dialState.textContent = 'Aligned';
+                if (dialState) dialState.textContent = 'Consolidated';
                 if (dialSub) dialSub.textContent = 'Group practices converge';
                 if (interp) interp.textContent = 'The research group demonstrates aligned documentation practices. SOPs are shared and consistently referenced across experiments.';
+                glpSetMockState('GLP consolidated', 'Consistent implementation', 'eagle');
             } else {
                 if (scopeLabel) scopeLabel.textContent = 'Individual';
                 if (hint) hint.textContent = 'Viewing your individual GLP posture';
-                if (stateText) stateText.textContent = 'Developing';
                 if (dialState) dialState.textContent = 'Developing';
                 if (dialSub) dialSub.textContent = 'Foundations are forming';
                 if (interp) interp.textContent = 'Your documentation practices are developing. SOPs and experiments are being established, with initial inventory tracking in place.';
+                glpSetMockState('GLP in development', 'Partial implementation', 'owl');
             }
         }
 
