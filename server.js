@@ -586,13 +586,13 @@ function getAllowlistQuery(hasRole) {
 // Check if email is in allowlist and whether user exists
 app.post('/api/di/access-check', async (req, res) => {
     try {
-        const { institution_email } = req.body;
+        const body = req.body || {};
+        const institution_email = body.institution_email;
 
         if (!institution_email) {
             return res.status(400).json({ error: 'Email is required' });
         }
-
-        const emailLower = institution_email.toLowerCase().trim();
+        const emailLower = String(institution_email).toLowerCase().trim();
 
         // Check allowlist (handle missing role column)
         const hasRole = await checkRoleColumn();
