@@ -634,10 +634,16 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            color: #3a5068;
         }
         #glpMaturityIcon svg {
             width: 48px;
             height: 48px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 1.6;
+            stroke-linecap: round;
+            stroke-linejoin: round;
         }
         .glpHdr__statusText { flex: 1; min-width: 0; }
         .glpHdr__maturityLine {
@@ -726,6 +732,65 @@
         .glpMiniCard__rowVal {
             font-weight: 600;
             color: #3a5068;
+        }
+        .glpMiniCard__title {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+        }
+        .glpHintIcon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            border: 1px solid #c8ced6;
+            font-size: 9px;
+            font-weight: 600;
+            font-style: italic;
+            color: #9ba5b1;
+            cursor: help;
+            position: relative;
+            letter-spacing: 0;
+            text-transform: none;
+        }
+        .glpHintIcon:hover { color: #5f6b7a; border-color: #9ba5b1; }
+        .glpHintIcon:hover::after {
+            content: attr(data-tip);
+            position: absolute;
+            bottom: calc(100% + 6px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: #1e293b;
+            color: #fff;
+            font-size: 11px;
+            font-weight: 500;
+            font-style: normal;
+            padding: 5px 10px;
+            border-radius: 6px;
+            white-space: nowrap;
+            z-index: 10;
+            letter-spacing: 0;
+            text-transform: none;
+            pointer-events: none;
+        }
+        .glpHintIcon:hover::before {
+            content: '';
+            position: absolute;
+            bottom: calc(100% + 2px);
+            left: 50%;
+            transform: translateX(-50%);
+            border: 4px solid transparent;
+            border-top-color: #1e293b;
+            z-index: 10;
+            pointer-events: none;
+        }
+        .glpMiniCard__coverage {
+            font-size: 11px;
+            color: #8c95a1;
+            margin-bottom: 4px;
         }
 
         /* ── Futuristic Harmony Map ── */
@@ -1639,7 +1704,15 @@
                 <div class="glpHdr__statusRow">
                     <div id="glpMaturityIcon">
                         <!-- Owl (GLP in development) — default icon -->
-                        <svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><defs><radialGradient id="owG" cx=".5" cy=".4"><stop offset="0%" stop-color="#e3f2fd"/><stop offset="100%" stop-color="#1565c0"/></radialGradient><radialGradient id="owD" cx=".5" cy=".5"><stop offset="0%" stop-color="#bbdefb"/><stop offset="100%" stop-color="#1565c0" stop-opacity=".3"/></radialGradient></defs><path d="M10 14L7 4L16 12Z" fill="#1565c0"/><path d="M38 14L41 4L32 12Z" fill="#1565c0"/><ellipse cx="24" cy="24" rx="17" ry="18" fill="url(#owG)"/><ellipse cx="24" cy="22" rx="14" ry="13" fill="url(#owD)"/><circle cx="17" cy="20" r="5.5" fill="#fff"/><circle cx="17" cy="20" r="3.5" fill="#ff8f00"/><circle cx="17" cy="20" r="2" fill="#1a1a1a"/><circle cx="18.2" cy="18.8" r=".8" fill="#fff"/><circle cx="31" cy="20" r="5.5" fill="#fff"/><circle cx="31" cy="20" r="3.5" fill="#ff8f00"/><circle cx="31" cy="20" r="2" fill="#1a1a1a"/><circle cx="32.2" cy="18.8" r=".8" fill="#fff"/><path d="M11 16Q17 13 24 16Q31 13 37 16" stroke="#0d47a1" stroke-width="1.2" fill="none"/><path d="M22.5 27L24 31L25.5 27Z" fill="#ef6c00"/><path d="M18 34L24 38L30 34" stroke="#0d47a1" stroke-width=".8" fill="none" opacity=".4"/></svg>
+                        <svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="16" cy="13" r="9"/>
+                            <circle cx="13" cy="11.5" r="2.5"/><circle cx="19" cy="11.5" r="2.5"/>
+                            <circle cx="13" cy="11.5" r="1" fill="currentColor" stroke="none"/>
+                            <circle cx="19" cy="11.5" r="1" fill="currentColor" stroke="none"/>
+                            <path d="M14.5 15.5 L16 17 L17.5 15.5"/>
+                            <path d="M7.5 8 L10 11" /><path d="M24.5 8 L22 11"/>
+                            <path d="M12 22 L12 28 M16 22 L16 29 M20 22 L20 28"/>
+                        </svg>
                     </div>
                     <div class="glpHdr__statusText">
                         <div class="glpHdr__maturityLine" id="glpStateText">GLP in development</div>
@@ -1659,8 +1732,9 @@
                 <div class="glpMicroTitle">Evidence Harmony</div>
                 <div class="glpMiniCards">
                     <div class="glpMiniCard">
-                        <div class="glpMiniCard__title">SOPs</div>
+                        <div class="glpMiniCard__title">SOPs <span class="glpHintIcon" data-tip="Approved standard operating procedures">i</span></div>
                         <div class="glpMiniCard__big" id="glpSopApproved">4</div>
+                        <div class="glpMiniCard__coverage" id="glpSopCoverage">3 of 4 referenced</div>
                         <div class="glpMiniCard__row">
                             <span id="glpSopApprovedLabel">Approved</span>
                             <span class="glpMiniCard__rowVal">4</span>
@@ -1671,8 +1745,9 @@
                         </div>
                     </div>
                     <div class="glpMiniCard">
-                        <div class="glpMiniCard__title">Experiments</div>
+                        <div class="glpMiniCard__title">Experiments <span class="glpHintIcon" data-tip="Documented and reported experiments">i</span></div>
                         <div class="glpMiniCard__big" id="glpExpReported">7</div>
+                        <div class="glpMiniCard__coverage" id="glpExpCoverage">5 of 7 linked to SOPs</div>
                         <div class="glpMiniCard__row">
                             <span id="glpExpReportedLabel">Reported</span>
                             <span class="glpMiniCard__rowVal">7</span>
@@ -1683,7 +1758,7 @@
                         </div>
                     </div>
                     <div class="glpMiniCard">
-                        <div class="glpMiniCard__title">Inventory</div>
+                        <div class="glpMiniCard__title">Inventory <span class="glpHintIcon" data-tip="Tracked products, samples, and oligos">i</span></div>
                         <div class="glpMiniCard__big" id="glpInvTotal">18</div>
                         <div class="glpMiniCard__row">
                             <span>Products</span>
@@ -2284,13 +2359,13 @@ credentials: 'include'
         // GLP STATUS – scope toggle (cosmetic only)
         // =====================================================
 
-        // Maturity icon SVGs (illustrated animal heads with gradients)
+        // Maturity icon SVGs (line-art, monochrome)
         var glpMaturityIcons = {
-            hatchling: '<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><defs><radialGradient id="htG" cx=".5" cy=".38"><stop offset="0%" stop-color="#fff8e1"/><stop offset="100%" stop-color="#f9a825"/></radialGradient></defs><ellipse cx="24" cy="23" rx="15" ry="18" fill="url(#htG)"/><ellipse cx="24" cy="17" rx="11" ry="11" fill="#fffde7" opacity=".45"/><path d="M19 8Q20 5 22 8" stroke="#fdd835" stroke-width="1.5" fill="none" stroke-linecap="round" opacity=".6"/><path d="M24 6Q25 3 26 6" stroke="#fdd835" stroke-width="1.5" fill="none" stroke-linecap="round" opacity=".6"/><path d="M28 8Q29 5 30 8" stroke="#fdd835" stroke-width="1.5" fill="none" stroke-linecap="round" opacity=".5"/><ellipse cx="17" cy="21" rx="4.5" ry="5" fill="#fff"/><circle cx="17.8" cy="21.5" r="2.8" fill="#4e342e"/><circle cx="18.8" cy="20" r="1" fill="#fff"/><circle cx="17" cy="22.5" r=".5" fill="#fff" opacity=".4"/><ellipse cx="31" cy="21" rx="4.5" ry="5" fill="#fff"/><circle cx="30.2" cy="21.5" r="2.8" fill="#4e342e"/><circle cx="31.2" cy="20" r="1" fill="#fff"/><circle cx="31" cy="22.5" r=".5" fill="#fff" opacity=".4"/><path d="M23 28L24 30L25 28Z" fill="#ef6c00"/><ellipse cx="14" cy="27" rx="3" ry="1.8" fill="#ffcc80" opacity=".5"/><ellipse cx="34" cy="27" rx="3" ry="1.8" fill="#ffcc80" opacity=".5"/><path d="M12 36Q16 33 20 35Q24 32 28 35Q32 33 36 36" stroke="#e0c9a0" stroke-width=".8" fill="none" opacity=".5"/></svg>',
-            fledgling: '<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><defs><radialGradient id="flG" cx=".5" cy=".4"><stop offset="0%" stop-color="#e8f5e9"/><stop offset="100%" stop-color="#2e7d32"/></radialGradient></defs><path d="M24 8Q12 12 10 24Q10 38 24 42Q38 38 38 24Q36 12 24 8Z" fill="url(#flG)"/><ellipse cx="24" cy="16" rx="9" ry="7" fill="#c8e6c9" opacity=".4"/><path d="M20 9L17 2L22 8" fill="#388e3c" opacity=".7"/><path d="M24 7L24 0L25 7" fill="#388e3c" opacity=".7"/><path d="M28 9L31 2L26 8" fill="#388e3c" opacity=".7"/><path d="M12 18L19 19.5" stroke="#1b5e20" stroke-width="1.3" stroke-linecap="round"/><path d="M36 18L29 19.5" stroke="#1b5e20" stroke-width="1.3" stroke-linecap="round"/><ellipse cx="18" cy="22" rx="3" ry="3.2" fill="#fff"/><circle cx="18" cy="22" r="2" fill="#1b5e20"/><circle cx="18.6" cy="21.2" r=".5" fill="#fff"/><ellipse cx="30" cy="22" rx="3" ry="3.2" fill="#fff"/><circle cx="30" cy="22" r="2" fill="#1b5e20"/><circle cx="30.6" cy="21.2" r=".5" fill="#fff"/><path d="M22 27L24 32L26 27Z" fill="#e65100"/><path d="M22.5 28.5Q24 28 25.5 28.5" stroke="#bf360c" stroke-width=".5" fill="none"/><path d="M9 28Q7 22 10 17" stroke="#2e7d32" stroke-width="1.4" fill="none" opacity=".5"/><path d="M39 28Q41 22 38 17" stroke="#2e7d32" stroke-width="1.4" fill="none" opacity=".5"/><path d="M18 34Q24 38 30 34" stroke="#1b5e20" stroke-width=".8" fill="none" opacity=".35"/><path d="M20 36Q24 39 28 36" stroke="#1b5e20" stroke-width=".8" fill="none" opacity=".25"/></svg>',
-            owl: '<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><defs><radialGradient id="owG" cx=".5" cy=".4"><stop offset="0%" stop-color="#e3f2fd"/><stop offset="100%" stop-color="#1565c0"/></radialGradient><radialGradient id="owD" cx=".5" cy=".5"><stop offset="0%" stop-color="#bbdefb"/><stop offset="100%" stop-color="#1565c0" stop-opacity=".3"/></radialGradient></defs><path d="M10 14L7 4L16 12Z" fill="#1565c0"/><path d="M38 14L41 4L32 12Z" fill="#1565c0"/><ellipse cx="24" cy="24" rx="17" ry="18" fill="url(#owG)"/><ellipse cx="24" cy="22" rx="14" ry="13" fill="url(#owD)"/><circle cx="17" cy="20" r="5.5" fill="#fff"/><circle cx="17" cy="20" r="3.5" fill="#ff8f00"/><circle cx="17" cy="20" r="2" fill="#1a1a1a"/><circle cx="18.2" cy="18.8" r=".8" fill="#fff"/><circle cx="31" cy="20" r="5.5" fill="#fff"/><circle cx="31" cy="20" r="3.5" fill="#ff8f00"/><circle cx="31" cy="20" r="2" fill="#1a1a1a"/><circle cx="32.2" cy="18.8" r=".8" fill="#fff"/><path d="M11 16Q17 13 24 16Q31 13 37 16" stroke="#0d47a1" stroke-width="1.2" fill="none"/><path d="M22.5 27L24 31L25.5 27Z" fill="#ef6c00"/><path d="M18 34L24 38L30 34" stroke="#0d47a1" stroke-width=".8" fill="none" opacity=".4"/></svg>',
-            eagle: '<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><defs><radialGradient id="egG" cx=".5" cy=".35"><stop offset="0%" stop-color="#fff3e0"/><stop offset="100%" stop-color="#bf360c"/></radialGradient></defs><path d="M24 6Q10 10 8 24Q8 38 24 42Q40 38 40 24Q38 10 24 6Z" fill="url(#egG)"/><ellipse cx="24" cy="16" rx="12" ry="8" fill="#fff" opacity=".25"/><path d="M12 14Q16 8 24 8Q32 8 36 14Q32 10 24 10Q16 10 12 14Z" fill="#fff" opacity=".7"/><path d="M12 18L20 20" stroke="#4e342e" stroke-width="1.8" stroke-linecap="round"/><path d="M36 18L28 20" stroke="#4e342e" stroke-width="1.8" stroke-linecap="round"/><ellipse cx="19" cy="22" rx="3" ry="2.5" fill="#fff"/><circle cx="19.5" cy="22" r="1.6" fill="#f57f17"/><circle cx="19.5" cy="22" r=".8" fill="#1a1a1a"/><circle cx="20" cy="21.3" r=".4" fill="#fff"/><ellipse cx="29" cy="22" rx="3" ry="2.5" fill="#fff"/><circle cx="28.5" cy="22" r="1.6" fill="#f57f17"/><circle cx="28.5" cy="22" r=".8" fill="#1a1a1a"/><circle cx="29" cy="21.3" r=".4" fill="#fff"/><path d="M22 26L24 28L26 26L24 34Z" fill="#ff8f00"/><path d="M22 30Q24 29 26 30" stroke="#e65100" stroke-width=".6" fill="none"/><path d="M14 38Q18 34 24 36Q30 34 34 38" stroke="#bf360c" stroke-width=".8" fill="none" opacity=".5"/></svg>',
-            dragon: '<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><defs><radialGradient id="drG" cx=".5" cy=".4"><stop offset="0%" stop-color="#f3e5f5"/><stop offset="100%" stop-color="#6a1b9a"/></radialGradient></defs><path d="M14 12L8 2L16 10" fill="#4a148c"/><path d="M34 12L40 2L32 10" fill="#4a148c"/><path d="M24 6Q10 10 8 24Q8 40 24 44Q40 40 40 24Q38 10 24 6Z" fill="url(#drG)"/><path d="M16 14Q24 10 32 14Q28 12 24 12Q20 12 16 14Z" fill="#9c27b0" opacity=".5"/><line x1="24" y1="6" x2="24" y2="14" stroke="#4a148c" stroke-width="1" opacity=".5"/><ellipse cx="17" cy="22" rx="4" ry="3.5" fill="#fff0f5"/><ellipse cx="17" cy="22" rx="3" ry="3" fill="#ffd600"/><ellipse cx="17" cy="22" rx="1" ry="2.5" fill="#1a1a1a"/><circle cx="18" cy="21" r=".5" fill="#fff"/><ellipse cx="31" cy="22" rx="4" ry="3.5" fill="#fff0f5"/><ellipse cx="31" cy="22" rx="3" ry="3" fill="#ffd600"/><ellipse cx="31" cy="22" rx="1" ry="2.5" fill="#1a1a1a"/><circle cx="32" cy="21" r=".5" fill="#fff"/><ellipse cx="21" cy="30" rx="1.2" ry=".8" fill="#4a148c" opacity=".5"/><ellipse cx="27" cy="30" rx="1.2" ry=".8" fill="#4a148c" opacity=".5"/><path d="M14 28Q24 36 34 28" stroke="#6a1b9a" stroke-width="1" fill="none" opacity=".5"/><path d="M16 34Q20 32 24 34Q28 32 32 34" stroke="#4a148c" stroke-width=".6" fill="none" opacity=".3"/><path d="M8 18L5 14L8 16L6 11L10 16" fill="#9c27b0" opacity=".6"/><path d="M40 18L43 14L40 16L42 11L38 16" fill="#9c27b0" opacity=".6"/></svg>'
+            hatchling: '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><ellipse cx="16" cy="22" rx="8" ry="6"/><path d="M10 18 Q10 10 16 8 Q22 10 22 18"/><circle cx="14" cy="15" r="1.2" fill="currentColor" stroke="none"/><circle cx="18" cy="15" r="1.2" fill="currentColor" stroke="none"/><path d="M15 17.5 L16 18.5 L17 17.5"/><path d="M8 22 Q8 28 16 28 Q24 28 24 22"/></svg>',
+            fledgling: '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><circle cx="16" cy="12" r="6"/><circle cx="14" cy="11" r="1.2" fill="currentColor" stroke="none"/><circle cx="18" cy="11" r="1.2" fill="currentColor" stroke="none"/><path d="M14.8 14 L16 15 L17.2 14"/><path d="M12 17 Q12 24 16 26 Q20 24 20 17"/><path d="M12 20 L8 18 M20 20 L24 18"/><path d="M13 26 L13 29 M16 26 L16 30 M19 26 L19 29"/></svg>',
+            owl: '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><circle cx="16" cy="13" r="9"/><circle cx="13" cy="11.5" r="2.5"/><circle cx="19" cy="11.5" r="2.5"/><circle cx="13" cy="11.5" r="1" fill="currentColor" stroke="none"/><circle cx="19" cy="11.5" r="1" fill="currentColor" stroke="none"/><path d="M14.5 15.5 L16 17 L17.5 15.5"/><path d="M7.5 8 L10 11"/><path d="M24.5 8 L22 11"/><path d="M12 22 L12 28 M16 22 L16 29 M20 22 L20 28"/></svg>',
+            eagle: '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><path d="M16 6 Q12 8 12 13 Q12 17 16 19 Q20 17 20 13 Q20 8 16 6Z"/><circle cx="14.5" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="17.5" cy="12" r="1" fill="currentColor" stroke="none"/><path d="M15 14.5 L16 15.5 L17 14.5"/><path d="M12 14 Q6 10 3 12"/><path d="M20 14 Q26 10 29 12"/><path d="M14 19 L12 26 L14 25 L16 28 L18 25 L20 26 L18 19"/></svg>',
+            dragon: '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><path d="M16 7 Q13 9 13 13 Q13 17 16 19 Q19 17 19 13 Q19 9 16 7Z"/><circle cx="15" cy="12.5" r="1" fill="currentColor" stroke="none"/><circle cx="17" cy="12.5" r="1" fill="currentColor" stroke="none"/><path d="M15.2 15 L16 16 L16.8 15"/><path d="M13 12 Q7 7 5 9 Q6 11 9 12"/><path d="M19 12 Q25 7 27 9 Q26 11 23 12"/><path d="M13 14 Q8 12 6 14 L10 16"/><path d="M19 14 Q24 12 26 14 L22 16"/><path d="M14 19 L13 25 M16 19 L16 27 M18 19 L19 25"/><path d="M14 20 Q16 22 18 20"/></svg>'
         };
 
         function glpSetMaturityIcon(level) {
