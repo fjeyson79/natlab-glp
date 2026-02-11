@@ -5971,8 +5971,9 @@ app.get('/api/di/training/document-versions/:versionId/view', requireAuth, async
 app.get('/api/di/training/supervisors', requireAuth, async (req, res) => {
     try {
         const result = await pool.query(
-            `SELECT DISTINCT researcher_id, name FROM di_allowlist WHERE role IN ('supervisor', 'pi') AND active = TRUE ORDER BY name`
+            `SELECT DISTINCT researcher_id, name FROM di_allowlist WHERE role = 'supervisor' AND active = TRUE ORDER BY name`
         );
+          console.log('[TRAINING] supervisors rows:', result.rows);
         res.json({ success: true, supervisors: result.rows });
     } catch (err) {
         console.error('[TRAINING] list supervisors error:', err);
@@ -6014,7 +6015,7 @@ app.get('/api/di/training/my-pack', requireAuth, async (req, res) => {
 
         // Get training entries for this pack
         const entries = await pool.query(
-            `SELECT e.*, al.name as supervisor_name
+            `SELECT e.*, COALESCE(al.name, e.other_supervisor_name) as supervisor_name
              FROM di_training_entries e
              LEFT JOIN di_allowlist al ON al.researcher_id = e.supervisor_id
              WHERE e.pack_id = $1 ORDER BY e.created_at`,
@@ -6084,45 +6085,48 @@ app.post('/api/di/training/entries', requireAuth, async (req, res) => {
     try {
         if (!(await checkTrainingTables())) return res.status(501).json({ error: 'Training tables not available' });
         const userId = req.session.user.researcher_id;
-        const { pack_id, training_type, training_date, notes, supervisor_id } = req.body;
-        if (!pack_id || !training_type || !training_date || !supervisor_id) return res.status(400).json({ error: 'Missing required fields' });
+        const { pack_id, training_type, training_date, notes, supervisor_id, other_supervisor_name, other_supervisor_email } = req.body;
+        if (!pack_id || !training_type || !training_date) return res.status(400).json({ error: 'Missing required fields' });
 
         const pack = await pool.query('SELECT * FROM di_training_packs WHERE id = $1 AND researcher_id = $2', [pack_id, userId]);
         if (pack.rows.length === 0) return res.status(404).json({ error: 'Pack not found' });
         if (pack.rows[0].status === 'SEALED') return res.status(403).json({ error: 'Pack is sealed — no changes allowed' });
         if (pack.rows[0].status === 'SUBMITTED') return res.status(403).json({ error: 'Pack is submitted — no changes allowed' });
 
-          const delegationMarker = 'Delegated delivery, PI will certify';
-          const isDelegated = String(notes || '').includes(delegationMarker);
-          const isPi = req.session.user.role === 'pi';
+        // Determine certification route
+        const isOtherSupervisor = (supervisor_id === '__OTHER_SUPERVISOR__');
 
-          // Robust same-person check: researcher_id first, then email fallback
-          let isSelf = String(supervisor_id).toLowerCase() === String(userId).toLowerCase();
-          if (!isSelf && isPi) {
-              const supLookup = await pool.query(
-                  'SELECT institution_email FROM di_allowlist WHERE researcher_id = $1',
-                  [supervisor_id]
-              );
-              if (supLookup.rows.length > 0) {
-                  const supEmail = (supLookup.rows[0].institution_email || '').toLowerCase();
-                  const userEmail = (req.session.user.institution_email || '').toLowerCase();
-                  isSelf = !!(supEmail && userEmail && supEmail === userEmail);
-              }
-          }
-
-          const autoCertified = (isPi && isSelf) || isDelegated;
-          const status = autoCertified ? 'CERTIFIED' : 'PENDING';
-
-          const result = await pool.query(
-              `INSERT INTO di_training_entries
-                 (pack_id, training_type, training_date, notes, supervisor_id, trainee_declaration_name, status, certified_at)
-               VALUES
-                 ($1, $2, $3, $4, $5, $6, $7::varchar, CASE WHEN $7::varchar = 'CERTIFIED' THEN CURRENT_TIMESTAMP ELSE NULL END)
-               RETURNING id`,
-              [pack_id, training_type, training_date, notes || null, supervisor_id, req.session.user.name, status]
-          );
-
-        res.json({ success: true, entry_id: result.rows[0].id });
+        if (isOtherSupervisor) {
+            // PI route: other supervisor, delegated delivery under PI oversight
+            if (!other_supervisor_name || !other_supervisor_email) {
+                return res.status(400).json({ error: 'Other supervisor name and email are required' });
+            }
+            const result = await pool.query(
+                `INSERT INTO di_training_entries
+                   (pack_id, training_type, training_date, notes, supervisor_id,
+                    other_supervisor_name, other_supervisor_email, certification_route,
+                    trainee_declaration_name, status)
+                 VALUES ($1, $2, $3, $4, NULL, $5, $6, 'PI', $7, 'PENDING')
+                 RETURNING id`,
+                [pack_id, training_type, training_date, notes || null,
+                 other_supervisor_name.trim(), other_supervisor_email.trim(),
+                 req.session.user.name]
+            );
+            res.json({ success: true, entry_id: result.rows[0].id });
+        } else {
+            // SUPERVISOR route: normal supervisor certification
+            if (!supervisor_id) return res.status(400).json({ error: 'Supervisor is required' });
+            const result = await pool.query(
+                `INSERT INTO di_training_entries
+                   (pack_id, training_type, training_date, notes, supervisor_id,
+                    certification_route, trainee_declaration_name, status)
+                 VALUES ($1, $2, $3, $4, $5, 'SUPERVISOR', $6, 'PENDING')
+                 RETURNING id`,
+                [pack_id, training_type, training_date, notes || null,
+                 supervisor_id, req.session.user.name]
+            );
+            res.json({ success: true, entry_id: result.rows[0].id });
+        }
     } catch (err) {
         console.error('[TRAINING] add entry error:', err);
         res.status(500).json({ error: 'Server error' });
@@ -6213,7 +6217,7 @@ app.get('/api/di/training/pending-certifications', requireAuth, async (req, res)
 });
 
 // --- Supervisor: Certify training entry ---
-app.post('/api/di/training/entries/:id/certify', requireAuth, async (req, res) => {
+app.post('/api/di/training/entries/:id/certify', requireSupervisor, async (req, res) => {
     try {
         if (!(await checkTrainingTables())) return res.status(501).json({ error: 'Training tables not available' });
         const userId = req.session.user.researcher_id;
@@ -6222,16 +6226,45 @@ app.post('/api/di/training/entries/:id/certify', requireAuth, async (req, res) =
              JOIN di_training_packs p ON p.id = e.pack_id WHERE e.id = $1`, [req.params.id]
         );
         if (entry.rows.length === 0) return res.status(404).json({ error: 'Entry not found' });
+        if (entry.rows[0].certification_route !== 'SUPERVISOR') return res.status(403).json({ error: 'This entry is not on the supervisor certification route' });
         if (entry.rows[0].supervisor_id !== userId) return res.status(403).json({ error: 'Not your entry to certify' });
         if (entry.rows[0].pack_status === 'SEALED') return res.status(403).json({ error: 'Pack is sealed' });
         if (entry.rows[0].status !== 'PENDING') return res.status(400).json({ error: 'Entry is not pending' });
+        if (entry.rows[0].certified_at) return res.status(400).json({ error: 'Entry is already certified' });
 
         await pool.query(
-            `UPDATE di_training_entries SET status = 'CERTIFIED', certified_at = CURRENT_TIMESTAMP WHERE id = $1`, [req.params.id]
+            `UPDATE di_training_entries SET status = 'CERTIFIED', certified_at = CURRENT_TIMESTAMP, certified_by = $1 WHERE id = $2`,
+            [req.session.user.institution_email || userId, req.params.id]
         );
         res.json({ success: true });
     } catch (err) {
         console.error('[TRAINING] certify error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// --- PI: Certify training entry (PI route only) ---
+app.post('/api/di/training/entries/:id/pi-certify', requirePI, async (req, res) => {
+    try {
+        if (!(await checkTrainingTables())) return res.status(501).json({ error: 'Training tables not available' });
+        const entry = await pool.query(
+            `SELECT e.*, p.status as pack_status FROM di_training_entries e
+             JOIN di_training_packs p ON p.id = e.pack_id WHERE e.id = $1`, [req.params.id]
+        );
+        if (entry.rows.length === 0) return res.status(404).json({ error: 'Entry not found' });
+        if (entry.rows[0].certification_route !== 'PI') return res.status(403).json({ error: 'This entry is not on the PI certification route' });
+        if (entry.rows[0].pack_status === 'SEALED') return res.status(403).json({ error: 'Pack is sealed' });
+        if (entry.rows[0].status !== 'PENDING') return res.status(400).json({ error: 'Entry is not pending' });
+        if (entry.rows[0].certified_at) return res.status(400).json({ error: 'Entry is already certified' });
+
+        const piId = req.session.user.researcher_id;
+        await pool.query(
+            `UPDATE di_training_entries SET status = 'CERTIFIED', certified_at = CURRENT_TIMESTAMP, certified_by = $1 WHERE id = $2`,
+            [req.session.user.institution_email || piId, req.params.id]
+        );
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[TRAINING] pi-certify error:', err);
         res.status(500).json({ error: 'Server error' });
     }
 });
@@ -6272,12 +6305,31 @@ app.post('/api/di/training/packs/:pack_id/clear-pending', requirePI, async (req,
         if (pack.rows[0].status === 'SEALED') return res.status(403).json({ error: 'Cannot modify sealed pack' });
 
         const result = await pool.query(
-            `DELETE FROM di_training_entries WHERE pack_id = $1 AND status = 'PENDING' RETURNING id`,
+            `DELETE FROM di_training_entries WHERE pack_id = $1 AND certified_at IS NULL RETURNING id`,
             [packId]
         );
         res.json({ success: true, deleted: result.rowCount });
     } catch (err) {
         console.error('[TRAINING] clear-pending error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// --- PI: List pending PI-route certifications ---
+app.get('/api/di/training/pi-pending-certifications', requirePI, async (req, res) => {
+    try {
+        if (!(await checkTrainingTables())) return res.status(501).json({ error: 'Training tables not available' });
+        const result = await pool.query(
+            `SELECT e.*, al.name as trainee_name, p.version as pack_version, p.status as pack_status
+             FROM di_training_entries e
+             JOIN di_training_packs p ON p.id = e.pack_id
+             JOIN di_allowlist al ON al.researcher_id = p.researcher_id
+             WHERE e.certification_route = 'PI' AND e.certified_at IS NULL AND e.status = 'PENDING'
+             ORDER BY e.created_at`
+        );
+        res.json({ success: true, entries: result.rows });
+    } catch (err) {
+        console.error('[TRAINING] pi-pending-certifications error:', err);
         res.status(500).json({ error: 'Server error' });
     }
 });
@@ -6322,7 +6374,7 @@ app.get('/api/di/training/packs/:id', requireAuth, async (req, res) => {
              WHERE a.pack_id = $1 ORDER BY a.confirmed_at`, [req.params.id]
         );
         const entries = await pool.query(
-            `SELECT e.*, al.name as supervisor_name
+            `SELECT e.*, COALESCE(al.name, e.other_supervisor_name) as supervisor_name
              FROM di_training_entries e
              LEFT JOIN di_allowlist al ON al.researcher_id = e.supervisor_id
              WHERE e.pack_id = $1 ORDER BY e.created_at`, [req.params.id]
@@ -6374,7 +6426,8 @@ app.post('/api/di/training/packs/:id/seal', requirePI, async (req, res) => {
              WHERE a.pack_id = $1 ORDER BY a.confirmed_at`, [packId]
         );
         const entryDetails = await pool.query(
-            `SELECT e.training_type, e.training_date, e.certified_at, al.name as supervisor_name
+            `SELECT e.training_type, e.training_date, e.certified_at, e.certification_route, e.certified_by,
+                    COALESCE(al.name, e.other_supervisor_name) as supervisor_name
              FROM di_training_entries e
              LEFT JOIN di_allowlist al ON al.researcher_id = e.supervisor_id
              WHERE e.pack_id = $1 AND e.status = 'CERTIFIED' ORDER BY e.training_date`, [packId]
@@ -6423,7 +6476,8 @@ app.post('/api/di/training/packs/:id/seal', requirePI, async (req, res) => {
         for (const en of entryDetails.rows) {
             if (y < 60) { y = height - 50; pdfDoc.addPage([595, 842]); }
             const d = new Date(en.training_date).toISOString().slice(0, 10);
-            page.drawText(`• ${en.training_type} — ${d} — certified by ${en.supervisor_name}`, { x: 60, y, size: 10, font });
+            const certLabel = en.certification_route === 'PI' ? `certified under PI oversight (provider: ${en.supervisor_name})` : `certified by ${en.supervisor_name}`;
+            page.drawText(`• ${en.training_type} — ${d} — ${certLabel}`, { x: 60, y, size: 10, font });
             y -= 14;
         }
         y -= 25;
