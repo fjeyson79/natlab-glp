@@ -1,0 +1,233 @@
+{
+  "name": "GLP Weekly Snapshot",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * 3"
+            }
+          ]
+        }
+      },
+      "id": "cron-1",
+      "name": "Wednesday 09:00 Stockholm",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [200, 400],
+      "notes": "Every Wednesday 09:00 Europe/Stockholm"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.NATLAB_GLP_BASE_URL }}/api/glp/status/eligible-users",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.NATLAB_GLP_API_KEY }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "get-users-1",
+      "name": "Get Eligible Users",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [420, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract users array for split-in-batches\nconst users = $json.users || [];\nreturn users.map(u => ({ json: u }));"
+      },
+      "id": "split-users-1",
+      "name": "Split Users",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [640, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.NATLAB_GLP_BASE_URL }}/api/glp/status/generate-one",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.NATLAB_GLP_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "user_id",
+              "value": "={{ $json.user_id }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "generate-snapshot-1",
+      "name": "Generate Snapshot",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [860, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "cond-gen",
+              "leftValue": "={{ $json.generated }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-generated-1",
+      "name": "Was Generated?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1080, 400]
+    },
+    {
+      "parameters": {
+        "resource": "chat",
+        "model": "gpt-4o",
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are a GLP (Good Laboratory Practice) advisor for a research laboratory. Given a weekly GLP status snapshot for a researcher, produce a structured harmony analysis.\n\nReturn valid JSON with this exact schema:\n{\n  \"motivation\": \"1-2 sentence encouraging summary of the researcher's GLP standing\",\n  \"reflection\": \"1-2 sentence reflection on what the data shows about their practices\",\n  \"goals\": [\"2-3 actionable goals for the coming week\"],\n  \"actions\": [\"2-3 specific actions the researcher can take\"],\n  \"sphere_analysis\": {\n    \"documentation\": { \"strengths\": [\"...\"], \"gaps\": [\"...\"] },\n    \"training\": { \"strengths\": [\"...\"], \"gaps\": [\"...\"] },\n    \"traceability\": { \"strengths\": [\"...\"], \"gaps\": [\"...\"] },\n    \"data_integrity\": { \"strengths\": [\"...\"], \"gaps\": [\"...\"] }\n  }\n}\n\nBe concise, professional, and constructive. Focus on actionable guidance."
+            },
+            {
+              "role": "user",
+              "content": "={{ JSON.stringify($json.snapshot) }}"
+            }
+          ]
+        },
+        "options": {
+          "temperature": 0.2,
+          "maxTokens": 1000,
+          "responseFormat": "json_object"
+        }
+      },
+      "id": "azure-openai-1",
+      "name": "Azure OpenAI Harmony",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1,
+      "position": [1300, 300],
+      "credentials": {
+        "openAiApi": {
+          "id": "azure-openai-credential",
+          "name": "Azure OpenAI"
+        }
+      },
+      "notes": "Configure with Azure OpenAI endpoint and deployment. Credential type: OpenAI API with Azure base URL."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse the AI response and prepare harmony storage payload\nconst aiOutput = $json.message?.content || $json.text || '{}';\nlet harmony;\ntry {\n  harmony = typeof aiOutput === 'string' ? JSON.parse(aiOutput) : aiOutput;\n} catch (e) {\n  harmony = { motivation: 'Analysis could not be parsed.', reflection: '', goals: [], actions: [], sphere_analysis: {} };\n}\n\n// Carry forward user_id and iso_week from the generate-snapshot step\nconst prev = $('Generate Snapshot').first().json;\nreturn [{ json: {\n  user_id: prev.user_id,\n  iso_week: prev.iso_week,\n  harmony: harmony\n}}];"
+      },
+      "id": "parse-harmony-1",
+      "name": "Parse Harmony",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1520, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.NATLAB_GLP_BASE_URL }}/api/glp/status/harmony",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.NATLAB_GLP_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "store-harmony-1",
+      "name": "Store Harmony",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1740, 300]
+    }
+  ],
+  "connections": {
+    "Wednesday 09:00 Stockholm": {
+      "main": [[{ "node": "Get Eligible Users", "type": "main", "index": 0 }]]
+    },
+    "Get Eligible Users": {
+      "main": [[{ "node": "Split Users", "type": "main", "index": 0 }]]
+    },
+    "Split Users": {
+      "main": [[{ "node": "Generate Snapshot", "type": "main", "index": 0 }]]
+    },
+    "Generate Snapshot": {
+      "main": [[{ "node": "Was Generated?", "type": "main", "index": 0 }]]
+    },
+    "Was Generated?": {
+      "main": [
+        [{ "node": "Azure OpenAI Harmony", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Azure OpenAI Harmony": {
+      "main": [[{ "node": "Parse Harmony", "type": "main", "index": 0 }]]
+    },
+    "Parse Harmony": {
+      "main": [[{ "node": "Store Harmony", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Stockholm"
+  },
+  "staticData": null,
+  "tags": [{ "name": "GLP" }],
+  "triggerCount": 1
+}

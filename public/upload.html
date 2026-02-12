@@ -531,28 +531,50 @@
             text-transform: uppercase;
             color: #8c95a1;
         }
-        .glpUpdateBtn {
+        /* Week selector */
+        .glpWeekSelector {
             display: inline-flex;
             align-items: center;
-            gap: 4px;
-            padding: 3px 10px;
-            font-size: 11px;
-            font-weight: 600;
+            gap: 6px;
+            font-size: 12px;
             color: #6b7685;
-            background: transparent;
-            border: 1px solid transparent;
+        }
+        .glpWeekNav {
+            width: 24px; height: 24px;
+            border: 1px solid #dce3eb;
             border-radius: 6px;
-            cursor: pointer;
-            transition: color 0.2s, border-color 0.2s;
-        }
-        .glpUpdateBtn:hover {
-            color: #2b5a8a;
-            border-color: #cbd2dc;
-        }
-        .glpUpdateBtn__glyph {
+            background: #f6f7f9;
+            color: #6b7685;
             font-size: 14px;
-            line-height: 1;
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: background 0.2s;
         }
+        .glpWeekNav:hover { background: #e8ebf0; }
+        .glpWeekNav:disabled { opacity: 0.3; cursor: default; }
+        .glpWeekLabel {
+            font-weight: 600; font-size: 11px;
+            letter-spacing: 0.5px;
+            min-width: 60px; text-align: center;
+        }
+        /* Vision Table */
+        .glpVisionTable { margin-bottom: 16px; }
+        .glpVT__row {
+            display: flex; gap: 8px; flex-wrap: wrap;
+        }
+        .glpVT__cell {
+            flex: 1; min-width: 80px;
+            text-align: center;
+            padding: 8px 6px;
+            background: #f6f7f9;
+            border-radius: 8px;
+            border: 1px solid #e8ebf0;
+        }
+        .glpVT__label { font-size: 10px; color: #8a95a5; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+        .glpVT__score { font-size: 22px; font-weight: 700; color: #1a365d; }
+        .glpVT__delta { font-size: 11px; font-weight: 600; margin-top: 2px; }
+        .glpVT__delta--up { color: #28a745; }
+        .glpVT__delta--down { color: #dc3545; }
         .glpHdr__mainRow {
             display: flex;
             justify-content: space-between;
@@ -1769,12 +1791,14 @@
 
             <!-- A. Header card (Instrument Panel) -->
             <div class="glpCard" id="glpHeaderCard">
-                <!-- Row 1: title + update -->
+                <!-- Row 1: title + week selector -->
                 <div class="glpHdr__topRow">
                     <span class="glpHdr__title">GLP Status</span>
-                    <button class="glpUpdateBtn" onclick="glpMarkUpdated()">
-                        <span class="glpUpdateBtn__glyph">&#x27F3;</span> Update
-                    </button>
+                    <div class="glpWeekSelector" id="glpWeekSelector">
+                        <button class="glpWeekNav" id="glpWeekPrev" onclick="glpNavWeek(-1)" title="Previous week" disabled>&lsaquo;</button>
+                        <span class="glpWeekLabel" id="glpWeekLabel">--</span>
+                        <button class="glpWeekNav" id="glpWeekNext" onclick="glpNavWeek(1)" title="Next week" disabled>&rsaquo;</button>
+                    </div>
                 </div>
                 <!-- Row 2: name + badges + scope toggle -->
                 <div class="glpHdr__mainRow">
@@ -1816,6 +1840,38 @@
             <!-- B. Evidence Harmony card -->
             <div class="glpCard" id="glpEvidenceCard">
                 <div class="glpMicroTitle">Evidence Harmony</div>
+
+                <!-- Vision Table: score summary strip -->
+                <div class="glpVisionTable" id="glpVisionTable">
+                    <div class="glpVT__row">
+                        <div class="glpVT__cell">
+                            <div class="glpVT__label">Overall</div>
+                            <div class="glpVT__score" id="glpVTOverall">--</div>
+                            <div class="glpVT__delta" id="glpVTOverallDelta"></div>
+                        </div>
+                        <div class="glpVT__cell">
+                            <div class="glpVT__label">Documentation</div>
+                            <div class="glpVT__score" id="glpVTDoc">--</div>
+                            <div class="glpVT__delta" id="glpVTDocDelta"></div>
+                        </div>
+                        <div class="glpVT__cell">
+                            <div class="glpVT__label">Training</div>
+                            <div class="glpVT__score" id="glpVTTrain">--</div>
+                            <div class="glpVT__delta" id="glpVTTrainDelta"></div>
+                        </div>
+                        <div class="glpVT__cell">
+                            <div class="glpVT__label">Traceability</div>
+                            <div class="glpVT__score" id="glpVTTrace">--</div>
+                            <div class="glpVT__delta" id="glpVTTraceDelta"></div>
+                        </div>
+                        <div class="glpVT__cell">
+                            <div class="glpVT__label">Data Integrity</div>
+                            <div class="glpVT__score" id="glpVTData">--</div>
+                            <div class="glpVT__delta" id="glpVTDataDelta"></div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="glpMiniCards">
                     <div class="glpMiniCard">
                         <div class="glpMiniCard__title">SOPs <span class="glpHintIcon" data-tip="Approved standard operating procedures">i</span></div>
@@ -2000,7 +2056,7 @@
                             <img src="/assets/glp-icons/Dragon-GLP.png" alt="Dragon" />
                         </div>
                         <div class="glpLegendItem__body">
-                            <div class="glpLegendItem__name">GLP fully integrated &mdash; Winged Dragon</div>
+                            <div class="glpLegendItem__name">GLP fully integrated &mdash; Dragon</div>
                             <div class="glpLegendItem__label">Interpretation</div>
                             <div class="glpLegendItem__text">GLP is fully integrated into daily laboratory operations. Documentation, approvals, training, and traceability are comprehensive, auditable, and embedded across all activities.</div>
                             <div class="glpLegendItem__label">Guidance</div>
@@ -2637,7 +2693,7 @@ credentials: 'include'
                 loadMyInventoryV2('product');
                 loadGroupInventoryV2('product');
             } else if (section === 'glpStatus') {
-                loadGlpCoherence();
+                loadGlpStatus();
             }
         }
 
@@ -2676,16 +2732,7 @@ credentials: 'include'
             if (iconEl && glpMaturityIcons[iconKey]) iconEl.innerHTML = glpMaturityIcons[iconKey];
         }
 
-        function glpMarkUpdated() {
-            var el = document.getElementById('glpLastUpdated');
-            if (el) el.textContent = 'Updated just now';
-            glpCoherenceLoaded = false;
-            loadGlpCoherence();
-        }
-
-        /* Set GLP maturity/qualifier state on the header + conformity dial.
-           Called from setGlpScope() with placeholder data now;
-           Step 4 will call it with data-driven values. */
+        /* Set GLP maturity/qualifier state on the header + conformity dial. */
         function glpSetMockState(maturity, qualifier, iconKey) {
             var stateText = document.getElementById('glpStateText');
             var qualEl    = document.getElementById('glpQualifier');
@@ -2806,6 +2853,241 @@ credentials: 'include'
 
         function applyEdgeEmphasis(emphasizedKeys) {
             // Edge emphasis is baked into the static PNG; retained as no-op for API compat.
+        }
+
+        // =====================================================
+        // GLP STATUS – Data-driven weekly snapshot loading
+        // =====================================================
+
+        var glpLevelLabels = {
+            hatchling: 'GLP initiation phase',
+            fledgling: 'GLP emerging',
+            owl:       'GLP in development',
+            eagle:     'GLP consolidated',
+            dragon:    'GLP fully integrated'
+        };
+
+        var glpLevelQualifiers = {
+            hatchling: 'Documentation starting',
+            fledgling: 'Building foundations',
+            owl:       'Partial implementation',
+            eagle:     'Consistent implementation',
+            dragon:    'Full integration'
+        };
+
+        var glpWeeks = [];
+        var glpCurrentWeekIdx = 0;
+        var glpStatusLoaded = false;
+
+        async function loadGlpStatus() {
+            if (glpStatusLoaded) return;
+            try {
+                var resp = await fetch('/api/glp/status/weeks', { credentials: 'include' });
+                if (!resp.ok) { loadGlpCoherence(); return; }
+                var data = await resp.json();
+                if (!data.success || !data.weeks || data.weeks.length === 0) {
+                    loadGlpCoherence();
+                    return;
+                }
+
+                glpWeeks = data.weeks;
+                glpCurrentWeekIdx = 0;
+                await loadGlpWeek(glpWeeks[0].iso_week);
+                updateWeekNav();
+                glpStatusLoaded = true;
+            } catch (err) {
+                console.warn('[GLP-STATUS] load error:', err);
+                loadGlpCoherence();
+            }
+        }
+
+        async function loadGlpWeek(isoWeek) {
+            try {
+                var resp = await fetch('/api/glp/status/week/' + isoWeek, { credentials: 'include' });
+                if (!resp.ok) return;
+                var data = await resp.json();
+                if (!data.success) return;
+
+                var snap = data.snapshot;
+                var harmony = data.harmony;
+
+                // Fetch previous week for delta
+                var prevSnap = null;
+                if (glpCurrentWeekIdx + 1 < glpWeeks.length) {
+                    try {
+                        var prevResp = await fetch('/api/glp/status/week/' + glpWeeks[glpCurrentWeekIdx + 1].iso_week, { credentials: 'include' });
+                        if (prevResp.ok) {
+                            var prevData = await prevResp.json();
+                            if (prevData.success) prevSnap = prevData.snapshot;
+                        }
+                    } catch (e) { /* no delta */ }
+                }
+
+                // Update header maturity + dial
+                var levelKey = snap.glp_level || 'owl';
+                glpSetMockState(glpLevelLabels[levelKey] || levelKey, glpLevelQualifiers[levelKey] || '', levelKey);
+
+                // Update timestamp label
+                var ts = new Date(data.generated_at);
+                var tsLabel = 'Viewing snapshot: ' + data.iso_week + ', generated ' +
+                    ts.toLocaleDateString('en-SE', { weekday: 'short' }) + ' ' +
+                    ts.toLocaleTimeString('en-SE', { hour: '2-digit', minute: '2-digit' });
+                var tsEl = document.getElementById('glpLastUpdated');
+                if (tsEl) tsEl.textContent = tsLabel;
+
+                // Vision Table
+                renderVisionTable(snap, prevSnap);
+
+                // Evidence mini-cards
+                renderEvidenceMiniCards(snap.evidence);
+
+                // Harmony Map
+                if (harmony) {
+                    renderHarmonyFromAI(harmony);
+                } else {
+                    renderHarmonyPending();
+                }
+
+                // GLP Conformity
+                renderConformityFromSnapshot(snap);
+
+            } catch (err) {
+                console.warn('[GLP-STATUS] loadGlpWeek error:', err);
+            }
+        }
+
+        function glpNavWeek(delta) {
+            var newIdx = glpCurrentWeekIdx - delta;
+            if (newIdx < 0 || newIdx >= glpWeeks.length) return;
+            glpCurrentWeekIdx = newIdx;
+            loadGlpWeek(glpWeeks[newIdx].iso_week);
+            updateWeekNav();
+        }
+
+        function updateWeekNav() {
+            var label = document.getElementById('glpWeekLabel');
+            if (label && glpWeeks[glpCurrentWeekIdx]) label.textContent = glpWeeks[glpCurrentWeekIdx].iso_week;
+            var prev = document.getElementById('glpWeekPrev');
+            var next = document.getElementById('glpWeekNext');
+            if (prev) prev.disabled = (glpCurrentWeekIdx >= glpWeeks.length - 1);
+            if (next) next.disabled = (glpCurrentWeekIdx <= 0);
+        }
+
+        // --- Vision Table rendering ---
+
+        function renderVisionTable(snap, prevSnap) {
+            setVTCell('glpVTOverall', snap.overall_score, prevSnap ? prevSnap.overall_score : null);
+            setVTCell('glpVTDoc', snap.spheres.documentation.score, prevSnap ? prevSnap.spheres.documentation.score : null);
+            setVTCell('glpVTTrain', snap.spheres.training.score, prevSnap ? prevSnap.spheres.training.score : null);
+            setVTCell('glpVTTrace', snap.spheres.traceability.score, prevSnap ? prevSnap.spheres.traceability.score : null);
+            setVTCell('glpVTData', snap.spheres.data_integrity.score, prevSnap ? prevSnap.spheres.data_integrity.score : null);
+        }
+
+        function setVTCell(id, score, prevScore) {
+            var el = document.getElementById(id);
+            var deltaEl = document.getElementById(id + 'Delta');
+            if (el) el.textContent = score;
+            if (deltaEl) {
+                if (prevScore !== null && prevScore !== undefined) {
+                    var d = score - prevScore;
+                    deltaEl.textContent = (d > 0 ? '+' : '') + d;
+                    deltaEl.className = 'glpVT__delta ' + (d > 0 ? 'glpVT__delta--up' : d < 0 ? 'glpVT__delta--down' : '');
+                } else {
+                    deltaEl.textContent = '';
+                    deltaEl.className = 'glpVT__delta';
+                }
+            }
+        }
+
+        // --- Evidence mini-cards from snapshot ---
+
+        function renderEvidenceMiniCards(ev) {
+            var sopEl = document.getElementById('glpSopApproved');
+            if (sopEl) sopEl.textContent = ev.sops.approved;
+            var sopCov = document.getElementById('glpSopCoverage');
+            if (sopCov) sopCov.textContent = ev.sops.approved + ' of ' + ev.sops.total + ' approved';
+
+            var expEl = document.getElementById('glpExpReported');
+            if (expEl) expEl.textContent = ev.data.total;
+            var expCov = document.getElementById('glpExpCoverage');
+            if (expCov) expCov.textContent = ev.data.approved + ' of ' + ev.data.total + ' approved';
+
+            var invEl = document.getElementById('glpInvTotal');
+            if (invEl) invEl.textContent = ev.inventory.total;
+            var invP = document.getElementById('glpInvProducts');
+            if (invP) invP.textContent = ev.inventory.products;
+            var invS = document.getElementById('glpInvSamples');
+            if (invS) invS.textContent = ev.inventory.samples;
+            var invO = document.getElementById('glpInvOligos');
+            if (invO) invO.textContent = ev.inventory.oligos;
+        }
+
+        // --- Harmony Map from AI harmony.json ---
+
+        function renderHarmonyFromAI(harmony) {
+            var win1 = document.getElementById('harmonyWin1');
+            var win2 = document.getElementById('harmonyWin2');
+            if (win1) win1.textContent = harmony.motivation || '--';
+            if (win2) win2.textContent = harmony.reflection || '--';
+
+            var leftTitle = document.querySelector('.glpHarmonyPanel--left .glpHarmonyPanel__title');
+            if (leftTitle) leftTitle.textContent = 'AI Harmony Insight';
+
+            var upText = document.getElementById('harmonyUpgradeText');
+            if (upText) upText.textContent = (harmony.goals && harmony.goals[0]) || '--';
+
+            var trText = document.getElementById('harmonyTrendText');
+            if (trText) trText.textContent = (harmony.actions && harmony.actions[0]) || '--';
+
+            var upTitle = document.querySelector('#harmonyUpgrade .glpHarmonyPanel__title');
+            if (upTitle) upTitle.textContent = 'Priority Goal';
+            var trTitle = document.querySelector('#harmonyTrend .glpHarmonyPanel__title');
+            if (trTitle) trTitle.textContent = 'Recommended Action';
+        }
+
+        function renderHarmonyPending() {
+            var win1 = document.getElementById('harmonyWin1');
+            var win2 = document.getElementById('harmonyWin2');
+            if (win1) win1.textContent = 'Harmony analysis in progress\u2026';
+            if (win2) win2.textContent = '';
+
+            var upText = document.getElementById('harmonyUpgradeText');
+            if (upText) upText.textContent = 'Available after Wednesday 09:00';
+            var trText = document.getElementById('harmonyTrendText');
+            if (trText) trText.textContent = '';
+        }
+
+        // --- GLP Conformity from snapshot (rule-based) ---
+
+        function renderConformityFromSnapshot(snap) {
+            var c = snap.conformity || {};
+            var working = [];
+            var improvements = [];
+            var focus = [];
+
+            if (c.has_approved_sops) working.push('SOPs are approved and active.');
+            if (c.training_sealed) working.push('Training pack is sealed and certified.');
+            if (c.all_agreements_confirmed) working.push('All required agreements have been confirmed.');
+            if (c.inventory_active) working.push('Inventory tracking is active.');
+            if (c.no_open_revisions) working.push('No open revision requests.');
+            if (working.length === 0) working.push('GLP documentation is in its early stages.');
+
+            if (c.missing_sop_links) improvements.push('Link data records to approved SOPs.');
+            if (c.missing_training) improvements.push('Complete training entries and seek certification.');
+            if (c.missing_inventory) improvements.push('Begin tracking inventory items.');
+            if (!c.sop_coverage_adequate) improvements.push('Expand SOP coverage (target: 3+ approved).');
+            if (!c.data_coverage_adequate) improvements.push('Submit additional data records for review.');
+            if (improvements.length === 0) improvements.push('Maintain current documentation quality.');
+
+            if (!c.training_sealed) focus.push('Prioritize completing and sealing the training pack.');
+            if (!c.no_open_revisions) focus.push('Address open revision requests before next snapshot.');
+            if (!c.recent_activity) focus.push('Resume documented activity to maintain momentum.');
+            if (focus.length === 0) focus.push('Sustain practices and prepare for next review cycle.');
+
+            // Trend from sphere deltas (simplified: use overall direction)
+            var trendText = c.recent_activity ? 'Active documentation this period.' : 'No recent activity recorded.';
+
+            glpSetConfContent(working, improvements[0] || '', trendText, focus[0] || '');
         }
 
         // =====================================================
