@@ -572,6 +572,27 @@ async function checkSupervisorTable() {
     return supervisorTableExists;
 }
 
+// Helper function to check if di_revision_requests table exists (migration 011)
+let revisionRequestsTableExists = null;
+let revisionRequestsTableLastCheck = 0;
+
+async function checkRevisionRequestsTable() {
+    const now = Date.now();
+    if (revisionRequestsTableExists === null || revisionRequestsTableExists === false || (now - revisionRequestsTableLastCheck > ROLE_COLUMN_CHECK_INTERVAL)) {
+        try {
+            const result = await pool.query(`
+                SELECT table_name FROM information_schema.tables
+                WHERE table_name = 'di_revision_requests'
+            `);
+            revisionRequestsTableExists = result.rows.length > 0;
+            revisionRequestsTableLastCheck = now;
+        } catch (err) {
+            revisionRequestsTableExists = false;
+        }
+    }
+    return revisionRequestsTableExists;
+}
+
 // Helper to get allowlist query based on role column existence
 function getAllowlistQuery(hasRole) {
     if (hasRole) {
@@ -988,6 +1009,15 @@ app.get('/api/di/my-files', requireAuth, async (req, res) => {
             ]
         };
 
+        // Use di_revision_requests for accurate revision count (self-cleaning)
+        if (await checkRevisionRequestsTable()) {
+            const rrResult = await pool.query(
+                `SELECT COUNT(*)::int as count FROM di_revision_requests WHERE researcher_id = $1 AND status = 'open'`,
+                [user.researcher_id]
+            );
+            revisionCount = rrResult.rows[0].count;
+        }
+
         console.log('[MY-FILES] Success: pending=' + pendingCount + ', approved=' + approvedCount + ', revision=' + revisionCount);
 
         res.json({
@@ -1056,6 +1086,19 @@ app.post('/api/di/upload', requireAuth, upload.single('file'), async (req, res) 
 
         const submissionId = submissionResult.rows[0].submission_id;
         console.log('[UPLOAD] Submission recorded: submission_id=' + submissionId + ', drive_file_id=' + fileId);
+
+        // Close revision request if this is a resubmission
+        const revisionRequestId = req.body.revision_request_id;
+        if (revisionRequestId && await checkRevisionRequestsTable()) {
+            const closeResult = await pool.query(
+                `UPDATE di_revision_requests SET status = 'closed', closed_at = NOW(), resubmitted_file_id = $1
+                 WHERE id = $2 AND status = 'open'`,
+                [submissionId, revisionRequestId]
+            );
+            if (closeResult.rowCount > 0) {
+                console.log('[UPLOAD] Closed revision request: ' + revisionRequestId);
+            }
+        }
 
         const webhookUrl = process.env.N8N_DI_WEBHOOK_URL;
         if (webhookUrl) {
@@ -1838,7 +1881,7 @@ app.post('/api/di/revise/:id', async (req, res) => {
         const expectedToken = Buffer.from(id + '_glp_2024_sec').toString('base64').replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
         if (token !== expectedToken) return res.status(403).send(renderHtmlPage('Invalid Token', 'Link invalid or expired.', 'error'));
 
-        const result = await pool.query('SELECT drive_file_id, researcher_id, original_filename, affiliation FROM di_submissions WHERE submission_id = $1', [id]);
+        const result = await pool.query('SELECT drive_file_id, researcher_id, original_filename, affiliation, file_type, created_at FROM di_submissions WHERE submission_id = $1', [id]);
         if (result.rows.length === 0) return res.status(404).send(renderHtmlPage('Not Found', 'Submission not found.', 'error'));
 
         const submission = result.rows[0];
@@ -1858,6 +1901,28 @@ app.post('/api/di/revise/:id', async (req, res) => {
             `UPDATE di_submissions SET status='REVISION_NEEDED', drive_file_id=NULL, revision_comments=$1 WHERE submission_id=$2`,
             [comments || '', id]
         );
+
+        // Upsert revision request (no duplicates per file_id)
+        if (await checkRevisionRequestsTable()) {
+            const submissionYear = submission.created_at ? new Date(submission.created_at).getFullYear() : new Date().getFullYear();
+            const docType = submission.file_type || 'SOP';
+            const existing = await pool.query(
+                `SELECT id FROM di_revision_requests WHERE file_id = $1 AND status = 'open'`,
+                [id]
+            );
+            if (existing.rows.length > 0) {
+                await pool.query(
+                    `UPDATE di_revision_requests SET pi_comment = $1 WHERE id = $2`,
+                    [comments || '', existing.rows[0].id]
+                );
+            } else {
+                await pool.query(
+                    `INSERT INTO di_revision_requests (file_id, researcher_id, year, doc_type, filename, pi_comment)
+                     VALUES ($1, $2, $3, $4, $5, $6)`,
+                    [id, submission.researcher_id, submissionYear, docType, submission.original_filename, comments || '']
+                );
+            }
+        }
 
         // Get researcher info and notify (fire-and-forget)
         const researcherResult = await pool.query(
@@ -1882,6 +1947,121 @@ app.post('/api/di/revise/:id', async (req, res) => {
     } catch (err) {
         console.error('[REVISE] Error:', err);
         res.status(500).send(renderHtmlPage('Error', err.message, 'error'));
+    }
+});
+
+// =====================================================
+// Revision Requests endpoints (migration 011)
+// =====================================================
+
+// GET /api/di/revision-requests/open-count
+// Lightweight count for current researcher (or all for PI)
+app.get('/api/di/revision-requests/open-count', requireAuth, async (req, res) => {
+    try {
+        if (!await checkRevisionRequestsTable()) {
+            return res.json({ open_count: 0 });
+        }
+        const user = req.session.user;
+        const isPI = user.role === 'pi';
+        let result;
+        if (isPI) {
+            result = await pool.query(`SELECT COUNT(*)::int as count FROM di_revision_requests WHERE status = 'open'`);
+        } else {
+            result = await pool.query(`SELECT COUNT(*)::int as count FROM di_revision_requests WHERE researcher_id = $1 AND status = 'open'`, [user.researcher_id]);
+        }
+        res.json({ open_count: result.rows[0].count });
+    } catch (err) {
+        console.error('[REVISION-REQUESTS] open-count error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/di/revision-requests/open
+// Researcher's own open revision requests (for dropdown)
+app.get('/api/di/revision-requests/open', requireAuth, async (req, res) => {
+    try {
+        if (!await checkRevisionRequestsTable()) {
+            return res.json({ requests: [] });
+        }
+        const user = req.session.user;
+        const result = await pool.query(
+            `SELECT id, file_id, researcher_id, year, doc_type, filename, pi_comment, created_at
+             FROM di_revision_requests
+             WHERE researcher_id = $1 AND status = 'open'
+             ORDER BY created_at DESC`,
+            [user.researcher_id]
+        );
+        res.json({ requests: result.rows });
+    } catch (err) {
+        console.error('[REVISION-REQUESTS] open error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/di/revision-requests/all
+// All open revision requests for PI Lab Files view
+app.get('/api/di/revision-requests/all', requirePI, async (req, res) => {
+    try {
+        if (!await checkRevisionRequestsTable()) {
+            return res.json({ requests: [] });
+        }
+        const result = await pool.query(
+            `SELECT rr.id, rr.file_id, rr.researcher_id, rr.year, rr.doc_type, rr.filename,
+                    rr.pi_comment, rr.created_at,
+                    COALESCE(a.name, rr.researcher_id) as researcher_name
+             FROM di_revision_requests rr
+             LEFT JOIN di_allowlist a ON rr.researcher_id = a.researcher_id
+             WHERE rr.status = 'open'
+             ORDER BY rr.created_at DESC`
+        );
+        res.json({ requests: result.rows });
+    } catch (err) {
+        console.error('[REVISION-REQUESTS] all error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/di/revision-requests/:id/cancel
+// PI cancels a revision request (soft delete)
+app.post('/api/di/revision-requests/:id/cancel', requirePI, async (req, res) => {
+    try {
+        if (!await checkRevisionRequestsTable()) {
+            return res.status(404).json({ error: 'Feature not available' });
+        }
+        const result = await pool.query(
+            `UPDATE di_revision_requests SET status = 'cancelled', closed_at = NOW()
+             WHERE id = $1 AND status = 'open'`,
+            [req.params.id]
+        );
+        if (result.rowCount === 0) {
+            return res.status(404).json({ error: 'Revision request not found or already closed' });
+        }
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[REVISION-REQUESTS] cancel error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// PATCH /api/di/revision-requests/:id/comment
+// PI edits comment on an open revision request
+app.patch('/api/di/revision-requests/:id/comment', requirePI, async (req, res) => {
+    try {
+        if (!await checkRevisionRequestsTable()) {
+            return res.status(404).json({ error: 'Feature not available' });
+        }
+        const { comment } = req.body;
+        const result = await pool.query(
+            `UPDATE di_revision_requests SET pi_comment = $1 WHERE id = $2 AND status = 'open'`,
+            [comment || '', req.params.id]
+        );
+        if (result.rowCount === 0) {
+            return res.status(404).json({ error: 'Revision request not found or already closed' });
+        }
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[REVISION-REQUESTS] comment error:', err);
+        res.status(500).json({ error: 'Server error' });
     }
 });
 
@@ -2850,10 +3030,18 @@ app.get('/api/di/metrics', requirePI, async (req, res) => {
              WHERE created_at >= date_trunc('month', CURRENT_DATE)`
         );
 
+        // Get open revision requests count (from dedicated table)
+        let openRevisionRequests = null;
+        if (await checkRevisionRequestsTable()) {
+            const rrResult = await pool.query(`SELECT COUNT(*)::int as count FROM di_revision_requests WHERE status = 'open'`);
+            openRevisionRequests = rrResult.rows[0].count;
+        }
+
         res.json({
             success: true,
             total,
             byStatus,
+            openRevisionRequests,
             byResearcher: researcherResult.rows,
             totalResearchers: activeResearchers.rows[0]?.count || 0,
             thisMonth: thisMonthResult.rows[0]?.count || 0
@@ -3263,6 +3451,15 @@ app.get('/api/di/supervision/researchers/:researcher_id/files', requireSuperviso
             } else if (status === 'REVISION_NEEDED') {
                 revisionCount++;
             }
+        }
+
+        // Use di_revision_requests for accurate revision count (self-cleaning)
+        if (await checkRevisionRequestsTable()) {
+            const rrResult = await pool.query(
+                `SELECT COUNT(*)::int as count FROM di_revision_requests WHERE researcher_id = $1 AND status = 'open'`,
+                [researcher_id]
+            );
+            revisionCount = rrResult.rows[0].count;
         }
 
         const tree = {

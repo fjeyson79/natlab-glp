@@ -1440,7 +1440,7 @@
                     const data = await response.json();
                     document.getElementById('statPending').textContent = data.byStatus?.PENDING || 0;
                     document.getElementById('statApproved').textContent = data.byStatus?.APPROVED || 0;
-                    document.getElementById('statRevision').textContent = data.byStatus?.REVISION_NEEDED || 0;
+                    document.getElementById('statRevision').textContent = data.openRevisionRequests ?? data.byStatus?.REVISION_NEEDED ?? 0;
                     document.getElementById('statTotal').textContent = data.total || 0;
 
                     // Update badge
@@ -1689,7 +1689,7 @@
             }
         }
 
-        function applyFilters() {
+        async function applyFilters() {
             const status = document.getElementById('filterStatus').value;
             const year = document.getElementById('filterYear').value;
             const researcher = document.getElementById('filterResearcher').value;
@@ -1703,16 +1703,11 @@
                 return true;
             });
 
-            renderLabFilesTree(filtered);
+            await renderLabFilesTree(filtered);
         }
 
-        function renderLabFilesTree(files) {
+        async function renderLabFilesTree(files) {
             const container = document.getElementById('labFilesTree');
-
-            if (files.length === 0) {
-                container.innerHTML = '<p style="text-align:center;color:#666;padding:20px;">No files match the filters</p>';
-                return;
-            }
 
             // Group by status, then year, then researcher
             const grouped = {};
@@ -1728,12 +1723,13 @@
             });
 
             let html = '';
-            const statusOrder = ['PENDING', 'APPROVED', 'REVISION_NEEDED'];
+            // No longer render REVISION_NEEDED from di_submissions (orphan rows)
+            const statusOrder = ['PENDING', 'APPROVED'];
 
             statusOrder.forEach(status => {
                 if (!grouped[status]) return;
-                const statusLabel = status === 'REVISION_NEEDED' ? 'Revision Needed' : status.charAt(0) + status.slice(1).toLowerCase();
-                const statusClass = status === 'APPROVED' ? 'status-approved' : status === 'REVISION_NEEDED' ? 'status-revision' : 'status-pending';
+                const statusLabel = status.charAt(0) + status.slice(1).toLowerCase();
+                const statusClass = status === 'APPROVED' ? 'status-approved' : 'status-pending';
 
                 html += `
                     <div class="tree-item tree-folder" onclick="toggleFolder(this)">
@@ -1791,7 +1787,146 @@
                 html += '</div>';
             });
 
-            container.innerHTML = html;
+            // Fetch open revision requests and render as "Revision Needed" section
+            try {
+                const rrResponse = await fetch('/api/di/revision-requests/all', { credentials: 'include' });
+                if (rrResponse.ok) {
+                    const rrData = await rrResponse.json();
+                    const requests = rrData.requests || [];
+
+                    // Apply current filters to revision requests
+                    const filterYear = document.getElementById('filterYear').value;
+                    const filterResearcher = document.getElementById('filterResearcher').value;
+                    const filterSearch = document.getElementById('filterSearch').value.toLowerCase();
+                    const filterStatus = document.getElementById('filterStatus').value;
+
+                    // Only show if no status filter or status filter is REVISION_NEEDED
+                    if (!filterStatus || filterStatus === 'REVISION_NEEDED') {
+                        const filteredRR = requests.filter(rr => {
+                            if (filterYear && rr.year !== parseInt(filterYear)) return false;
+                            if (filterResearcher && rr.researcher_id !== filterResearcher) return false;
+                            if (filterSearch && !rr.filename.toLowerCase().includes(filterSearch)) return false;
+                            return true;
+                        });
+
+                        if (filteredRR.length > 0) {
+                            // Group by year, then researcher
+                            const rrGrouped = {};
+                            filteredRR.forEach(rr => {
+                                if (!rrGrouped[rr.year]) rrGrouped[rr.year] = {};
+                                if (!rrGrouped[rr.year][rr.researcher_id]) rrGrouped[rr.year][rr.researcher_id] = [];
+                                rrGrouped[rr.year][rr.researcher_id].push(rr);
+                            });
+
+                            html += `
+                                <div class="tree-item tree-folder" onclick="toggleFolder(this)">
+                                    <span class="icon">&#128193;</span>
+                                    <span>Revision Needed</span>
+                                    <span class="status-badge status-revision" style="margin-left:8px;">${filteredRR.length}</span>
+                                </div>
+                                <div class="tree-children">
+                            `;
+
+                            Object.keys(rrGrouped).sort((a, b) => b - a).forEach(year => {
+                                html += `
+                                    <div class="tree-item tree-folder" onclick="toggleFolder(this)" style="padding-left:20px;">
+                                        <span class="icon">&#128197;</span>
+                                        <span>${year}</span>
+                                    </div>
+                                    <div class="tree-children collapsed">
+                                `;
+
+                                Object.keys(rrGrouped[year]).sort().forEach(researcher => {
+                                    const researcherRRs = rrGrouped[year][researcher];
+                                    html += `
+                                        <div class="tree-item tree-folder" onclick="toggleFolder(this)" style="padding-left:40px;">
+                                            <span class="icon">&#128100;</span>
+                                            <span>${researcher}</span>
+                                            <span style="color:#999;font-size:11px;margin-left:8px;">(${researcherRRs.length})</span>
+                                        </div>
+                                        <div class="tree-children collapsed">
+                                    `;
+
+                                    researcherRRs.forEach(rr => {
+                                        html += `
+                                            <div class="tree-item tree-file" style="padding-left:60px;" data-rr-id="${rr.id}">
+                                                <span class="icon">&#128196;</span>
+                                                <span title="${escapeHtml(rr.filename)}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(rr.filename)}</span>
+                                                <span class="type-badge" style="font-size:10px;margin-left:6px;padding:1px 5px;background:#e2e8f0;border-radius:3px;">${escapeHtml(rr.doc_type)}</span>
+                                                <div class="file-actions">
+                                                    <button class="btn btn-sm btn-secondary" onclick="toggleRevisionComment('${rr.id}')">Comments</button>
+                                                    <button class="btn btn-sm btn-danger" onclick="cancelRevisionRequest('${rr.id}', '${escapeHtml(rr.filename)}')">Cancel</button>
+                                                </div>
+                                            </div>
+                                            <div id="rr-comment-${rr.id}" style="display:none;padding:8px 12px 8px 60px;">
+                                                <textarea id="rr-comment-text-${rr.id}" style="width:100%;min-height:60px;padding:6px 8px;border:1px solid #dee2e6;border-radius:4px;font-size:12px;resize:vertical;">${escapeHtml(rr.pi_comment || '')}</textarea>
+                                                <button class="btn btn-sm btn-primary" style="margin-top:4px;" onclick="saveRevisionComment('${rr.id}')">Save</button>
+                                            </div>
+                                        `;
+                                    });
+
+                                    html += '</div>';
+                                });
+
+                                html += '</div>';
+                            });
+
+                            html += '</div>';
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error('Error loading revision requests:', err);
+            }
+
+            if (!html) {
+                container.innerHTML = '<p style="text-align:center;color:#666;padding:20px;">No files match the filters</p>';
+            } else {
+                container.innerHTML = html;
+            }
+        }
+
+        function toggleRevisionComment(id) {
+            const el = document.getElementById('rr-comment-' + id);
+            if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+        }
+
+        async function saveRevisionComment(id) {
+            const text = document.getElementById('rr-comment-text-' + id);
+            if (!text) return;
+            try {
+                const response = await fetch('/api/di/revision-requests/' + id + '/comment', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ comment: text.value }),
+                    credentials: 'include'
+                });
+                if (response.ok) {
+                    alert('Comment saved');
+                } else {
+                    alert('Failed to save comment');
+                }
+            } catch (err) {
+                alert('Error saving comment');
+            }
+        }
+
+        async function cancelRevisionRequest(id, filename) {
+            if (!confirm('Cancel revision request for "' + filename + '"? This cannot be undone.')) return;
+            try {
+                const response = await fetch('/api/di/revision-requests/' + id + '/cancel', {
+                    method: 'POST',
+                    credentials: 'include'
+                });
+                if (response.ok) {
+                    loadLabFiles();
+                    loadStats();
+                } else {
+                    alert('Failed to cancel revision request');
+                }
+            } catch (err) {
+                alert('Error cancelling revision request');
+            }
         }
 
         function toggleFolder(element) {

@@ -1106,6 +1106,25 @@
                         <option value="DATA">DATA (Research Data)</option>
                     </select>
 
+                    <div id="submissionTypeGroup" style="display:none;margin-bottom:12px;">
+                        <label for="submissionType">Submission Type</label>
+                        <select id="submissionType">
+                            <option value="new">New Submission</option>
+                            <option value="revision">Revision (responding to PI feedback)</option>
+                        </select>
+                    </div>
+
+                    <div id="revisionRequestGroup" style="display:none;margin-bottom:12px;">
+                        <label for="revisionRequestSelect">Revision Request</label>
+                        <select id="revisionRequestSelect">
+                            <option value="">Select a revision request...</option>
+                        </select>
+                        <div id="revisionPiComment" style="display:none;background:#f8f9fa;border:1px solid #dee2e6;border-radius:4px;padding:8px 12px;margin-top:8px;font-size:12px;">
+                            <strong>PI Comments:</strong>
+                            <p id="revisionPiCommentText" style="margin:4px 0 0;color:#495057;"></p>
+                        </div>
+                    </div>
+
                     <label>File</label>
                     <div class="file-upload" id="fileUploadArea">
                         <input type="file" id="fileInput" required>
@@ -2004,6 +2023,7 @@
 
                 // Load files and group documents after user info
                 loadMyFiles();
+                loadRevisionRequestCount();
                 loadGroupDocuments();
 
                 // Handle ?section= URL param (e.g. PI navigating from pi-dashboard)
@@ -2016,6 +2036,71 @@
         }
 
         loadUser();
+
+        // Revision request selector logic
+        let openRevisionRequests = [];
+
+        async function loadRevisionRequestCount() {
+            try {
+                const response = await fetch('/api/di/revision-requests/open-count', { credentials: 'include' });
+                if (!response.ok) return;
+                const data = await response.json();
+                const typeGroup = document.getElementById('submissionTypeGroup');
+                if (data.open_count > 0) {
+                    typeGroup.style.display = 'block';
+                    loadRevisionRequests();
+                } else {
+                    typeGroup.style.display = 'none';
+                    document.getElementById('revisionRequestGroup').style.display = 'none';
+                    document.getElementById('submissionType').value = 'new';
+                    openRevisionRequests = [];
+                }
+            } catch (err) {
+                console.error('Error loading revision request count:', err);
+            }
+        }
+
+        async function loadRevisionRequests() {
+            try {
+                const response = await fetch('/api/di/revision-requests/open', { credentials: 'include' });
+                if (!response.ok) return;
+                const data = await response.json();
+                openRevisionRequests = data.requests || [];
+            } catch (err) {
+                console.error('Error loading revision requests:', err);
+            }
+        }
+
+        document.getElementById('submissionType').addEventListener('change', function() {
+            const rrGroup = document.getElementById('revisionRequestGroup');
+            if (this.value === 'revision') {
+                rrGroup.style.display = 'block';
+                const select = document.getElementById('revisionRequestSelect');
+                select.innerHTML = '<option value="">Select a revision request...</option>' +
+                    openRevisionRequests.map(rr =>
+                        `<option value="${rr.id}">${escapeHtml(rr.filename)} (${escapeHtml(rr.doc_type)}, ${rr.year})</option>`
+                    ).join('');
+            } else {
+                rrGroup.style.display = 'none';
+                document.getElementById('revisionPiComment').style.display = 'none';
+            }
+        });
+
+        document.getElementById('revisionRequestSelect').addEventListener('change', function() {
+            const commentDiv = document.getElementById('revisionPiComment');
+            const commentText = document.getElementById('revisionPiCommentText');
+            const selected = openRevisionRequests.find(rr => rr.id === this.value);
+            if (selected && selected.pi_comment) {
+                commentText.textContent = selected.pi_comment;
+                commentDiv.style.display = 'block';
+            } else {
+                commentDiv.style.display = 'none';
+            }
+            // Auto-set fileType to match the revision request
+            if (selected) {
+                document.getElementById('fileType').value = selected.doc_type;
+            }
+        });
 
         // Load my files
         async function loadMyFiles() {
@@ -2058,7 +2143,7 @@
                     content += `
                         <div style="background:#fff3cd;border:1px solid #ffc107;padding:10px 15px;border-radius:6px;margin-bottom:15px;font-size:12px;">
                             <strong style="color:#856404;">&#9888; ${data.revisionCount} file(s) need revision</strong>
-                            <p style="margin:5px 0 0 0;color:#856404;">Please re-upload the revised documents.</p>
+                            <p style="margin:5px 0 0 0;color:#856404;">Select "Revision" as submission type when re-uploading.</p>
                         </div>
                     `;
                 }
@@ -2211,6 +2296,13 @@
             formData.append('fileType', fileType);
             formData.append('file', file);
 
+            // Include revision request ID if this is a resubmission
+            const submissionTypeEl = document.getElementById('submissionType');
+            const rrSelectEl = document.getElementById('revisionRequestSelect');
+            if (submissionTypeEl && submissionTypeEl.value === 'revision' && rrSelectEl && rrSelectEl.value) {
+                formData.append('revision_request_id', rrSelectEl.value);
+            }
+
             try {
                 const uploadUrl = '/api/di/upload';
                 const response = await fetch(uploadUrl, {
@@ -2236,8 +2328,12 @@
                     fileUploadArea.classList.remove('has-file');
                     uploadBtn.disabled = false;
 
-                    // Refresh file list
+                    // Refresh file list and revision requests
                     loadMyFiles();
+                    document.getElementById('submissionType').value = 'new';
+                    document.getElementById('revisionRequestGroup').style.display = 'none';
+                    document.getElementById('revisionPiComment').style.display = 'none';
+                    loadRevisionRequestCount();
                 }
             } catch (err) {
                 uploadLoading.style.display = 'none';
