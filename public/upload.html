@@ -1185,6 +1185,15 @@
                         <span class="stat-value" style="color:#dc3545;" id="statRevision">0</span>
                     </div>
                 </div>
+                <div id="fileFilterBar" style="display:none;margin-bottom:12px;align-items:center;justify-content:space-between;gap:10px;">
+                    <div style="display:flex;gap:6px;" id="fileTypeFilters">
+                        <button class="inv-toggle-btn active" data-filter="ALL" onclick="setFileFilter(this)">All</button>
+                        <button class="inv-toggle-btn" data-filter="SOP" onclick="setFileFilter(this)">SOP</button>
+                        <button class="inv-toggle-btn" data-filter="DATA" onclick="setFileFilter(this)">DATA</button>
+                        <button class="inv-toggle-btn" data-filter="PRESENTATION" onclick="setFileFilter(this)">PRES</button>
+                    </div>
+                    <input type="text" id="fileSearchInput" placeholder="Search files\u2026" oninput="applyFileFilters()" style="padding:5px 10px;border:1px solid #ddd;border-radius:4px;font-size:12px;width:160px;">
+                </div>
                 <div id="fileTree" class="file-tree">
                     <div class="loading">
                         <div class="spinner"></div>
@@ -2144,6 +2153,7 @@
                 statsBar.style.display = 'flex';
 
                 if (data.totalFiles === 0) {
+                    document.getElementById('fileFilterBar').style.display = 'none';
                     treeContainer.innerHTML = `
                         <div class="empty-state">
                             <div class="icon">&#128196;</div>
@@ -2170,6 +2180,9 @@
                 content += renderTree(data.tree);
                 treeContainer.innerHTML = content;
 
+                document.getElementById('fileFilterBar').style.display = 'flex';
+                applyFileFilters();
+
             } catch (err) {
                 console.error('Error loading files:', err);
                 treeContainer.innerHTML = `<p style="color:#dc3545;text-align:center;">Error loading files: ${err.message || 'Unknown error'}</p>`;
@@ -2187,9 +2200,10 @@
                 const viewUrl = node.viewUrl;
                 const downloadUrl = node.downloadUrl;
                 const hasFile = node.r2ObjectKey || node.viewUrl;
+                const searchText = (node.name || '').toLowerCase();
 
                 return `
-                    <div class="tree-item tree-file" style="padding-left:${level * 20}px">
+                    <div class="tree-item tree-file" data-file-type="${node.fileType || ''}" data-search-text="${searchText}" style="padding-left:${level * 20}px">
                         <span class="icon">${isApproved ? '&#9989;' : '&#128196;'}</span>
                         <span>${node.name}</span>
                         <span class="file-status ${statusClass}">${node.status || 'PENDING'}</span>
@@ -2228,6 +2242,44 @@
             const children = element.nextElementSibling;
             if (children && children.classList.contains('tree-children')) {
                 children.classList.toggle('collapsed');
+            }
+        }
+
+        let activeFileFilter = 'ALL';
+
+        function setFileFilter(btn) {
+            document.querySelectorAll('#fileTypeFilters .inv-toggle-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            activeFileFilter = btn.getAttribute('data-filter');
+            applyFileFilters();
+        }
+
+        function applyFileFilters() {
+            const query = (document.getElementById('fileSearchInput').value || '').toLowerCase().trim();
+            const rows = document.querySelectorAll('#fileTree .tree-file');
+            let visibleCount = 0;
+            rows.forEach(row => {
+                const type = row.getAttribute('data-file-type') || '';
+                const text = row.getAttribute('data-search-text') || '';
+                const typeMatch = activeFileFilter === 'ALL' || type === activeFileFilter;
+                const searchMatch = !query || text.includes(query);
+                const show = typeMatch && searchMatch;
+                row.style.display = show ? '' : 'none';
+                if (show) visibleCount++;
+            });
+            // Show/remove "no matching files" notice
+            let notice = document.getElementById('fileFilterNotice');
+            if (visibleCount === 0 && rows.length > 0) {
+                if (!notice) {
+                    notice = document.createElement('div');
+                    notice.id = 'fileFilterNotice';
+                    notice.style.cssText = 'text-align:center;color:#999;padding:20px;font-size:13px;';
+                    notice.textContent = 'No matching files';
+                    document.getElementById('fileTree').appendChild(notice);
+                }
+                notice.style.display = '';
+            } else if (notice) {
+                notice.style.display = 'none';
             }
         }
 
