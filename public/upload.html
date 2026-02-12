@@ -634,16 +634,11 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            color: #3a5068;
         }
-        #glpMaturityIcon svg {
+        #glpMaturityIcon img {
             width: 48px;
             height: 48px;
-            stroke: currentColor;
-            fill: none;
-            stroke-width: 1.6;
-            stroke-linecap: round;
-            stroke-linejoin: round;
+            object-fit: contain;
         }
         .glpHdr__statusText { flex: 1; min-width: 0; }
         .glpHdr__maturityLine {
@@ -820,49 +815,13 @@
             gap: 20px;
             align-items: center;
         }
-        .glpHarmonySvg {
-            width: 100%;
-            max-width: 340px;
+        .glpHarmonyImg {
+            width: 520px;
+            max-width: 100%;
+            height: auto;
             display: block;
             margin: 0 auto;
         }
-        .hmEdgeGlow {
-            fill: none;
-            stroke-linecap: round;
-            transition: opacity 0.5s ease;
-        }
-        .hmEdge {
-            fill: none;
-            stroke-linecap: round;
-            transition: stroke-width 0.5s ease, opacity 0.5s ease;
-        }
-        .hmSphereGlow { transition: opacity 0.5s ease; }
-        .hmLabel {
-            font-size: 11px;
-            font-weight: 800;
-            letter-spacing: 0.10em;
-            text-transform: uppercase;
-            fill: rgba(31,42,55,0.92);
-            text-anchor: middle;
-            paint-order: stroke;
-            stroke: rgba(255,255,255,0.40);
-            stroke-width: 2px;
-        }
-        /* Individual scope — softer */
-        .glpHarmonyMap.isIndividual .hmEdge      { stroke-width: 3.5; opacity: 0.70; }
-        .glpHarmonyMap.isIndividual .hmEdgeGlow   { opacity: 0.14; }
-        .glpHarmonyMap.isIndividual .hmSphereGlow { opacity: 0.22; }
-        .glpHarmonyMap.isIndividual .hmSphere     { filter: saturate(0.88); }
-        /* Group scope — intense */
-        .glpHarmonyMap.isGroup .hmEdge      { stroke-width: 5.5; opacity: 0.82; }
-        .glpHarmonyMap.isGroup .hmEdgeGlow   { opacity: 0.32; }
-        .glpHarmonyMap.isGroup .hmSphereGlow { opacity: 0.38; }
-        .glpHarmonyMap.isGroup .hmSphere     { filter: saturate(1.1); }
-        /* Edge emphasis (applied by JS from coherence data) */
-        .hmEdge.hmEdge--emphasized      { stroke-width: 5; opacity: 0.88 !important; }
-        .hmEdgeGlow.hmEdge--emphasized  { opacity: 0.30 !important; stroke-width: 12; }
-        .hmEdge.hmEdge--dimmed          { opacity: 0.32 !important; }
-        .hmEdgeGlow.hmEdge--dimmed      { opacity: 0.05 !important; }
         /* Coherence side panels */
         .glpHarmonyPanel { padding: 4px 0; }
         .glpHarmonyPanel--left  { text-align: right; }
@@ -899,7 +858,7 @@
             }
             .glpHarmonyPanel--left,
             .glpHarmonyPanel--right { text-align: center; }
-            .glpHarmonySvg { max-width: 280px; }
+            .glpHarmonyImg { max-width: 280px; }
         }
         @media (max-width: 600px) {
             .glpHarmonyMap { padding: 24px 12px 20px; }
@@ -976,17 +935,12 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            color: #3a5068;
             margin-bottom: 4px;
         }
-        .glpDialIcon svg {
-            width: 50px;
-            height: 50px;
-            stroke: currentColor;
-            fill: none;
-            stroke-width: 1.6;
-            stroke-linecap: round;
-            stroke-linejoin: round;
+        .glpDialIcon img {
+            width: 48px;
+            height: 48px;
+            object-fit: contain;
         }
         .glpDialState {
             font-size: 11px;
@@ -1086,14 +1040,10 @@
             align-items: center;
             justify-content: center;
         }
-        .glpLegendItem__badge svg {
+        .glpLegendItem__badge img {
             width: 22px;
             height: 22px;
-            stroke: #fff;
-            fill: none;
-            stroke-width: 1.6;
-            stroke-linecap: round;
-            stroke-linejoin: round;
+            object-fit: contain;
         }
         .glpLegendItem__body { flex: 1; min-width: 0; }
         .glpLegendItem__name {
@@ -1801,15 +1751,7 @@
                 <div class="glpHdr__statusRow">
                     <div id="glpMaturityIcon">
                         <!-- Owl (GLP in development) — default icon -->
-                        <svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
-                            <circle cx="16" cy="13" r="9"/>
-                            <circle cx="13" cy="11.5" r="2.5"/><circle cx="19" cy="11.5" r="2.5"/>
-                            <circle cx="13" cy="11.5" r="1" fill="currentColor" stroke="none"/>
-                            <circle cx="19" cy="11.5" r="1" fill="currentColor" stroke="none"/>
-                            <path d="M14.5 15.5 L16 17 L17.5 15.5"/>
-                            <path d="M7.5 8 L10 11" /><path d="M24.5 8 L22 11"/>
-                            <path d="M12 22 L12 28 M16 22 L16 29 M20 22 L20 28"/>
-                        </svg>
+                        <img src="/assets/glp-icons/Owl.png" alt="Owl" />
                     </div>
                     <div class="glpHdr__statusText">
                         <div class="glpHdr__maturityLine" id="glpStateText">GLP in development</div>
@@ -1885,130 +1827,8 @@
                             </ul>
                         </div>
 
-                        <!-- Center: Rhombus SVG -->
-                        <svg class="glpHarmonySvg" viewBox="0 0 400 340" xmlns="http://www.w3.org/2000/svg">
-                          <defs>
-                            <!-- Glow filters (matching original triangle spec) -->
-                            <filter id="hm4GlowF" x="-80%" y="-80%" width="260%" height="260%">
-                              <feGaussianBlur in="SourceGraphic" stdDeviation="9"/>
-                            </filter>
-                            <filter id="hm4EdgeGlowF" x="-25%" y="-25%" width="150%" height="150%">
-                              <feGaussianBlur in="SourceGraphic" stdDeviation="4"/>
-                            </filter>
-
-                            <!-- 3D sphere gradients (light from upper-left) -->
-                            <radialGradient id="hm4GradSop" cx="0.38" cy="0.30" r="0.55" fx="0.32" fy="0.26">
-                              <stop offset="0%"   stop-color="#8DF0FC"/>
-                              <stop offset="38%"  stop-color="#21B6C7"/>
-                              <stop offset="88%"  stop-color="#0C6B7A"/>
-                              <stop offset="100%" stop-color="#074550"/>
-                            </radialGradient>
-                            <radialGradient id="hm4GradData" cx="0.38" cy="0.30" r="0.55" fx="0.32" fy="0.26">
-                              <stop offset="0%"   stop-color="#BEA3FF"/>
-                              <stop offset="38%"  stop-color="#7C4DFF"/>
-                              <stop offset="88%"  stop-color="#4A1DB8"/>
-                              <stop offset="100%" stop-color="#2C0E76"/>
-                            </radialGradient>
-                            <radialGradient id="hm4GradInv" cx="0.38" cy="0.30" r="0.55" fx="0.32" fy="0.26">
-                              <stop offset="0%"   stop-color="#FFD88A"/>
-                              <stop offset="38%"  stop-color="#FFB020"/>
-                              <stop offset="88%"  stop-color="#CC7E00"/>
-                              <stop offset="100%" stop-color="#885200"/>
-                            </radialGradient>
-                            <radialGradient id="hm4GradTrain" cx="0.38" cy="0.30" r="0.55" fx="0.32" fy="0.26">
-                              <stop offset="0%"   stop-color="#A5D6A7"/>
-                              <stop offset="38%"  stop-color="#4CAF50"/>
-                              <stop offset="88%"  stop-color="#2E7D32"/>
-                              <stop offset="100%" stop-color="#1B5E20"/>
-                            </radialGradient>
-
-                            <!-- Connector gradients (blend two sphere colors) -->
-                            <linearGradient id="hm4ESopData" x1="200" y1="54" x2="354" y2="170" gradientUnits="userSpaceOnUse">
-                              <stop offset="0%" stop-color="#21B6C7"/><stop offset="100%" stop-color="#7C4DFF"/>
-                            </linearGradient>
-                            <linearGradient id="hm4ESopInv" x1="200" y1="54" x2="200" y2="286" gradientUnits="userSpaceOnUse">
-                              <stop offset="0%" stop-color="#21B6C7"/><stop offset="100%" stop-color="#FFB020"/>
-                            </linearGradient>
-                            <linearGradient id="hm4ESopTrain" x1="200" y1="54" x2="46" y2="170" gradientUnits="userSpaceOnUse">
-                              <stop offset="0%" stop-color="#21B6C7"/><stop offset="100%" stop-color="#4CAF50"/>
-                            </linearGradient>
-                            <linearGradient id="hm4EDataInv" x1="354" y1="170" x2="200" y2="286" gradientUnits="userSpaceOnUse">
-                              <stop offset="0%" stop-color="#7C4DFF"/><stop offset="100%" stop-color="#FFB020"/>
-                            </linearGradient>
-                            <linearGradient id="hm4EDataTrain" x1="354" y1="170" x2="46" y2="170" gradientUnits="userSpaceOnUse">
-                              <stop offset="0%" stop-color="#7C4DFF"/><stop offset="100%" stop-color="#4CAF50"/>
-                            </linearGradient>
-                            <linearGradient id="hm4EInvTrain" x1="200" y1="286" x2="46" y2="170" gradientUnits="userSpaceOnUse">
-                              <stop offset="0%" stop-color="#FFB020"/><stop offset="100%" stop-color="#4CAF50"/>
-                            </linearGradient>
-                          </defs>
-
-                          <!-- Edge glows (behind) -->
-                          <line class="hmEdgeGlow" data-link="sopData"   x1="200" y1="54"  x2="354" y2="170" stroke="url(#hm4ESopData)"   stroke-width="10" filter="url(#hm4EdgeGlowF)"/>
-                          <line class="hmEdgeGlow" data-link="sopInv"    x1="200" y1="54"  x2="200" y2="286" stroke="url(#hm4ESopInv)"    stroke-width="10" filter="url(#hm4EdgeGlowF)"/>
-                          <line class="hmEdgeGlow" data-link="sopTrain"  x1="200" y1="54"  x2="46"  y2="170" stroke="url(#hm4ESopTrain)"  stroke-width="10" filter="url(#hm4EdgeGlowF)"/>
-                          <line class="hmEdgeGlow" data-link="dataInv"   x1="354" y1="170" x2="200" y2="286" stroke="url(#hm4EDataInv)"   stroke-width="10" filter="url(#hm4EdgeGlowF)"/>
-                          <line class="hmEdgeGlow" data-link="dataTrain" x1="354" y1="170" x2="46"  y2="170" stroke="url(#hm4EDataTrain)"  stroke-width="10" filter="url(#hm4EdgeGlowF)"/>
-                          <line class="hmEdgeGlow" data-link="invTrain"  x1="200" y1="286" x2="46"  y2="170" stroke="url(#hm4EInvTrain)"  stroke-width="10" filter="url(#hm4EdgeGlowF)"/>
-
-                          <!-- Main connector edges -->
-                          <line class="hmEdge" data-link="sopData"   x1="200" y1="54"  x2="354" y2="170" stroke="url(#hm4ESopData)"/>
-                          <line class="hmEdge" data-link="sopInv"    x1="200" y1="54"  x2="200" y2="286" stroke="url(#hm4ESopInv)"/>
-                          <line class="hmEdge" data-link="sopTrain"  x1="200" y1="54"  x2="46"  y2="170" stroke="url(#hm4ESopTrain)"/>
-                          <line class="hmEdge" data-link="dataInv"   x1="354" y1="170" x2="200" y2="286" stroke="url(#hm4EDataInv)"/>
-                          <line class="hmEdge" data-link="dataTrain" x1="354" y1="170" x2="46"  y2="170" stroke="url(#hm4EDataTrain)"/>
-                          <line class="hmEdge" data-link="invTrain"  x1="200" y1="286" x2="46"  y2="170" stroke="url(#hm4EInvTrain)"/>
-
-                          <!-- Sphere glows -->
-                          <circle class="hmSphereGlow" cx="200" cy="54"  r="54" fill="#21B6C7" filter="url(#hm4GlowF)"/>
-                          <circle class="hmSphereGlow" cx="354" cy="170" r="54" fill="#7C4DFF" filter="url(#hm4GlowF)"/>
-                          <circle class="hmSphereGlow" cx="200" cy="286" r="54" fill="#FFB020" filter="url(#hm4GlowF)"/>
-                          <circle class="hmSphereGlow" cx="46"  cy="170" r="54" fill="#4CAF50" filter="url(#hm4GlowF)"/>
-
-                          <!-- Main 3D spheres -->
-                          <circle class="hmSphere" cx="200" cy="54"  r="38" fill="url(#hm4GradSop)"/>
-                          <circle class="hmSphere" cx="354" cy="170" r="38" fill="url(#hm4GradData)"/>
-                          <circle class="hmSphere" cx="200" cy="286" r="38" fill="url(#hm4GradInv)"/>
-                          <circle class="hmSphere" cx="46"  cy="170" r="38" fill="url(#hm4GradTrain)"/>
-
-                          <!-- Specular highlights -->
-                          <ellipse cx="189" cy="42"  rx="14" ry="8" fill="white" opacity="0.20" transform="rotate(-22,189,42)"/>
-                          <ellipse cx="343" cy="158" rx="14" ry="8" fill="white" opacity="0.20" transform="rotate(-22,343,158)"/>
-                          <ellipse cx="189" cy="274" rx="14" ry="8" fill="white" opacity="0.20" transform="rotate(-22,189,274)"/>
-                          <ellipse cx="35"  cy="158" rx="14" ry="8" fill="white" opacity="0.20" transform="rotate(-22,35,158)"/>
-
-                          <!-- Pillar icons inside spheres (line-art, stroke 1.5) -->
-                          <!-- SOP: document -->
-                          <g transform="translate(200,54)" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                            <rect x="-8" y="-11" width="16" height="22" rx="2"/>
-                            <line x1="-4" y1="-5" x2="4" y2="-5"/>
-                            <line x1="-4" y1="0"  x2="4" y2="0"/>
-                            <line x1="-4" y1="5"  x2="2" y2="5"/>
-                          </g>
-                          <!-- DATA: bar chart -->
-                          <g transform="translate(354,170)" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                            <rect x="-9" y="8" width="5" height="-10" rx="0.5"/>
-                            <rect x="-2" y="8" width="5" height="-17" rx="0.5"/>
-                            <rect x="5"  y="8" width="5" height="-12" rx="0.5"/>
-                          </g>
-                          <!-- Inventory: flask -->
-                          <g transform="translate(200,286)" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M-4,-11 L-4,-3 L-9,8 Q-9,10 -7,10 L7,10 Q9,10 9,8 L4,-3 L4,-11"/>
-                            <line x1="-5" y1="-11" x2="5" y2="-11"/>
-                          </g>
-                          <!-- Training: graduation cap -->
-                          <g transform="translate(46,170)" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                            <polygon points="0,-10 12,0 0,4 -12,0" fill="rgba(255,255,255,0.12)"/>
-                            <polyline points="-7,1 -7,8 0,12 7,8 7,1"/>
-                            <line x1="12" y1="0" x2="12" y2="9"/>
-                          </g>
-
-                          <!-- Labels -->
-                          <text class="hmLabel" x="200" y="6">SOP</text>
-                          <text class="hmLabel" x="354" y="126">DATA</text>
-                          <text class="hmLabel" x="200" y="336">INVENTORY</text>
-                          <text class="hmLabel" x="46"  y="126">TRAINING</text>
-                        </svg>
+                        <!-- Center: Harmony Map image -->
+                        <img class="glpHarmonyImg" src="/assets/glp/harmony-map.png" alt="Harmony Map showing SOP, Data, Inventory, and Training alignment"/>
 
                         <!-- Right panel: Upgrade + Trend -->
                         <div class="glpHarmonyPanel glpHarmonyPanel--right">
@@ -2078,7 +1898,7 @@
 
                     <div class="glpLegendItem">
                         <div class="glpLegendItem__badge" style="background:#8ca8c4;">
-                            <svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><ellipse cx="16" cy="22" rx="8" ry="6"/><path d="M10 18 Q10 10 16 8 Q22 10 22 18"/><circle cx="14" cy="15" r="1.2" fill="currentColor" stroke="none"/><circle cx="18" cy="15" r="1.2" fill="currentColor" stroke="none"/><path d="M15 17.5 L16 18.5 L17 17.5"/><path d="M8 22 Q8 28 16 28 Q24 28 24 22"/></svg>
+                            <img src="/assets/glp-icons/Hatchling.png" alt="Hatchling" />
                         </div>
                         <div class="glpLegendItem__body">
                             <div class="glpLegendItem__name">GLP initiation phase &mdash; Hatchling</div>
@@ -2091,7 +1911,7 @@
 
                     <div class="glpLegendItem">
                         <div class="glpLegendItem__badge" style="background:#5f9ea0;">
-                            <svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><circle cx="16" cy="12" r="6"/><circle cx="14" cy="11" r="1.2" fill="currentColor" stroke="none"/><circle cx="18" cy="11" r="1.2" fill="currentColor" stroke="none"/><path d="M14.8 14 L16 15 L17.2 14"/><path d="M12 17 Q12 24 16 26 Q20 24 20 17"/><path d="M12 20 L8 18 M20 20 L24 18"/><path d="M13 26 L13 29 M16 26 L16 30 M19 26 L19 29"/></svg>
+                            <img src="/assets/glp-icons/Fledgling.png" alt="Fledgling" />
                         </div>
                         <div class="glpLegendItem__body">
                             <div class="glpLegendItem__name">GLP emerging &mdash; Fledgling</div>
@@ -2104,7 +1924,7 @@
 
                     <div class="glpLegendItem">
                         <div class="glpLegendItem__badge" style="background:#1565c0;">
-                            <svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><circle cx="16" cy="13" r="9"/><circle cx="13" cy="11.5" r="2.5"/><circle cx="19" cy="11.5" r="2.5"/><circle cx="13" cy="11.5" r="1" fill="currentColor" stroke="none"/><circle cx="19" cy="11.5" r="1" fill="currentColor" stroke="none"/><path d="M14.5 15.5 L16 17 L17.5 15.5"/><path d="M7.5 8 L10 11"/><path d="M24.5 8 L22 11"/><path d="M12 22 L12 28 M16 22 L16 29 M20 22 L20 28"/></svg>
+                            <img src="/assets/glp-icons/Owl.png" alt="Owl" />
                         </div>
                         <div class="glpLegendItem__body">
                             <div class="glpLegendItem__name">GLP in development &mdash; Owl</div>
@@ -2117,7 +1937,7 @@
 
                     <div class="glpLegendItem">
                         <div class="glpLegendItem__badge" style="background:#2e7d32;">
-                            <svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><path d="M16 6 Q12 8 12 13 Q12 17 16 19 Q20 17 20 13 Q20 8 16 6Z"/><circle cx="14.5" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="17.5" cy="12" r="1" fill="currentColor" stroke="none"/><path d="M15 14.5 L16 15.5 L17 14.5"/><path d="M12 14 Q6 10 3 12"/><path d="M20 14 Q26 10 29 12"/><path d="M14 19 L12 26 L14 25 L16 28 L18 25 L20 26 L18 19"/></svg>
+                            <img src="/assets/glp-icons/Eagle-GLP.png" alt="Eagle" />
                         </div>
                         <div class="glpLegendItem__body">
                             <div class="glpLegendItem__name">GLP consolidated &mdash; Eagle</div>
@@ -2130,7 +1950,7 @@
 
                     <div class="glpLegendItem">
                         <div class="glpLegendItem__badge" style="background:#6a1b9a;">
-                            <svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><path d="M16 7 Q13 9 13 13 Q13 17 16 19 Q19 17 19 13 Q19 9 16 7Z"/><circle cx="15" cy="12.5" r="1" fill="currentColor" stroke="none"/><circle cx="17" cy="12.5" r="1" fill="currentColor" stroke="none"/><path d="M15.2 15 L16 16 L16.8 15"/><path d="M13 12 Q7 7 5 9 Q6 11 9 12"/><path d="M19 12 Q25 7 27 9 Q26 11 23 12"/><path d="M13 14 Q8 12 6 14 L10 16"/><path d="M19 14 Q24 12 26 14 L22 16"/><path d="M14 19 L13 25 M16 19 L16 27 M18 19 L19 25"/><path d="M14 20 Q16 22 18 20"/></svg>
+                            <img src="/assets/glp-icons/Dragon-GLP.png" alt="Dragon" />
                         </div>
                         <div class="glpLegendItem__body">
                             <div class="glpLegendItem__name">GLP fully integrated &mdash; Winged Dragon</div>
@@ -2616,13 +2436,13 @@ credentials: 'include'
         // GLP STATUS – scope toggle (cosmetic only)
         // =====================================================
 
-        // Maturity icon SVGs (line-art, monochrome)
+        // Maturity icon PNGs
         var glpMaturityIcons = {
-            hatchling: '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><ellipse cx="16" cy="22" rx="8" ry="6"/><path d="M10 18 Q10 10 16 8 Q22 10 22 18"/><circle cx="14" cy="15" r="1.2" fill="currentColor" stroke="none"/><circle cx="18" cy="15" r="1.2" fill="currentColor" stroke="none"/><path d="M15 17.5 L16 18.5 L17 17.5"/><path d="M8 22 Q8 28 16 28 Q24 28 24 22"/></svg>',
-            fledgling: '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><circle cx="16" cy="12" r="6"/><circle cx="14" cy="11" r="1.2" fill="currentColor" stroke="none"/><circle cx="18" cy="11" r="1.2" fill="currentColor" stroke="none"/><path d="M14.8 14 L16 15 L17.2 14"/><path d="M12 17 Q12 24 16 26 Q20 24 20 17"/><path d="M12 20 L8 18 M20 20 L24 18"/><path d="M13 26 L13 29 M16 26 L16 30 M19 26 L19 29"/></svg>',
-            owl: '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><circle cx="16" cy="13" r="9"/><circle cx="13" cy="11.5" r="2.5"/><circle cx="19" cy="11.5" r="2.5"/><circle cx="13" cy="11.5" r="1" fill="currentColor" stroke="none"/><circle cx="19" cy="11.5" r="1" fill="currentColor" stroke="none"/><path d="M14.5 15.5 L16 17 L17.5 15.5"/><path d="M7.5 8 L10 11"/><path d="M24.5 8 L22 11"/><path d="M12 22 L12 28 M16 22 L16 29 M20 22 L20 28"/></svg>',
-            eagle: '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><path d="M16 6 Q12 8 12 13 Q12 17 16 19 Q20 17 20 13 Q20 8 16 6Z"/><circle cx="14.5" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="17.5" cy="12" r="1" fill="currentColor" stroke="none"/><path d="M15 14.5 L16 15.5 L17 14.5"/><path d="M12 14 Q6 10 3 12"/><path d="M20 14 Q26 10 29 12"/><path d="M14 19 L12 26 L14 25 L16 28 L18 25 L20 26 L18 19"/></svg>',
-            dragon: '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><path d="M16 7 Q13 9 13 13 Q13 17 16 19 Q19 17 19 13 Q19 9 16 7Z"/><circle cx="15" cy="12.5" r="1" fill="currentColor" stroke="none"/><circle cx="17" cy="12.5" r="1" fill="currentColor" stroke="none"/><path d="M15.2 15 L16 16 L16.8 15"/><path d="M13 12 Q7 7 5 9 Q6 11 9 12"/><path d="M19 12 Q25 7 27 9 Q26 11 23 12"/><path d="M13 14 Q8 12 6 14 L10 16"/><path d="M19 14 Q24 12 26 14 L22 16"/><path d="M14 19 L13 25 M16 19 L16 27 M18 19 L19 25"/><path d="M14 20 Q16 22 18 20"/></svg>'
+            hatchling: '<img src="/assets/glp-icons/Hatchling.png" alt="Hatchling" />',
+            fledgling: '<img src="/assets/glp-icons/Fledgling.png" alt="Fledgling" />',
+            owl:       '<img src="/assets/glp-icons/Owl.png" alt="Owl" />',
+            eagle:     '<img src="/assets/glp-icons/Eagle-GLP.png" alt="Eagle" />',
+            dragon:    '<img src="/assets/glp-icons/Dragon-GLP.png" alt="Dragon" />'
         };
 
         function glpSetMaturityIcon(level) {
@@ -2644,7 +2464,6 @@ credentials: 'include'
             var iconEl = document.getElementById('glpDialIcon');
             var cfg = glpLevelConfig[iconKey];
             if (accent && cfg) accent.style.backgroundColor = cfg.color;
-            if (iconEl && cfg) iconEl.style.color = cfg.color;
             if (iconEl && glpMaturityIcons[iconKey]) iconEl.innerHTML = glpMaturityIcons[iconKey];
         }
 
@@ -2777,30 +2596,7 @@ credentials: 'include'
         }
 
         function applyEdgeEmphasis(emphasizedKeys) {
-            if (!emphasizedKeys || !emphasizedKeys.length) return;
-
-            var allEdges = document.querySelectorAll('.hmEdge[data-link]');
-            var allGlows = document.querySelectorAll('.hmEdgeGlow[data-link]');
-
-            allEdges.forEach(function(el) {
-                var key = el.getAttribute('data-link');
-                el.classList.remove('hmEdge--emphasized', 'hmEdge--dimmed');
-                if (emphasizedKeys.indexOf(key) !== -1) {
-                    el.classList.add('hmEdge--emphasized');
-                } else {
-                    el.classList.add('hmEdge--dimmed');
-                }
-            });
-
-            allGlows.forEach(function(el) {
-                var key = el.getAttribute('data-link');
-                el.classList.remove('hmEdge--emphasized', 'hmEdge--dimmed');
-                if (emphasizedKeys.indexOf(key) !== -1) {
-                    el.classList.add('hmEdge--emphasized');
-                } else {
-                    el.classList.add('hmEdge--dimmed');
-                }
-            });
+            // Edge emphasis is baked into the static PNG; retained as no-op for API compat.
         }
 
         // =====================================================
