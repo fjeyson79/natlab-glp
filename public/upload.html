@@ -1104,7 +1104,26 @@
                         <option value="">Select file type...</option>
                         <option value="SOP">SOP (Standard Operating Procedure)</option>
                         <option value="DATA">DATA (Research Data)</option>
+                        <option value="PRESENTATION">PRESENTATION (Research Presentation)</option>
                     </select>
+
+                    <div id="presentationTypeGroup" style="display:none;margin-bottom:12px;">
+                        <label for="presentationType">Presentation Type <span style="color:#c0392b;">*</span></label>
+                        <select id="presentationType">
+                            <option value="">Select presentation type...</option>
+                            <option value="1 on 1 supervision">1 on 1 supervision</option>
+                            <option value="Group meeting">Group meeting</option>
+                            <option value="External presentation">External presentation</option>
+                            <option value="Conference">Conference</option>
+                            <option value="Project Evaluation">Project Evaluation</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+
+                    <div id="presentationOtherGroup" style="display:none;margin-bottom:12px;">
+                        <label for="presentationOther">Specify Presentation Type <span style="color:#c0392b;">*</span></label>
+                        <input type="text" id="presentationOther" placeholder="Enter presentation type..." style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;font-size:14px;box-sizing:border-box;">
+                    </div>
 
                     <div id="submissionTypeGroup" style="display:none;margin-bottom:12px;">
                         <label for="submissionType">Submission Type</label>
@@ -2233,11 +2252,21 @@
         const uploadLoading = document.getElementById('uploadLoading');
         const uploadMessage = document.getElementById('uploadMessage');
 
-        // Reset file input on type change
+        // Reset file input on type change; toggle presentation fields
         document.getElementById('fileType').addEventListener('change', function() {
             fileInput.value = '';
             fileNameDisplay.textContent = '';
             fileUploadArea.classList.remove('has-file');
+            const isPres = this.value === 'PRESENTATION';
+            document.getElementById('presentationTypeGroup').style.display = isPres ? 'block' : 'none';
+            document.getElementById('presentationOtherGroup').style.display = 'none';
+            document.getElementById('presentationType').value = '';
+            document.getElementById('presentationOther').value = '';
+        });
+
+        document.getElementById('presentationType').addEventListener('change', function() {
+            document.getElementById('presentationOtherGroup').style.display = this.value === 'Other' ? 'block' : 'none';
+            if (this.value !== 'Other') document.getElementById('presentationOther').value = '';
         });
 
         fileUploadArea.addEventListener('click', () => fileInput.click());
@@ -2287,6 +2316,27 @@
                 return;
             }
 
+            // PRESENTATION-specific validation
+            if (fileType === 'PRESENTATION') {
+                const presType = document.getElementById('presentationType').value;
+                if (!presType) {
+                    showMessage('uploadMessage', 'Please select a presentation type.', 'error');
+                    return;
+                }
+                if (presType === 'Other' && !document.getElementById('presentationOther').value.trim()) {
+                    showMessage('uploadMessage', 'Please specify the presentation type.', 'error');
+                    return;
+                }
+                if (!file.name.toLowerCase().endsWith('.pdf')) {
+                    showMessage('uploadMessage', 'Presentations must be PDF files.', 'error');
+                    return;
+                }
+                if (file.size > 20 * 1024 * 1024) {
+                    showMessage('uploadMessage', 'Presentation file exceeds 20 MB limit.', 'error');
+                    return;
+                }
+            }
+
             uploadBtn.disabled = true;
             uploadForm.style.display = 'none';
             uploadLoading.style.display = 'block';
@@ -2295,6 +2345,13 @@
             const formData = new FormData();
             formData.append('fileType', fileType);
             formData.append('file', file);
+
+            // Include presentation metadata
+            if (fileType === 'PRESENTATION') {
+                formData.append('presentation_type', document.getElementById('presentationType').value);
+                const presOther = document.getElementById('presentationOther').value.trim();
+                if (presOther) formData.append('presentation_other', presOther);
+            }
 
             // Include revision request ID if this is a resubmission
             const submissionTypeEl = document.getElementById('submissionType');
@@ -2327,6 +2384,10 @@
                     fileNameDisplay.textContent = '';
                     fileUploadArea.classList.remove('has-file');
                     uploadBtn.disabled = false;
+
+                    // Reset presentation fields
+                    document.getElementById('presentationTypeGroup').style.display = 'none';
+                    document.getElementById('presentationOtherGroup').style.display = 'none';
 
                     // Refresh file list and revision requests
                     loadMyFiles();

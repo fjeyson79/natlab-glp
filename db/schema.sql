@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS di_submissions (
     submission_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     researcher_id VARCHAR(50) NOT NULL,
     affiliation VARCHAR(10) NOT NULL CHECK (affiliation IN ('LiU', 'UNAV')),
-    file_type VARCHAR(10) NOT NULL CHECK (file_type IN ('SOP', 'DATA')),
+    file_type VARCHAR(20) NOT NULL CHECK (file_type IN ('SOP', 'DATA', 'INVENTORY', 'PRESENTATION')),
     original_filename VARCHAR(500) NOT NULL,
     status VARCHAR(20) DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'APPROVED', 'REVISION_NEEDED')),
     sender_email VARCHAR(255),

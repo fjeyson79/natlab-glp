@@ -54,7 +54,7 @@ app.use(session({
 // Multer configuration for file uploads (memory storage)
 const upload = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit for PDFs
+    limits: { fileSize: 20 * 1024 * 1024 }, // 20MB limit (PRESENTATION allows 20MB; SOP/DATA capped at 10MB in route)
     fileFilter: (req, file, cb) => {
         const name = (file.originalname || '').toLowerCase();
         const isPdfName = name.endsWith('.pdf');
@@ -1044,8 +1044,8 @@ app.post('/api/di/upload', requireAuth, upload.single('file'), async (req, res) 
         const file = req.file;
 
         const normalizedType = String(fileType || '').trim().toUpperCase();
-        if (!normalizedType || !['SOP', 'DATA'].includes(normalizedType)) {
-            return res.status(400).json({ error: 'fileType must be SOP or DATA' });
+        if (!normalizedType || !['SOP', 'DATA', 'PRESENTATION'].includes(normalizedType)) {
+            return res.status(400).json({ error: 'fileType must be SOP, DATA or PRESENTATION' });
         }
 
         if (!file) {
@@ -1056,8 +1056,26 @@ app.post('/api/di/upload', requireAuth, upload.single('file'), async (req, res) 
             return res.status(400).json({ error: 'Only PDF files are accepted' });
         }
 
-        if (file.size > 10 * 1024 * 1024) {
-            return res.status(400).json({ error: 'File exceeds 10MB limit' });
+        const sizeLimit = normalizedType === 'PRESENTATION' ? 20 * 1024 * 1024 : 10 * 1024 * 1024;
+        if (file.size > sizeLimit) {
+            return res.status(400).json({ error: `File exceeds ${sizeLimit / (1024 * 1024)}MB limit` });
+        }
+
+        // Validate presentation metadata
+        let presentationType = null;
+        let presentationOther = null;
+        if (normalizedType === 'PRESENTATION') {
+            const validPresTypes = ['1 on 1 supervision', 'Group meeting', 'External presentation', 'Conference', 'Project Evaluation', 'Other'];
+            presentationType = (req.body.presentation_type || '').trim();
+            if (!presentationType || !validPresTypes.includes(presentationType)) {
+                return res.status(400).json({ error: 'presentation_type is required for PRESENTATION uploads' });
+            }
+            if (presentationType === 'Other') {
+                presentationOther = (req.body.presentation_other || '').trim();
+                if (!presentationOther) {
+                    return res.status(400).json({ error: 'presentation_other is required when presentation_type is Other' });
+                }
+            }
         }
 
         const user = req.session.user;
@@ -1080,8 +1098,8 @@ app.post('/api/di/upload', requireAuth, upload.single('file'), async (req, res) 
         const fileId = 'r2:' + key;
 
         const submissionResult = await pool.query(
-            'INSERT INTO di_submissions (researcher_id, affiliation, file_type, original_filename, drive_file_id) VALUES ($1, $2, $3, $4, $5) RETURNING submission_id',
-            [user.researcher_id, user.affiliation, normalizedType, file.originalname, fileId]
+            'INSERT INTO di_submissions (researcher_id, affiliation, file_type, original_filename, drive_file_id, presentation_type, presentation_other) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING submission_id',
+            [user.researcher_id, user.affiliation, normalizedType, file.originalname, fileId, presentationType, presentationOther]
         );
 
         const submissionId = submissionResult.rows[0].submission_id;
@@ -1159,12 +1177,29 @@ app.post('/api/di/external-upload', upload.single('file'), async (req, res) => {
             return res.status(400).json({ error: 'affiliation must be LiU or UNAV' });
         }
 
-        if (!fileType || !['SOP', 'DATA'].includes(fileType)) {
-            return res.status(400).json({ error: 'fileType must be SOP or DATA' });
+        if (!fileType || !['SOP', 'DATA', 'PRESENTATION'].includes(fileType)) {
+            return res.status(400).json({ error: 'fileType must be SOP, DATA or PRESENTATION' });
         }
 
         if (!file) {
             return res.status(400).json({ error: 'No file uploaded' });
+        }
+
+        // Validate presentation metadata for external uploads
+        let extPresType = null;
+        let extPresOther = null;
+        if (fileType === 'PRESENTATION') {
+            const validPresTypes = ['1 on 1 supervision', 'Group meeting', 'External presentation', 'Conference', 'Project Evaluation', 'Other'];
+            extPresType = (req.body.presentation_type || '').trim();
+            if (!extPresType || !validPresTypes.includes(extPresType)) {
+                return res.status(400).json({ error: 'presentation_type is required for PRESENTATION uploads' });
+            }
+            if (extPresType === 'Other') {
+                extPresOther = (req.body.presentation_other || '').trim();
+                if (!extPresOther) {
+                    return res.status(400).json({ error: 'presentation_other is required when presentation_type is Other' });
+                }
+            }
         }
 
         // Verify researcher exists in allowlist
@@ -1179,10 +1214,10 @@ app.post('/api/di/external-upload', upload.single('file'), async (req, res) => {
 
         // Record submission in database
         const submissionResult = await pool.query(
-            `INSERT INTO di_submissions (researcher_id, affiliation, file_type, original_filename)
-             VALUES ($1, $2, $3, $4)
+            `INSERT INTO di_submissions (researcher_id, affiliation, file_type, original_filename, presentation_type, presentation_other)
+             VALUES ($1, $2, $3, $4, $5, $6)
              RETURNING submission_id`,
-            [researcher_id, affiliation, fileType, file.originalname]
+            [researcher_id, affiliation, fileType, file.originalname, extPresType, extPresOther]
         );
 
         const submissionId = submissionResult.rows[0].submission_id;
@@ -2356,8 +2391,8 @@ app.post('/api/di/pi-upload-old', requirePI, upload.single('file'), async (req, 
             return res.status(400).json({ error: 'researcher_id is required' });
         }
 
-        if (!fileType || !['SOP', 'DATA'].includes(fileType)) {
-            return res.status(400).json({ error: 'fileType must be SOP or DATA' });
+        if (!fileType || !['SOP', 'DATA', 'PRESENTATION'].includes(fileType)) {
+            return res.status(400).json({ error: 'fileType must be SOP, DATA or PRESENTATION' });
         }
 
         if (!file) {

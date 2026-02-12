@@ -41,9 +41,9 @@ async function migrate() {
 
             // ==================== INVENTORY SYSTEM ====================
 
-            // Extend di_submissions file_type CHECK to include INVENTORY
+            // Extend di_submissions file_type CHECK to include INVENTORY and PRESENTATION
             `ALTER TABLE di_submissions DROP CONSTRAINT IF EXISTS di_submissions_file_type_check`,
-            `ALTER TABLE di_submissions ADD CONSTRAINT di_submissions_file_type_check CHECK (file_type IN ('SOP', 'DATA', 'INVENTORY'))`,
+            `ALTER TABLE di_submissions ADD CONSTRAINT di_submissions_file_type_check CHECK (file_type IN ('SOP', 'DATA', 'INVENTORY', 'PRESENTATION'))`,
 
             // Extend di_submissions status CHECK to include SUBMITTED (canonical GLP wording; PENDING is legacy for SOP/DATA)
             `ALTER TABLE di_submissions DROP CONSTRAINT IF EXISTS di_submissions_status_check`,
