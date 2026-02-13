@@ -1803,10 +1803,10 @@
                 <!-- Row 2: name + badges + scope toggle -->
                 <div class="glpHdr__mainRow">
                     <div class="glpHdr__mainLeft">
-                        <div class="glpName" id="glpName">Jane Researcher</div>
+                        <div class="glpName" id="glpName"></div>
                         <div class="glpBadgeRow">
-                            <span class="glpBadge glpBadge--role" id="glpRoleBadge">Researcher</span>
-                            <span class="glpBadge glpBadge--aff" id="glpAffiliationBadge">LiU</span>
+                            <span class="glpBadge glpBadge--role" id="glpRoleBadge"></span>
+                            <span class="glpBadge glpBadge--aff" id="glpAffiliationBadge"></span>
                         </div>
                     </div>
                     <div class="glpHdr__mainRight">
@@ -1875,44 +1875,44 @@
                 <div class="glpMiniCards">
                     <div class="glpMiniCard">
                         <div class="glpMiniCard__title">SOPs <span class="glpHintIcon" data-tip="Approved standard operating procedures">i</span></div>
-                        <div class="glpMiniCard__big" id="glpSopApproved">4</div>
-                        <div class="glpMiniCard__coverage" id="glpSopCoverage">3 of 4 referenced</div>
+                        <div class="glpMiniCard__big" id="glpSopApproved">--</div>
+                        <div class="glpMiniCard__coverage" id="glpSopCoverage">--</div>
                         <div class="glpMiniCard__row">
                             <span id="glpSopApprovedLabel">Approved</span>
-                            <span class="glpMiniCard__rowVal">4</span>
+                            <span class="glpMiniCard__rowVal">--</span>
                         </div>
                         <div class="glpMiniCard__row">
                             <span>Referenced in experiments</span>
-                            <span class="glpMiniCard__rowVal" id="glpSopReferenced">3</span>
+                            <span class="glpMiniCard__rowVal" id="glpSopReferenced">--</span>
                         </div>
                     </div>
                     <div class="glpMiniCard">
                         <div class="glpMiniCard__title">Experiments <span class="glpHintIcon" data-tip="Documented and reported experiments">i</span></div>
-                        <div class="glpMiniCard__big" id="glpExpReported">7</div>
-                        <div class="glpMiniCard__coverage" id="glpExpCoverage">5 of 7 linked to SOPs</div>
+                        <div class="glpMiniCard__big" id="glpExpReported">--</div>
+                        <div class="glpMiniCard__coverage" id="glpExpCoverage">--</div>
                         <div class="glpMiniCard__row">
                             <span id="glpExpReportedLabel">Reported</span>
-                            <span class="glpMiniCard__rowVal">7</span>
+                            <span class="glpMiniCard__rowVal">--</span>
                         </div>
                         <div class="glpMiniCard__row">
                             <span>Linked to SOPs</span>
-                            <span class="glpMiniCard__rowVal" id="glpExpLinked">5</span>
+                            <span class="glpMiniCard__rowVal" id="glpExpLinked">--</span>
                         </div>
                     </div>
                     <div class="glpMiniCard">
                         <div class="glpMiniCard__title">Inventory <span class="glpHintIcon" data-tip="Tracked products, samples, and oligos">i</span></div>
-                        <div class="glpMiniCard__big" id="glpInvTotal">18</div>
+                        <div class="glpMiniCard__big" id="glpInvTotal">--</div>
                         <div class="glpMiniCard__row">
                             <span>Products</span>
-                            <span class="glpMiniCard__rowVal" id="glpInvProducts">9</span>
+                            <span class="glpMiniCard__rowVal" id="glpInvProducts">--</span>
                         </div>
                         <div class="glpMiniCard__row">
                             <span>Samples</span>
-                            <span class="glpMiniCard__rowVal" id="glpInvSamples">6</span>
+                            <span class="glpMiniCard__rowVal" id="glpInvSamples">--</span>
                         </div>
                         <div class="glpMiniCard__row">
                             <span>Oligos</span>
-                            <span class="glpMiniCard__rowVal" id="glpInvOligos">3</span>
+                            <span class="glpMiniCard__rowVal" id="glpInvOligos">--</span>
                         </div>
                     </div>
                 </div>
@@ -2084,6 +2084,25 @@
                 const data = await response.json();
                 const user = data.user || data;
                   currentUserId = user.researcher_id;
+
+                  // GLP Status header identity (session user only, never snapshot)
+                  window.currentUser = user;
+                  const glpNameEl = document.getElementById("glpName");
+                  if (glpNameEl) {
+                    glpNameEl.textContent = (user.researcher_id || user.name || user.full_name || user.display_name || user.email || "");
+                  }
+
+                  const glpRoleEl = document.getElementById("glpRoleBadge");
+                  if (glpRoleEl) {
+                    const r = (user.role || "").toString();
+                    glpRoleEl.textContent = r ? (r.charAt(0).toUpperCase() + r.slice(1)) : "Member";
+                  }
+
+                  const glpAffEl = document.getElementById("glpAffiliationBadge");
+                  if (glpAffEl) {
+                    const a = (user.affiliation || user.institution || user.site || "").toString();
+                    if (a) glpAffEl.textContent = a;
+                  }
                   // role set above in currentUserRole
 
 
@@ -3002,24 +3021,79 @@ credentials: 'include'
         // --- Evidence mini-cards from snapshot ---
 
         function renderEvidenceMiniCards(ev) {
-            var sopEl = document.getElementById('glpSopApproved');
-            if (sopEl) sopEl.textContent = ev.sops.approved;
-            var sopCov = document.getElementById('glpSopCoverage');
-            if (sopCov) sopCov.textContent = ev.sops.approved + ' of ' + ev.sops.total + ' approved';
+            // SOPs (snapshot only)
+            var sopApproved = 0;
+            var sopTotal = 0;
+            var sopReferenced = null;
 
-            var expEl = document.getElementById('glpExpReported');
-            if (expEl) expEl.textContent = ev.data.total;
-            var expCov = document.getElementById('glpExpCoverage');
-            if (expCov) expCov.textContent = ev.data.approved + ' of ' + ev.data.total + ' approved';
+            if (ev && ev.sops) {
+                if (ev.sops.approved !== undefined && ev.sops.approved !== null) sopApproved = (+ev.sops.approved) || 0;
+                if (ev.sops.total !== undefined && ev.sops.total !== null) sopTotal = (+ev.sops.total) || 0;
 
-            var invEl = document.getElementById('glpInvTotal');
-            if (invEl) invEl.textContent = ev.inventory.total;
-            var invP = document.getElementById('glpInvProducts');
-            if (invP) invP.textContent = ev.inventory.products;
-            var invS = document.getElementById('glpInvSamples');
-            if (invS) invS.textContent = ev.inventory.samples;
-            var invO = document.getElementById('glpInvOligos');
-            if (invO) invO.textContent = ev.inventory.oligos;
+                if (ev.sops.referenced_in_experiments !== undefined && ev.sops.referenced_in_experiments !== null) {
+                    sopReferenced = +ev.sops.referenced_in_experiments;
+                } else if (ev.sops.referenced !== undefined && ev.sops.referenced !== null) {
+                    sopReferenced = +ev.sops.referenced;
+                }
+                if (sopReferenced !== null && isNaN(sopReferenced)) sopReferenced = null;
+            }
+
+            var sopEl = document.getElementById("glpSopApproved");
+            if (sopEl) sopEl.textContent = String(sopApproved);
+
+            var sopRefEl = document.getElementById("glpSopReferenced");
+            if (sopRefEl) sopRefEl.textContent = (sopReferenced === null ? "--" : String(sopReferenced));
+
+            var sopCov = document.getElementById("glpSopCoverage");
+            if (sopCov) sopCov.textContent = (sopReferenced === null ? "--" : (sopReferenced + " of " + sopTotal + " referenced"));
+
+            // Experiments (snapshot only): prefer ev.experiments, fallback to legacy ev.data
+            var expObj = null;
+            if (ev && ev.experiments) expObj = ev.experiments;
+            else if (ev && ev.data) expObj = ev.data;
+
+            var expTotal = 0;
+            var expReported = 0;
+            var expLinked = null;
+
+            if (expObj) {
+                if (expObj.total !== undefined && expObj.total !== null) expTotal = (+expObj.total) || 0;
+
+                if (expObj.reported !== undefined && expObj.reported !== null) expReported = (+expObj.reported) || 0;
+                else expReported = expTotal;
+
+                if (expObj.linked_to_sops !== undefined && expObj.linked_to_sops !== null) expLinked = +expObj.linked_to_sops;
+                else if (expObj.linked !== undefined && expObj.linked !== null) expLinked = +expObj.linked;
+
+                if (expLinked !== null && isNaN(expLinked)) expLinked = null;
+            }
+
+            var expEl = document.getElementById("glpExpReported");
+            if (expEl) expEl.textContent = String(expReported);
+
+            var expLinkedEl = document.getElementById("glpExpLinked");
+            if (expLinkedEl) expLinkedEl.textContent = (expLinked === null ? "--" : String(expLinked));
+
+            var expCov = document.getElementById("glpExpCoverage");
+            if (expCov) expCov.textContent = (expLinked === null ? "--" : (expLinked + " of " + expTotal + " linked to SOPs"));
+
+            // Inventory (snapshot only)
+            var invTotal = 0, invProducts = 0, invSamples = 0, invOligos = 0;
+            if (ev && ev.inventory) {
+                if (ev.inventory.total !== undefined && ev.inventory.total !== null) invTotal = (+ev.inventory.total) || 0;
+                if (ev.inventory.products !== undefined && ev.inventory.products !== null) invProducts = (+ev.inventory.products) || 0;
+                if (ev.inventory.samples !== undefined && ev.inventory.samples !== null) invSamples = (+ev.inventory.samples) || 0;
+                if (ev.inventory.oligos !== undefined && ev.inventory.oligos !== null) invOligos = (+ev.inventory.oligos) || 0;
+            }
+
+            var invEl = document.getElementById("glpInvTotal");
+            if (invEl) invEl.textContent = String(invTotal);
+            var invP = document.getElementById("glpInvProducts");
+            if (invP) invP.textContent = String(invProducts);
+            var invS = document.getElementById("glpInvSamples");
+            if (invS) invS.textContent = String(invSamples);
+            var invO = document.getElementById("glpInvOligos");
+            if (invO) invO.textContent = String(invOligos);
         }
 
         // --- Harmony Map from AI harmony.json ---
