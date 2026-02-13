@@ -2089,7 +2089,7 @@
                   window.currentUser = user;
                   const glpNameEl = document.getElementById("glpName");
                   if (glpNameEl) {
-                    glpNameEl.textContent = (user.researcher_id || user.name || user.full_name || user.display_name || user.email || "");
+                    glpNameEl.textContent = (user.name || user.full_name || user.display_name || user.researcher_id || user.email || "");
                   }
 
                   const glpRoleEl = document.getElementById("glpRoleBadge");
