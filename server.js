@@ -7251,33 +7251,33 @@ app.get('/api/di/glp-status/coherence', requireAuth, async (req, res) => {
         let qTrain = null;
         if (await checkTrainingTables()) {
             qTrain = pool.query(`
-    WITH b AS (SELECT )
-    SELECT
-        b.tw_start,
-        b.pw_start,
-        (SELECT COUNT(*)::int FROM di_training_packs p
-         WHERE p.researcher_id =  AND p.status = 'SEALED') AS sealed_count,
-        (SELECT COUNT(*)::int FROM di_training_entries e
-         JOIN di_training_packs p ON p.id = e.pack_id
-         WHERE p.researcher_id =  AND e.status = 'CERTIFIED') AS certified_entries,
-        (SELECT COUNT(*)::int FROM di_training_agreements a
-         JOIN di_training_packs p ON p.id = a.pack_id
-         WHERE p.researcher_id = ) AS agreement_count,
-        (SELECT COUNT(*)::int FROM di_training_entries e
-         JOIN di_training_packs p ON p.id = e.pack_id
-         WHERE p.researcher_id = 
-           AND (e.certified_at >= b.tw_start OR e.created_at >= b.tw_start)) AS entries_tw,
-        (SELECT COUNT(*)::int FROM di_training_entries e
-         JOIN di_training_packs p ON p.id = e.pack_id
-         WHERE p.researcher_id = 
-           AND (e.certified_at >= b.pw_start OR e.created_at >= b.pw_start)
-           AND (e.certified_at < b.tw_start OR (e.certified_at IS NULL AND e.created_at < b.tw_start))) AS entries_pw,
-        (SELECT COUNT(*)::int FROM di_training_packs p
-         WHERE p.researcher_id = 
-           AND p.status IN ('SUBMITTED','SEALED')
-           AND (p.sealed_at >= b.tw_start OR p.updated_at >= b.tw_start)) AS packs_tw
-    FROM b
-`, [rid]);
+                WITH b AS (SELECT ${boundsCTE})
+                SELECT
+                    b.tw_start,
+                    b.pw_start,
+                    (SELECT COUNT(*)::int FROM di_training_packs p
+                     WHERE p.researcher_id = $1 AND p.status = 'SEALED') AS sealed_count,
+                    (SELECT COUNT(*)::int FROM di_training_entries e
+                     JOIN di_training_packs p ON p.id = e.pack_id
+                     WHERE p.researcher_id = $1 AND e.status = 'CERTIFIED') AS certified_entries,
+                    (SELECT COUNT(*)::int FROM di_training_agreements a
+                     JOIN di_training_packs p ON p.id = a.pack_id
+                     WHERE p.researcher_id = $1) AS agreement_count,
+                    (SELECT COUNT(*)::int FROM di_training_entries e
+                     JOIN di_training_packs p ON p.id = e.pack_id
+                     WHERE p.researcher_id = $1
+                       AND (e.certified_at >= b.tw_start OR e.created_at >= b.tw_start)) AS entries_tw,
+                    (SELECT COUNT(*)::int FROM di_training_entries e
+                     JOIN di_training_packs p ON p.id = e.pack_id
+                     WHERE p.researcher_id = $1
+                       AND (e.certified_at >= b.pw_start OR e.created_at >= b.pw_start)
+                       AND (e.certified_at < b.tw_start OR (e.certified_at IS NULL AND e.created_at < b.tw_start))) AS entries_pw,
+                    (SELECT COUNT(*)::int FROM di_training_packs p
+                     WHERE p.researcher_id = $1
+                       AND p.status IN ('SUBMITTED','SEALED')
+                       AND (p.sealed_at >= b.tw_start OR p.updated_at >= b.tw_start)) AS packs_tw
+                FROM b
+            `, [rid]);
         }
 
         const [subsResult, invResult] = await Promise.all([qSubs, qInv]);
