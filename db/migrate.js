@@ -254,6 +254,22 @@ async function migrate() {
             `CREATE INDEX IF NOT EXISTS idx_glp_weekly_user ON glp_weekly_status_index(user_id)`,
             `CREATE INDEX IF NOT EXISTS idx_glp_weekly_week ON glp_weekly_status_index(iso_week)`,
             `CREATE INDEX IF NOT EXISTS idx_glp_weekly_generated ON glp_weekly_status_index(generated_at DESC)`,
+
+            // Migration 014: File associations for DIC (Data Intelligence Console)
+            `CREATE TABLE IF NOT EXISTS di_file_associations (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                source_id UUID NOT NULL,
+                target_id UUID NOT NULL,
+                link_type VARCHAR(20) NOT NULL CHECK (link_type IN ('SOP', 'PRESENTATION')),
+                created_by VARCHAR(50) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(source_id, target_id),
+                CHECK (source_id != target_id)
+            )`,
+            `CREATE INDEX IF NOT EXISTS idx_file_assoc_source ON di_file_associations(source_id)`,
+            `CREATE INDEX IF NOT EXISTS idx_file_assoc_target ON di_file_associations(target_id)`,
+            `CREATE INDEX IF NOT EXISTS idx_file_assoc_source_type ON di_file_associations(source_id, link_type)`,
+            `CREATE INDEX IF NOT EXISTS idx_file_assoc_target_type ON di_file_associations(target_id, link_type)`,
         ];
 
         for (const sql of migrations) {

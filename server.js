@@ -150,6 +150,84 @@ function r2KeyFromId(value) {
   return value.replace(/^r2:/, '');
 }
 
+// ─── NATLAB Naming v3 Parser ───
+// IMPORTANT: This function is duplicated in server.js and pi-dashboard.html.
+// Any change MUST be applied to BOTH copies identically.
+// Server-side test cases validate correctness (see testParseNatlabFilename below).
+function parseNatlabFilename(filename) {
+    const NON_COMPLIANT = {
+        parsed_date: null, parsed_initials: null, parsed_project: null,
+        parsed_description: null, is_sop: false, is_compliant: false, raw: filename
+    };
+
+    const base = filename.replace(/\.[^.]+$/, '');
+    const parts = base.split('_');
+
+    if (parts.length < 4) return NON_COMPLIANT;
+
+    const date = parts[0].trim();
+    const initials = parts[1].trim();
+    const slot2 = parts[2].trim();
+    const slot3 = parts[3].trim();
+
+    if (!date || !initials || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^[A-Z]{2,4}$/.test(initials)) {
+        return NON_COMPLIANT;
+    }
+
+    const is_sop = slot2 === 'SOP';
+    const descTokens = parts.slice(3).map(t => t.trim()).filter(Boolean);
+    const description = descTokens.join(' ').replace(/\s{2,}/g, ' ');
+
+    if (is_sop) {
+        if (!slot3) return NON_COMPLIANT;
+        return {
+            parsed_date: date, parsed_initials: initials, parsed_project: slot3,
+            parsed_description: description, is_sop: true, is_compliant: true, raw: filename
+        };
+    }
+
+    if (!slot2 || !slot3) return NON_COMPLIANT;
+    return {
+        parsed_date: date, parsed_initials: initials, parsed_project: slot2,
+        parsed_description: description, is_sop: false, is_compliant: true, raw: filename
+    };
+}
+
+(function testParseNatlabFilename() {
+    let pass = 0, fail = 0;
+    const t = (input, expect) => {
+        const r = parseNatlabFilename(input);
+        for (const [k, v] of Object.entries(expect)) {
+            if (r[k] !== v) {
+                console.error(`[PARSER TEST FAIL] "${input}": ${k} expected "${v}", got "${r[k]}"`);
+                fail++; return;
+            }
+        }
+        pass++;
+    };
+    t('2025-03-15_FH_RNase7_WeeklyPlateReader.pdf', {
+        parsed_date: '2025-03-15', parsed_initials: 'FH', parsed_project: 'RNase7',
+        parsed_description: 'WeeklyPlateReader', is_sop: false, is_compliant: true
+    });
+    t('2025-01-10_HJ_SOP_RNaseActivityAssay.pdf', {
+        parsed_date: '2025-01-10', parsed_initials: 'HJ', parsed_project: 'RNaseActivityAssay',
+        parsed_description: 'RNaseActivityAssay', is_sop: true, is_compliant: true
+    });
+    t('2025-06-01_AB_Proteomics_GroupMeetingResults.pdf', {
+        parsed_date: '2025-06-01', parsed_initials: 'AB', parsed_project: 'Proteomics',
+        parsed_description: 'GroupMeetingResults', is_sop: false, is_compliant: true
+    });
+    t('2025-04-20_FH_RNase7_ELISA_Batch3_Replicates.pdf', {
+        parsed_date: '2025-04-20', parsed_initials: 'FH', parsed_project: 'RNase7',
+        parsed_description: 'ELISA Batch3 Replicates', is_sop: false, is_compliant: true
+    });
+    t('random_file_upload.pdf', { parsed_date: null, parsed_project: null, is_compliant: false });
+    t('2025-03-15_FH_RNase7.pdf', { is_compliant: false });
+    t('2025-01-10_HJ_SOP.pdf', { is_compliant: false });
+    t('2026-01-01_FH_RNase7_.pdf', { is_compliant: false });
+    console.log(`[PARSER] parseNatlabFilename: ${pass} passed, ${fail} failed`);
+})();
+
 // Notify researcher of PI decision (fire-and-forget)
 async function notifyResearcher(payload) {
   const webhookUrl = process.env.N8N_NOTIFY_WEBHOOK_URL;
@@ -591,6 +669,27 @@ async function checkRevisionRequestsTable() {
         }
     }
     return revisionRequestsTableExists;
+}
+
+// Helper function to check if di_file_associations table exists (migration 014)
+let assocTableExists = null;
+let assocTableLastCheck = 0;
+
+async function checkAssociationsTable() {
+    const now = Date.now();
+    if (assocTableExists === null || assocTableExists === false || (now - assocTableLastCheck > ROLE_COLUMN_CHECK_INTERVAL)) {
+        try {
+            const result = await pool.query(`
+                SELECT table_name FROM information_schema.tables
+                WHERE table_name = 'di_file_associations'
+            `);
+            assocTableExists = result.rows.length > 0;
+            assocTableLastCheck = now;
+        } catch (err) {
+            assocTableExists = false;
+        }
+    }
+    return assocTableExists;
 }
 
 // Helper to get allowlist query based on role column existence
@@ -1782,7 +1881,134 @@ if (fileId && isR2Id(fileId)) {
     }
 });
 
-// GET /api/di/approve/:id - R2 only, no Drive
+// ─── Shared approval/revision helpers (used by token-based and inline endpoints) ───
+async function performApproval(submissionId) {
+    const result = await pool.query('SELECT * FROM di_submissions WHERE submission_id = $1', [submissionId]);
+    if (result.rows.length === 0) return { success: false, error: 'Submission not found', status: 404 };
+
+    const submission = result.rows[0];
+    const fileId = (submission.drive_file_id || '').trim();
+    const isR2 = fileId.startsWith('r2:');
+    console.log(`[APPROVE] id=${submissionId} fileId=${fileId} isR2=${isR2}`);
+
+    if (!isR2) return { success: false, error: 'Drive not configured. Only R2 supported.', status: 400 };
+    if (!fileId) return { success: false, error: 'No file associated.', status: 400 };
+    if (submission.status === 'APPROVED') return { success: false, error: 'Already approved.', status: 409 };
+
+    const signedAt = new Date().toISOString();
+    const signerName = 'Frank J. Hernandez';
+    const originalKey = fileId.replace(/^r2:/, '');
+
+    const r2Obj = await downloadFromR2(originalKey);
+    const chunks = []; for await (const c of r2Obj.Body) chunks.push(c);
+    const pdfBuffer = Buffer.concat(chunks);
+
+    const stampedBuffer = await createStampedPdf(pdfBuffer, signerName, signedAt);
+
+    const safeFilename = submission.original_filename.replace('.pdf', '_APPROVED.pdf').replace(/[^\w.\-]+/g, '_');
+    const approvedKey = originalKey.replace('/Submitted/', '/Approved/').replace(/[^/]+$/, safeFilename);
+    await uploadToR2(stampedBuffer, approvedKey, 'application/pdf');
+    const newFileId = 'r2:' + approvedKey;
+
+    try { await deleteFromR2(originalKey); } catch (e) { console.warn('[APPROVE] Delete warning:', e.message); }
+
+    const crypto = require('crypto');
+    const signatureHash = crypto.createHmac('sha256', process.env.API_SECRET_KEY || 'natlab_glp_secret')
+        .update(JSON.stringify({ submission_id: submissionId, original_filename: submission.original_filename, signed_at: signedAt, signer: signerName }))
+        .digest('hex');
+    const verificationCode = `NATLAB-${submissionId}-${signatureHash.substring(0, 8).toUpperCase()}`;
+
+    await pool.query(
+        `UPDATE di_submissions SET status='APPROVED', signed_at=$1, signer_name=$2, drive_file_id=$3, signed_pdf_path=$3, signature_hash=$4, verification_code=$5 WHERE submission_id=$6`,
+        [signedAt, signerName, newFileId, signatureHash, verificationCode, submissionId]
+    );
+
+    const researcherResult = await pool.query(
+        'SELECT institution_email, researcher_id FROM di_allowlist WHERE researcher_id = $1',
+        [submission.researcher_id]
+    );
+    if (researcherResult.rows.length > 0) {
+        const researcher = researcherResult.rows[0];
+        await notifyResearcher({
+            submission_id: submissionId,
+            decision: 'APPROVED',
+            researcher_email: researcher.institution_email,
+            researcher_name: researcher.researcher_id,
+            file_name: submission.original_filename,
+            affiliation: submission.affiliation,
+            view_url: `https://natlab-glp-production.up.railway.app/api/di/download/${submissionId}`,
+            download_url: `https://natlab-glp-production.up.railway.app/api/di/download/${submissionId}?download=true`,
+            verification_code: verificationCode
+        });
+    }
+
+    console.log(`[APPROVE] Success: ${submissionId} -> ${newFileId}`);
+    return { success: true, verification_code: verificationCode, filename: submission.original_filename };
+}
+
+async function performRevision(submissionId, comments) {
+    const result = await pool.query('SELECT drive_file_id, researcher_id, original_filename, affiliation, file_type, created_at FROM di_submissions WHERE submission_id = $1', [submissionId]);
+    if (result.rows.length === 0) return { success: false, error: 'Submission not found', status: 404 };
+
+    const submission = result.rows[0];
+    const fileId = (submission.drive_file_id || '').trim();
+    const isR2 = fileId.startsWith('r2:');
+    console.log(`[REVISE] id=${submissionId} fileId=${fileId} isR2=${isR2}`);
+
+    if (!isR2 && fileId) return { success: false, error: 'Drive not configured. Only R2 supported.', status: 400 };
+
+    if (isR2) {
+        try { await deleteFromR2(fileId.replace(/^r2:/, '')); } catch (e) { console.warn('[REVISE] Delete warning:', e.message); }
+    }
+
+    await pool.query(
+        `UPDATE di_submissions SET status='REVISION_NEEDED', drive_file_id=NULL, revision_comments=$1 WHERE submission_id=$2`,
+        [comments || '', submissionId]
+    );
+
+    if (await checkRevisionRequestsTable()) {
+        const submissionYear = submission.created_at ? new Date(submission.created_at).getFullYear() : new Date().getFullYear();
+        const docType = submission.file_type || 'SOP';
+        const existing = await pool.query(
+            `SELECT id FROM di_revision_requests WHERE file_id = $1 AND status = 'open'`,
+            [submissionId]
+        );
+        if (existing.rows.length > 0) {
+            await pool.query(
+                `UPDATE di_revision_requests SET pi_comment = $1 WHERE id = $2`,
+                [comments || '', existing.rows[0].id]
+            );
+        } else {
+            await pool.query(
+                `INSERT INTO di_revision_requests (file_id, researcher_id, year, doc_type, filename, pi_comment)
+                 VALUES ($1, $2, $3, $4, $5, $6)`,
+                [submissionId, submission.researcher_id, submissionYear, docType, submission.original_filename, comments || '']
+            );
+        }
+    }
+
+    const researcherResult = await pool.query(
+        'SELECT institution_email, researcher_id FROM di_allowlist WHERE researcher_id = $1',
+        [submission.researcher_id]
+    );
+    if (researcherResult.rows.length > 0) {
+        const researcher = researcherResult.rows[0];
+        await notifyResearcher({
+            submission_id: submissionId,
+            decision: 'REVISION_NEEDED',
+            researcher_email: researcher.institution_email,
+            researcher_name: researcher.researcher_id,
+            file_name: submission.original_filename,
+            affiliation: submission.affiliation,
+            pi_comments: comments || ''
+        });
+    }
+
+    console.log(`[REVISE] Success: ${submissionId} marked for revision`);
+    return { success: true, filename: submission.original_filename };
+}
+
+// GET /api/di/approve/:id - R2 only, no Drive (token-based)
 app.get('/api/di/approve/:id', async (req, res) => {
     const { id } = req.params;
     const { token } = req.query;
@@ -1791,74 +2017,13 @@ app.get('/api/di/approve/:id', async (req, res) => {
         const expectedToken = Buffer.from(id + '_glp_2024_sec').toString('base64').replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
         if (token !== expectedToken) return res.status(403).send(renderHtmlPage('Invalid Token', 'Link invalid or expired.', 'error'));
 
-        const result = await pool.query('SELECT * FROM di_submissions WHERE submission_id = $1', [id]);
-        if (result.rows.length === 0) return res.status(404).send(renderHtmlPage('Not Found', 'Submission not found.', 'error'));
-
-        const submission = result.rows[0];
-        const fileId = (submission.drive_file_id || '').trim();
-        const isR2 = fileId.startsWith('r2:');
-        console.log(`[APPROVE] id=${id} fileId=${fileId} isR2=${isR2}`);
-
-        if (!isR2) return res.status(400).send(renderHtmlPage('Error', 'Drive not configured. Only R2 supported.', 'error'));
-        if (!fileId) return res.status(400).send(renderHtmlPage('Error', 'No file associated.', 'error'));
-        if (submission.status === 'APPROVED') return res.send(renderHtmlPage('Already Approved', 'Already approved.', 'info'));
-
-        const signedAt = new Date().toISOString();
-        const signerName = 'Frank J. Hernandez';
-        const originalKey = fileId.replace(/^r2:/, '');
-
-        // Download from R2
-        const r2Obj = await downloadFromR2(originalKey);
-        const chunks = []; for await (const c of r2Obj.Body) chunks.push(c);
-        const pdfBuffer = Buffer.concat(chunks);
-
-        // Stamp PDF
-        const stampedBuffer = await createStampedPdf(pdfBuffer, signerName, signedAt);
-
-        // Upload to Approved folder
-        const safeFilename = submission.original_filename.replace('.pdf', '_APPROVED.pdf').replace(/[^\w.\-]+/g, '_');
-        const approvedKey = originalKey.replace('/Submitted/', '/Approved/').replace(/[^/]+$/, safeFilename);
-        await uploadToR2(stampedBuffer, approvedKey, 'application/pdf');
-        const newFileId = 'r2:' + approvedKey;
-
-        // Delete original (best effort)
-        try { await deleteFromR2(originalKey); } catch (e) { console.warn('[APPROVE] Delete warning:', e.message); }
-
-        // Signature hash
-        const crypto = require('crypto');
-        const signatureHash = crypto.createHmac('sha256', process.env.API_SECRET_KEY || 'natlab_glp_secret')
-            .update(JSON.stringify({ submission_id: id, original_filename: submission.original_filename, signed_at: signedAt, signer: signerName }))
-            .digest('hex');
-        const verificationCode = `NATLAB-${id}-${signatureHash.substring(0, 8).toUpperCase()}`;
-
-        // Update DB
-        await pool.query(
-            `UPDATE di_submissions SET status='APPROVED', signed_at=$1, signer_name=$2, drive_file_id=$3, signed_pdf_path=$3, signature_hash=$4, verification_code=$5 WHERE submission_id=$6`,
-            [signedAt, signerName, newFileId, signatureHash, verificationCode, id]
-        );
-
-        // Get researcher info and notify (fire-and-forget)
-        const researcherResult = await pool.query(
-            'SELECT institution_email, researcher_id FROM di_allowlist WHERE researcher_id = $1',
-            [submission.researcher_id]
-        );
-        if (researcherResult.rows.length > 0) {
-            const researcher = researcherResult.rows[0];
-            await notifyResearcher({
-                submission_id: id,
-                decision: 'APPROVED',
-                researcher_email: researcher.institution_email,
-                researcher_name: researcher.researcher_id,
-                file_name: submission.original_filename,
-                affiliation: submission.affiliation,
-                view_url: `https://natlab-glp-production.up.railway.app/api/di/download/${id}`,
-                download_url: `https://natlab-glp-production.up.railway.app/api/di/download/${id}?download=true`,
-                verification_code: verificationCode
-            });
+        const result = await performApproval(id);
+        if (!result.success) {
+            const tpl = result.status === 409 ? 'info' : 'error';
+            return res.status(result.status || 500).send(renderHtmlPage('Error', result.error, tpl));
         }
 
-        console.log(`[APPROVE] Success: ${id} -> ${newFileId}`);
-        res.redirect(`/di/action-success.html?action=approved&file=${encodeURIComponent(submission.original_filename)}&id=${id}`);
+        res.redirect(`/di/action-success.html?action=approved&file=${encodeURIComponent(result.filename)}&id=${id}`);
     } catch (err) {
         console.error('[APPROVE] Error:', err);
         res.status(500).send(renderHtmlPage('Error', err.message, 'error'));
@@ -1906,7 +2071,7 @@ app.get('/api/di/revise/:id', async (req, res) => {
     }
 });
 
-// POST /api/di/revise/:id - R2 only, no Drive
+// POST /api/di/revise/:id - R2 only, no Drive (token-based)
 app.post('/api/di/revise/:id', async (req, res) => {
     const { id } = req.params;
     const { token } = req.query;
@@ -1916,69 +2081,12 @@ app.post('/api/di/revise/:id', async (req, res) => {
         const expectedToken = Buffer.from(id + '_glp_2024_sec').toString('base64').replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
         if (token !== expectedToken) return res.status(403).send(renderHtmlPage('Invalid Token', 'Link invalid or expired.', 'error'));
 
-        const result = await pool.query('SELECT drive_file_id, researcher_id, original_filename, affiliation, file_type, created_at FROM di_submissions WHERE submission_id = $1', [id]);
-        if (result.rows.length === 0) return res.status(404).send(renderHtmlPage('Not Found', 'Submission not found.', 'error'));
-
-        const submission = result.rows[0];
-        const fileId = (submission.drive_file_id || '').trim();
-        const isR2 = fileId.startsWith('r2:');
-        console.log(`[REVISE] id=${id} fileId=${fileId} isR2=${isR2}`);
-
-        if (!isR2 && fileId) return res.status(400).send(renderHtmlPage('Error', 'Drive not configured. Only R2 supported.', 'error'));
-
-        // Delete from R2 (best effort)
-        if (isR2) {
-            try { await deleteFromR2(fileId.replace(/^r2:/, '')); } catch (e) { console.warn('[REVISE] Delete warning:', e.message); }
+        const result = await performRevision(id, comments);
+        if (!result.success) {
+            return res.status(result.status || 500).send(renderHtmlPage('Error', result.error, 'error'));
         }
 
-        // Update DB
-        await pool.query(
-            `UPDATE di_submissions SET status='REVISION_NEEDED', drive_file_id=NULL, revision_comments=$1 WHERE submission_id=$2`,
-            [comments || '', id]
-        );
-
-        // Upsert revision request (no duplicates per file_id)
-        if (await checkRevisionRequestsTable()) {
-            const submissionYear = submission.created_at ? new Date(submission.created_at).getFullYear() : new Date().getFullYear();
-            const docType = submission.file_type || 'SOP';
-            const existing = await pool.query(
-                `SELECT id FROM di_revision_requests WHERE file_id = $1 AND status = 'open'`,
-                [id]
-            );
-            if (existing.rows.length > 0) {
-                await pool.query(
-                    `UPDATE di_revision_requests SET pi_comment = $1 WHERE id = $2`,
-                    [comments || '', existing.rows[0].id]
-                );
-            } else {
-                await pool.query(
-                    `INSERT INTO di_revision_requests (file_id, researcher_id, year, doc_type, filename, pi_comment)
-                     VALUES ($1, $2, $3, $4, $5, $6)`,
-                    [id, submission.researcher_id, submissionYear, docType, submission.original_filename, comments || '']
-                );
-            }
-        }
-
-        // Get researcher info and notify (fire-and-forget)
-        const researcherResult = await pool.query(
-            'SELECT institution_email, researcher_id FROM di_allowlist WHERE researcher_id = $1',
-            [submission.researcher_id]
-        );
-        if (researcherResult.rows.length > 0) {
-            const researcher = researcherResult.rows[0];
-            await notifyResearcher({
-                submission_id: id,
-                decision: 'REVISION_NEEDED',
-                researcher_email: researcher.institution_email,
-                researcher_name: researcher.researcher_id,
-                file_name: submission.original_filename,
-                affiliation: submission.affiliation,
-                pi_comments: comments || ''
-            });
-        }
-
-        console.log(`[REVISE] Success: ${id} marked for revision`);
-        res.redirect(`/di/action-success.html?action=revision&file=${encodeURIComponent(submission.original_filename)}&id=${id}`);
+        res.redirect(`/di/action-success.html?action=revision&file=${encodeURIComponent(result.filename)}&id=${id}`);
     } catch (err) {
         console.error('[REVISE] Error:', err);
         res.status(500).send(renderHtmlPage('Error', err.message, 'error'));
@@ -2797,6 +2905,245 @@ app.get('/api/di/lab-files', requirePI, async (req, res) => {
 
     } catch (err) {
         console.error('Get lab files error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// =====================================================
+// DIC (Data Intelligence Console) ENDPOINTS
+// =====================================================
+
+// GET /api/di/lab-files-enriched — Performance-bounded with association counts
+app.get('/api/di/lab-files-enriched', requirePI, async (req, res) => {
+    try {
+        const months = Math.min(Math.max(parseInt(req.query.months) || 12, 6), 60);
+        const hasAssoc = await checkAssociationsTable();
+
+        // Implementation note: structured for easy future extension with ?researcher_id=
+        const conditions = ['s.created_at >= NOW() - make_interval(months => $1)'];
+        const params = [months];
+
+        const whereClause = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
+
+        const query = hasAssoc
+            ? `SELECT s.submission_id, s.researcher_id, s.original_filename, s.file_type,
+                      s.status, s.created_at, s.signed_at, s.ai_review,
+                      COALESCE(s.drive_file_id, s.signed_pdf_path) as r2_object_key,
+                      a.name as researcher_name, a.affiliation,
+                      COALESCE(sop_c.cnt, 0)::int as linked_sop_count,
+                      COALESCE(pres_c.cnt, 0)::int as linked_pres_count
+               FROM di_submissions s
+               LEFT JOIN di_allowlist a ON s.researcher_id = a.researcher_id
+               LEFT JOIN (SELECT source_id, COUNT(*) as cnt FROM di_file_associations
+                          WHERE link_type='SOP' GROUP BY source_id) sop_c
+                          ON s.submission_id = sop_c.source_id
+               LEFT JOIN (SELECT source_id, COUNT(*) as cnt FROM di_file_associations
+                          WHERE link_type='PRESENTATION' GROUP BY source_id) pres_c
+                          ON s.submission_id = pres_c.source_id
+               ${whereClause}
+               ORDER BY s.created_at DESC`
+            : `SELECT s.submission_id, s.researcher_id, s.original_filename, s.file_type,
+                      s.status, s.created_at, s.signed_at, s.ai_review,
+                      COALESCE(s.drive_file_id, s.signed_pdf_path) as r2_object_key,
+                      a.name as researcher_name, a.affiliation,
+                      0 as linked_sop_count, 0 as linked_pres_count
+               FROM di_submissions s
+               LEFT JOIN di_allowlist a ON s.researcher_id = a.researcher_id
+               ${whereClause}
+               ORDER BY s.created_at DESC`;
+
+        const result = await pool.query(query, params);
+        res.json({ success: true, months_used: months, files: result.rows });
+    } catch (err) {
+        console.error('Get enriched lab files error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/di/researcher-file-metrics — Per-researcher counts
+app.get('/api/di/researcher-file-metrics', requirePI, async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT s.researcher_id, a.name as researcher_name,
+                COUNT(*)::int as total_count,
+                COUNT(*) FILTER (WHERE s.file_type='DATA')::int as data_count,
+                COUNT(*) FILTER (WHERE s.file_type='PRESENTATION')::int as pres_count,
+                COUNT(*) FILTER (WHERE s.file_type='SOP')::int as sop_count,
+                COUNT(*) FILTER (WHERE s.status='PENDING')::int as pending_count,
+                MAX(s.created_at) as last_upload
+            FROM di_submissions s
+            LEFT JOIN di_allowlist a ON s.researcher_id = a.researcher_id
+            GROUP BY s.researcher_id, a.name
+            ORDER BY a.name
+        `);
+        res.json({ success: true, metrics: result.rows });
+    } catch (err) {
+        console.error('Get researcher metrics error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/di/file-associations/:id — Manual links + heuristic suggestions
+app.get('/api/di/file-associations/:id', requirePI, async (req, res) => {
+    try {
+        const sourceFileId = req.params.id;
+        const hasAssoc = await checkAssociationsTable();
+
+        // Get source file
+        const srcResult = await pool.query('SELECT * FROM di_submissions WHERE submission_id = $1', [sourceFileId]);
+        if (srcResult.rows.length === 0) return res.status(404).json({ error: 'File not found' });
+        const sourceFile = srcResult.rows[0];
+        const sourceParsed = parseNatlabFilename(sourceFile.original_filename);
+
+        // Manual links
+        let manual = [];
+        if (hasAssoc) {
+            const manualResult = await pool.query(`
+                SELECT fa.id, fa.target_id, fa.link_type, fa.created_at,
+                       s.original_filename, s.status, s.created_at as file_created_at,
+                       a.name as researcher_name
+                FROM di_file_associations fa
+                JOIN di_submissions s ON fa.target_id = s.submission_id
+                LEFT JOIN di_allowlist a ON s.researcher_id = a.researcher_id
+                WHERE fa.source_id = $1
+                ORDER BY fa.link_type, fa.created_at DESC
+            `, [sourceFileId]);
+            manual = manualResult.rows;
+        }
+
+        // Heuristic helper
+        function resolveDate(parsed, createdAt) {
+            return parsed.is_compliant && parsed.parsed_date
+                ? new Date(parsed.parsed_date)
+                : new Date(createdAt);
+        }
+
+        function scoreCandidate(candidate) {
+            const cParsed = parseNatlabFilename(candidate.original_filename);
+            const sDate = resolveDate(sourceParsed, sourceFile.created_at);
+            const cDate = resolveDate(cParsed, candidate.created_at);
+
+            const daysBetween = Math.abs((sDate - cDate) / (1000 * 60 * 60 * 24));
+
+            let score = 0;
+            // Same project (40)
+            if (sourceParsed.is_compliant && cParsed.is_compliant &&
+                sourceParsed.parsed_project && cParsed.parsed_project &&
+                sourceParsed.parsed_project.toLowerCase() === cParsed.parsed_project.toLowerCase()) {
+                score += 40;
+            }
+            // Time proximity within 30d (25)
+            score += 25 * Math.max(0, 1 - daysBetween / 30);
+            // Description token overlap (15)
+            if (sourceParsed.is_compliant && cParsed.is_compliant &&
+                sourceParsed.parsed_description && cParsed.parsed_description) {
+                const sTokens = new Set(sourceParsed.parsed_description.toLowerCase().split(/\s+/).filter(t => t.length >= 3));
+                const cTokens = new Set(cParsed.parsed_description.toLowerCase().split(/\s+/).filter(t => t.length >= 3));
+                const intersection = [...sTokens].filter(t => cTokens.has(t)).length;
+                const union = new Set([...sTokens, ...cTokens]).size;
+                if (union > 0) score += 15 * (intersection / union);
+            }
+            // Same year (10)
+            if (sDate.getFullYear() === cDate.getFullYear()) score += 10;
+            // Approved bonus (10)
+            if (candidate.status === 'APPROVED') score += 10;
+
+            return { ...candidate, score: Math.round(score * 10) / 10, filename: candidate.original_filename };
+        }
+
+        // Heuristic SOP candidates
+        let heuristic_sops = [];
+        const sopExclusion = hasAssoc
+            ? `AND NOT EXISTS (SELECT 1 FROM di_file_associations fa WHERE fa.source_id = $2 AND fa.target_id = s.submission_id AND fa.link_type = 'SOP')`
+            : '';
+        const sopResult = await pool.query(`
+            SELECT s.submission_id, s.researcher_id, s.original_filename, s.status, s.created_at
+            FROM di_submissions s
+            WHERE s.file_type = 'SOP' AND s.researcher_id = $1 AND s.submission_id != $2
+            ${sopExclusion}
+            ORDER BY s.created_at DESC LIMIT 30
+        `, [sourceFile.researcher_id, sourceFileId]);
+        heuristic_sops = sopResult.rows.map(scoreCandidate).sort((a, b) => b.score - a.score).slice(0, 2);
+
+        // Heuristic PRES candidates
+        let heuristic_presentations = [];
+        const presExclusion = hasAssoc
+            ? `AND NOT EXISTS (SELECT 1 FROM di_file_associations fa WHERE fa.source_id = $2 AND fa.target_id = s.submission_id AND fa.link_type = 'PRESENTATION')`
+            : '';
+        const presResult = await pool.query(`
+            SELECT s.submission_id, s.researcher_id, s.original_filename, s.status, s.created_at
+            FROM di_submissions s
+            WHERE s.file_type = 'PRESENTATION' AND s.researcher_id = $1 AND s.submission_id != $2
+            ${presExclusion}
+            ORDER BY s.created_at DESC LIMIT 30
+        `, [sourceFile.researcher_id, sourceFileId]);
+        heuristic_presentations = presResult.rows.map(scoreCandidate).sort((a, b) => b.score - a.score).slice(0, 2);
+
+        res.json({ success: true, manual, heuristic_sops, heuristic_presentations });
+    } catch (err) {
+        console.error('Get file associations error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/di/file-associations — Create manual link
+app.post('/api/di/file-associations', requirePI, async (req, res) => {
+    try {
+        if (!await checkAssociationsTable()) return res.status(404).json({ error: 'Feature not available' });
+
+        const { source_id, target_id, link_type } = req.body;
+        if (!source_id || !target_id || !link_type) return res.status(400).json({ error: 'Missing required fields' });
+        if (!['SOP', 'PRESENTATION'].includes(link_type)) return res.status(400).json({ error: 'Invalid link_type' });
+        if (source_id === target_id) return res.status(400).json({ error: 'Cannot link a file to itself' });
+
+        const created_by = req.session.user.researcher_id || req.session.user.email || 'pi';
+        await pool.query(
+            `INSERT INTO di_file_associations (source_id, target_id, link_type, created_by) VALUES ($1, $2, $3, $4)`,
+            [source_id, target_id, link_type, created_by]
+        );
+        res.json({ success: true });
+    } catch (err) {
+        if (err.code === '23505') return res.status(409).json({ error: 'Association already exists' });
+        if (err.code === '23514') return res.status(400).json({ error: 'Invalid association' });
+        console.error('Create file association error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// DELETE /api/di/file-associations/:id — Remove manual link
+app.delete('/api/di/file-associations/:id', requirePI, async (req, res) => {
+    try {
+        if (!await checkAssociationsTable()) return res.status(404).json({ error: 'Feature not available' });
+        const result = await pool.query('DELETE FROM di_file_associations WHERE id = $1', [req.params.id]);
+        if (result.rowCount === 0) return res.status(404).json({ error: 'Association not found' });
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Delete file association error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/di/approve-inline/:id — Session-based approval (DIC)
+app.post('/api/di/approve-inline/:id', requirePI, async (req, res) => {
+    try {
+        const result = await performApproval(req.params.id);
+        if (!result.success) return res.status(result.status || 500).json({ error: result.error });
+        res.json({ success: true, verification_code: result.verification_code });
+    } catch (err) {
+        console.error('[APPROVE-INLINE] Error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/di/revise-inline/:id — Session-based revision (DIC)
+app.post('/api/di/revise-inline/:id', requirePI, async (req, res) => {
+    try {
+        const { comments } = req.body;
+        const result = await performRevision(req.params.id, comments);
+        if (!result.success) return res.status(result.status || 500).json({ error: result.error });
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[REVISE-INLINE] Error:', err);
         res.status(500).json({ error: 'Server error' });
     }
 });

@@ -404,8 +404,621 @@
         .ai-score.medium { background: #fff3cd; color: #856404; }
         .ai-score.low { background: #f8d7da; color: #721c24; }
 
+        /* ==================== DATA INTELLIGENCE CONSOLE (DIC) ==================== */
+        .dic-container {
+            display: grid;
+            grid-template-columns: 220px 380px 1fr;
+            height: calc(100vh - 160px);
+            gap: 0;
+            background: #f0f2f5;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid #e4e7eb;
+        }
+
+        /* --- Sidebar --- */
+        .dic-sidebar {
+            background: #fff;
+            border-right: 1px solid #e4e7eb;
+            overflow-y: auto;
+            padding: 0;
+        }
+        .dic-sidebar.collapsed { display: none; }
+        .dic-sidebar-section {
+            padding: 14px 16px 8px;
+        }
+        .dic-sidebar-section:not(:last-child) {
+            border-bottom: 1px solid #f0f2f5;
+        }
+        .dic-micro-title {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 1.6px;
+            text-transform: uppercase;
+            color: #8c95a1;
+            margin-bottom: 8px;
+        }
+        .dic-status-bucket {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 6px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            color: #374151;
+            transition: background 0.15s;
+        }
+        .dic-status-bucket:hover { background: #f5f7fa; }
+        .dic-status-bucket.active { background: #eef2ff; color: #1a365d; font-weight: 600; }
+        .dic-status-bucket .dic-count {
+            background: #e8ecf1;
+            color: #5a6578;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 1px 7px;
+            border-radius: 10px;
+            min-width: 20px;
+            text-align: center;
+        }
+        .dic-status-bucket.active .dic-count {
+            background: #1a365d;
+            color: #fff;
+        }
+        .dic-year-item {
+            padding: 5px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            color: #5a6578;
+            transition: background 0.15s;
+        }
+        .dic-year-item:hover { background: #f5f7fa; }
+        .dic-year-item.active { background: #eef2ff; color: #1a365d; font-weight: 600; }
+        .dic-researcher-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 7px 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .dic-researcher-item:hover { background: #f5f7fa; }
+        .dic-researcher-item.active { background: #eef2ff; }
+        .dic-researcher-avatar {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background: #2d5a87;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+        .dic-researcher-name {
+            font-size: 13px;
+            color: #374151;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .dic-researcher-item.active .dic-researcher-name { color: #1a365d; font-weight: 600; }
+
+        /* --- Finder (Column A) --- */
+        .dic-finder {
+            background: #fafbfc;
+            border-right: 1px solid #e4e7eb;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .dic-search-area {
+            padding: 16px 16px 0;
+        }
+        .dic-search-input {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1.5px solid #d1d5db;
+            border-radius: 10px;
+            font-size: 14px;
+            background: #fff;
+            outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            box-sizing: border-box;
+        }
+        .dic-search-input:focus {
+            border-color: #2d5a87;
+            box-shadow: 0 0 0 3px rgba(45, 90, 135, 0.1);
+        }
+        .dic-scope-pills {
+            display: flex;
+            gap: 6px;
+            padding: 10px 0 0;
+        }
+        .dic-scope-pill {
+            padding: 4px 12px;
+            border-radius: 14px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            border: 1.5px solid #d1d5db;
+            background: #fff;
+            color: #5a6578;
+            transition: all 0.15s;
+        }
+        .dic-scope-pill:hover { border-color: #9ca3af; }
+        .dic-scope-pill.active {
+            background: #1a365d;
+            color: #fff;
+            border-color: #1a365d;
+        }
+        .dic-filter-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            padding: 10px 16px;
+            border-bottom: 1px solid #e4e7eb;
+        }
+        .dic-chip {
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            cursor: pointer;
+            border: 1px solid #e4e7eb;
+            background: #fff;
+            color: #5a6578;
+            transition: all 0.15s;
+        }
+        .dic-chip:hover { border-color: #9ca3af; }
+        .dic-chip.active {
+            background: #eef2ff;
+            border-color: #2d5a87;
+            color: #1a365d;
+            font-weight: 600;
+        }
+        .dic-chip.dic-chip-warn.active {
+            background: #fff7ed;
+            border-color: #fd7e14;
+            color: #c2410c;
+        }
+        .dic-months-label {
+            font-size: 10px;
+            color: #9ca3af;
+            padding: 2px 16px 0;
+        }
+        .dic-quick-metrics {
+            display: flex;
+            gap: 6px;
+            padding: 10px 16px;
+            border-bottom: 1px solid #e4e7eb;
+        }
+        .dic-metric-box {
+            flex: 1;
+            background: #fff;
+            border: 1px solid #e4e7eb;
+            border-radius: 8px;
+            padding: 6px 4px;
+            text-align: center;
+        }
+        .dic-metric-value {
+            font-size: 18px;
+            font-weight: 700;
+            color: #1a365d;
+        }
+        .dic-metric-label {
+            font-size: 9px;
+            font-weight: 600;
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
+            color: #8c95a1;
+        }
+        .dic-results {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px 12px;
+        }
+        .dic-result-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 10px 12px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: background 0.15s, box-shadow 0.15s;
+            border: 1px solid transparent;
+        }
+        .dic-result-item:hover {
+            background: #fff;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+            border-color: #e4e7eb;
+        }
+        .dic-result-item.active {
+            background: #fff;
+            border-color: #2d5a87;
+            box-shadow: 0 2px 8px rgba(45, 90, 135, 0.1);
+        }
+        .dic-result-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+            font-weight: 700;
+            flex-shrink: 0;
+            color: #fff;
+        }
+        .dic-result-icon.data { background: #2d5a87; }
+        .dic-result-icon.sop { background: #6366f1; }
+        .dic-result-icon.pres { background: #0891b2; }
+        .dic-result-body { flex: 1; min-width: 0; }
+        .dic-result-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: #1e293b;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .dic-result-sub {
+            font-size: 11px;
+            color: #8c95a1;
+            margin-top: 2px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .dic-result-meta {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 4px;
+        }
+        .dic-badge {
+            font-size: 9px;
+            font-weight: 600;
+            padding: 1px 6px;
+            border-radius: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .dic-badge.pending { background: #fff3cd; color: #856404; }
+        .dic-badge.approved { background: #d4edda; color: #155724; }
+        .dic-badge.revision { background: #f8d7da; color: #721c24; }
+        .dic-badge.submitted { background: #cce5ff; color: #004085; }
+        .dic-assoc-chip {
+            font-size: 9px;
+            font-weight: 600;
+            padding: 1px 5px;
+            border-radius: 4px;
+            background: #eef2ff;
+            color: #4338ca;
+        }
+        .dic-nc-indicator {
+            font-size: 9px;
+            color: #fd7e14;
+            font-weight: 600;
+        }
+        .dic-empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 20px;
+            text-align: center;
+            color: #8c95a1;
+        }
+        .dic-empty-state h3 {
+            font-size: 14px;
+            font-weight: 600;
+            color: #5a6578;
+            margin: 0 0 12px;
+        }
+        .dic-empty-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+        }
+        .dic-empty-btn {
+            padding: 6px 14px;
+            border-radius: 16px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            border: 1.5px solid #d1d5db;
+            background: #fff;
+            color: #374151;
+            transition: all 0.15s;
+        }
+        .dic-empty-btn:hover { border-color: #2d5a87; color: #1a365d; }
+
+        /* --- Viewer (Column B) --- */
+        .dic-viewer {
+            background: #fff;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .dic-viewer-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 16px;
+            border-bottom: 1px solid #e4e7eb;
+            background: #fafbfc;
+            min-height: 48px;
+            flex-wrap: wrap;
+        }
+        .dic-viewer-filename {
+            font-size: 13px;
+            font-weight: 600;
+            color: #1e293b;
+            flex: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .dic-toolbar-btn {
+            padding: 5px 12px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            border: 1px solid #d1d5db;
+            background: #fff;
+            color: #374151;
+            transition: all 0.15s;
+        }
+        .dic-toolbar-btn:hover { background: #f5f7fa; border-color: #9ca3af; }
+        .dic-toolbar-btn.approve { background: #d4edda; color: #155724; border-color: #c3e6cb; }
+        .dic-toolbar-btn.approve:hover { background: #c3e6cb; }
+        .dic-toolbar-btn.revise { background: #fff3cd; color: #856404; border-color: #ffeeba; }
+        .dic-toolbar-btn.revise:hover { background: #ffeeba; }
+        .dic-viewer-pdf {
+            flex: 1;
+            border: none;
+            background: #f0f2f5;
+        }
+        .dic-viewer-empty {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #9ca3af;
+            font-size: 14px;
+        }
+        .dic-intel-panel {
+            border-top: 1px solid #e4e7eb;
+            padding: 14px 16px;
+            background: #fafbfc;
+            overflow-y: auto;
+            max-height: 260px;
+        }
+        .dic-intel-section {
+            margin-bottom: 12px;
+        }
+        .dic-intel-section:last-child { margin-bottom: 0; }
+        .dic-intel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 6px;
+        }
+        .dic-intel-link-btn {
+            font-size: 10px;
+            font-weight: 600;
+            color: #2d5a87;
+            cursor: pointer;
+            border: none;
+            background: none;
+            padding: 2px 6px;
+            border-radius: 4px;
+            transition: background 0.15s;
+        }
+        .dic-intel-link-btn:hover { background: #eef2ff; }
+        .dic-intel-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 5px 8px;
+            border-radius: 6px;
+            font-size: 12px;
+            color: #374151;
+            background: #fff;
+            border: 1px solid #e4e7eb;
+            margin-bottom: 4px;
+        }
+        .dic-intel-item .dic-badge { margin-left: auto; }
+        .dic-intel-remove {
+            font-size: 14px;
+            color: #d1d5db;
+            cursor: pointer;
+            margin-left: 4px;
+            line-height: 1;
+            transition: color 0.15s;
+        }
+        .dic-intel-remove:hover { color: #ef4444; }
+        .dic-intel-heuristic {
+            opacity: 0.7;
+            border-style: dashed;
+        }
+        .dic-intel-score {
+            font-size: 9px;
+            font-weight: 600;
+            color: #8c95a1;
+            margin-left: 4px;
+        }
+        .dic-improve-btn {
+            display: inline-block;
+            padding: 5px 12px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: default;
+            border: 1px dashed #d1d5db;
+            background: #f9fafb;
+            color: #9ca3af;
+            margin-top: 8px;
+        }
+        .dic-provenance {
+            font-size: 11px;
+            color: #5a6578;
+            line-height: 1.7;
+        }
+        .dic-provenance strong {
+            color: #374151;
+            font-weight: 600;
+        }
+
+        /* --- Link Modal --- */
+        .dic-modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.4);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .dic-modal-overlay.active { display: flex; }
+        .dic-modal {
+            background: #fff;
+            border-radius: 14px;
+            width: 520px;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+        }
+        .dic-modal-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid #e4e7eb;
+            font-size: 15px;
+            font-weight: 700;
+            color: #1a365d;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .dic-modal-close {
+            font-size: 20px;
+            cursor: pointer;
+            color: #9ca3af;
+            border: none;
+            background: none;
+            line-height: 1;
+        }
+        .dic-modal-close:hover { color: #374151; }
+        .dic-modal-body {
+            padding: 16px 20px;
+            overflow-y: auto;
+            flex: 1;
+        }
+        .dic-modal-search {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            font-size: 13px;
+            margin-bottom: 12px;
+            box-sizing: border-box;
+        }
+        .dic-modal-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.15s;
+            font-size: 12px;
+            color: #374151;
+        }
+        .dic-modal-item:hover { background: #f5f7fa; }
+        .dic-modal-item.linked {
+            opacity: 0.4;
+            cursor: default;
+        }
+        .dic-modal-item .dic-badge { margin-left: auto; }
+
+        /* --- Revise Modal --- */
+        .dic-revise-textarea {
+            width: 100%;
+            min-height: 100px;
+            padding: 10px 12px;
+            border: 1.5px solid #d1d5db;
+            border-radius: 8px;
+            font-size: 13px;
+            font-family: inherit;
+            resize: vertical;
+            box-sizing: border-box;
+        }
+        .dic-revise-textarea:focus {
+            border-color: #2d5a87;
+            outline: none;
+        }
+        .dic-modal-footer {
+            padding: 12px 20px;
+            border-top: 1px solid #e4e7eb;
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+        }
+        .dic-modal-btn {
+            padding: 7px 18px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            border: 1px solid #d1d5db;
+            background: #fff;
+            color: #374151;
+            transition: all 0.15s;
+        }
+        .dic-modal-btn:hover { background: #f5f7fa; }
+        .dic-modal-btn.primary {
+            background: #1a365d;
+            color: #fff;
+            border-color: #1a365d;
+        }
+        .dic-modal-btn.primary:hover { background: #2d5a87; }
+
+        /* --- Sidebar toggle --- */
+        .dic-sidebar-toggle {
+            position: absolute;
+            left: 220px;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 10;
+            width: 20px;
+            height: 40px;
+            background: #fff;
+            border: 1px solid #e4e7eb;
+            border-radius: 0 6px 6px 0;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            color: #8c95a1;
+            transition: all 0.15s;
+        }
+        .dic-sidebar-toggle:hover { background: #f5f7fa; color: #374151; }
+
         /* Responsive */
         @media (max-width: 1200px) {
+            .dic-container {
+                grid-template-columns: 1fr;
+                height: auto;
+            }
+            .dic-sidebar { display: none; }
+            .dic-finder { border-right: none; }
+            .dic-viewer { min-height: 500px; }
             .two-column { grid-template-columns: 1fr; }
             .form-row { grid-template-columns: 1fr; }
             .tab-nav { overflow-x: auto; }
@@ -523,55 +1136,121 @@
         </div>
     </div>
 
-    <!-- ==================== LABORATORY FILES TAB ==================== -->
+    <!-- ==================== LABORATORY FILES TAB — DATA INTELLIGENCE CONSOLE ==================== -->
     <div class="tab-content" id="tab-lab-files">
-        <div class="panel">
-            <div class="panel-header">
-                <h2><span class="icon">&#128193;</span> Laboratory Files</h2>
-                <button class="btn btn-sm btn-secondary" onclick="loadLabFiles()">Refresh</button>
+        <div class="dic-container" style="position:relative;">
+            <!-- Sidebar -->
+            <div class="dic-sidebar" id="dicSidebar">
+                <div class="dic-sidebar-section">
+                    <div class="dic-micro-title">STATUS</div>
+                    <div id="dicStatusBuckets"></div>
+                </div>
+                <div class="dic-sidebar-section">
+                    <div class="dic-micro-title">YEAR</div>
+                    <div id="dicYearList"></div>
+                </div>
+                <div class="dic-sidebar-section">
+                    <div class="dic-micro-title">RESEARCHERS</div>
+                    <div id="dicResearcherList"></div>
+                </div>
             </div>
-            <div class="panel-content">
-                <!-- Filters -->
-                <div class="filter-bar">
-                    <div class="filter-group">
-                        <label>Status</label>
-                        <select id="filterStatus" onchange="applyFilters()">
-                            <option value="">All Statuses</option>
-                            <option value="PENDING">Pending</option>
-                            <option value="APPROVED">Approved</option>
-                            <option value="REVISION_NEEDED">Revision Needed</option>
-                        </select>
-                    </div>
-                    <div class="filter-group">
-                        <label>Year</label>
-                        <select id="filterYear" onchange="applyFilters()">
-                            <option value="">All Years</option>
-                        </select>
-                    </div>
-                    <div class="filter-group">
-                        <label>Researcher</label>
-                        <select id="filterResearcher" onchange="applyFilters()">
-                            <option value="">All Researchers</option>
-                        </select>
-                    </div>
-                    <div class="filter-group">
-                        <label>Search</label>
-                        <input type="text" id="filterSearch" placeholder="Search filename..." oninput="applyFilters()">
+
+            <!-- Finder (Column A) -->
+            <div class="dic-finder">
+                <div class="dic-search-area">
+                    <input type="text" class="dic-search-input" id="dicSearchInput" placeholder="Search files..." oninput="dicApplyFilters()">
+                    <div class="dic-scope-pills">
+                        <span class="dic-scope-pill active" data-scope="DATA" onclick="dicSetScope(this)">DATA</span>
+                        <span class="dic-scope-pill" data-scope="PRESENTATION" onclick="dicSetScope(this)">PRES</span>
+                        <span class="dic-scope-pill" data-scope="SOP" onclick="dicSetScope(this)">SOP</span>
+                        <span class="dic-scope-pill" data-scope="" onclick="dicSetScope(this)">ALL</span>
                     </div>
                 </div>
-
-                <!-- Bulk Actions -->
-                <div id="labBulkActions" class="bulk-actions hidden">
-                    <span id="labSelectedCount">0 selected</span>
-                    <button class="btn btn-sm btn-secondary" onclick="selectAllLabFiles()">Select All</button>
-                    <button class="btn btn-sm btn-warning" onclick="clearLabSelection()">Clear</button>
-                    <button class="btn btn-sm btn-success" onclick="bulkDownloadLab()">Download Selected</button>
-                    <button class="btn btn-sm btn-danger" onclick="bulkDeleteLab()">Delete Selected</button>
+                <div class="dic-months-label" id="dicMonthsLabel">Showing last 12 months</div>
+                <div class="dic-filter-row">
+                    <span class="dic-chip active" data-filter="status" data-val="" onclick="dicSetChip('status','')" >All</span>
+                    <span class="dic-chip" data-filter="status" data-val="PENDING" onclick="dicSetChip('status','PENDING')">Pending</span>
+                    <span class="dic-chip" data-filter="status" data-val="APPROVED" onclick="dicSetChip('status','APPROVED')">Approved</span>
+                    <span class="dic-chip" data-filter="status" data-val="REVISION_NEEDED" onclick="dicSetChip('status','REVISION_NEEDED')">Revision</span>
+                    <span class="dic-chip dic-chip-warn" data-filter="nonCompliant" onclick="dicToggleNonCompliant(this)">Non-Compliant</span>
                 </div>
+                <div class="dic-filter-row">
+                    <span class="dic-chip active" data-filter="time" data-val="" onclick="dicSetChip('time','')">All Time</span>
+                    <span class="dic-chip" data-filter="time" data-val="7" onclick="dicSetChip('time','7')">7d</span>
+                    <span class="dic-chip" data-filter="time" data-val="30" onclick="dicSetChip('time','30')">30d</span>
+                    <span class="dic-chip" data-filter="time" data-val="90" onclick="dicSetChip('time','90')">90d</span>
+                    <span class="dic-chip" data-filter="time" data-val="365" onclick="dicSetChip('time','365')">Year</span>
+                    <span style="margin-left:auto;"></span>
+                    <span class="dic-chip active" data-filter="sort" data-val="newest" onclick="dicSetChip('sort','newest')">Newest</span>
+                    <span class="dic-chip" data-filter="sort" data-val="oldest" onclick="dicSetChip('sort','oldest')">Oldest</span>
+                    <span class="dic-chip" data-filter="sort" data-val="name" onclick="dicSetChip('sort','name')">Name</span>
+                </div>
+                <div class="dic-quick-metrics" id="dicQuickMetrics" style="display:none;"></div>
+                <div class="dic-results" id="dicResults">
+                    <div class="dic-empty-state"><h3>Select a researcher or search to begin</h3></div>
+                </div>
+            </div>
 
-                <!-- Tree View -->
-                <div id="labFilesTree" class="directory-tree">
-                    <div class="loading"><div class="spinner"></div>Loading files...</div>
+            <!-- Viewer (Column B) -->
+            <div class="dic-viewer">
+                <div class="dic-viewer-toolbar" id="dicToolbar">
+                    <span class="dic-viewer-filename" id="dicViewerFilename">No file selected</span>
+                </div>
+                <div class="dic-viewer-empty" id="dicViewerEmpty">Select a file to preview</div>
+                <iframe class="dic-viewer-pdf" id="dicViewerPdf" style="display:none;"></iframe>
+                <div class="dic-intel-panel" id="dicIntelPanel" style="display:none;">
+                    <div class="dic-intel-section">
+                        <div class="dic-intel-header">
+                            <span class="dic-micro-title">ASSOCIATED SOPs</span>
+                            <button class="dic-intel-link-btn" onclick="dicOpenLinkModal('SOP')">+ Link SOP</button>
+                        </div>
+                        <div id="dicIntelSops"></div>
+                    </div>
+                    <div class="dic-intel-section">
+                        <div class="dic-intel-header">
+                            <span class="dic-micro-title">RELATED PRESENTATIONS</span>
+                            <button class="dic-intel-link-btn" onclick="dicOpenLinkModal('PRESENTATION')">+ Link Presentation</button>
+                        </div>
+                        <div id="dicIntelPres"></div>
+                    </div>
+                    <div class="dic-intel-section">
+                        <div class="dic-intel-header">
+                            <span class="dic-micro-title">FILE CONTEXT &amp; PROVENANCE</span>
+                        </div>
+                        <div class="dic-provenance" id="dicProvenance"></div>
+                    </div>
+                    <div id="dicImproveContainer"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Link Modal -->
+        <div class="dic-modal-overlay" id="dicLinkModal">
+            <div class="dic-modal">
+                <div class="dic-modal-header">
+                    <span id="dicLinkModalTitle">Link File</span>
+                    <button class="dic-modal-close" onclick="dicCloseLinkModal()">&times;</button>
+                </div>
+                <div class="dic-modal-body">
+                    <input type="text" class="dic-modal-search" id="dicLinkSearch" placeholder="Search files..." oninput="dicFilterLinkCandidates()">
+                    <div id="dicLinkCandidates"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Revise Modal -->
+        <div class="dic-modal-overlay" id="dicReviseModal">
+            <div class="dic-modal">
+                <div class="dic-modal-header">
+                    <span>Request Revision</span>
+                    <button class="dic-modal-close" onclick="dicCloseReviseModal()">&times;</button>
+                </div>
+                <div class="dic-modal-body">
+                    <textarea class="dic-revise-textarea" id="dicReviseText" placeholder="Describe what needs to be revised..."></textarea>
+                </div>
+                <div class="dic-modal-footer">
+                    <button class="dic-modal-btn" onclick="dicCloseReviseModal()">Cancel</button>
+                    <button class="dic-modal-btn primary" onclick="dicSubmitRevision()">Submit Revision</button>
                 </div>
             </div>
         </div>
@@ -1417,7 +2096,7 @@
                 document.getElementById('tab-' + tabId).classList.add('active');
 
                 // Load tab-specific data
-                if (tabId === 'lab-files') loadLabFiles();
+                if (tabId === 'lab-files') dicInit();
                 if (tabId === 'reports') loadReportsData();
                 if (tabId === 'purchases-inventory') { loadAllPurchaseRequests(); loadAllInventoryV2(); loadPONumbers(); }
                 if (tabId === 'training') { loadTrainingDocuments(); loadPendingTrainingPacks(); loadSealedTrainingPacks(); }
@@ -2060,6 +2739,616 @@
             } catch (err) {
                 alert('Error deleting file');
             }
+        }
+
+        // =====================================================
+        // DATA INTELLIGENCE CONSOLE (DIC)
+        // =====================================================
+
+        // IMPORTANT: This function is duplicated in server.js and pi-dashboard.html.
+        // Any change MUST be applied to BOTH copies identically.
+        // Server-side test cases validate correctness (see server.js parseNatlabFilename tests).
+        function parseNatlabFilename(filename) {
+            const NON_COMPLIANT = {
+                parsed_date: null, parsed_initials: null, parsed_project: null,
+                parsed_description: null, is_sop: false, is_compliant: false, raw: filename
+            };
+            const base = filename.replace(/\.[^.]+$/, '');
+            const parts = base.split('_');
+            if (parts.length < 4) return NON_COMPLIANT;
+            const date = parts[0].trim();
+            const initials = parts[1].trim();
+            const slot2 = parts[2].trim();
+            const slot3 = parts[3].trim();
+            if (!date || !initials || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^[A-Z]{2,4}$/.test(initials)) {
+                return NON_COMPLIANT;
+            }
+            const is_sop = slot2 === 'SOP';
+            const descTokens = parts.slice(3).map(t => t.trim()).filter(Boolean);
+            const description = descTokens.join(' ').replace(/\s{2,}/g, ' ');
+            if (is_sop) {
+                if (!slot3) return NON_COMPLIANT;
+                return {
+                    parsed_date: date, parsed_initials: initials, parsed_project: slot3,
+                    parsed_description: description, is_sop: true, is_compliant: true, raw: filename
+                };
+            }
+            if (!slot2 || !slot3) return NON_COMPLIANT;
+            return {
+                parsed_date: date, parsed_initials: initials, parsed_project: slot2,
+                parsed_description: description, is_sop: false, is_compliant: true, raw: filename
+            };
+        }
+
+        let dicAllFiles = [], dicFilteredFiles = [], dicSelectedFileId = null;
+        let dicCurrentScope = 'DATA';
+        let dicFilters = { status: '', researcher: '', year: '', search: '', time: '', sort: 'newest', nonCompliant: false };
+        let dicResearcherMetrics = {}, dicAssociationsCache = {};
+        let dicMonthsUsed = 12;
+        let dicLinkModalType = '';
+        let dicReviseFileId = null;
+
+        async function dicInit() {
+            try {
+                const [filesRes, metricsRes] = await Promise.all([
+                    fetch(`/api/di/lab-files-enriched?months=${dicMonthsUsed}`, { credentials: 'include' }),
+                    fetch('/api/di/researcher-file-metrics', { credentials: 'include' })
+                ]);
+                if (filesRes.ok) {
+                    const fData = await filesRes.json();
+                    dicAllFiles = fData.files || [];
+                    dicMonthsUsed = fData.months_used || 12;
+                    document.getElementById('dicMonthsLabel').textContent = `Showing last ${dicMonthsUsed} months`;
+                }
+                if (metricsRes.ok) {
+                    const mData = await metricsRes.json();
+                    dicResearcherMetrics = {};
+                    (mData.metrics || []).forEach(m => { dicResearcherMetrics[m.researcher_id] = m; });
+                }
+            } catch (err) {
+                console.error('DIC init error:', err);
+            }
+            dicRenderSidebar();
+            dicApplyFilters();
+        }
+
+        function dicFormatResearcherName(name) {
+            if (!name) return 'Unknown';
+            const parts = name.trim().split(/\s+/);
+            if (parts.length < 2) return name;
+            return parts[0] + ' ' + parts[parts.length - 1][0] + '.';
+        }
+
+        function dicGetInitials(name) {
+            if (!name) return '?';
+            const parts = name.trim().split(/\s+/);
+            return parts.map(p => p[0]).join('').toUpperCase().slice(0, 2);
+        }
+
+        function dicRenderSidebar() {
+            // Status buckets
+            const statusCounts = { '': 0, PENDING: 0, APPROVED: 0, REVISION_NEEDED: 0 };
+            dicAllFiles.forEach(f => {
+                statusCounts['']++;
+                if (statusCounts[f.status] !== undefined) statusCounts[f.status]++;
+            });
+            const bucketsEl = document.getElementById('dicStatusBuckets');
+            bucketsEl.innerHTML = [
+                { key: '', label: 'All Files' },
+                { key: 'PENDING', label: 'Pending' },
+                { key: 'APPROVED', label: 'Approved' },
+                { key: 'REVISION_NEEDED', label: 'Revision' }
+            ].map(b => `<div class="dic-status-bucket${dicFilters.status === b.key ? ' active' : ''}" onclick="dicSetSidebarFilter('status','${b.key}')">
+                <span>${b.label}</span><span class="dic-count">${statusCounts[b.key] || 0}</span>
+            </div>`).join('');
+
+            // Year list
+            const years = new Set();
+            dicAllFiles.forEach(f => {
+                const yr = (f.created_at || '').substring(0, 4);
+                if (yr) years.add(yr);
+            });
+            const sortedYears = [...years].sort().reverse();
+            const yearEl = document.getElementById('dicYearList');
+            yearEl.innerHTML = `<div class="dic-year-item${!dicFilters.year ? ' active' : ''}" onclick="dicSetSidebarFilter('year','')">All Years</div>` +
+                sortedYears.map(y => `<div class="dic-year-item${dicFilters.year === y ? ' active' : ''}" onclick="dicSetSidebarFilter('year','${y}')">${y}</div>`).join('');
+
+            // Researcher list
+            const researchers = {};
+            dicAllFiles.forEach(f => {
+                if (!researchers[f.researcher_id]) {
+                    researchers[f.researcher_id] = { id: f.researcher_id, name: f.researcher_name || f.researcher_id };
+                }
+            });
+            const researcherList = Object.values(researchers).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+            const resEl = document.getElementById('dicResearcherList');
+            resEl.innerHTML = researcherList.map(r => `<div class="dic-researcher-item${dicFilters.researcher === r.id ? ' active' : ''}" onclick="dicSetSidebarFilter('researcher','${r.id}')">
+                <div class="dic-researcher-avatar">${dicGetInitials(r.name)}</div>
+                <span class="dic-researcher-name">${dicFormatResearcherName(r.name)}</span>
+            </div>`).join('') || '<div style="font-size:12px;color:#9ca3af;padding:8px 10px;">No researchers</div>';
+        }
+
+        function dicSetSidebarFilter(key, val) {
+            dicFilters[key] = val;
+            if (key === 'researcher' && val) {
+                dicCurrentScope = 'DATA';
+                dicFilters.sort = 'newest';
+                document.querySelectorAll('.dic-scope-pill').forEach(p => p.classList.toggle('active', p.dataset.scope === 'DATA'));
+                document.querySelectorAll('.dic-chip[data-filter="sort"]').forEach(c => c.classList.toggle('active', c.dataset.val === 'newest'));
+            }
+            dicRenderSidebar();
+            dicApplyFilters();
+            if (key === 'researcher' && val) {
+                dicRenderQuickMetrics(val);
+                dicAutoSelectNewest();
+            } else {
+                document.getElementById('dicQuickMetrics').style.display = 'none';
+            }
+        }
+
+        function dicSetScope(el) {
+            dicCurrentScope = el.dataset.scope;
+            document.querySelectorAll('.dic-scope-pill').forEach(p => p.classList.remove('active'));
+            el.classList.add('active');
+            dicApplyFilters();
+        }
+
+        function dicSetChip(key, val) {
+            if (key === 'status') {
+                dicFilters.status = val;
+                document.querySelectorAll('.dic-chip[data-filter="status"]').forEach(c => c.classList.toggle('active', c.dataset.val === val));
+            } else if (key === 'time') {
+                dicFilters.time = val;
+                document.querySelectorAll('.dic-chip[data-filter="time"]').forEach(c => c.classList.toggle('active', c.dataset.val === val));
+            } else if (key === 'sort') {
+                dicFilters.sort = val;
+                document.querySelectorAll('.dic-chip[data-filter="sort"]').forEach(c => c.classList.toggle('active', c.dataset.val === val));
+            }
+            dicApplyFilters();
+        }
+
+        function dicToggleNonCompliant(el) {
+            dicFilters.nonCompliant = !dicFilters.nonCompliant;
+            el.classList.toggle('active', dicFilters.nonCompliant);
+            dicApplyFilters();
+        }
+
+        function dicApplyFilters() {
+            const search = (document.getElementById('dicSearchInput').value || '').toLowerCase();
+            const now = new Date();
+
+            dicFilteredFiles = dicAllFiles.filter(f => {
+                if (dicCurrentScope && f.file_type !== dicCurrentScope) return false;
+                if (dicFilters.status && f.status !== dicFilters.status) return false;
+                if (dicFilters.researcher && f.researcher_id !== dicFilters.researcher) return false;
+                if (dicFilters.year) {
+                    const yr = (f.created_at || '').substring(0, 4);
+                    if (yr !== dicFilters.year) return false;
+                }
+                if (search && !(f.original_filename || '').toLowerCase().includes(search)) return false;
+                if (dicFilters.time) {
+                    const days = parseInt(dicFilters.time);
+                    const fileDate = new Date(f.created_at);
+                    if ((now - fileDate) / (1000 * 60 * 60 * 24) > days) return false;
+                }
+                if (dicFilters.nonCompliant) {
+                    const parsed = parseNatlabFilename(f.original_filename || '');
+                    if (parsed.is_compliant) return false;
+                }
+                return true;
+            });
+
+            // Sort
+            if (dicFilters.sort === 'newest') {
+                dicFilteredFiles.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+            } else if (dicFilters.sort === 'oldest') {
+                dicFilteredFiles.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+            } else if (dicFilters.sort === 'name') {
+                dicFilteredFiles.sort((a, b) => (a.original_filename || '').localeCompare(b.original_filename || ''));
+            }
+
+            dicRenderResults();
+        }
+
+        function dicRenderResults() {
+            const container = document.getElementById('dicResults');
+            if (dicFilteredFiles.length === 0) {
+                const resName = dicFilters.researcher ? dicFormatResearcherName(
+                    (dicResearcherMetrics[dicFilters.researcher] || {}).researcher_name || dicFilters.researcher
+                ) : '';
+                let emptyHtml = '<div class="dic-empty-state">';
+                if (dicFilters.researcher) {
+                    const hasAnyFiles = dicAllFiles.some(f => f.researcher_id === dicFilters.researcher);
+                    if (dicCurrentScope && !hasAnyFiles) {
+                        emptyHtml += `<h3>No files found for ${resName} in the last ${dicMonthsUsed} months</h3>`;
+                        emptyHtml += '<div class="dic-empty-actions">';
+                        emptyHtml += `<button class="dic-empty-btn" onclick="dicShowAllMonths()">Show All Months</button>`;
+                        emptyHtml += '</div>';
+                    } else {
+                        emptyHtml += `<h3>No ${dicCurrentScope || ''} files found for ${resName} in the last ${dicMonthsUsed} months</h3>`;
+                        emptyHtml += '<div class="dic-empty-actions">';
+                        emptyHtml += `<button class="dic-empty-btn" onclick="dicShowAllMonths()">Show All Months</button>`;
+                        if (dicCurrentScope === 'DATA') {
+                            emptyHtml += `<button class="dic-empty-btn" onclick="dicSwitchScope('PRESENTATION')">View Presentations</button>`;
+                            emptyHtml += `<button class="dic-empty-btn" onclick="dicSwitchScope('SOP')">View SOPs</button>`;
+                        }
+                        emptyHtml += '</div>';
+                    }
+                } else {
+                    emptyHtml += '<h3>Select a researcher or search to begin</h3>';
+                }
+                emptyHtml += '</div>';
+                container.innerHTML = emptyHtml;
+                return;
+            }
+
+            container.innerHTML = dicFilteredFiles.map(f => {
+                const parsed = parseNatlabFilename(f.original_filename || '');
+                const isActive = f.submission_id === dicSelectedFileId;
+                const statusClass = (f.status || '').toLowerCase().replace('_needed', '');
+                const statusLabel = f.status === 'REVISION_NEEDED' ? 'REVISION' : (f.status || '');
+
+                let typeClass = 'data';
+                let typeLabel = 'DATA';
+                if (f.file_type === 'SOP') { typeClass = 'sop'; typeLabel = 'SOP'; }
+                else if (f.file_type === 'PRESENTATION') { typeClass = 'pres'; typeLabel = 'PRES'; }
+
+                let title, subtitle;
+                if (parsed.is_compliant) {
+                    title = parsed.parsed_description;
+                    subtitle = `${parsed.parsed_date} &middot; ${parsed.parsed_initials} &middot; ${parsed.parsed_project}`;
+                } else {
+                    title = f.original_filename;
+                    subtitle = `${dicFormatResearcherName(f.researcher_name)} &middot; ${(f.created_at || '').substring(0, 10)}`;
+                }
+
+                let metaHtml = `<span class="dic-badge ${statusClass}">${statusLabel}</span>`;
+                if (!parsed.is_compliant) metaHtml += '<span class="dic-nc-indicator">Non-Compliant</span>';
+                const sopCount = f.linked_sop_count || 0;
+                const presCount = f.linked_pres_count || 0;
+                if (sopCount > 0) metaHtml += `<span class="dic-assoc-chip">${sopCount} SOP</span>`;
+                if (presCount > 0) metaHtml += `<span class="dic-assoc-chip">${presCount} PRES</span>`;
+
+                return `<div class="dic-result-item${isActive ? ' active' : ''}" onclick="dicSelectFile('${f.submission_id}')">
+                    <div class="dic-result-icon ${typeClass}">${typeLabel}</div>
+                    <div class="dic-result-body">
+                        <div class="dic-result-title" title="${(f.original_filename || '').replace(/"/g, '&quot;')}">${title}</div>
+                        <div class="dic-result-sub">${subtitle}</div>
+                        <div class="dic-result-meta">${metaHtml}</div>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        function dicRenderQuickMetrics(researcherId) {
+            const m = dicResearcherMetrics[researcherId];
+            const el = document.getElementById('dicQuickMetrics');
+            if (!m) { el.style.display = 'none'; return; }
+            el.style.display = 'flex';
+            const lastUpload = m.last_upload ? new Date(m.last_upload).toLocaleDateString() : 'N/A';
+            el.innerHTML = [
+                { v: m.data_count || 0, l: 'DATA' },
+                { v: m.pres_count || 0, l: 'PRES' },
+                { v: m.sop_count || 0, l: 'SOP' },
+                { v: m.pending_count || 0, l: 'PENDING' },
+                { v: lastUpload, l: 'LAST' }
+            ].map(x => `<div class="dic-metric-box"><div class="dic-metric-value">${x.v}</div><div class="dic-metric-label">${x.l}</div></div>`).join('');
+        }
+
+        function dicAutoSelectNewest() {
+            const first = dicFilteredFiles.find(f => f.file_type === 'DATA') || dicFilteredFiles[0];
+            if (first) {
+                dicSelectFile(first.submission_id);
+            }
+        }
+
+        function dicSelectFile(fileId) {
+            dicSelectedFileId = fileId;
+            const f = dicAllFiles.find(x => x.submission_id === fileId);
+            if (!f) return;
+
+            // Update results active state
+            document.querySelectorAll('.dic-result-item').forEach(el => {
+                el.classList.toggle('active', el.onclick && el.onclick.toString().includes(fileId));
+            });
+            dicRenderResults();
+
+            // Toolbar
+            const toolbar = document.getElementById('dicToolbar');
+            const statusLabel = f.status === 'REVISION_NEEDED' ? 'REVISION' : (f.status || '');
+            const statusClass = (f.status || '').toLowerCase().replace('_needed', '');
+            let btns = `<a class="dic-toolbar-btn" href="/api/di/download/${f.submission_id}" target="_blank">Download</a>`;
+            btns += `<button class="dic-toolbar-btn" onclick="window.open('/api/di/download/${f.submission_id}','_blank')">Open Tab</button>`;
+            if (f.status === 'PENDING') {
+                btns += `<button class="dic-toolbar-btn approve" onclick="dicApproveFile('${f.submission_id}')">Approve</button>`;
+                btns += `<button class="dic-toolbar-btn revise" onclick="dicOpenReviseModal('${f.submission_id}')">Revise</button>`;
+            }
+            toolbar.innerHTML = `<span class="dic-viewer-filename" title="${(f.original_filename || '').replace(/"/g, '&quot;')}">${f.original_filename}</span>
+                <span class="dic-badge ${statusClass}">${statusLabel}</span>${btns}`;
+
+            // PDF viewer
+            document.getElementById('dicViewerEmpty').style.display = 'none';
+            const pdfEl = document.getElementById('dicViewerPdf');
+            pdfEl.style.display = 'block';
+            pdfEl.src = `/api/di/download/${f.submission_id}`;
+
+            // Intel panel
+            document.getElementById('dicIntelPanel').style.display = 'block';
+            dicLoadAssociations(fileId, f);
+        }
+
+        async function dicLoadAssociations(fileId, file) {
+            const sopsEl = document.getElementById('dicIntelSops');
+            const presEl = document.getElementById('dicIntelPres');
+            const provEl = document.getElementById('dicProvenance');
+            const improveEl = document.getElementById('dicImproveContainer');
+            sopsEl.innerHTML = '<span style="font-size:11px;color:#9ca3af;">Loading...</span>';
+            presEl.innerHTML = '<span style="font-size:11px;color:#9ca3af;">Loading...</span>';
+
+            try {
+                const res = await fetch(`/api/di/file-associations/${fileId}`, { credentials: 'include' });
+                if (!res.ok) throw new Error('Failed');
+                const data = await res.json();
+                dicAssociationsCache[fileId] = data;
+
+                const manualSops = (data.manual || []).filter(m => m.link_type === 'SOP');
+                const manualPres = (data.manual || []).filter(m => m.link_type === 'PRESENTATION');
+                const heuristicSops = (data.heuristic_sop || []);
+                const heuristicPres = (data.heuristic_pres || []);
+
+                dicRenderIntelSection(sopsEl, manualSops, heuristicSops, 'SOP');
+                dicRenderIntelSection(presEl, manualPres, heuristicPres, 'PRESENTATION');
+
+                // Provenance
+                const parsed = parseNatlabFilename(file.original_filename || '');
+                let provHtml = `<strong>Type:</strong> ${file.file_type}<br>`;
+                provHtml += `<strong>Researcher:</strong> ${file.researcher_name || file.researcher_id}<br>`;
+                provHtml += `<strong>Uploaded:</strong> ${file.created_at ? new Date(file.created_at).toLocaleDateString() : 'N/A'}<br>`;
+                if (file.signed_at) provHtml += `<strong>Signed:</strong> ${new Date(file.signed_at).toLocaleDateString()}<br>`;
+                provHtml += `<strong>Status:</strong> ${file.status}`;
+                if (file.ai_review && file.ai_review.score != null) {
+                    provHtml += `<br><strong>AI Score:</strong> ${file.ai_review.score}/100`;
+                }
+                if (parsed.is_compliant) {
+                    provHtml += `<br><strong>Naming:</strong> Compliant (${parsed.parsed_project})`;
+                } else {
+                    provHtml += `<br><strong>Naming:</strong> <span style="color:#fd7e14;">Non-Compliant</span>`;
+                }
+                provEl.innerHTML = provHtml;
+
+                // Improve Suggestions
+                const totalManual = manualSops.length + manualPres.length;
+                const topSopScore = heuristicSops.length > 0 ? heuristicSops[0].score : 0;
+                const topPresScore = heuristicPres.length > 0 ? heuristicPres[0].score : 0;
+                const topScore = Math.max(topSopScore, topPresScore);
+                if (totalManual < 2 || topScore < 45) {
+                    improveEl.innerHTML = '<div class="dic-improve-btn">Improve Suggestions</div>';
+                } else {
+                    improveEl.innerHTML = '';
+                }
+            } catch (err) {
+                sopsEl.innerHTML = '<span style="font-size:11px;color:#ef4444;">Failed to load</span>';
+                presEl.innerHTML = '<span style="font-size:11px;color:#ef4444;">Failed to load</span>';
+                improveEl.innerHTML = '';
+            }
+        }
+
+        function dicRenderIntelSection(container, manual, heuristic, type) {
+            let html = '';
+            const maxItems = 2;
+            let count = 0;
+
+            // Manual links first
+            manual.forEach(m => {
+                if (count >= maxItems) return;
+                const statusClass = (m.status || '').toLowerCase().replace('_needed', '');
+                const statusLabel = m.status === 'REVISION_NEEDED' ? 'REV' : (m.status || '').substring(0, 3);
+                html += `<div class="dic-intel-item">
+                    <span style="cursor:pointer;" onclick="dicSelectFile('${m.target_id}')" title="${(m.original_filename || '').replace(/"/g, '&quot;')}">${dicTruncate(m.original_filename || '', 40)}</span>
+                    <span class="dic-badge ${statusClass}">${statusLabel}</span>
+                    <span class="dic-intel-remove" onclick="dicUnlinkFile('${m.id}')" title="Remove link">&times;</span>
+                </div>`;
+                count++;
+            });
+
+            // Fill remaining with heuristics
+            heuristic.forEach(h => {
+                if (count >= maxItems) return;
+                html += `<div class="dic-intel-item dic-intel-heuristic">
+                    <span style="cursor:pointer;" onclick="dicQuickLink('${h.submission_id}','${type}')" title="Click to link: ${(h.filename || '').replace(/"/g, '&quot;')}">${dicTruncate(h.filename || '', 35)}</span>
+                    <span class="dic-intel-score">${h.score}pts</span>
+                    <span class="dic-badge" style="background:#eef2ff;color:#4338ca;">suggest</span>
+                </div>`;
+                count++;
+            });
+
+            if (count === 0) {
+                html = `<span style="font-size:11px;color:#9ca3af;">No ${type === 'SOP' ? 'SOPs' : 'presentations'} linked</span>`;
+            }
+            container.innerHTML = html;
+        }
+
+        function dicTruncate(str, max) {
+            return str.length > max ? str.substring(0, max - 1) + '\u2026' : str;
+        }
+
+        async function dicApproveFile(id) {
+            if (!confirm('Approve this file?')) return;
+            try {
+                const res = await fetch(`/api/di/approve-inline/${id}`, {
+                    method: 'POST', credentials: 'include'
+                });
+                const data = await res.json();
+                if (data.success) {
+                    alert('File approved successfully.');
+                    await dicInit();
+                    dicSelectFile(id);
+                } else {
+                    alert(data.error || 'Approval failed');
+                }
+            } catch (err) {
+                alert('Error approving file');
+            }
+        }
+
+        function dicOpenReviseModal(id) {
+            dicReviseFileId = id;
+            document.getElementById('dicReviseText').value = '';
+            document.getElementById('dicReviseModal').classList.add('active');
+        }
+
+        function dicCloseReviseModal() {
+            document.getElementById('dicReviseModal').classList.remove('active');
+            dicReviseFileId = null;
+        }
+
+        async function dicSubmitRevision() {
+            const comments = document.getElementById('dicReviseText').value.trim();
+            if (!comments) { alert('Please provide revision comments.'); return; }
+            if (!dicReviseFileId) return;
+            try {
+                const res = await fetch(`/api/di/revise-inline/${dicReviseFileId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ comments })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    dicCloseReviseModal();
+                    alert('Revision requested.');
+                    await dicInit();
+                } else {
+                    alert(data.error || 'Revision failed');
+                }
+            } catch (err) {
+                alert('Error requesting revision');
+            }
+        }
+
+        async function dicQuickLink(targetId, type) {
+            if (!dicSelectedFileId) return;
+            try {
+                const res = await fetch('/api/di/file-associations', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ source_id: dicSelectedFileId, target_id: targetId, link_type: type })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    const f = dicAllFiles.find(x => x.submission_id === dicSelectedFileId);
+                    if (f) dicLoadAssociations(dicSelectedFileId, f);
+                    dicInit();
+                } else {
+                    alert(data.error || 'Failed to link');
+                }
+            } catch (err) {
+                alert('Error linking file');
+            }
+        }
+
+        async function dicUnlinkFile(assocId) {
+            if (!confirm('Remove this link?')) return;
+            try {
+                const res = await fetch(`/api/di/file-associations/${assocId}`, {
+                    method: 'DELETE', credentials: 'include'
+                });
+                const data = await res.json();
+                if (data.success) {
+                    const f = dicAllFiles.find(x => x.submission_id === dicSelectedFileId);
+                    if (f) dicLoadAssociations(dicSelectedFileId, f);
+                    dicInit();
+                } else {
+                    alert(data.error || 'Failed to unlink');
+                }
+            } catch (err) {
+                alert('Error unlinking file');
+            }
+        }
+
+        function dicOpenLinkModal(type) {
+            dicLinkModalType = type;
+            document.getElementById('dicLinkModalTitle').textContent = type === 'SOP' ? 'Link SOP' : 'Link Presentation';
+            document.getElementById('dicLinkSearch').value = '';
+            document.getElementById('dicLinkModal').classList.add('active');
+            dicFilterLinkCandidates();
+        }
+
+        function dicCloseLinkModal() {
+            document.getElementById('dicLinkModal').classList.remove('active');
+        }
+
+        function dicFilterLinkCandidates() {
+            const search = (document.getElementById('dicLinkSearch').value || '').toLowerCase();
+            const container = document.getElementById('dicLinkCandidates');
+            const cached = dicAssociationsCache[dicSelectedFileId];
+            const manualIds = new Set();
+            if (cached && cached.manual) {
+                cached.manual.filter(m => m.link_type === dicLinkModalType).forEach(m => manualIds.add(m.target_id));
+            }
+
+            const candidates = dicAllFiles.filter(f => {
+                if (f.file_type !== dicLinkModalType) return false;
+                if (f.submission_id === dicSelectedFileId) return false;
+                if (search && !(f.original_filename || '').toLowerCase().includes(search)) return false;
+                return true;
+            });
+
+            if (candidates.length === 0) {
+                container.innerHTML = '<div style="font-size:12px;color:#9ca3af;text-align:center;padding:20px;">No candidates found</div>';
+                return;
+            }
+
+            container.innerHTML = candidates.slice(0, 50).map(f => {
+                const linked = manualIds.has(f.submission_id);
+                const statusClass = (f.status || '').toLowerCase().replace('_needed', '');
+                const statusLabel = f.status === 'REVISION_NEEDED' ? 'REV' : (f.status || '').substring(0, 4);
+                return `<div class="dic-modal-item${linked ? ' linked' : ''}" ${linked ? '' : `onclick="dicLinkFromModal('${f.submission_id}')"`}>
+                    <span>${f.original_filename}</span>
+                    <span class="dic-badge ${statusClass}">${statusLabel}</span>
+                    ${linked ? '<span style="font-size:10px;color:#9ca3af;">linked</span>' : ''}
+                </div>`;
+            }).join('');
+        }
+
+        async function dicLinkFromModal(targetId) {
+            if (!dicSelectedFileId) return;
+            try {
+                const res = await fetch('/api/di/file-associations', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ source_id: dicSelectedFileId, target_id: targetId, link_type: dicLinkModalType })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    dicCloseLinkModal();
+                    const f = dicAllFiles.find(x => x.submission_id === dicSelectedFileId);
+                    if (f) dicLoadAssociations(dicSelectedFileId, f);
+                    dicInit();
+                } else {
+                    alert(data.error || 'Failed to link');
+                }
+            } catch (err) {
+                alert('Error linking file');
+            }
+        }
+
+        function dicShowAllMonths() {
+            dicMonthsUsed = 60;
+            dicInit();
+        }
+
+        function dicSwitchScope(scope) {
+            dicCurrentScope = scope;
+            document.querySelectorAll('.dic-scope-pill').forEach(p => p.classList.toggle('active', p.dataset.scope === scope));
+            dicApplyFilters();
+        }
+
+        function toggleDicSidebar() {
+            const sidebar = document.getElementById('dicSidebar');
+            sidebar.classList.toggle('collapsed');
         }
 
         // =====================================================
