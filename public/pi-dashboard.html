@@ -781,6 +781,9 @@
         .dic-toolbar-btn.revise:hover { background: #ffeeba; }
         .dic-viewer-pdf {
             flex: 1;
+            min-height: 0;
+            width: 100%;
+            height: 100%;
             border: none;
             background: #f0f2f5;
         }
@@ -794,20 +797,70 @@
         }
         .dic-intel-panel {
             border-top: 1px solid #e4e7eb;
-            padding: 14px 16px;
             background: #fafbfc;
-            overflow-y: auto;
-            max-height: 260px;
+            padding: 0;
+            flex-shrink: 0;
         }
-        .dic-intel-section {
-            margin-bottom: 12px;
-        }
-        .dic-intel-section:last-child { margin-bottom: 0; }
-        .dic-intel-header {
+        .dic-intel-strip {
             display: flex;
             align-items: center;
-            justify-content: space-between;
-            margin-bottom: 6px;
+            gap: 8px;
+            padding: 6px 16px;
+            height: 36px;
+            box-sizing: border-box;
+            border-bottom: 1px solid #f0f2f5;
+        }
+        .dic-intel-strip:last-child { border-bottom: none; }
+        .dic-intel-strip-label {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: #8c95a1;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .dic-intel-chips {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+        }
+        .dic-intel-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            color: #374151;
+            background: #fff;
+            border: 1px solid #e4e7eb;
+            white-space: nowrap;
+            max-width: 220px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            cursor: pointer;
+        }
+        .dic-intel-chip:hover { border-color: #9ca3af; }
+        .dic-intel-chip.heuristic {
+            border-style: dashed;
+            opacity: 0.7;
+        }
+        .dic-intel-chip .dic-badge { font-size: 8px; padding: 0 4px; }
+        .dic-intel-chip-remove {
+            font-size: 12px;
+            color: #d1d5db;
+            cursor: pointer;
+            line-height: 1;
+            margin-left: 2px;
+        }
+        .dic-intel-chip-remove:hover { color: #ef4444; }
+        .dic-intel-chip-score {
+            font-size: 9px;
+            color: #9ca3af;
         }
         .dic-intel-link-btn {
             font-size: 10px;
@@ -819,21 +872,10 @@
             padding: 2px 6px;
             border-radius: 4px;
             transition: background 0.15s;
+            white-space: nowrap;
+            flex-shrink: 0;
         }
         .dic-intel-link-btn:hover { background: #eef2ff; }
-        .dic-intel-item {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 5px 8px;
-            border-radius: 6px;
-            font-size: 12px;
-            color: #374151;
-            background: #fff;
-            border: 1px solid #e4e7eb;
-            margin-bottom: 4px;
-        }
-        .dic-intel-item .dic-badge { margin-left: auto; }
         .dic-intel-remove {
             font-size: 14px;
             color: #d1d5db;
@@ -843,37 +885,6 @@
             transition: color 0.15s;
         }
         .dic-intel-remove:hover { color: #ef4444; }
-        .dic-intel-heuristic {
-            opacity: 0.7;
-            border-style: dashed;
-        }
-        .dic-intel-score {
-            font-size: 9px;
-            font-weight: 600;
-            color: #8c95a1;
-            margin-left: 4px;
-        }
-        .dic-improve-btn {
-            display: inline-block;
-            padding: 5px 12px;
-            border-radius: 6px;
-            font-size: 11px;
-            font-weight: 600;
-            cursor: default;
-            border: 1px dashed #d1d5db;
-            background: #f9fafb;
-            color: #9ca3af;
-            margin-top: 8px;
-        }
-        .dic-provenance {
-            font-size: 11px;
-            color: #5a6578;
-            line-height: 1.7;
-        }
-        .dic-provenance strong {
-            color: #374151;
-            font-weight: 600;
-        }
 
         /* --- Link Modal --- */
         .dic-modal-overlay {
@@ -1199,27 +1210,16 @@
                 <div class="dic-viewer-empty" id="dicViewerEmpty">Select a file to preview</div>
                 <iframe class="dic-viewer-pdf" id="dicViewerPdf" style="display:none;"></iframe>
                 <div class="dic-intel-panel" id="dicIntelPanel" style="display:none;">
-                    <div class="dic-intel-section">
-                        <div class="dic-intel-header">
-                            <span class="dic-micro-title">ASSOCIATED SOPs</span>
-                            <button class="dic-intel-link-btn" onclick="dicOpenLinkModal('SOP')">+ Link SOP</button>
-                        </div>
-                        <div id="dicIntelSops"></div>
+                    <div class="dic-intel-strip">
+                        <span class="dic-intel-strip-label" id="dicSopLabel">SOPs (0)</span>
+                        <div class="dic-intel-chips" id="dicIntelSops"></div>
+                        <button class="dic-intel-link-btn" onclick="dicOpenLinkModal('SOP')">+</button>
                     </div>
-                    <div class="dic-intel-section">
-                        <div class="dic-intel-header">
-                            <span class="dic-micro-title">RELATED PRESENTATIONS</span>
-                            <button class="dic-intel-link-btn" onclick="dicOpenLinkModal('PRESENTATION')">+ Link Presentation</button>
-                        </div>
-                        <div id="dicIntelPres"></div>
+                    <div class="dic-intel-strip">
+                        <span class="dic-intel-strip-label" id="dicPresLabel">PRES (0)</span>
+                        <div class="dic-intel-chips" id="dicIntelPres"></div>
+                        <button class="dic-intel-link-btn" onclick="dicOpenLinkModal('PRESENTATION')">+</button>
                     </div>
-                    <div class="dic-intel-section">
-                        <div class="dic-intel-header">
-                            <span class="dic-micro-title">FILE CONTEXT &amp; PROVENANCE</span>
-                        </div>
-                        <div class="dic-provenance" id="dicProvenance"></div>
-                    </div>
-                    <div id="dicImproveContainer"></div>
                 </div>
             </div>
         </div>
@@ -3042,6 +3042,12 @@
             }
         }
 
+        function dicBuildPdfViewerSrc(fileUrl) {
+            const pdfjs = '/pdfjs/web/viewer.html';
+            const fileParam = encodeURIComponent(fileUrl);
+            return `${pdfjs}?file=${fileParam}#pagemode=none&zoom=page-width`;
+        }
+
         function dicSelectFile(fileId) {
             dicSelectedFileId = fileId;
             const f = dicAllFiles.find(x => x.submission_id === fileId);
@@ -3066,11 +3072,11 @@
             toolbar.innerHTML = `<span class="dic-viewer-filename" title="${(f.original_filename || '').replace(/"/g, '&quot;')}">${f.original_filename}</span>
                 <span class="dic-badge ${statusClass}">${statusLabel}</span>${btns}`;
 
-            // PDF viewer
+            // PDF viewer — always route through PDF.js (no native browser PDF rendering)
             document.getElementById('dicViewerEmpty').style.display = 'none';
             const pdfEl = document.getElementById('dicViewerPdf');
             pdfEl.style.display = 'block';
-            pdfEl.src = `/api/di/download/${f.submission_id}`;
+            pdfEl.src = dicBuildPdfViewerSrc(`/api/di/download/${f.submission_id}`);
 
             // Intel panel
             document.getElementById('dicIntelPanel').style.display = 'block';
@@ -3080,10 +3086,8 @@
         async function dicLoadAssociations(fileId, file) {
             const sopsEl = document.getElementById('dicIntelSops');
             const presEl = document.getElementById('dicIntelPres');
-            const provEl = document.getElementById('dicProvenance');
-            const improveEl = document.getElementById('dicImproveContainer');
-            sopsEl.innerHTML = '<span style="font-size:11px;color:#9ca3af;">Loading...</span>';
-            presEl.innerHTML = '<span style="font-size:11px;color:#9ca3af;">Loading...</span>';
+            sopsEl.innerHTML = '';
+            presEl.innerHTML = '';
 
             try {
                 const res = await fetch(`/api/di/file-associations/${fileId}`, { credentials: 'include' });
@@ -3096,74 +3100,47 @@
                 const heuristicSops = (data.heuristic_sop || []);
                 const heuristicPres = (data.heuristic_pres || []);
 
-                dicRenderIntelSection(sopsEl, manualSops, heuristicSops, 'SOP');
-                dicRenderIntelSection(presEl, manualPres, heuristicPres, 'PRESENTATION');
+                const sopTotal = manualSops.length + heuristicSops.length;
+                const presTotal = manualPres.length + heuristicPres.length;
+                document.getElementById('dicSopLabel').textContent = `SOPs (${manualSops.length})`;
+                document.getElementById('dicPresLabel').textContent = `PRES (${manualPres.length})`;
 
-                // Provenance
-                const parsed = parseNatlabFilename(file.original_filename || '');
-                let provHtml = `<strong>Type:</strong> ${file.file_type}<br>`;
-                provHtml += `<strong>Researcher:</strong> ${file.researcher_name || file.researcher_id}<br>`;
-                provHtml += `<strong>Uploaded:</strong> ${file.created_at ? new Date(file.created_at).toLocaleDateString() : 'N/A'}<br>`;
-                if (file.signed_at) provHtml += `<strong>Signed:</strong> ${new Date(file.signed_at).toLocaleDateString()}<br>`;
-                provHtml += `<strong>Status:</strong> ${file.status}`;
-                if (file.ai_review && file.ai_review.score != null) {
-                    provHtml += `<br><strong>AI Score:</strong> ${file.ai_review.score}/100`;
-                }
-                if (parsed.is_compliant) {
-                    provHtml += `<br><strong>Naming:</strong> Compliant (${parsed.parsed_project})`;
-                } else {
-                    provHtml += `<br><strong>Naming:</strong> <span style="color:#fd7e14;">Non-Compliant</span>`;
-                }
-                provEl.innerHTML = provHtml;
-
-                // Improve Suggestions
-                const totalManual = manualSops.length + manualPres.length;
-                const topSopScore = heuristicSops.length > 0 ? heuristicSops[0].score : 0;
-                const topPresScore = heuristicPres.length > 0 ? heuristicPres[0].score : 0;
-                const topScore = Math.max(topSopScore, topPresScore);
-                if (totalManual < 2 || topScore < 45) {
-                    improveEl.innerHTML = '<div class="dic-improve-btn">Improve Suggestions</div>';
-                } else {
-                    improveEl.innerHTML = '';
-                }
+                dicRenderIntelStrip(sopsEl, manualSops, heuristicSops, 'SOP');
+                dicRenderIntelStrip(presEl, manualPres, heuristicPres, 'PRESENTATION');
             } catch (err) {
-                sopsEl.innerHTML = '<span style="font-size:11px;color:#ef4444;">Failed to load</span>';
-                presEl.innerHTML = '<span style="font-size:11px;color:#ef4444;">Failed to load</span>';
-                improveEl.innerHTML = '';
+                sopsEl.innerHTML = '<span style="font-size:10px;color:#ef4444;">Error</span>';
+                presEl.innerHTML = '<span style="font-size:10px;color:#ef4444;">Error</span>';
             }
         }
 
-        function dicRenderIntelSection(container, manual, heuristic, type) {
+        function dicRenderIntelStrip(container, manual, heuristic, type) {
             let html = '';
             const maxItems = 2;
             let count = 0;
 
-            // Manual links first
             manual.forEach(m => {
                 if (count >= maxItems) return;
                 const statusClass = (m.status || '').toLowerCase().replace('_needed', '');
                 const statusLabel = m.status === 'REVISION_NEEDED' ? 'REV' : (m.status || '').substring(0, 3);
-                html += `<div class="dic-intel-item">
-                    <span style="cursor:pointer;" onclick="dicSelectFile('${m.target_id}')" title="${(m.original_filename || '').replace(/"/g, '&quot;')}">${dicTruncate(m.original_filename || '', 40)}</span>
+                html += `<span class="dic-intel-chip" onclick="dicSelectFile('${m.target_id}')" title="${(m.original_filename || '').replace(/"/g, '&quot;')}">
+                    ${dicTruncate(m.original_filename || '', 30)}
                     <span class="dic-badge ${statusClass}">${statusLabel}</span>
-                    <span class="dic-intel-remove" onclick="dicUnlinkFile('${m.id}')" title="Remove link">&times;</span>
-                </div>`;
+                    <span class="dic-intel-chip-remove" onclick="event.stopPropagation();dicUnlinkFile('${m.id}')">&times;</span>
+                </span>`;
                 count++;
             });
 
-            // Fill remaining with heuristics
             heuristic.forEach(h => {
                 if (count >= maxItems) return;
-                html += `<div class="dic-intel-item dic-intel-heuristic">
-                    <span style="cursor:pointer;" onclick="dicQuickLink('${h.submission_id}','${type}')" title="Click to link: ${(h.filename || '').replace(/"/g, '&quot;')}">${dicTruncate(h.filename || '', 35)}</span>
-                    <span class="dic-intel-score">${h.score}pts</span>
-                    <span class="dic-badge" style="background:#eef2ff;color:#4338ca;">suggest</span>
-                </div>`;
+                html += `<span class="dic-intel-chip heuristic" onclick="dicQuickLink('${h.submission_id}','${type}')" title="Click to link: ${(h.filename || '').replace(/"/g, '&quot;')}">
+                    ${dicTruncate(h.filename || '', 28)}
+                    <span class="dic-intel-chip-score">${h.score}pt</span>
+                </span>`;
                 count++;
             });
 
             if (count === 0) {
-                html = `<span style="font-size:11px;color:#9ca3af;">No ${type === 'SOP' ? 'SOPs' : 'presentations'} linked</span>`;
+                html = '<span style="font-size:10px;color:#9ca3af;">None</span>';
             }
             container.innerHTML = html;
         }
