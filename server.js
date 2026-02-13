@@ -7125,12 +7125,27 @@ async function buildGlpSnapshot(userId) {
 
     // Compute sphere scores
     const docScore   = scoreDocumentation(sopM, { approved: presM.approved });
-    const trainScore = scoreTraining({
-        hasSealedPack: sealedCount > 0,
-        certifiedEntries,
-        agreementRatio: requiredDocs > 0 ? Math.min(agreementCount / requiredDocs, 1) : 0,
-        hasRevisionNeeded: revisionPacks > 0
-    });
+      const agreementRatio = requiredDocs > 0 ? Math.min(agreementCount / requiredDocs, 1) : 0;
+
+      // Training policy: agreements are foundational, cap their contribution and gate higher tiers until verified training exists
+      const agreementsPoints = Math.min(Math.round(agreementRatio * 30), 20); // cap at 20
+
+      // Base model score (includes agreements + verification), keep it but prevent agreements from dominating
+      const trainBase = scoreTraining({
+          hasSealedPack: sealedCount > 0,
+          certifiedEntries,
+          agreementRatio,
+          hasRevisionNeeded: revisionPacks > 0
+      });
+
+      // Recompose conservatively: cap agreements portion, keep remaining as verified contribution
+      const verifiedPoints = Math.max(0, trainBase - Math.round(agreementRatio * 30));
+      let trainScore = Math.min(100, agreementsPoints + verifiedPoints);
+
+      // Gate: no certified entries and no sealed packs means training cannot look mature yet
+      if (sealedCount === 0 && certifiedEntries === 0) {
+          trainScore = Math.min(trainScore, 25);
+      }
     const traceScore = scoreTraceability({
         products: invProducts, samples: invSamples, oligos: invOligos,
         approvedRatio: invTotal > 0 ? invApproved / invTotal : 0,
