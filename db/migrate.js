@@ -235,7 +235,25 @@ async function migrate() {
 
             // Backfill owner_type for existing data
             `UPDATE di_inventory_items SET owner_type = 'researcher' WHERE owner_type IS NULL AND source = 'Online'`,
-            `UPDATE di_inventory_items SET owner_type = 'group' WHERE owner_type IS NULL AND source = 'Offline'`
+            `UPDATE di_inventory_items SET owner_type = 'group' WHERE owner_type IS NULL AND source = 'Offline'`,
+            // ==================== GLP WEEKLY STATUS ====================
+
+            `CREATE TABLE IF NOT EXISTS glp_weekly_status_index (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id VARCHAR(50) NOT NULL,
+                iso_week VARCHAR(7) NOT NULL,
+                generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                r2_snapshot_key VARCHAR(1000) NOT NULL,
+                r2_harmony_key VARCHAR(1000),
+                evidence_hash VARCHAR(64) NOT NULL,
+                snapshot_version INTEGER NOT NULL DEFAULT 1,
+                model_version VARCHAR(30) NOT NULL DEFAULT '1.0.0',
+                UNIQUE(user_id, iso_week)
+            )`,
+
+            `CREATE INDEX IF NOT EXISTS idx_glp_weekly_user ON glp_weekly_status_index(user_id)`,
+            `CREATE INDEX IF NOT EXISTS idx_glp_weekly_week ON glp_weekly_status_index(iso_week)`,
+            `CREATE INDEX IF NOT EXISTS idx_glp_weekly_generated ON glp_weekly_status_index(generated_at DESC)`,
         ];
 
         for (const sql of migrations) {
