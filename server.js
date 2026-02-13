@@ -6995,7 +6995,7 @@ function scoreDocumentation(sops, presentations) {
     let s = 0;
     s += Math.min(sops.approved, 5) * 6;                                         // max 30
     s += sops.total > 0 ? Math.round((sops.approved / sops.total) * 25) : 0;     // max 25
-    if (sops.avgAiScore > 0) s += Math.round((sops.avgAiScore / 100) * 20);      // max 20, neutral if absent
+    if (sops.avgAiScore !== null) s += Math.round((sops.avgAiScore / 100) * 20);      // max 20, neutral if absent
     s += Math.min(sops.recentCount, 3) * 5;                                      // max 15
     s += Math.min(presentations.approved, 3) * 3;                                // max 9 (~10)
     return Math.min(Math.round(s), 100);
@@ -7024,7 +7024,7 @@ function scoreDataIntegrity(data, revisions) {
     let s = 0;
     s += Math.min(data.approved, 5) * 6;                                         // max 30
     s += data.total > 0 ? Math.round((data.approved / data.total) * 25) : 0;     // max 25
-    if (data.avgAiScore > 0) s += Math.round((data.avgAiScore / 100) * 20);      // max 20, neutral if absent
+    if (data.avgAiScore !== null) s += Math.round((data.avgAiScore / 100) * 20);      // max 20, neutral if absent
     s += Math.max(0, 15 - revisions.openCount * 5);                              // max 15
     s += Math.min(data.recentCount, 2) * 5;                                      // max 10
     return Math.min(Math.round(s), 100);
@@ -7045,7 +7045,7 @@ async function buildGlpSnapshot(userId) {
             SELECT file_type,
                 COUNT(*) FILTER (WHERE status = 'APPROVED')::int AS approved,
                 COUNT(*)::int AS total,
-                COALESCE(AVG(ai_review_score) FILTER (WHERE status = 'APPROVED' AND ai_review_score IS NOT NULL), 0)::int AS avg_ai_score,
+                NULL::int AS avg_ai_score,
                 COUNT(*) FILTER (WHERE created_at >= CURRENT_DATE - INTERVAL '28 days')::int AS recent_count
             FROM di_submissions
             WHERE researcher_id = $1
@@ -7095,13 +7095,13 @@ async function buildGlpSnapshot(userId) {
         subs[row.file_type] = {
             approved: parseInt(row.approved) || 0,
             total: parseInt(row.total) || 0,
-            avgAiScore: parseInt(row.avg_ai_score) || 0,
+            avgAiScore: (row.avg_ai_score === null ? null : (parseInt(row.avg_ai_score) || 0)),
             recentCount: parseInt(row.recent_count) || 0
         };
     }
-    const sopM  = subs['SOP']  || { approved: 0, total: 0, avgAiScore: 0, recentCount: 0 };
-    const dataM = subs['DATA'] || { approved: 0, total: 0, avgAiScore: 0, recentCount: 0 };
-    const presM = subs['PRESENTATION'] || { approved: 0, total: 0, avgAiScore: 0, recentCount: 0 };
+    const sopM  = subs['SOP']  || { approved: 0, total: 0, avgAiScore: null, recentCount: 0 };
+    const dataM = subs['DATA'] || { approved: 0, total: 0, avgAiScore: null, recentCount: 0 };
+    const presM = subs['PRESENTATION'] || { approved: 0, total: 0, avgAiScore: null, recentCount: 0 };
 
     // Parse inventory
     const inv = invResult.rows[0] || {};
