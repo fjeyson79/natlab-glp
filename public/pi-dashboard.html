@@ -1447,6 +1447,7 @@
         <button class="tab-btn" data-tab="backup">Backup</button>
         <button class="tab-btn" data-tab="purchases-inventory">Purchases &amp; Inventory</button>
         <button class="tab-btn" data-tab="training">Training &amp; Approvals</button>
+        <button class="tab-btn" data-tab="internal-docs">Internal Documents</button>
     </div>
 
     <!-- ==================== DASHBOARD TAB ==================== -->
@@ -2551,6 +2552,66 @@
         </div>
     </div>
 
+    <!-- ==================== INTERNAL DOCUMENTS TAB ==================== -->
+    <div class="tab-content" id="tab-internal-docs">
+        <div class="two-column">
+            <!-- Upload Zone -->
+            <div class="panel">
+                <div class="panel-header">
+                    <h2><span class="icon">&#128194;</span> Upload Internal Documents</h2>
+                </div>
+                <div class="panel-content">
+                    <div id="intdocUploadMsg" style="display:none;padding:8px;font-size:12px;margin-bottom:10px;border-radius:4px;"></div>
+                    <div class="form-group">
+                        <label>Category</label>
+                        <select id="intdocCategory" onchange="intdocCategoryChanged()">
+                            <option value="papers">Papers</option>
+                            <option value="projects">Projects</option>
+                            <option value="grants">Grant applications</option>
+                            <option value="collaborators">Collaborators</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="intdocFolderGroup" style="display:none;">
+                        <label>Folder</label>
+                        <select id="intdocFolderSelect" style="margin-bottom:6px;">
+                            <option value="">Select folder...</option>
+                        </select>
+                        <input type="text" id="intdocNewFolder" placeholder="Or type new folder name" style="padding:6px 10px;border:1px solid #ddd;border-radius:4px;font-size:13px;width:100%;box-sizing:border-box;">
+                    </div>
+                    <div class="form-group">
+                        <label>PDF Files</label>
+                        <input type="file" id="intdocFiles" accept=".pdf" multiple style="font-size:13px;">
+                    </div>
+                    <button class="btn btn-primary btn-full" id="intdocUploadBtn" onclick="intdocUpload()">Upload</button>
+                </div>
+            </div>
+
+            <!-- Management Zone -->
+            <div class="panel">
+                <div class="panel-header">
+                    <h2><span class="icon">&#128218;</span> Document Manager</h2>
+                    <button class="btn btn-sm btn-secondary" onclick="intdocLoadTree()">Refresh</button>
+                </div>
+                <div class="panel-content" style="max-height:600px;overflow-y:auto;">
+                    <div id="intdocTree">
+                        <div class="loading"><div class="spinner"></div>Loading...</div>
+                    </div>
+                    <div id="intdocFilePanel" style="display:none;margin-top:15px;border-top:1px solid #e0e0e0;padding-top:15px;">
+                        <h3 id="intdocFilePanelTitle" style="margin:0 0 10px;font-size:14px;color:#1a365d;"></h3>
+                        <div id="intdocFilePanelList"></div>
+                    </div>
+                    <div style="margin-top:20px;border-top:1px solid #e0e0e0;padding-top:15px;">
+                        <button class="btn btn-sm" onclick="intdocToggleTrash()" style="font-size:12px;color:#666;background:none;border:1px solid #ddd;padding:4px 10px;border-radius:4px;cursor:pointer;">&#128465; Trash</button>
+                        <div id="intdocTrashPanel" style="display:none;margin-top:10px;">
+                            <div id="intdocTrashList"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         // =====================================================
         // GLOBAL STATE & INIT
@@ -2609,6 +2670,7 @@
                 if (tabId === 'glp-console') glpcInit();
                 if (tabId === 'purchases-inventory') { loadAllPurchaseRequests(); loadAllInventoryV2(); loadPONumbers(); }
                 if (tabId === 'training') { loadTrainingDocuments(); loadPendingTrainingPacks(); loadSealedTrainingPacks(); }
+                if (tabId === 'internal-docs') intdocInit();
             });
         });
 
@@ -6325,6 +6387,362 @@
                 if (!resp.ok) throw new Error(data.error || 'Failed');
                 loadPiPendingCerts();
             } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        // =====================================================
+        // INTERNAL DOCUMENTS TAB
+        // =====================================================
+        let intdocTreeData = null;
+        const intdocSlugLabels = { papers: 'Papers', projects: 'Projects', grants: 'Grant applications', collaborators: 'Collaborators', other: 'Other' };
+
+        function intdocInit() {
+            intdocLoadTree();
+        }
+
+        async function intdocLoadTree() {
+            const container = document.getElementById('intdocTree');
+            container.innerHTML = '<div class="loading"><div class="spinner"></div>Loading...</div>';
+            document.getElementById('intdocFilePanel').style.display = 'none';
+
+            try {
+                const resp = await fetch('/api/internal-docs/tree', { credentials: 'include' });
+                const data = await resp.json();
+                if (!data.success) throw new Error(data.error || 'Failed');
+
+                intdocTreeData = data.tree;
+                intdocRenderTree();
+            } catch (err) {
+                container.innerHTML = '<p style="color:#dc3545;text-align:center;">Error loading document tree</p>';
+            }
+        }
+
+        function intdocRenderTree() {
+            const tree = intdocTreeData;
+            if (!tree) return;
+            let html = '';
+
+            for (const [slug, label] of Object.entries(intdocSlugLabels)) {
+                const cat = tree[slug] || { count: 0, folders: [] };
+
+                if (slug === 'papers') {
+                    html += `<div class="tree-item tree-folder" style="cursor:pointer" onclick="intdocShowFiles('papers')">
+                        <span class="icon">&#128196;</span>
+                        <span>${label} (${cat.count} files)</span>
+                    </div>`;
+                } else {
+                    html += `<div class="tree-item tree-folder" onclick="toggleFolder(this)" style="cursor:pointer">
+                        <span class="icon">&#128193;</span>
+                        <span>${label} (${cat.count} files)</span>
+                    </div>`;
+                    html += '<div class="tree-children">';
+
+                    if (cat.folders && cat.folders.length > 0) {
+                        cat.folders.forEach(f => {
+                            const eName = encodeURIComponent(f.name);
+                            html += `<div style="padding:4px 20px;display:flex;align-items:center;gap:8px;font-size:13px;">
+                                <span class="icon" style="cursor:pointer" onclick="intdocShowFiles('${slug}', decodeURIComponent('${eName}'))">&#128194;</span>
+                                <span style="cursor:pointer;flex:1;" onclick="intdocShowFiles('${slug}', decodeURIComponent('${eName}'))">${escapeHtml(f.name)} (${f.count})</span>
+                                <button style="font-size:10px;padding:2px 6px;color:#dc3545;background:none;border:1px solid #dc3545;border-radius:3px;cursor:pointer;" onclick="intdocDeleteFolder('${slug}', decodeURIComponent('${eName}'))">Delete</button>
+                            </div>`;
+                        });
+                    } else {
+                        html += '<div style="padding:5px 20px;color:#999;font-size:12px;">No folders yet</div>';
+                    }
+
+                    html += `<div style="padding:5px 20px;display:flex;gap:4px;align-items:center;">
+                        <input type="text" placeholder="New folder" style="padding:3px 6px;border:1px solid #ddd;border-radius:3px;font-size:11px;width:120px;" id="newFolder_${slug}">
+                        <button class="btn btn-sm" style="font-size:10px;padding:2px 8px;" onclick="intdocCreateFolder('${slug}')">Create</button>
+                    </div>`;
+                    html += '</div>';
+                }
+            }
+
+            document.getElementById('intdocTree').innerHTML = html;
+        }
+
+        async function intdocShowFiles(category, folder) {
+            const panel = document.getElementById('intdocFilePanel');
+            const title = document.getElementById('intdocFilePanelTitle');
+            const list = document.getElementById('intdocFilePanelList');
+
+            title.textContent = folder ? `${intdocSlugLabels[category]}: ${folder}` : intdocSlugLabels[category];
+            list.innerHTML = '<div class="loading"><div class="spinner"></div>Loading...</div>';
+            panel.style.display = '';
+
+            try {
+                let url = `/api/internal-docs/list?category=${category}`;
+                if (folder) url += `&folder=${encodeURIComponent(folder)}`;
+
+                const resp = await fetch(url, { credentials: 'include' });
+                const data = await resp.json();
+                if (!data.success) throw new Error(data.error || 'Failed');
+
+                if (data.files.length === 0) {
+                    list.innerHTML = '<div style="color:#999;font-size:12px;padding:10px;">No files</div>';
+                    return;
+                }
+
+                let html = '';
+                data.files.forEach(file => {
+                    const openUrl = '/api/internal-docs/open?key=' + encodeURIComponent(file.key);
+                    const eKey = encodeURIComponent(file.key);
+                    const eFolder = folder ? encodeURIComponent(folder) : '';
+                    const size = intdocFormatSize(file.size);
+                    const date = file.last_modified ? new Date(file.last_modified).toLocaleDateString() : '';
+
+                    html += `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f0f0f0;font-size:12px;">
+                        <span>&#128196;</span>
+                        <span style="flex:1;">${escapeHtml(file.name)}</span>
+                        <span style="color:#999;">${size}</span>
+                        <span style="color:#999;">${date}</span>
+                        <button class="btn-view" style="padding:2px 8px;font-size:11px;" onclick="window.open('${openUrl}#pagemode=none&zoom=page-width', '_blank')">Open</button>
+                        <button style="padding:2px 8px;font-size:11px;background:#dc3545;color:white;border:none;border-radius:3px;cursor:pointer;" onclick="intdocDeleteFile('${eKey}', '${category}', '${eFolder}')">Delete</button>
+                    </div>`;
+                });
+
+                list.innerHTML = html;
+            } catch (err) {
+                list.innerHTML = '<p style="color:#dc3545;font-size:12px;">Error loading files</p>';
+            }
+        }
+
+        function intdocFormatSize(bytes) {
+            if (!bytes) return '';
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / 1048576).toFixed(1) + ' MB';
+        }
+
+        function intdocCategoryChanged() {
+            const cat = document.getElementById('intdocCategory').value;
+            const folderGroup = document.getElementById('intdocFolderGroup');
+            if (cat === 'papers') {
+                folderGroup.style.display = 'none';
+            } else {
+                folderGroup.style.display = '';
+                intdocPopulateFolderSelect(cat);
+            }
+        }
+
+        function intdocPopulateFolderSelect(category) {
+            const select = document.getElementById('intdocFolderSelect');
+            select.innerHTML = '<option value="">Select folder...</option>';
+            if (intdocTreeData && intdocTreeData[category] && intdocTreeData[category].folders) {
+                intdocTreeData[category].folders.forEach(f => {
+                    const opt = document.createElement('option');
+                    opt.value = f.name;
+                    opt.textContent = f.name;
+                    select.appendChild(opt);
+                });
+            }
+        }
+
+        async function intdocUpload() {
+            const cat = document.getElementById('intdocCategory').value;
+            const folderSelect = document.getElementById('intdocFolderSelect');
+            const newFolderInput = document.getElementById('intdocNewFolder');
+            const filesInput = document.getElementById('intdocFiles');
+            const btn = document.getElementById('intdocUploadBtn');
+
+            let folder = '';
+            if (cat !== 'papers') {
+                folder = newFolderInput.value.trim() || folderSelect.value;
+                if (!folder) {
+                    intdocMsg('Please select or enter a folder name', 'error');
+                    return;
+                }
+            }
+
+            if (!filesInput.files || filesInput.files.length === 0) {
+                intdocMsg('Please select at least one PDF file', 'error');
+                return;
+            }
+
+            for (const file of filesInput.files) {
+                if (!file.name.toLowerCase().endsWith('.pdf')) {
+                    intdocMsg(`"${file.name}" is not a PDF file`, 'error');
+                    return;
+                }
+            }
+
+            btn.disabled = true;
+            btn.textContent = 'Uploading...';
+
+            try {
+                const formData = new FormData();
+                formData.append('category', cat);
+                if (folder) formData.append('folder', folder);
+                for (const file of filesInput.files) {
+                    formData.append('files', file);
+                }
+
+                const resp = await fetch('/api/internal-docs/upload', {
+                    method: 'POST',
+                    body: formData,
+                    credentials: 'include'
+                });
+                const data = await resp.json();
+
+                if (!resp.ok) {
+                    intdocMsg(data.error || 'Upload failed', 'error');
+                } else {
+                    intdocMsg(`${data.uploaded.length} file(s) uploaded successfully`, 'success');
+                    filesInput.value = '';
+                    newFolderInput.value = '';
+                    intdocLoadTree();
+                }
+            } catch (err) {
+                intdocMsg('Connection error', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Upload';
+            }
+        }
+
+        function intdocMsg(text, type) {
+            const msg = document.getElementById('intdocUploadMsg');
+            msg.style.display = '';
+            msg.textContent = text;
+            msg.style.color = type === 'error' ? '#721c24' : '#155724';
+            msg.style.background = type === 'error' ? '#f8d7da' : '#d4edda';
+            setTimeout(() => { msg.style.display = 'none'; }, 5000);
+        }
+
+        async function intdocDeleteFile(encodedKey, category, encodedFolder) {
+            if (!confirm('Move this file to trash?')) return;
+
+            try {
+                const resp = await fetch('/api/internal-docs/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ key: decodeURIComponent(encodedKey) }),
+                    credentials: 'include'
+                });
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data.error || 'Failed');
+
+                intdocLoadTree();
+                const folder = encodedFolder ? decodeURIComponent(encodedFolder) : undefined;
+                intdocShowFiles(category, folder);
+            } catch (err) {
+                alert('Error: ' + err.message);
+            }
+        }
+
+        async function intdocCreateFolder(slug) {
+            const input = document.getElementById('newFolder_' + slug);
+            const name = (input.value || '').trim();
+            if (!name) { alert('Enter a folder name'); return; }
+
+            try {
+                const resp = await fetch('/api/internal-docs/create-folder', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ category: slug, folder: name }),
+                    credentials: 'include'
+                });
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data.error || 'Failed');
+
+                input.value = '';
+                intdocLoadTree();
+            } catch (err) {
+                alert('Error: ' + err.message);
+            }
+        }
+
+        async function intdocDeleteFolder(slug, folder) {
+            try {
+                let resp = await fetch('/api/internal-docs/delete-folder', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ category: slug, folder }),
+                    credentials: 'include'
+                });
+                let data = await resp.json();
+
+                if (resp.status === 409 && data.requires_force) {
+                    if (!confirm(`Folder "${folder}" contains ${data.file_count} file(s). Move all to trash and delete folder?`)) return;
+                    resp = await fetch('/api/internal-docs/delete-folder', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ category: slug, folder, force: true }),
+                        credentials: 'include'
+                    });
+                    data = await resp.json();
+                }
+
+                if (!resp.ok) throw new Error(data.error || 'Failed');
+
+                document.getElementById('intdocFilePanel').style.display = 'none';
+                intdocLoadTree();
+            } catch (err) {
+                alert('Error: ' + err.message);
+            }
+        }
+
+        function intdocToggleTrash() {
+            const panel = document.getElementById('intdocTrashPanel');
+            if (panel.style.display === 'none') {
+                panel.style.display = '';
+                intdocLoadTrash();
+            } else {
+                panel.style.display = 'none';
+            }
+        }
+
+        async function intdocLoadTrash() {
+            const list = document.getElementById('intdocTrashList');
+            list.innerHTML = '<div class="loading"><div class="spinner"></div>Loading...</div>';
+
+            try {
+                const resp = await fetch('/api/internal-docs/trash', { credentials: 'include' });
+                const data = await resp.json();
+                if (!data.success) throw new Error(data.error || 'Failed');
+
+                if (data.items.length === 0) {
+                    list.innerHTML = '<div style="color:#999;font-size:12px;padding:10px;">Trash is empty</div>';
+                    return;
+                }
+
+                let html = '';
+                data.items.forEach(item => {
+                    const date = item.deleted_at ? new Date(item.deleted_at).toLocaleDateString() : '';
+                    const eTK = encodeURIComponent(item.trash_key);
+                    const eOK = encodeURIComponent(item.original_key);
+                    html += `<div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid #f0f0f0;font-size:11px;">
+                        <span>&#128196;</span>
+                        <span style="flex:1;" title="${escapeHtml(item.original_key)}">${escapeHtml(item.name)}</span>
+                        <span style="color:#999;">${date}</span>
+                        <button style="padding:2px 8px;font-size:10px;background:#28a745;color:white;border:none;border-radius:3px;cursor:pointer;" onclick="intdocRestore('${eTK}', '${eOK}')">Restore</button>
+                    </div>`;
+                });
+
+                list.innerHTML = html;
+            } catch (err) {
+                list.innerHTML = '<p style="color:#dc3545;font-size:12px;">Error loading trash</p>';
+            }
+        }
+
+        async function intdocRestore(encodedTrashKey, encodedOriginalKey) {
+            try {
+                const resp = await fetch('/api/internal-docs/restore', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        trash_key: decodeURIComponent(encodedTrashKey),
+                        original_key: decodeURIComponent(encodedOriginalKey)
+                    }),
+                    credentials: 'include'
+                });
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data.error || 'Failed');
+
+                intdocLoadTrash();
+                intdocLoadTree();
+            } catch (err) {
+                alert('Error: ' + err.message);
+            }
         }
     </script>
 </body>

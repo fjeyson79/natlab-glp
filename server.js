@@ -14,7 +14,7 @@ const { Readable } = require('stream');
 const archiver = require('archiver');
 
 // R2 (S3-compatible) SDK
-const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
+const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, CopyObjectCommand } = require('@aws-sdk/client-s3');
 const app = express();
 const PORT = process.env.PORT || 8080;
 
@@ -9063,6 +9063,316 @@ app.get('/api/glp/status/user/:userId/week/:isoWeek', requirePI, async (req, res
         console.error('[GLP-STATUS] user week error:', err);
         res.status(500).json({ error: 'Server error' });
     }
+});
+
+// =====================================================
+// INTERNAL DOCUMENTS — PI only, R2 storage
+// =====================================================
+
+const INTDOC_CATEGORIES = { papers: 'papers', projects: 'projects', grants: 'grants', collaborators: 'collaborators', other: 'other' };
+const INTDOC_PREFIX = 'group-docs/internal/';
+const INTDOC_TRASH = 'group-docs/internal/trash/';
+
+function normalizeFolderName(name) {
+  if (!name || typeof name !== 'string') return '';
+  let n = name.trim();
+  n = n.replace(/\s+/g, '_');
+  n = n.replace(/[\/\\]/g, '');
+  n = n.replace(/\.\./g, '');
+  n = n.replace(/^\./g, '');
+  n = n.substring(0, 60);
+  return n;
+}
+
+async function listR2Prefix(prefix) {
+  const s3 = getR2Client();
+  const bucket = process.env.R2_BUCKET;
+  const objects = [];
+  let token;
+  do {
+    const resp = await s3.send(new ListObjectsV2Command({
+      Bucket: bucket, Prefix: prefix, ContinuationToken: token
+    }));
+    if (resp.Contents) objects.push(...resp.Contents);
+    token = resp.NextContinuationToken;
+  } while (token);
+  return objects;
+}
+
+// 1. GET /api/internal-docs/tree
+app.get('/api/internal-docs/tree', requirePI, async (req, res) => {
+  try {
+    const tree = {};
+    for (const [cat, slug] of Object.entries(INTDOC_CATEGORIES)) {
+      const prefix = INTDOC_PREFIX + slug + '/';
+      const objects = await listR2Prefix(prefix);
+
+      if (cat === 'papers') {
+        const files = objects.filter(o => !o.Key.endsWith('/.keep') && o.Key.substring(prefix.length).indexOf('/') === -1);
+        tree[cat] = { count: files.length, folders: [] };
+      } else {
+        const folders = {};
+        for (const obj of objects) {
+          const relative = obj.Key.substring(prefix.length);
+          const parts = relative.split('/');
+          if (parts.length >= 2 && parts[0]) {
+            const folder = parts[0];
+            if (!folders[folder]) folders[folder] = 0;
+            if (parts[1] !== '.keep' && parts[1]) folders[folder]++;
+          }
+        }
+        const fileCount = Object.values(folders).reduce((a, b) => a + b, 0);
+        tree[cat] = {
+          count: fileCount,
+          folders: Object.entries(folders).map(([name, count]) => ({ name, count })).sort((a, b) => a.name.localeCompare(b.name))
+        };
+      }
+    }
+    res.json({ success: true, tree });
+  } catch (err) {
+    console.error('[INTERNAL-DOCS] tree error:', err);
+    res.status(500).json({ error: 'Failed to load document tree' });
+  }
+});
+
+// 2. GET /api/internal-docs/list
+app.get('/api/internal-docs/list', requirePI, async (req, res) => {
+  try {
+    const { category, folder } = req.query;
+    if (!category) return res.status(400).json({ error: 'Category required' });
+
+    if (category === 'all') {
+      const objects = await listR2Prefix(INTDOC_PREFIX);
+      const validSlugs = Object.values(INTDOC_CATEGORIES);
+      const files = objects
+        .filter(o => !o.Key.endsWith('/.keep') && !o.Key.startsWith(INTDOC_TRASH))
+        .map(o => {
+          const relative = o.Key.substring(INTDOC_PREFIX.length);
+          const parts = relative.split('/');
+          const catSlug = parts[0] || '';
+          if (!validSlugs.includes(catSlug)) return null;
+          const folderName = parts.length > 2 ? parts[1] : '';
+          return { key: o.Key, name: parts[parts.length - 1], category: catSlug, folder: folderName, size: o.Size, last_modified: o.LastModified };
+        })
+        .filter(Boolean);
+      return res.json({ success: true, files });
+    }
+
+    if (!INTDOC_CATEGORIES[category]) return res.status(400).json({ error: 'Invalid category' });
+    if (category !== 'papers' && !folder) return res.status(400).json({ error: 'Folder required for this category' });
+
+    let prefix;
+    if (category === 'papers') {
+      prefix = INTDOC_PREFIX + 'papers/';
+    } else {
+      prefix = INTDOC_PREFIX + INTDOC_CATEGORIES[category] + '/' + folder + '/';
+    }
+
+    const objects = await listR2Prefix(prefix);
+    const files = objects
+      .filter(o => !o.Key.endsWith('/.keep'))
+      .filter(o => {
+        const relative = o.Key.substring(prefix.length);
+        return relative && !relative.includes('/');
+      })
+      .map(o => ({ key: o.Key, name: o.Key.split('/').pop(), size: o.Size, last_modified: o.LastModified }));
+
+    res.json({ success: true, files });
+  } catch (err) {
+    console.error('[INTERNAL-DOCS] list error:', err);
+    res.status(500).json({ error: 'Failed to list documents' });
+  }
+});
+
+// 3. POST /api/internal-docs/create-folder
+app.post('/api/internal-docs/create-folder', requirePI, async (req, res) => {
+  try {
+    const { category, folder } = req.body;
+    if (!category || !INTDOC_CATEGORIES[category]) return res.status(400).json({ error: 'Invalid category' });
+    if (category === 'papers') return res.status(400).json({ error: 'Papers does not support subfolders' });
+
+    const normalized = normalizeFolderName(folder);
+    if (!normalized) return res.status(400).json({ error: 'Invalid folder name' });
+
+    const key = INTDOC_PREFIX + INTDOC_CATEGORIES[category] + '/' + normalized + '/.keep';
+    await uploadToR2(Buffer.from(''), key, 'application/x-empty');
+    res.json({ success: true, folder: normalized });
+  } catch (err) {
+    console.error('[INTERNAL-DOCS] create-folder error:', err);
+    res.status(500).json({ error: 'Failed to create folder' });
+  }
+});
+
+// 4. POST /api/internal-docs/upload
+app.post('/api/internal-docs/upload', requirePI, upload.array('files', 20), async (req, res) => {
+  try {
+    const { category, folder } = req.body;
+    if (!category || !INTDOC_CATEGORIES[category]) return res.status(400).json({ error: 'Invalid category' });
+    if (category !== 'papers' && !folder) return res.status(400).json({ error: 'Folder required for this category' });
+    if (!req.files || req.files.length === 0) return res.status(400).json({ error: 'No files provided' });
+
+    for (const file of req.files) {
+      if (!file.originalname.toLowerCase().endsWith('.pdf')) {
+        return res.status(400).json({ error: `File "${file.originalname}" is not a PDF` });
+      }
+    }
+
+    let prefix;
+    if (category === 'papers') {
+      prefix = INTDOC_PREFIX + 'papers/';
+    } else {
+      const normalized = normalizeFolderName(folder);
+      if (!normalized) return res.status(400).json({ error: 'Invalid folder name' });
+      prefix = INTDOC_PREFIX + INTDOC_CATEGORIES[category] + '/' + normalized + '/';
+    }
+
+    const uploaded = [];
+    for (const file of req.files) {
+      const safeName = file.originalname.replace(/[^\w.\-]+/g, '_');
+      const key = prefix + safeName;
+      await uploadToR2(file.buffer, key, 'application/pdf');
+      uploaded.push({ key, name: safeName });
+    }
+
+    res.json({ success: true, uploaded });
+  } catch (err) {
+    console.error('[INTERNAL-DOCS] upload error:', err);
+    res.status(500).json({ error: 'Failed to upload documents' });
+  }
+});
+
+// 5. POST /api/internal-docs/delete (move to trash)
+app.post('/api/internal-docs/delete', requirePI, async (req, res) => {
+  try {
+    const { key } = req.body;
+    if (!key || !key.startsWith(INTDOC_PREFIX) || key.startsWith(INTDOC_TRASH)) {
+      return res.status(400).json({ error: 'Invalid key' });
+    }
+
+    const s3 = getR2Client();
+    const bucket = process.env.R2_BUCKET;
+    const now = new Date();
+    const datePart = `${now.getFullYear()}_${String(now.getMonth() + 1).padStart(2, '0')}_${String(now.getDate()).padStart(2, '0')}`;
+    const trashKey = INTDOC_TRASH + datePart + '/' + key;
+
+    await s3.send(new CopyObjectCommand({
+      Bucket: bucket, CopySource: `${bucket}/${key}`, Key: trashKey
+    }));
+    await deleteFromR2(key);
+
+    res.json({ success: true, trash_key: trashKey, original_key: key });
+  } catch (err) {
+    console.error('[INTERNAL-DOCS] delete error:', err);
+    res.status(500).json({ error: 'Failed to delete document' });
+  }
+});
+
+// 6. POST /api/internal-docs/restore
+app.post('/api/internal-docs/restore', requirePI, async (req, res) => {
+  try {
+    const { trash_key, original_key } = req.body;
+    if (!trash_key || !trash_key.startsWith(INTDOC_TRASH)) return res.status(400).json({ error: 'Invalid trash key' });
+    if (!original_key || !original_key.startsWith(INTDOC_PREFIX)) return res.status(400).json({ error: 'Invalid original key' });
+
+    const s3 = getR2Client();
+    const bucket = process.env.R2_BUCKET;
+
+    await s3.send(new CopyObjectCommand({
+      Bucket: bucket, CopySource: `${bucket}/${trash_key}`, Key: original_key
+    }));
+    await deleteFromR2(trash_key);
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[INTERNAL-DOCS] restore error:', err);
+    res.status(500).json({ error: 'Failed to restore document' });
+  }
+});
+
+// 7. GET /api/internal-docs/open
+app.get('/api/internal-docs/open', requirePI, async (req, res) => {
+  try {
+    const { key } = req.query;
+    if (!key || !key.startsWith(INTDOC_PREFIX)) return res.status(400).json({ error: 'Invalid key' });
+
+    const obj = await downloadFromR2(key);
+    res.setHeader('Content-Type', 'application/pdf');
+    const filename = key.split('/').pop() || 'document.pdf';
+    res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+    if (obj.ContentLength) res.setHeader('Content-Length', String(obj.ContentLength));
+
+    if (obj.Body.pipe) { obj.Body.pipe(res); }
+    else { res.send(Buffer.from(await obj.Body.transformToByteArray())); }
+  } catch (err) {
+    console.error('[INTERNAL-DOCS] open error:', err);
+    res.status(500).json({ error: 'Failed to open document' });
+  }
+});
+
+// 8. GET /api/internal-docs/trash
+app.get('/api/internal-docs/trash', requirePI, async (req, res) => {
+  try {
+    const objects = await listR2Prefix(INTDOC_TRASH);
+    const items = objects
+      .filter(o => !o.Key.endsWith('/.keep'))
+      .sort((a, b) => (b.LastModified || 0) - (a.LastModified || 0))
+      .slice(0, 50)
+      .map(o => {
+        const afterTrash = o.Key.substring(INTDOC_TRASH.length);
+        const slashIdx = afterTrash.indexOf('/');
+        const original_key = slashIdx >= 0 ? afterTrash.substring(slashIdx + 1) : afterTrash;
+        return { trash_key: o.Key, original_key, name: o.Key.split('/').pop(), size: o.Size, deleted_at: o.LastModified };
+      });
+
+    res.json({ success: true, items });
+  } catch (err) {
+    console.error('[INTERNAL-DOCS] trash list error:', err);
+    res.status(500).json({ error: 'Failed to list trash' });
+  }
+});
+
+// 9. POST /api/internal-docs/delete-folder
+app.post('/api/internal-docs/delete-folder', requirePI, async (req, res) => {
+  try {
+    const { category, folder, force } = req.body;
+    if (!category || !INTDOC_CATEGORIES[category] || category === 'papers') {
+      return res.status(400).json({ error: 'Invalid category' });
+    }
+    const normalized = normalizeFolderName(folder);
+    if (!normalized) return res.status(400).json({ error: 'Invalid folder name' });
+
+    const prefix = INTDOC_PREFIX + INTDOC_CATEGORIES[category] + '/' + normalized + '/';
+    const objects = await listR2Prefix(prefix);
+    const files = objects.filter(o => !o.Key.endsWith('/.keep'));
+
+    if (files.length > 0 && !force) {
+      return res.status(409).json({ error: 'Folder not empty', file_count: files.length, requires_force: true });
+    }
+
+    if (files.length > 0) {
+      const s3 = getR2Client();
+      const bucket = process.env.R2_BUCKET;
+      const now = new Date();
+      const datePart = `${now.getFullYear()}_${String(now.getMonth() + 1).padStart(2, '0')}_${String(now.getDate()).padStart(2, '0')}`;
+
+      for (const obj of files) {
+        const trashKey = INTDOC_TRASH + datePart + '/' + obj.Key;
+        await s3.send(new CopyObjectCommand({
+          Bucket: bucket, CopySource: `${bucket}/${obj.Key}`, Key: trashKey
+        }));
+        await deleteFromR2(obj.Key);
+      }
+    }
+
+    for (const obj of objects.filter(o => o.Key.endsWith('/.keep'))) {
+      await deleteFromR2(obj.Key);
+    }
+
+    res.json({ success: true, files_trashed: files.length });
+  } catch (err) {
+    console.error('[INTERNAL-DOCS] delete-folder error:', err);
+    res.status(500).json({ error: 'Failed to delete folder' });
+  }
 });
 
 //

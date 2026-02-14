@@ -1213,6 +1213,16 @@
                         <button class="inv-toggle-btn" data-filter="SOP" onclick="setFileFilter(this)">SOP</button>
                         <button class="inv-toggle-btn" data-filter="DATA" onclick="setFileFilter(this)">DATA</button>
                         <button class="inv-toggle-btn" data-filter="PRESENTATION" onclick="setFileFilter(this)">PRES</button>
+                        <select id="intdocsSelect" class="inv-toggle-btn" style="display:none;cursor:pointer;" onchange="intdocsChanged(this)">
+                            <option value="">InternalDocs</option>
+                            <option value="papers">Papers</option>
+                            <option value="projects">Projects</option>
+                            <option value="grants">Grant applications</option>
+                            <option value="collaborators">Collaborators</option>
+                            <option value="other">Other</option>
+                            <option value="all">All internal docs</option>
+                        </select>
+                        <select id="intdocsFolderSel" class="inv-toggle-btn" style="display:none;cursor:pointer;" onchange="intdocsFolderChanged(this)"></select>
                     </div>
                     <input type="text" id="fileSearchInput" placeholder="Search files\u2026" oninput="applyFileFilters()" style="padding:5px 10px;border:1px solid #ddd;border-radius:4px;font-size:12px;width:160px;">
                 </div>
@@ -2119,6 +2129,12 @@
                     if (supTab) supTab.style.display = 'block';
                 }
 
+                // Show InternalDocs dropdown for PI users
+                if (currentUserRole === 'pi') {
+                    const intdocsSel = document.getElementById('intdocsSelect');
+                    if (intdocsSel) intdocsSel.style.display = '';
+                }
+
                 // Show purchase & inventory section nav for internal users
                 if (user.affiliation !== 'EXTERNAL') {
                     document.getElementById('sectionNav').style.display = 'flex';
@@ -2321,15 +2337,23 @@
         }
 
         let activeFileFilter = 'ALL';
+        let intdocsActive = false;
 
         function setFileFilter(btn) {
-            document.querySelectorAll('#fileTypeFilters .inv-toggle-btn').forEach(b => b.classList.remove('active'));
+            const wasIntdocs = intdocsActive;
+            if (intdocsActive) exitIntdocsMode();
+            document.querySelectorAll('#fileTypeFilters button.inv-toggle-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             activeFileFilter = btn.getAttribute('data-filter');
-            applyFileFilters();
+            if (wasIntdocs) {
+                loadMyFiles();
+            } else {
+                applyFileFilters();
+            }
         }
 
         function applyFileFilters() {
+            if (intdocsActive) { applyIntdocsSearch(); return; }
             const query = (document.getElementById('fileSearchInput').value || '').toLowerCase().trim();
             const rows = document.querySelectorAll('#fileTree .tree-file');
             let visibleCount = 0;
@@ -2356,6 +2380,178 @@
             } else if (notice) {
                 notice.style.display = 'none';
             }
+        }
+
+        // =====================================================
+        // INTERNAL DOCS — visualization only (PI)
+        // =====================================================
+        const intdocsSlugLabels = { papers: 'Papers', projects: 'Projects', grants: 'Grants', collaborators: 'Collaborators', other: 'Other' };
+
+        function intdocsChanged(sel) {
+            const val = sel.value;
+            if (!val) {
+                exitIntdocsMode();
+                loadMyFiles();
+                return;
+            }
+
+            intdocsActive = true;
+            sel.style.background = '#1a365d';
+            sel.style.color = 'white';
+            sel.style.borderColor = '#1a365d';
+
+            document.querySelectorAll('#fileTypeFilters button.inv-toggle-btn').forEach(b => {
+                b.classList.remove('active');
+                b.disabled = true;
+                b.style.opacity = '0.4';
+                b.style.pointerEvents = 'none';
+            });
+
+            // Hide stats bar in InternalDocs mode
+            const statsBar = document.getElementById('statsBar');
+            if (statsBar) statsBar.style.display = 'none';
+
+            if (['projects', 'grants', 'collaborators', 'other'].includes(val)) {
+                loadIntdocsFolders(val);
+            } else {
+                const folderSel = document.getElementById('intdocsFolderSel');
+                if (folderSel) folderSel.style.display = 'none';
+                loadIntdocsFiles(val, null);
+            }
+        }
+
+        function exitIntdocsMode() {
+            intdocsActive = false;
+            const sel = document.getElementById('intdocsSelect');
+            if (sel) { sel.value = ''; sel.style.background = ''; sel.style.color = ''; sel.style.borderColor = ''; }
+            const folderSel = document.getElementById('intdocsFolderSel');
+            if (folderSel) { folderSel.style.display = 'none'; folderSel.innerHTML = ''; }
+            document.querySelectorAll('#fileTypeFilters button.inv-toggle-btn').forEach(b => {
+                b.disabled = false;
+                b.style.opacity = '';
+                b.style.pointerEvents = '';
+            });
+        }
+
+        async function loadIntdocsFolders(category) {
+            try {
+                const resp = await fetch('/api/internal-docs/tree', { credentials: 'include' });
+                const data = await resp.json();
+                if (!data.success) throw new Error('Failed to load tree');
+
+                const catData = data.tree[category];
+                const folderSel = document.getElementById('intdocsFolderSel');
+                folderSel.innerHTML = '<option value="">Select folder...</option>';
+                if (catData && catData.folders) {
+                    catData.folders.forEach(f => {
+                        const opt = document.createElement('option');
+                        opt.value = f.name;
+                        opt.textContent = f.name + ' (' + f.count + ')';
+                        folderSel.appendChild(opt);
+                    });
+                }
+                folderSel.style.display = '';
+                folderSel.style.background = '#f8f9fa';
+                folderSel.style.color = '#666';
+                folderSel.style.borderColor = '#ddd';
+
+                // Show placeholder in file tree
+                document.getElementById('fileTree').innerHTML = '<div style="text-align:center;color:#999;padding:20px;font-size:13px;">Select a folder</div>';
+            } catch (err) {
+                console.error('Error loading internal docs folders:', err);
+            }
+        }
+
+        function intdocsFolderChanged(sel) {
+            const folder = sel.value;
+            if (!folder) return;
+            const category = document.getElementById('intdocsSelect').value;
+            loadIntdocsFiles(category, folder);
+        }
+
+        async function loadIntdocsFiles(category, folder) {
+            const treeContainer = document.getElementById('fileTree');
+            treeContainer.innerHTML = '<div class="loading"><div class="spinner"></div>Loading...</div>';
+
+            try {
+                let url;
+                if (category === 'all') {
+                    url = '/api/internal-docs/list?category=all';
+                } else if (category === 'papers') {
+                    url = '/api/internal-docs/list?category=papers';
+                } else {
+                    url = '/api/internal-docs/list?category=' + category + '&folder=' + encodeURIComponent(folder);
+                }
+
+                const resp = await fetch(url, { credentials: 'include' });
+                const data = await resp.json();
+
+                if (!data.success) throw new Error(data.error || 'Failed');
+
+                if (data.files.length === 0) {
+                    treeContainer.innerHTML = '<div style="text-align:center;color:#999;padding:20px;font-size:13px;">No documents found</div>';
+                    return;
+                }
+
+                let html = '';
+                data.files.forEach(file => {
+                    const searchText = (file.name || '').toLowerCase();
+                    const openUrl = '/api/internal-docs/open?key=' + encodeURIComponent(file.key);
+                    const size = intdocsFormatSize(file.size);
+                    const catLabel = category === 'all'
+                        ? '<span style="background:#e3f2fd;color:#1565c0;padding:1px 6px;border-radius:8px;font-size:10px;margin-left:6px;">'
+                          + escapeHtml(intdocsSlugLabels[file.category] || file.category) + (file.folder ? ': ' + escapeHtml(file.folder) : '') + '</span>'
+                        : '';
+
+                    html += '<div class="tree-item tree-file" data-search-text="' + searchText + '" style="padding-left:10px">'
+                        + '<span class="icon">&#128196;</span>'
+                        + '<span>' + escapeHtml(file.name) + '</span>'
+                        + catLabel
+                        + '<span style="color:#999;font-size:11px;margin-left:auto;">' + size + '</span>'
+                        + '<div class="file-actions">'
+                        + '<button class="btn-view" onclick="window.open(\'' + openUrl + '#pagemode=none&zoom=page-width\', \'_blank\')">View</button>'
+                        + '</div>'
+                        + '</div>';
+                });
+
+                treeContainer.innerHTML = html;
+                applyIntdocsSearch();
+            } catch (err) {
+                console.error('Error loading internal docs files:', err);
+                treeContainer.innerHTML = '<p style="color:#dc3545;text-align:center;">Error loading documents</p>';
+            }
+        }
+
+        function applyIntdocsSearch() {
+            const query = (document.getElementById('fileSearchInput').value || '').toLowerCase().trim();
+            const rows = document.querySelectorAll('#fileTree .tree-file');
+            let visibleCount = 0;
+            rows.forEach(row => {
+                const text = row.getAttribute('data-search-text') || '';
+                const show = !query || text.includes(query);
+                row.style.display = show ? '' : 'none';
+                if (show) visibleCount++;
+            });
+            let notice = document.getElementById('fileFilterNotice');
+            if (visibleCount === 0 && rows.length > 0) {
+                if (!notice) {
+                    notice = document.createElement('div');
+                    notice.id = 'fileFilterNotice';
+                    notice.style.cssText = 'text-align:center;color:#999;padding:20px;font-size:13px;';
+                    notice.textContent = 'No matching files';
+                    document.getElementById('fileTree').appendChild(notice);
+                }
+                notice.style.display = '';
+            } else if (notice) {
+                notice.style.display = 'none';
+            }
+        }
+
+        function intdocsFormatSize(bytes) {
+            if (!bytes) return '';
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / 1048576).toFixed(1) + ' MB';
         }
 
         function viewFile(id) {
