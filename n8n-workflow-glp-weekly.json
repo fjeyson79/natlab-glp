@@ -1,5 +1,5 @@
 {
-  "name": "GLP Weekly Snapshot",
+  "name": "GLP Weekly Snapshot v2",
   "nodes": [
     {
       "parameters": {
@@ -16,13 +16,43 @@
       "name": "Wednesday 09:00 Stockholm",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [200, 400],
+      "position": [200, 300],
       "notes": "Every Wednesday 09:00 Europe/Stockholm"
     },
     {
       "parameters": {
+        "httpMethod": "POST",
+        "path": "glp-weekly-regenerate",
+        "authentication": "headerAuth",
+        "options": {}
+      },
+      "id": "webhook-1",
+      "name": "Webhook Manual Regenerate",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 500],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "webhook-secret-cred",
+          "name": "GLP Webhook Secret"
+        }
+      },
+      "notes": "PI-only manual regeneration. Credential 'GLP Webhook Secret' must have header name 'x-webhook-secret' with value matching NATLAB_WEBHOOK_SECRET. Body: { affiliation?, iso_week?, roles? }"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Resolve scope from trigger output (cron = empty, webhook = body with overrides)\nconst input = $input.first().json;\nconst body = input.body || input;\n\n// Compute current ISO week\nconst d = new Date();\nd.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));\nconst yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));\nconst weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);\nconst currentWeek = `${d.getUTCFullYear()}W${String(weekNo).padStart(2, '0')}`;\n\nreturn [{\n  json: {\n    isoWeek: body.iso_week || currentWeek,\n    targetAffiliation: body.affiliation || null,\n    includedRoles: body.roles || ['researcher', 'supervisor']\n  }\n}];"
+      },
+      "id": "resolve-scope-1",
+      "name": "Resolve Scope",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 400]
+    },
+    {
+      "parameters": {
         "method": "GET",
-        "url": "={{ $env.NATLAB_GLP_BASE_URL }}/api/glp/status/eligible-users",
+        "url": "={{ $env.NATLAB_GLP_BASE_URL }}/api/glp/status/users-active",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -41,40 +71,31 @@
         }
       },
       "id": "get-users-1",
-      "name": "Get Eligible Users",
+      "name": "Get Active Users",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [420, 400]
+      "position": [700, 400]
     },
     {
       "parameters": {
-        "jsCode": "// Extract users array for split-in-batches\nconst users = $json.users || [];\nreturn users.map(u => ({ json: u }));"
+        "jsCode": "// Filter users by included roles and optional affiliation, split into per-user items\nconst scope = $('Resolve Scope').first().json;\nconst response = $input.first().json;\nconst users = response.users || [];\nconst roles = scope.includedRoles;\nconst targetAff = scope.targetAffiliation;\n\nconst filtered = users.filter(u => {\n  if (!roles.includes(u.role)) return false;\n  if (targetAff && u.affiliation !== targetAff) return false;\n  return true;\n});\n\nif (filtered.length === 0) {\n  return [{ json: { _empty: true, _isoWeek: scope.isoWeek, _message: 'No users match role/affiliation filter' } }];\n}\n\nreturn filtered.map(u => ({\n  json: { ...u, _isoWeek: scope.isoWeek }\n}));"
       },
-      "id": "split-users-1",
-      "name": "Split Users",
+      "id": "filter-roles-1",
+      "name": "Filter Roles",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [640, 400]
+      "position": [950, 400]
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "={{ $env.NATLAB_GLP_BASE_URL }}/api/glp/status/generate-one",
+        "method": "GET",
+        "url": "={{ $env.NATLAB_GLP_BASE_URL + '/api/glp/status/user-facts/' + $json.user_id }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "x-api-key",
               "value": "={{ $env.NATLAB_GLP_API_KEY }}"
-            }
-          ]
-        },
-        "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "user_id",
-              "value": "={{ $json.user_id }}"
             }
           ]
         },
@@ -86,40 +107,23 @@
           }
         }
       },
-      "id": "generate-snapshot-1",
-      "name": "Generate Snapshot",
+      "id": "fetch-facts-1",
+      "name": "Fetch User Facts",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [860, 400]
+      "position": [1200, 400],
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "loose"
-          },
-          "conditions": [
-            {
-              "id": "cond-gen",
-              "leftValue": "={{ $json.generated }}",
-              "rightValue": true,
-              "operator": {
-                "type": "boolean",
-                "operation": "equals"
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Compute signals and scores, replicating exact scoring logic from server.js\nconst user = $('Filter Roles').item.json;\nconst f = $input.item.json;\n\nif (user._empty || !f.success) {\n  return { json: { user_id: user.user_id || 'unknown', name: user.name || '', role: user.role || '', affiliation: user.affiliation || '', _isoWeek: user._isoWeek, _skip: true, _error: f.success === false ? 'Fetch failed' : 'No users' } };\n}\n\n// --- Scoring functions ---\nfunction scoreDocumentation(sops, presentations) {\n  let s = 0;\n  s += Math.min(sops.approved, 5) * 6;\n  s += sops.total > 0 ? Math.round((sops.approved / sops.total) * 25) : 0;\n  if (sops.avgAiScore !== null && sops.avgAiScore !== undefined) s += Math.round((sops.avgAiScore / 100) * 20);\n  s += Math.min(sops.recentCount, 3) * 5;\n  s += Math.min(presentations.approved, 3) * 3;\n  return Math.min(Math.round(s), 100);\n}\n\nfunction scoreTrainingBase(t) {\n  let s = 0;\n  s += t.hasSealedPack ? 35 : 0;\n  s += Math.min(t.certifiedEntries, 5) * 5;\n  s += Math.round(t.agreementRatio * 25);\n  s += t.hasRevisionNeeded ? 0 : 15;\n  return Math.min(s, 100);\n}\n\nfunction scoreTraceability(inv) {\n  let s = 0;\n  s += Math.min(inv.products, 10) * 2.5;\n  s += Math.min(inv.samples, 5) * 4;\n  s += Math.min(inv.oligos, 3) * 5;\n  s += Math.round(inv.approvedRatio * 25);\n  s += Math.min(inv.recentActivity, 3) * 5;\n  return Math.min(Math.round(s), 100);\n}\n\nfunction scoreDataIntegrity(data, revisions) {\n  let s = 0;\n  s += Math.min(data.approved, 5) * 6;\n  s += data.total > 0 ? Math.round((data.approved / data.total) * 25) : 0;\n  if (data.avgAiScore !== null && data.avgAiScore !== undefined) s += Math.round((data.avgAiScore / 100) * 20);\n  s += Math.max(0, 15 - revisions.openCount * 5);\n  s += Math.min(data.recentCount, 2) * 5;\n  return Math.min(Math.round(s), 100);\n}\n\nfunction resolveLevel(score) {\n  if (score >= 81) return 'dragon';\n  if (score >= 61) return 'eagle';\n  if (score >= 41) return 'owl';\n  if (score >= 21) return 'fledgling';\n  return 'hatchling';\n}\n\n// Extract signals\nconst sop = f.sop || {};\nconst data = f.data || {};\nconst pres = f.presentation || {};\nconst rev = f.revision || {};\nconst inv = f.inventory || {};\nconst pur = f.purchase || {};\nconst tr = f.training || {};\nconst hyg = f.hygiene || {};\n\n// Documentation\nconst docScore = scoreDocumentation(\n  { approved: sop.approved || 0, total: sop.total || 0, avgAiScore: sop.avg_ai_score, recentCount: sop.recent_4w || 0 },\n  { approved: pres.approved || 0 }\n);\n\n// Training with conservative gating\nconst sealedCount = tr.sealed_packs || 0;\nconst certifiedEntries = tr.certified_entries || 0;\nconst agreementCount = tr.agreement_count || 0;\nconst requiredDocs = tr.required_docs || 0;\nconst revisionPacks = tr.revision_packs || 0;\nconst agreementRatio = requiredDocs > 0 ? Math.min(agreementCount / requiredDocs, 1) : 0;\nconst agreementsPoints = Math.min(Math.round(agreementRatio * 30), 20);\nconst trainBase = scoreTrainingBase({\n  hasSealedPack: sealedCount > 0,\n  certifiedEntries,\n  agreementRatio,\n  hasRevisionNeeded: revisionPacks > 0\n});\nconst verifiedPoints = Math.max(0, trainBase - Math.round(agreementRatio * 30));\nlet trainScore = Math.min(100, agreementsPoints + verifiedPoints);\nif (sealedCount === 0 && certifiedEntries === 0) {\n  trainScore = Math.min(trainScore, 25);\n}\n\n// Traceability\nconst traceScore = scoreTraceability({\n  products: inv.products || 0, samples: inv.samples || 0, oligos: inv.oligos || 0,\n  approvedRatio: (inv.total || 0) > 0 ? (inv.approved || 0) / inv.total : 0,\n  recentActivity: inv.recent_4w || 0\n});\n\n// Data integrity\nconst dataIntScore = scoreDataIntegrity(\n  { approved: data.approved || 0, total: data.total || 0, avgAiScore: data.avg_ai_score, recentCount: data.recent_4w || 0 },\n  { openCount: rev.open_count || 0 }\n);\n\n// Overall\nconst raw = docScore * 0.30 + trainScore * 0.25 + traceScore * 0.20 + dataIntScore * 0.25;\nconst overallScore = Math.max(0, Math.min(100, Math.round(raw)));\nconst maturity = resolveLevel(overallScore);\n\n// Confidence\nconst totalFacts = (sop.total || 0) + (data.total || 0) + (inv.total || 0) + (tr.sealed_packs || 0) + (tr.certified_entries || 0) + (pur.submitted || 0);\nconst confidence = Math.min(1, Math.round((totalFacts / 20) * 100) / 100);\n\n// Evidence\nconst evidence = {\n  sop_count: sop.total || 0, sop_approved: sop.approved || 0,\n  data_count: data.total || 0, data_approved: data.approved || 0,\n  inventory_count: inv.total || 0,\n  presentation_count: pres.total || 0,\n  training_sealed: sealedCount, training_certified: certifiedEntries,\n  purchase_submitted: pur.submitted || 0\n};\n\n// Conformity\nconst conformity = {\n  training_sealed: sealedCount > 0,\n  training_entries_certified: certifiedEntries >= 3,\n  all_agreements_confirmed: requiredDocs > 0 && agreementCount >= requiredDocs,\n  has_approved_sops: (sop.approved || 0) >= 1,\n  has_approved_data: (data.approved || 0) >= 1,\n  inventory_active: (inv.total || 0) >= 1,\n  no_open_revisions: (rev.open_count || 0) === 0,\n  recent_activity: ((sop.recent_4w || 0) + (data.recent_4w || 0) + (inv.recent_4w || 0)) > 0,\n  sop_coverage_adequate: (sop.approved || 0) >= 3,\n  data_coverage_adequate: (data.approved || 0) >= 3,\n  missing_sop_links: (sop.approved || 0) === 0 && (data.approved || 0) > 0,\n  missing_training: sealedCount === 0 && certifiedEntries === 0,\n  missing_inventory: (inv.total || 0) === 0\n};\n\nreturn {\n  json: {\n    user_id: user.user_id,\n    name: user.name || f.profile?.name || '',\n    role: user.role || f.profile?.role || 'researcher',\n    affiliation: user.affiliation || f.profile?.affiliation || '',\n    _isoWeek: user._isoWeek,\n    _skip: false,\n    signals: { sop, data, presentation: pres, revision: rev, inventory: inv, purchase: pur, training: tr, hygiene: hyg },\n    scores: { documentation: docScore, training: trainScore, traceability: traceScore, data_integrity: dataIntScore, overall: overallScore },\n    maturity,\n    confidence,\n    evidence,\n    conformity\n  }\n};"
       },
-      "id": "if-generated-1",
-      "name": "Was Generated?",
-      "type": "n8n-nodes-base.if",
+      "id": "compute-scores-1",
+      "name": "Compute Signals and Scores",
+      "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1080, 400]
+      "position": [1450, 400]
     },
     {
       "parameters": {
@@ -129,47 +133,48 @@
           "values": [
             {
               "role": "system",
-              "content": "You are a GLP (Good Laboratory Practice) advisor for a research laboratory. Given a weekly GLP status snapshot for a researcher, produce a structured harmony analysis.\n\nReturn valid JSON with this exact schema:\n{\n  \"motivation\": \"1-2 sentence encouraging summary of the researcher's GLP standing\",\n  \"reflection\": \"1-2 sentence reflection on what the data shows about their practices\",\n  \"goals\": [\"2-3 actionable goals for the coming week\"],\n  \"actions\": [\"2-3 specific actions the researcher can take\"],\n  \"sphere_analysis\": {\n    \"documentation\": { \"strengths\": [\"...\"], \"gaps\": [\"...\"] },\n    \"training\": { \"strengths\": [\"...\"], \"gaps\": [\"...\"] },\n    \"traceability\": { \"strengths\": [\"...\"], \"gaps\": [\"...\"] },\n    \"data_integrity\": { \"strengths\": [\"...\"], \"gaps\": [\"...\"] }\n  }\n}\n\nBe concise, professional, and constructive. Focus on actionable guidance."
+              "content": "You are a GLP advisor for a research laboratory. Given a researcher's computed signals, scores, and maturity level, produce structured guidance.\n\nReturn valid JSON only:\n{\n  \"harmony_map\": {\n    \"documentation\": { \"insight\": \"<1 sentence, max 120 chars>\", \"next_action\": \"<1 sentence>\" },\n    \"training\": { \"insight\": \"...\", \"next_action\": \"...\" },\n    \"traceability\": { \"insight\": \"...\", \"next_action\": \"...\" },\n    \"data_integrity\": { \"insight\": \"...\", \"next_action\": \"...\" },\n    \"best_next_action\": \"<single most impactful action>\"\n  },\n  \"glp_conformity\": [\n    { \"issue\": \"...\", \"evidence\": \"...\", \"why_it_matters\": \"...\", \"next_step\": \"...\", \"effort_level\": \"low|medium|high\" }\n  ],\n  \"highlights\": [\"<positive observation>\", \"<positive observation>\"],\n  \"primary_focus_pillar\": \"training|documentation|traceability|data_integrity\",\n  \"severity_badges\": { \"documentation\": \"ok|warn|critical\", \"training\": \"ok|warn|critical\", \"traceability\": \"ok|warn|critical\", \"data_integrity\": \"ok|warn|critical\" }\n}\n\nRules: max 4 conformity items. Max 4 highlights. Do not invent data. Be constructive. Tone: motivational, supportive, precise, no shaming."
             },
             {
               "role": "user",
-              "content": "={{ JSON.stringify($json.snapshot) }}"
+              "content": "={{ JSON.stringify({ meta: { user_id: $json.user_id, name: $json.name, affiliation: $json.affiliation, iso_week: $json._isoWeek }, signals: $json.signals, scores: $json.scores, maturity: $json.maturity, conformity: $json.conformity, tone_spec: 'motivational, supportive, precise' }) }}"
             }
           ]
         },
         "options": {
-          "temperature": 0.2,
-          "maxTokens": 1000,
+          "temperature": 0.15,
+          "maxTokens": 1200,
           "responseFormat": "json_object"
         }
       },
-      "id": "azure-openai-1",
-      "name": "Azure OpenAI Harmony",
+      "id": "azure-per-user-1",
+      "name": "Azure Per User",
       "type": "@n8n/n8n-nodes-langchain.openAi",
       "typeVersion": 1,
-      "position": [1300, 300],
+      "position": [1700, 400],
+      "onError": "continueRegularOutput",
       "credentials": {
         "openAiApi": {
-          "id": "azure-openai-credential",
-          "name": "Azure OpenAI"
+          "id": "azure-openai-cred",
+          "name": "Azure Open AI account"
         }
-      },
-      "notes": "Configure with Azure OpenAI endpoint and deployment. Credential type: OpenAI API with Azure base URL."
+      }
     },
     {
       "parameters": {
-        "jsCode": "// Parse the AI response and prepare harmony storage payload\nconst aiOutput = $json.message?.content || $json.text || '{}';\nlet harmony;\ntry {\n  harmony = typeof aiOutput === 'string' ? JSON.parse(aiOutput) : aiOutput;\n} catch (e) {\n  harmony = { motivation: 'Analysis could not be parsed.', reflection: '', goals: [], actions: [], sphere_analysis: {} };\n}\n\n// Carry forward user_id and iso_week from the generate-snapshot step\nconst prev = $('Generate Snapshot').first().json;\nreturn [{ json: {\n  user_id: prev.user_id,\n  iso_week: prev.iso_week,\n  harmony: harmony\n}}];"
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Validate Azure AI output and compose v2 snapshot\nconst computed = $('Compute Signals and Scores').item.json;\n\nif (computed._skip) {\n  return { json: { _skip: true, user_id: computed.user_id, _error: computed._error } };\n}\n\n// Parse AI output\nconst aiRaw = $input.item.json;\nlet aiText = aiRaw.message?.content || aiRaw.text || '{}';\nlet ai;\ntry {\n  ai = typeof aiText === 'string' ? JSON.parse(aiText) : aiText;\n} catch (e) {\n  ai = null;\n}\n\nconst truncate = (s, max) => typeof s === 'string' && s.length > max ? s.slice(0, max) + '...' : (s || '');\n\nconst fallbackAI = {\n  harmony_map: {\n    documentation: { insight: 'Analysis pending.', next_action: 'Continue current documentation practices.' },\n    training: { insight: 'Analysis pending.', next_action: 'Continue training activities.' },\n    traceability: { insight: 'Analysis pending.', next_action: 'Maintain inventory records.' },\n    data_integrity: { insight: 'Analysis pending.', next_action: 'Continue data submissions.' },\n    best_next_action: 'Review your GLP status and identify areas for improvement.'\n  },\n  glp_conformity: [],\n  highlights: ['Status snapshot generated successfully.'],\n  primary_focus_pillar: 'documentation',\n  severity_badges: { documentation: 'ok', training: 'ok', traceability: 'ok', data_integrity: 'ok' }\n};\n\nlet aiValid = true;\nif (!ai || !ai.harmony_map || !ai.glp_conformity || !ai.highlights) {\n  ai = fallbackAI;\n  aiValid = false;\n}\n\n// Sanitize harmony_map\nconst hm = ai.harmony_map || fallbackAI.harmony_map;\nfor (const key of ['documentation', 'training', 'traceability', 'data_integrity']) {\n  if (hm[key]) {\n    hm[key].insight = truncate(hm[key].insight, 200);\n    hm[key].next_action = truncate(hm[key].next_action, 200);\n  } else {\n    hm[key] = fallbackAI.harmony_map[key];\n  }\n}\nhm.best_next_action = truncate(hm.best_next_action, 200);\n\n// Cap conformity items at 5\nlet conformityItems = Array.isArray(ai.glp_conformity) ? ai.glp_conformity.slice(0, 5) : [];\nconformityItems = conformityItems.map(c => ({\n  issue: truncate(c.issue, 200),\n  evidence: truncate(c.evidence, 200),\n  why_it_matters: truncate(c.why_it_matters, 200),\n  next_step: truncate(c.next_step, 200),\n  effort_level: ['low', 'medium', 'high'].includes(c.effort_level) ? c.effort_level : 'medium'\n}));\n\nconst highlights = (Array.isArray(ai.highlights) ? ai.highlights : []).slice(0, 4).map(h => truncate(h, 200));\n\n// Compose v2 snapshot\nconst c = computed;\nconst resolveLabel = (score) => {\n  if (score >= 81) return 'dragon';\n  if (score >= 61) return 'eagle';\n  if (score >= 41) return 'owl';\n  if (score >= 21) return 'fledgling';\n  return 'hatchling';\n};\n\nconst snapshot = {\n  schema_version: 2,\n  model_version: 'azure-gpt-4o',\n  scoring_version: '2.0.0',\n  generated_at: new Date().toISOString(),\n  iso_week: c._isoWeek,\n  user_id: c.user_id,\n  name: c.name,\n  role: c.role,\n  affiliation: c.affiliation,\n  overall_score: c.scores.overall,\n  glp_level: c.maturity,\n  spheres: {\n    documentation: { score: c.scores.documentation, label: resolveLabel(c.scores.documentation) },\n    training: { score: c.scores.training, label: resolveLabel(c.scores.training) },\n    traceability: { score: c.scores.traceability, label: resolveLabel(c.scores.traceability) },\n    data_integrity: { score: c.scores.data_integrity, label: resolveLabel(c.scores.data_integrity) }\n  },\n  evidence: c.evidence,\n  conformity: c.conformity,\n  signals: c.signals,\n  scores: c.scores,\n  maturity: c.maturity,\n  confidence: c.confidence,\n  harmony_map: hm,\n  glp_conformity: conformityItems,\n  highlights,\n  ui_hints: {\n    primary_focus_pillar: ai.primary_focus_pillar || 'documentation',\n    severity_badges: ai.severity_badges || { documentation: 'ok', training: 'ok', traceability: 'ok', data_integrity: 'ok' },\n    ai_valid: aiValid\n  }\n};\n\nreturn {\n  json: {\n    user_id: c.user_id,\n    _isoWeek: c._isoWeek,\n    _skip: false,\n    snapshot\n  }\n};"
       },
-      "id": "parse-harmony-1",
-      "name": "Parse Harmony",
+      "id": "validate-compose-1",
+      "name": "Validate AI and Compose Snapshot",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1520, 300]
+      "position": [1950, 400]
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.NATLAB_GLP_BASE_URL }}/api/glp/status/harmony",
+        "url": "={{ $env.NATLAB_GLP_BASE_URL }}/api/glp/status/write-weekly-snapshot",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -181,7 +186,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json) }}",
+        "jsonBody": "={{ JSON.stringify({ user_id: $json.user_id, iso_week: $json._isoWeek, snapshot: $json.snapshot }) }}",
         "options": {
           "response": {
             "response": {
@@ -190,37 +195,153 @@
           }
         }
       },
-      "id": "store-harmony-1",
-      "name": "Store Harmony",
+      "id": "write-snapshot-1",
+      "name": "Write Snapshot",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1740, 300]
+      "position": [2200, 400],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Collect all composed snapshots, group by affiliation, compute aggregated metrics\nconst composedItems = $('Validate AI and Compose Snapshot').all();\nconst successful = composedItems.filter(item => !item.json._skip && item.json.snapshot);\n\nif (successful.length === 0) {\n  return [{ json: { _empty: true, _message: 'No successful snapshots to aggregate' } }];\n}\n\n// Group by affiliation\nconst groups = {};\nfor (const item of successful) {\n  const snap = item.json.snapshot;\n  const aff = snap.affiliation;\n  if (!groups[aff]) groups[aff] = { snapshots: [], memberUserIds: [] };\n  groups[aff].snapshots.push(snap);\n  groups[aff].memberUserIds.push(snap.user_id);\n}\n\nconst mean = arr => arr.length === 0 ? 0 : Math.round(arr.reduce((a, b) => a + b, 0) / arr.length);\n\nconst output = [];\nfor (const [aff, g] of Object.entries(groups)) {\n  const snaps = g.snapshots;\n  if (snaps.length === 0) continue;\n\n  const meanScores = {\n    documentation: mean(snaps.map(s => s.scores?.documentation || 0)),\n    training: mean(snaps.map(s => s.scores?.training || 0)),\n    traceability: mean(snaps.map(s => s.scores?.traceability || 0)),\n    data_integrity: mean(snaps.map(s => s.scores?.data_integrity || 0)),\n    overall: mean(snaps.map(s => s.scores?.overall || s.overall_score || 0))\n  };\n\n  const dist = { hatchling: 0, fledgling: 0, owl: 0, eagle: 0, dragon: 0 };\n  for (const s of snaps) {\n    const level = s.maturity || s.glp_level || 'hatchling';\n    if (dist[level] !== undefined) dist[level]++;\n  }\n\n  const evTotals = {\n    sop_count: snaps.reduce((sum, s) => sum + (s.evidence?.sop_count || 0), 0),\n    data_count: snaps.reduce((sum, s) => sum + (s.evidence?.data_count || 0), 0),\n    inventory_count: snaps.reduce((sum, s) => sum + (s.evidence?.inventory_count || 0), 0),\n    presentation_count: snaps.reduce((sum, s) => sum + (s.evidence?.presentation_count || 0), 0),\n    training_sealed: snaps.reduce((sum, s) => sum + (s.evidence?.training_sealed || 0), 0),\n    training_certified: snaps.reduce((sum, s) => sum + (s.evidence?.training_certified || 0), 0)\n  };\n\n  const confKeys = ['training_sealed', 'all_agreements_confirmed', 'has_approved_sops', 'has_approved_data', 'inventory_active', 'no_open_revisions', 'recent_activity'];\n  const conformity = {};\n  for (const k of confKeys) {\n    conformity[k] = snaps.every(s => s.conformity?.[k] === true);\n  }\n\n  const spheres = ['documentation', 'training', 'traceability', 'data_integrity'];\n  const bottlenecks = spheres.map(sp => ({\n    sphere: sp,\n    below_40_count: snaps.filter(s => (s.scores?.[sp] || 0) < 40).length\n  })).filter(b => b.below_40_count > 0).sort((a, b) => b.below_40_count - a.below_40_count);\n\n  const members = snaps.map(s => ({\n    user_id: s.user_id,\n    name: s.name,\n    maturity: s.maturity || s.glp_level,\n    overall_score: s.scores?.overall || s.overall_score || 0\n  }));\n\n  output.push({\n    json: {\n      affiliation: aff,\n      _isoWeek: snaps[0].iso_week || $('Resolve Scope').first().json.isoWeek,\n      memberCount: snaps.length,\n      memberUserIds: g.memberUserIds,\n      meanScores,\n      maturityDistribution: dist,\n      evidenceTotals: evTotals,\n      conformity,\n      bottleneckSpheres: bottlenecks,\n      members\n    }\n  });\n}\n\nif (output.length === 0) {\n  return [{ json: { _empty: true, _message: 'No affiliations to aggregate' } }];\n}\n\nreturn output;"
+      },
+      "id": "aggregate-groups-1",
+      "name": "Aggregate Groups",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2450, 400]
+    },
+    {
+      "parameters": {
+        "resource": "chat",
+        "model": "gpt-4o",
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are a GLP advisor summarizing a research group's weekly status. Given aggregated metrics across members, produce a group summary.\n\nReturn valid JSON only:\n{\n  \"group_summary\": \"<2-3 sentence narrative>\",\n  \"top_bottlenecks\": [\"<bottleneck>\"],\n  \"recommended_actions\": [\"<action>\"],\n  \"wins\": [\"<positive observation>\"]\n}\n\nMax 5 bottlenecks, 5 actions, 4 wins. Do not invent data. Be constructive."
+            },
+            {
+              "role": "user",
+              "content": "={{ JSON.stringify({ meta: { affiliation: $json.affiliation, iso_week: $json._isoWeek, member_count: $json.memberCount }, mean_scores: $json.meanScores, maturity_distribution: $json.maturityDistribution, evidence_totals: $json.evidenceTotals, bottleneck_spheres: $json.bottleneckSpheres }) }}"
+            }
+          ]
+        },
+        "options": {
+          "temperature": 0.15,
+          "maxTokens": 1200,
+          "responseFormat": "json_object"
+        }
+      },
+      "id": "azure-group-1",
+      "name": "Azure Group",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1,
+      "position": [2700, 400],
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "openAiApi": {
+          "id": "azure-openai-cred",
+          "name": "Azure Open AI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Validate group AI output and compose group snapshot\nconst agg = $('Aggregate Groups').item.json;\n\nif (agg._empty) {\n  return { json: { _skip: true, _message: agg._message } };\n}\n\n// Parse AI output\nconst aiRaw = $input.item.json;\nlet aiText = aiRaw.message?.content || aiRaw.text || '{}';\nlet ai;\ntry {\n  ai = typeof aiText === 'string' ? JSON.parse(aiText) : aiText;\n} catch (e) {\n  ai = null;\n}\n\nconst truncate = (s, max) => typeof s === 'string' && s.length > max ? s.slice(0, max) + '...' : (s || '');\n\nconst fallback = {\n  group_summary: 'Group analysis pending.',\n  top_bottlenecks: [],\n  recommended_actions: [],\n  wins: []\n};\n\nif (!ai || !ai.group_summary) {\n  ai = fallback;\n}\n\n// Sanitize\nconst aiGroup = {\n  group_summary: truncate(ai.group_summary, 500),\n  top_bottlenecks: (Array.isArray(ai.top_bottlenecks) ? ai.top_bottlenecks : []).slice(0, 5).map(b => truncate(b, 200)),\n  recommended_actions: (Array.isArray(ai.recommended_actions) ? ai.recommended_actions : []).slice(0, 5).map(a => truncate(a, 200)),\n  wins: (Array.isArray(ai.wins) ? ai.wins : []).slice(0, 4).map(w => truncate(w, 200))\n};\n\nconst groupSnapshot = {\n  schema_version: 2,\n  generated_at: new Date().toISOString(),\n  iso_week: agg._isoWeek,\n  affiliation: agg.affiliation,\n  member_count: agg.memberCount,\n  mean_scores: agg.meanScores,\n  maturity_distribution: agg.maturityDistribution,\n  evidence_totals: agg.evidenceTotals,\n  conformity: agg.conformity,\n  bottleneck_spheres: agg.bottleneckSpheres,\n  members: agg.members,\n  ai_group: aiGroup\n};\n\nreturn {\n  json: {\n    affiliation: agg.affiliation,\n    _isoWeek: agg._isoWeek,\n    memberCount: agg.memberCount,\n    memberUserIds: agg.memberUserIds,\n    groupSnapshot,\n    _skip: false\n  }\n};"
+      },
+      "id": "validate-group-compose-1",
+      "name": "Validate Group AI and Compose",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2950, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.NATLAB_GLP_BASE_URL }}/api/glp/status/write-weekly-group-snapshot",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.NATLAB_GLP_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ affiliation: $json.affiliation, iso_week: $json._isoWeek, snapshot: $json.groupSnapshot, member_count: $json.memberCount, member_user_ids: $json.memberUserIds }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "write-group-snapshot-1",
+      "name": "Write Group Snapshot",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3200, 400],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Final summary: count successes and failures\nconst composed = $('Validate AI and Compose Snapshot').all();\nconst succeeded = composed.filter(i => !i.json._skip && i.json.snapshot).length;\nconst failed = composed.filter(i => i.json._skip).length;\n\nconst groupResults = $input.all();\nconst groupsWritten = groupResults.filter(i => i.json.success).length;\n\nconst scope = $('Resolve Scope').first().json;\n\nreturn [{\n  json: {\n    summary: `GLP Weekly v2 complete for ${scope.isoWeek}`,\n    users_succeeded: succeeded,\n    users_failed: failed,\n    groups_written: groupsWritten,\n    included_roles: scope.includedRoles,\n    target_affiliation: scope.targetAffiliation || 'all'\n  }\n}];"
+      },
+      "id": "final-summary-1",
+      "name": "Final Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3450, 400]
     }
   ],
   "connections": {
     "Wednesday 09:00 Stockholm": {
-      "main": [[{ "node": "Get Eligible Users", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "Resolve Scope", "type": "main", "index": 0 }]]
     },
-    "Get Eligible Users": {
-      "main": [[{ "node": "Split Users", "type": "main", "index": 0 }]]
+    "Webhook Manual Regenerate": {
+      "main": [[{ "node": "Resolve Scope", "type": "main", "index": 0 }]]
     },
-    "Split Users": {
-      "main": [[{ "node": "Generate Snapshot", "type": "main", "index": 0 }]]
+    "Resolve Scope": {
+      "main": [[{ "node": "Get Active Users", "type": "main", "index": 0 }]]
     },
-    "Generate Snapshot": {
-      "main": [[{ "node": "Was Generated?", "type": "main", "index": 0 }]]
+    "Get Active Users": {
+      "main": [[{ "node": "Filter Roles", "type": "main", "index": 0 }]]
     },
-    "Was Generated?": {
-      "main": [
-        [{ "node": "Azure OpenAI Harmony", "type": "main", "index": 0 }],
-        []
-      ]
+    "Filter Roles": {
+      "main": [[{ "node": "Fetch User Facts", "type": "main", "index": 0 }]]
     },
-    "Azure OpenAI Harmony": {
-      "main": [[{ "node": "Parse Harmony", "type": "main", "index": 0 }]]
+    "Fetch User Facts": {
+      "main": [[{ "node": "Compute Signals and Scores", "type": "main", "index": 0 }]]
     },
-    "Parse Harmony": {
-      "main": [[{ "node": "Store Harmony", "type": "main", "index": 0 }]]
+    "Compute Signals and Scores": {
+      "main": [[{ "node": "Azure Per User", "type": "main", "index": 0 }]]
+    },
+    "Azure Per User": {
+      "main": [[{ "node": "Validate AI and Compose Snapshot", "type": "main", "index": 0 }]]
+    },
+    "Validate AI and Compose Snapshot": {
+      "main": [[{ "node": "Write Snapshot", "type": "main", "index": 0 }]]
+    },
+    "Write Snapshot": {
+      "main": [[{ "node": "Aggregate Groups", "type": "main", "index": 0 }]]
+    },
+    "Aggregate Groups": {
+      "main": [[{ "node": "Azure Group", "type": "main", "index": 0 }]]
+    },
+    "Azure Group": {
+      "main": [[{ "node": "Validate Group AI and Compose", "type": "main", "index": 0 }]]
+    },
+    "Validate Group AI and Compose": {
+      "main": [[{ "node": "Write Group Snapshot", "type": "main", "index": 0 }]]
+    },
+    "Write Group Snapshot": {
+      "main": [[{ "node": "Final Summary", "type": "main", "index": 0 }]]
     }
   },
   "settings": {
@@ -229,5 +350,5 @@
   },
   "staticData": null,
   "tags": [{ "name": "GLP" }],
-  "triggerCount": 1
+  "triggerCount": 2
 }

@@ -8199,6 +8199,387 @@ app.post('/api/glp/status/harmony', async (req, res) => {
 });
 
 // =====================================================
+// GLP WEEKLY SNAPSHOT v2 – n8n endpoints (API-key)
+// =====================================================
+
+// Purchase table guard (migration 013)
+let purchaseTableExists = null;
+let purchaseTableLastCheck = 0;
+async function checkPurchaseTable() {
+    const now = Date.now();
+    if (purchaseTableExists === null || purchaseTableExists === false || (now - purchaseTableLastCheck > 60000)) {
+        try {
+            const r = await pool.query("SELECT 1 FROM information_schema.tables WHERE table_name='di_purchase_requests'");
+            purchaseTableExists = r.rows.length > 0;
+            purchaseTableLastCheck = now;
+        } catch (err) { purchaseTableExists = false; }
+    }
+    return purchaseTableExists;
+}
+
+// 1A. GET active users — returns all active users with role and affiliation, no role filtering
+app.get('/api/glp/status/users-active', async (req, res) => {
+    try {
+        const apiKey = (req.headers['x-api-key'] || '').toString().trim();
+        if (!apiKey || apiKey !== ((process.env.API_SECRET_KEY || '').toString().trim())) {
+            return res.status(401).json({ error: 'Invalid or missing API key' });
+        }
+        const result = await pool.query(
+            `SELECT researcher_id AS user_id, name,
+                    COALESCE(role, 'researcher') AS role, affiliation, active
+             FROM di_allowlist
+             WHERE active = true
+             ORDER BY affiliation, name`
+        );
+        res.json({ success: true, users: result.rows });
+    } catch (err) {
+        console.error('[GLP-STATUS-V2] users-active error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// 1B. GET user facts — aggregated raw facts for scoring in n8n
+app.get('/api/glp/status/user-facts/:userId', async (req, res) => {
+    try {
+        const apiKey = (req.headers['x-api-key'] || '').toString().trim();
+        if (!apiKey || apiKey !== ((process.env.API_SECRET_KEY || '').toString().trim())) {
+            return res.status(401).json({ error: 'Invalid or missing API key' });
+        }
+
+        const userId = req.params.userId;
+
+        // 7 parallel queries
+        const hasPurchase = await checkPurchaseTable();
+        const hasTraining = await checkTrainingTables();
+
+        const [profileResult, subsResult, invResult, trainResult, revResult, purchaseResult, hygieneResult] = await Promise.all([
+            // Profile
+            pool.query(
+                `SELECT name, COALESCE(role, 'researcher') AS role, affiliation
+                 FROM di_allowlist WHERE researcher_id = $1 AND active = true`, [userId]
+            ),
+
+            // Submissions per file_type
+            pool.query(`
+                SELECT file_type,
+                    COUNT(*)::int AS total,
+                    COUNT(*) FILTER (WHERE status = 'APPROVED')::int AS approved,
+                    COUNT(*) FILTER (WHERE status = 'PENDING')::int AS pending,
+                    COUNT(*) FILTER (WHERE status = 'REVISION_NEEDED')::int AS revision_needed,
+                    COUNT(*) FILTER (WHERE created_at >= CURRENT_DATE - INTERVAL '28 days')::int AS recent_4w,
+                    ROUND(AVG(ai_review_score)::numeric, 1) AS avg_ai_score
+                FROM di_submissions
+                WHERE researcher_id = $1
+                GROUP BY file_type
+            `, [userId]),
+
+            // Inventory
+            pool.query(`
+                SELECT
+                    COUNT(*) FILTER (WHERE item_type = 'product')::int AS products,
+                    COUNT(*) FILTER (WHERE item_type = 'sample')::int AS samples,
+                    COUNT(*) FILTER (WHERE item_type = 'oligo')::int AS oligos,
+                    COUNT(*)::int AS total,
+                    COUNT(*) FILTER (WHERE status = 'Approved')::int AS approved,
+                    COUNT(*) FILTER (WHERE status = 'Pending')::int AS pending,
+                    COUNT(*) FILTER (WHERE created_at >= CURRENT_DATE - INTERVAL '28 days')::int AS recent_4w
+                FROM di_inventory_items
+                WHERE created_by = $1
+            `, [userId]),
+
+            // Training
+            hasTraining ? pool.query(`
+                SELECT
+                    (SELECT COUNT(*)::int FROM di_training_packs WHERE researcher_id = $1 AND status = 'SEALED') AS sealed_packs,
+                    (SELECT COUNT(*)::int FROM di_training_packs WHERE researcher_id = $1 AND status = 'REVISION_NEEDED') AS revision_packs,
+                    (SELECT COUNT(*)::int FROM di_training_entries e
+                     JOIN di_training_packs p ON p.id = e.pack_id
+                     WHERE p.researcher_id = $1 AND e.status = 'CERTIFIED') AS certified_entries,
+                    (SELECT COUNT(*)::int FROM di_training_agreements a
+                     JOIN di_training_packs p ON p.id = a.pack_id
+                     WHERE p.researcher_id = $1) AS agreement_count,
+                    (SELECT COUNT(*)::int FROM di_training_documents
+                     WHERE is_active = TRUE AND requirement_rule = 'Always') AS required_docs
+            `, [userId]) : Promise.resolve({ rows: [{}] }),
+
+            // Revisions
+            pool.query(`
+                SELECT COUNT(*)::int AS open_count,
+                       EXTRACT(DAY FROM NOW() - MIN(created_at))::int AS oldest_open_days
+                FROM di_revision_requests
+                WHERE researcher_id = $1 AND status = 'open'
+            `, [userId]).catch(() => ({ rows: [{ open_count: 0, oldest_open_days: null }] })),
+
+            // Purchases
+            hasPurchase ? pool.query(`
+                SELECT
+                    COUNT(*)::int AS submitted,
+                    COUNT(*) FILTER (WHERE r.status = 'APPROVED')::int AS approved,
+                    COUNT(*) FILTER (WHERE r.status = 'DECLINED')::int AS declined,
+                    COUNT(*) FILTER (WHERE i.item_status = 'Modification Requested')::int AS modification_requested,
+                    COUNT(*) FILTER (WHERE i.item_status = 'Cancel Requested')::int AS cancel_requested,
+                    COUNT(*) FILTER (WHERE r.status = 'SUBMITTED' AND i.item_status = 'Active')::int AS blocking_consolidation
+                FROM di_purchase_items i
+                JOIN di_purchase_requests r ON r.id = i.request_id
+                WHERE r.requester_id = $1
+            `, [userId]) : Promise.resolve({ rows: [{}] }),
+
+            // Hygiene: last portal activity across all sources
+            (async () => {
+                const timestamps = [];
+                // Submissions
+                try {
+                    const r = await pool.query('SELECT MAX(created_at) AS ts FROM di_submissions WHERE researcher_id = $1', [userId]);
+                    if (r.rows[0]?.ts) timestamps.push(new Date(r.rows[0].ts));
+                } catch (e) { /* skip */ }
+                // Inventory
+                try {
+                    const r = await pool.query('SELECT MAX(created_at) AS ts FROM di_inventory_items WHERE created_by = $1', [userId]);
+                    if (r.rows[0]?.ts) timestamps.push(new Date(r.rows[0].ts));
+                } catch (e) { /* skip */ }
+                // Purchases
+                if (hasPurchase) {
+                    try {
+                        const r = await pool.query('SELECT MAX(created_at) AS ts FROM di_purchase_requests WHERE requester_id = $1', [userId]);
+                        if (r.rows[0]?.ts) timestamps.push(new Date(r.rows[0].ts));
+                    } catch (e) { /* skip */ }
+                }
+                // Training
+                if (hasTraining) {
+                    try {
+                        const r = await pool.query('SELECT MAX(updated_at) AS ts FROM di_training_packs WHERE researcher_id = $1', [userId]);
+                        if (r.rows[0]?.ts) timestamps.push(new Date(r.rows[0].ts));
+                    } catch (e) { /* skip */ }
+                }
+                if (timestamps.length === 0) return null;
+                return new Date(Math.max(...timestamps.map(t => t.getTime()))).toISOString();
+            })()
+        ]);
+
+        if (profileResult.rows.length === 0) {
+            return res.status(404).json({ error: 'User not found or inactive' });
+        }
+
+        // Parse submissions
+        const subs = {};
+        for (const row of subsResult.rows) {
+            subs[row.file_type] = row;
+        }
+        const sopR  = subs['SOP'] || {};
+        const dataR = subs['DATA'] || {};
+        const presR = subs['PRESENTATION'] || {};
+
+        const inv = invResult.rows[0] || {};
+        const tr  = trainResult.rows[0] || {};
+        const rev = revResult.rows[0] || {};
+        const pur = purchaseResult.rows[0] || {};
+
+        res.json({
+            success: true,
+            user_id: userId,
+            profile: profileResult.rows[0],
+            sop: {
+                total: parseInt(sopR.total) || 0,
+                approved: parseInt(sopR.approved) || 0,
+                recent_4w: parseInt(sopR.recent_4w) || 0,
+                avg_ai_score: sopR.avg_ai_score !== undefined && sopR.avg_ai_score !== null ? parseFloat(sopR.avg_ai_score) : null
+            },
+            data: {
+                total: parseInt(dataR.total) || 0,
+                approved: parseInt(dataR.approved) || 0,
+                pending: parseInt(dataR.pending) || 0,
+                revision_needed: parseInt(dataR.revision_needed) || 0,
+                recent_4w: parseInt(dataR.recent_4w) || 0,
+                avg_ai_score: dataR.avg_ai_score !== undefined && dataR.avg_ai_score !== null ? parseFloat(dataR.avg_ai_score) : null
+            },
+            presentation: {
+                total: parseInt(presR.total) || 0,
+                approved: parseInt(presR.approved) || 0
+            },
+            revision: {
+                open_count: parseInt(rev.open_count) || 0,
+                oldest_open_days: rev.oldest_open_days !== undefined && rev.oldest_open_days !== null ? parseInt(rev.oldest_open_days) : null
+            },
+            inventory: {
+                products: parseInt(inv.products) || 0,
+                samples: parseInt(inv.samples) || 0,
+                oligos: parseInt(inv.oligos) || 0,
+                total: parseInt(inv.total) || 0,
+                approved: parseInt(inv.approved) || 0,
+                pending: parseInt(inv.pending) || 0,
+                recent_4w: parseInt(inv.recent_4w) || 0
+            },
+            purchase: {
+                submitted: parseInt(pur.submitted) || 0,
+                approved: parseInt(pur.approved) || 0,
+                declined: parseInt(pur.declined) || 0,
+                modification_requested: parseInt(pur.modification_requested) || 0,
+                cancel_requested: parseInt(pur.cancel_requested) || 0,
+                blocking_consolidation: parseInt(pur.blocking_consolidation) || 0
+            },
+            training: {
+                sealed_packs: parseInt(tr.sealed_packs) || 0,
+                revision_packs: parseInt(tr.revision_packs) || 0,
+                certified_entries: parseInt(tr.certified_entries) || 0,
+                agreement_count: parseInt(tr.agreement_count) || 0,
+                required_docs: parseInt(tr.required_docs) || 0
+            },
+            hygiene: {
+                last_portal_activity_at: hygieneResult
+            }
+        });
+    } catch (err) {
+        console.error('[GLP-STATUS-V2] user-facts error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// 1C. POST write weekly snapshot — n8n sends computed snapshot, server writes to R2 and DB
+app.post('/api/glp/status/write-weekly-snapshot', async (req, res) => {
+    try {
+        const apiKey = (req.headers['x-api-key'] || '').toString().trim();
+        if (!apiKey || apiKey !== ((process.env.API_SECRET_KEY || '').toString().trim())) {
+            return res.status(401).json({ error: 'Invalid or missing API key' });
+        }
+        if (!(await checkGlpStatusTable())) {
+            return res.status(501).json({ error: 'GLP status table not available' });
+        }
+
+        const { user_id, iso_week, snapshot } = req.body;
+        if (!user_id || !iso_week || !snapshot) {
+            return res.status(400).json({ error: 'user_id, iso_week, and snapshot are required' });
+        }
+
+        // Look up affiliation
+        const userRow = await pool.query(
+            'SELECT affiliation FROM di_allowlist WHERE researcher_id = $1 AND active = true',
+            [user_id]
+        );
+        if (userRow.rows.length === 0) return res.status(404).json({ error: 'User not found or inactive' });
+        const affiliation = userRow.rows[0].affiliation;
+
+        // Compute R2 keys
+        const keys = glpR2Keys(affiliation, user_id, iso_week);
+
+        // Upload snapshot.json
+        await uploadToR2(Buffer.from(JSON.stringify(snapshot, null, 2)), keys.snapshot, 'application/json');
+
+        // Backward compat: transform harmony_map to v1 harmony format and write harmony.json
+        let harmonyKey = null;
+        if (snapshot.harmony_map) {
+            const hm = snapshot.harmony_map;
+            const v1Harmony = {
+                motivation: hm.documentation?.insight || '',
+                reflection: hm.best_next_action || '',
+                goals: [hm.best_next_action].filter(Boolean),
+                actions: Object.values(hm)
+                    .filter(v => v && typeof v === 'object' && v.next_action)
+                    .map(v => v.next_action)
+            };
+            await uploadToR2(Buffer.from(JSON.stringify(v1Harmony, null, 2)), keys.harmony, 'application/json');
+            harmonyKey = keys.harmony;
+        }
+
+        // Compute evidence_hash server side
+        const crypto = require('crypto');
+        function stableStringify(obj) {
+            if (obj === null || typeof obj !== 'object') return JSON.stringify(obj);
+            if (Array.isArray(obj)) return '[' + obj.map(stableStringify).join(',') + ']';
+            const ks = Object.keys(obj).sort();
+            return '{' + ks.map(k => JSON.stringify(k) + ':' + stableStringify(obj[k])).join(',') + '}';
+        }
+        const hashable = {
+            user_id: snapshot.user_id,
+            scoring_version: snapshot.scoring_version,
+            overall_score: snapshot.overall_score,
+            glp_level: snapshot.glp_level,
+            spheres: snapshot.spheres,
+            evidence: snapshot.evidence,
+            conformity: snapshot.conformity
+        };
+        const evidenceHash = crypto.createHash('sha256').update(stableStringify(hashable)).digest('hex');
+
+        // Upsert index row
+        await pool.query(`
+            INSERT INTO glp_weekly_status_index
+                (user_id, iso_week, generated_at, r2_snapshot_key, r2_harmony_key, evidence_hash, snapshot_version, model_version)
+            VALUES ($1, $2, NOW(), $3, $4, $5, $6, $7)
+            ON CONFLICT (user_id, iso_week) DO UPDATE
+            SET generated_at = NOW(), r2_snapshot_key = $3, r2_harmony_key = $4,
+                evidence_hash = $5, snapshot_version = $6, model_version = $7
+        `, [user_id, iso_week, keys.snapshot, harmonyKey, evidenceHash, 2, snapshot.model_version || 'azure-gpt-4o']);
+
+        console.log(`[GLP-STATUS-V2] Wrote snapshot for ${user_id} week ${iso_week}, score=${snapshot.overall_score}`);
+
+        res.json({
+            success: true,
+            user_id,
+            iso_week,
+            r2_snapshot_key: keys.snapshot,
+            r2_harmony_key: harmonyKey,
+            evidence_hash: evidenceHash
+        });
+    } catch (err) {
+        console.error('[GLP-STATUS-V2] write-weekly-snapshot error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// 1D. POST write group snapshot — n8n sends aggregated group snapshot, server writes to R2 and DB
+app.post('/api/glp/status/write-weekly-group-snapshot', async (req, res) => {
+    try {
+        const apiKey = (req.headers['x-api-key'] || '').toString().trim();
+        if (!apiKey || apiKey !== ((process.env.API_SECRET_KEY || '').toString().trim())) {
+            return res.status(401).json({ error: 'Invalid or missing API key' });
+        }
+        if (!(await checkGroupIndexTable())) {
+            return res.status(501).json({ error: 'Group index table not available' });
+        }
+
+        const { affiliation, iso_week, snapshot, member_count, member_user_ids } = req.body;
+        if (!affiliation || !iso_week || !snapshot || !member_count || !Array.isArray(member_user_ids)) {
+            return res.status(400).json({ error: 'affiliation, iso_week, snapshot, member_count, and member_user_ids are required' });
+        }
+
+        // Compute R2 key
+        const year = iso_week.slice(0, 4);
+        const wPart = iso_week.slice(4);
+        const r2Key = `glp-status/weekly/GROUP/${affiliation}/${year}/${wPart}/snapshot.json`;
+
+        // Upload snapshot
+        await uploadToR2(Buffer.from(JSON.stringify(snapshot, null, 2)), r2Key, 'application/json');
+
+        // Compute membership_hash server side from sorted user_ids
+        const crypto = require('crypto');
+        const sortedIds = [...member_user_ids].sort();
+        const membershipHash = crypto.createHash('sha256')
+            .update(JSON.stringify(sortedIds))
+            .digest('hex').slice(0, 16);
+
+        // Upsert group index
+        await pool.query(`
+            INSERT INTO glp_group_weekly_status_index (cohort_id, iso_week, r2_snapshot_key, member_count, membership_hash)
+            VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT (cohort_id, iso_week) DO UPDATE
+            SET r2_snapshot_key = $3, member_count = $4, membership_hash = $5, created_at = NOW()
+        `, [affiliation, iso_week, r2Key, member_count, membershipHash]);
+
+        console.log(`[GLP-STATUS-V2] Wrote group snapshot for ${affiliation} week ${iso_week}, members=${member_count}`);
+
+        res.json({
+            success: true,
+            affiliation,
+            iso_week,
+            r2_snapshot_key: r2Key,
+            membership_hash: membershipHash
+        });
+    } catch (err) {
+        console.error('[GLP-STATUS-V2] write-weekly-group-snapshot error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// =====================================================
 // GLP WEEKLY SNAPSHOT – Public endpoints (session auth)
 // =====================================================
 

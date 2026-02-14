@@ -2960,9 +2960,16 @@ credentials: 'include'
                 // Evidence mini-cards
                 renderEvidenceMiniCards(snap.evidence);
 
-                // Harmony Map
+                // Harmony Map (v2 fallback: if no separate harmony, check snapshot inline harmony_map)
                 if (harmony) {
                     renderHarmonyFromAI(harmony);
+                } else if (snap.harmony_map) {
+                    renderHarmonyFromAI({
+                        motivation: snap.harmony_map.documentation?.insight || '',
+                        reflection: snap.harmony_map.best_next_action || '',
+                        goals: [snap.harmony_map.best_next_action].filter(Boolean),
+                        actions: Object.values(snap.harmony_map).filter(v => v && typeof v === 'object' && v.next_action).map(v => v.next_action)
+                    });
                 } else {
                     renderHarmonyPending();
                 }
