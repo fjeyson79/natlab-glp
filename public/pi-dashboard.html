@@ -718,6 +718,10 @@
         .dic-toolbar-icon:hover { transform: translateY(-1px); opacity: 0.85; }
         .dic-toolbar-icon:focus-visible { outline: 2px solid #2d5a87; outline-offset: 2px; }
         .dic-toolbar-icon svg { width: 20px; height: 20px; }
+        .dic-toolbar-presentation {
+            background: #ffffff;
+            border: 1px solid #e5e7eb;
+        }
         .dic-emoji-icon {
             font-size: 18px;
             line-height: 1;
@@ -3108,7 +3112,7 @@
                 btns += `<button class="dic-toolbar-btn revise" onclick="dicOpenReviseModal('${f.submission_id}')">Revise</button>`;
             }
             btns += `<button class="dic-toolbar-dragon${dragonClass}" onclick="dicToggleDragonSealFile('${f.submission_id}')" title="Dragon Seal" aria-label="Toggle Dragon Seal">&#x1F409;</button>`;
-            btns += `<button class="dic-toolbar-icon" style="background:#1f2937;" onclick="dicPresentationMode()" title="Presentation Mode" aria-label="Presentation Mode"><span class="dic-emoji-icon" aria-hidden="true">🎬</span></button>`;
+            btns += `<button class="dic-toolbar-icon dic-toolbar-presentation" onclick="dicPresentationMode()" title="Presentation Mode" aria-label="Presentation Mode"><span class="dic-emoji-icon" aria-hidden="true">🎬</span></button>`;
             btns += `<a class="dic-toolbar-icon" style="background:#000;" href="/api/di/download/${f.submission_id}" target="_blank" title="Download" aria-label="Download"><svg viewBox="0 0 20 20" fill="none"><path d="M10 3v10M10 13l-3.5-3.5M10 13l3.5-3.5M4 16h12" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></a>`;
             toolbar.innerHTML = `<span class="dic-viewer-filename" title="${(f.original_filename || '').replace(/"/g, '&quot;')}">${f.original_filename}</span>
                 <span class="dic-badge ${statusClass}">${statusLabel}</span>${btns}`;
