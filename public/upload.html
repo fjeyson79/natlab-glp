@@ -3880,22 +3880,51 @@ credentials: 'include'
                     const items = r.items || [];
                     const itemSummary = items.map(i => i.product_name).join(', ');
                     const rowId = 'pr-my-' + r.id.substring(0,8);
+                    const pendingBadge = r.has_pending_changes ? '<span style="display:inline-block;margin-left:4px;padding:1px 6px;border-radius:8px;font-size:10px;color:#856404;background:#fff3cd;">Pending Changes</span>' : '';
                     html += `<tr style="cursor:pointer;" onclick="togglePrDetail('${rowId}')">
                         <td style="white-space:nowrap;">${new Date(r.created_at).toLocaleDateString()}</td>
                         <td title="${escapeHtml(itemSummary)}" style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${items.length} item${items.length>1?'s':''}: ${escapeHtml(itemSummary)}</td>
                         <td style="white-space:nowrap;font-weight:600;">${Number(r.request_total).toFixed(2)} ${escapeHtml(r.currency)}</td>
-                        <td><span style="padding:2px 8px;border-radius:10px;font-size:11px;color:#fff;background:${statusColors[r.status]||'#666'};">${r.status}</span></td>
+                        <td><span style="padding:2px 8px;border-radius:10px;font-size:11px;color:#fff;background:${statusColors[r.status]||'#666'};">${r.status}</span>${pendingBadge}</td>
                         <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:#856404;">${r.pi_comment ? escapeHtml(r.pi_comment) : ''}</td>
                         <td style="text-align:center;font-size:11px;color:#666;">&#9660;</td>
                     </tr>`;
                     let detailRows = items.map(i => {
+                        const st = i.item_status || 'Active';
                         const ordered = i.ordered_at ? '<span style="color:#28a745;">Ordered '+new Date(i.ordered_at).toLocaleDateString()+'</span>' : '<span style="color:#999;">Not ordered</span>';
                         const received = i.received_at ? '<span style="color:#28a745;">Received '+new Date(i.received_at).toLocaleDateString()+'</span>' : '<span style="color:#999;">Not received</span>';
                         const po = i.internal_order_number ? '<br><small style="color:#0c5460;">PO: '+escapeHtml(i.internal_order_number)+'</small>' : '';
-                        return `<tr><td style="padding-left:20px;">${escapeHtml(i.product_name)}${po}</td><td>${escapeHtml(i.vendor_company)}</td><td style="white-space:nowrap;">${i.quantity} &times; ${Number(i.unit_price).toFixed(2)}</td><td>${ordered}</td><td>${received}</td><td></td></tr>`;
+
+                        // Item status label
+                        let statusLabel = '';
+                        if (st === 'Modification Requested' || st === 'Cancel Requested') {
+                            statusLabel = '<span style="display:inline-block;padding:1px 6px;border-radius:8px;font-size:10px;color:#856404;background:#fff3cd;">Pending PI decision</span>';
+                            if (i.status_note) statusLabel += '<br><small style="color:#666;font-style:italic;">' + escapeHtml(i.status_note) + '</small>';
+                        } else if (st === 'Cancelled') {
+                            statusLabel = '<span style="display:inline-block;padding:1px 6px;border-radius:8px;font-size:10px;color:#721c24;background:#f8d7da;">Cancelled</span>';
+                            if (i.status_note) statusLabel += '<br><small style="color:#666;font-style:italic;">' + escapeHtml(i.status_note) + '</small>';
+                        } else if (i.modified_by) {
+                            statusLabel = '<span style="display:inline-block;padding:1px 6px;border-radius:8px;font-size:10px;color:#155724;background:#d4edda;">Modified by PI</span>';
+                        }
+
+                        // Action buttons (only for Approved, not ordered, Active)
+                        let actions = '';
+                        if (r.status === 'APPROVED' && !i.ordered_at && st === 'Active') {
+                            actions = `<button class="btn btn-sm btn-secondary" style="font-size:10px;padding:2px 6px;" onclick="event.stopPropagation();prShowModifyForm('${i.id}','${r.id}')">Request Modification</button>
+                                       <button class="btn btn-sm" style="font-size:10px;padding:2px 6px;background:#dc3545;color:#fff;" onclick="event.stopPropagation();prRequestCancel('${i.id}','${r.id}')">Request Cancellation</button>`;
+                        }
+
+                        return `<tr>
+                            <td style="padding-left:20px;">${escapeHtml(i.product_name)}${po}</td>
+                            <td>${escapeHtml(i.vendor_company)}</td>
+                            <td style="white-space:nowrap;">${i.quantity} &times; ${Number(i.unit_price).toFixed(2)}</td>
+                            <td>${ordered}${statusLabel ? '<br>' + statusLabel : ''}</td>
+                            <td>${received}</td>
+                            <td style="white-space:nowrap;">${actions}</td>
+                        </tr>`;
                     }).join('');
                     html += `<tr id="${rowId}" style="display:none;"><td colspan="6" style="padding:0;"><table style="width:100%;font-size:12px;background:#f8f9fa;border-collapse:collapse;">
-                        <thead><tr style="color:#666;"><th style="padding:3px 6px;">Product</th><th style="padding:3px 6px;">Vendor</th><th style="padding:3px 6px;">Qty × Price</th><th style="padding:3px 6px;">Ordered</th><th style="padding:3px 6px;">Received</th><th></th></tr></thead>
+                        <thead><tr style="color:#666;"><th style="padding:3px 6px;">Product</th><th style="padding:3px 6px;">Vendor</th><th style="padding:3px 6px;">Qty × Price</th><th style="padding:3px 6px;">Ordered</th><th style="padding:3px 6px;">Received</th><th style="padding:3px 6px;">Actions</th></tr></thead>
                         <tbody>${detailRows}</tbody></table></td></tr>`;
                 }
                 tbody.innerHTML = html;
@@ -3905,6 +3934,97 @@ credentials: 'include'
         function togglePrDetail(rowId) {
             const row = document.getElementById(rowId);
             if (row) row.style.display = row.style.display === 'none' ? 'table-row' : 'none';
+        }
+
+        // =====================================================
+        // PURCHASE ITEM CORRECTION WORKFLOW (Researcher)
+        // =====================================================
+
+        function prShowModifyForm(itemId, requestId) {
+            // Find the item row and replace action cell with edit form
+            const tables = document.querySelectorAll('#prMyTableBody table');
+            let targetRow = null;
+            tables.forEach(t => {
+                t.querySelectorAll('tr').forEach(tr => {
+                    if (tr.innerHTML && tr.innerHTML.includes(itemId)) targetRow = tr;
+                });
+            });
+            if (!targetRow) return;
+
+            // Read current values from cells
+            const cells = targetRow.querySelectorAll('td');
+            const productName = cells[0] ? cells[0].textContent.trim().split('\n')[0] : '';
+            const vendor = cells[1] ? cells[1].textContent.trim() : '';
+            const qtyPrice = cells[2] ? cells[2].textContent.trim() : '';
+            const qtyMatch = qtyPrice.match(/([\d.]+)\s*×\s*([\d.]+)/);
+            const currentQty = qtyMatch ? qtyMatch[1] : '1';
+            const currentPrice = qtyMatch ? qtyMatch[2] : '0';
+
+            const actionCell = cells[cells.length - 1];
+            actionCell.innerHTML = `
+                <div style="display:flex;flex-direction:column;gap:3px;font-size:11px;min-width:280px;" onclick="event.stopPropagation();">
+                    <div style="font-weight:600;margin-bottom:2px;">Propose changes:</div>
+                    <div style="display:flex;gap:3px;align-items:center;">
+                        <label style="width:55px;">Vendor</label>
+                        <input type="text" id="mod-vendor-${itemId}" value="${escapeHtml(vendor)}" style="flex:1;padding:2px 4px;border:1px solid #ddd;border-radius:3px;font-size:11px;">
+                    </div>
+                    <div style="display:flex;gap:3px;align-items:center;">
+                        <label style="width:55px;">Product</label>
+                        <input type="text" id="mod-product-${itemId}" value="${escapeHtml(productName)}" style="flex:1;padding:2px 4px;border:1px solid #ddd;border-radius:3px;font-size:11px;">
+                    </div>
+                    <div style="display:flex;gap:3px;align-items:center;">
+                        <label style="width:55px;">Qty</label>
+                        <input type="number" id="mod-qty-${itemId}" value="${currentQty}" min="0.01" step="0.01" style="width:60px;padding:2px 4px;border:1px solid #ddd;border-radius:3px;font-size:11px;">
+                    </div>
+                    <div style="display:flex;gap:3px;align-items:center;">
+                        <label style="width:55px;">Price</label>
+                        <input type="number" id="mod-price-${itemId}" value="${currentPrice}" min="0" step="0.01" style="width:80px;padding:2px 4px;border:1px solid #ddd;border-radius:3px;font-size:11px;">
+                    </div>
+                    <div style="display:flex;gap:3px;align-items:center;">
+                        <label style="width:55px;">Note *</label>
+                        <input type="text" id="mod-note-${itemId}" placeholder="Reason for change" style="flex:1;padding:2px 4px;border:1px solid #ddd;border-radius:3px;font-size:11px;">
+                    </div>
+                    <div style="display:flex;gap:4px;margin-top:2px;">
+                        <button class="btn btn-sm btn-success" style="font-size:10px;padding:2px 8px;" onclick="prSubmitModify('${itemId}','${requestId}')">Submit</button>
+                        <button class="btn btn-sm btn-secondary" style="font-size:10px;padding:2px 8px;" onclick="loadMyPurchaseRequests()">Cancel</button>
+                    </div>
+                </div>`;
+        }
+
+        async function prSubmitModify(itemId, requestId) {
+            const note = document.getElementById('mod-note-' + itemId).value.trim();
+            if (!note) { alert('A note is required'); return; }
+            const proposed_vendor = document.getElementById('mod-vendor-' + itemId).value.trim() || undefined;
+            const proposed_product = document.getElementById('mod-product-' + itemId).value.trim() || undefined;
+            const proposed_qty = parseFloat(document.getElementById('mod-qty-' + itemId).value) || undefined;
+            const proposed_unit_price = parseFloat(document.getElementById('mod-price-' + itemId).value) || undefined;
+            try {
+                const resp = await fetch(`/api/di/purchase-items/${itemId}/request-modify`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ proposed_vendor, proposed_product, proposed_qty, proposed_unit_price, note }),
+                    credentials: 'include'
+                });
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data.error || 'Failed');
+                loadMyPurchaseRequests();
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        async function prRequestCancel(itemId, requestId) {
+            event.stopPropagation();
+            const note = prompt('Reason for cancellation (required):');
+            if (note === null) return;
+            if (!note.trim()) { alert('A note is required'); return; }
+            try {
+                const resp = await fetch(`/api/di/purchase-items/${itemId}/request-cancel`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ note }),
+                    credentials: 'include'
+                });
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data.error || 'Failed');
+                loadMyPurchaseRequests();
+            } catch (err) { alert('Error: ' + err.message); }
         }
 
         // =====================================================

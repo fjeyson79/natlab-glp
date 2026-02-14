@@ -5182,8 +5182,16 @@ app.get('/api/di/purchases/my', requireAuth, requireInternal, async (req, res) =
                         'catalog_id', i.catalog_id, 'product_link', i.product_link,
                         'quantity', i.quantity, 'unit_price', i.unit_price, 'item_total', i.item_total,
                         'currency', i.currency, 'ordered_at', i.ordered_at, 'received_at', i.received_at,
-                        'inventory_id', i.inventory_id
-                    ) ORDER BY i.created_at) AS items
+                        'inventory_id', i.inventory_id,
+                        'item_status', COALESCE(i.item_status, 'Active'),
+                        'status_note', i.status_note,
+                        'proposed_vendor', i.proposed_vendor, 'proposed_product', i.proposed_product,
+                        'proposed_catalog_id', i.proposed_catalog_id, 'proposed_link', i.proposed_link,
+                        'proposed_qty', i.proposed_qty, 'proposed_unit_price', i.proposed_unit_price,
+                        'modified_by', i.modified_by, 'modified_at', i.modified_at,
+                        'pi_decision_note', i.pi_decision_note, 'pi_decision_at', i.pi_decision_at
+                    ) ORDER BY i.created_at) AS items,
+                    COUNT(*) FILTER (WHERE COALESCE(i.item_status,'Active') IN ('Modification Requested','Cancel Requested')) AS pending_change_count
              FROM di_purchase_requests r
              JOIN di_purchase_items i ON i.request_id = r.id
              WHERE r.requester_id = $1
@@ -5191,7 +5199,12 @@ app.get('/api/di/purchases/my', requireAuth, requireInternal, async (req, res) =
              ORDER BY r.created_at DESC`,
             [user.researcher_id]
         );
-        res.json({ success: true, requests: result.rows });
+        const requests = result.rows.map(r => ({
+            ...r,
+            pending_change_count: parseInt(r.pending_change_count) || 0,
+            has_pending_changes: parseInt(r.pending_change_count) > 0
+        }));
+        res.json({ success: true, requests });
     } catch (err) {
         console.error('[PURCHASES] My requests error:', err);
         res.status(500).json({ error: 'Server error' });
@@ -5209,6 +5222,7 @@ app.get('/api/di/purchases/my-approved-to-receive', requireAuth, requireInternal
              FROM di_purchase_items i
              JOIN di_purchase_requests r ON r.id = i.request_id
              WHERE r.requester_id = $1 AND r.status = 'APPROVED' AND i.received_at IS NULL
+               AND (i.item_status = 'Active' OR i.item_status IS NULL)
              ORDER BY r.created_at DESC, i.created_at`,
             [user.researcher_id]
         );
@@ -5329,15 +5343,28 @@ app.get('/api/di/purchases/all', requirePI, async (req, res) => {
                         'catalog_id', i.catalog_id, 'product_link', i.product_link,
                         'quantity', i.quantity, 'unit_price', i.unit_price, 'item_total', i.item_total,
                         'currency', i.currency, 'ordered_at', i.ordered_at, 'received_at', i.received_at,
-                        'internal_order_number', i.internal_order_number
-                    ) ORDER BY i.created_at) AS items
+                        'internal_order_number', i.internal_order_number,
+                        'item_status', COALESCE(i.item_status, 'Active'),
+                        'status_note', i.status_note,
+                        'proposed_vendor', i.proposed_vendor, 'proposed_product', i.proposed_product,
+                        'proposed_catalog_id', i.proposed_catalog_id, 'proposed_link', i.proposed_link,
+                        'proposed_qty', i.proposed_qty, 'proposed_unit_price', i.proposed_unit_price,
+                        'modified_by', i.modified_by, 'modified_at', i.modified_at,
+                        'pi_decision_note', i.pi_decision_note, 'pi_decision_at', i.pi_decision_at
+                    ) ORDER BY i.created_at) AS items,
+                    COUNT(*) FILTER (WHERE COALESCE(i.item_status,'Active') IN ('Modification Requested','Cancel Requested')) AS pending_change_count
              FROM di_purchase_requests r
              JOIN di_purchase_items i ON i.request_id = r.id
              LEFT JOIN di_allowlist a ON a.researcher_id = r.requester_id
              GROUP BY r.id, a.name
              ORDER BY r.created_at DESC`
         );
-        res.json({ success: true, requests: result.rows });
+        const requests = result.rows.map(r => ({
+            ...r,
+            pending_change_count: parseInt(r.pending_change_count) || 0,
+            has_pending_changes: parseInt(r.pending_change_count) > 0
+        }));
+        res.json({ success: true, requests });
     } catch (err) {
         console.error('[PURCHASES] All requests error:', err);
         res.status(500).json({ error: 'Server error' });
@@ -5400,9 +5427,28 @@ app.post('/api/di/purchases/item/:itemId/mark-ordered', requirePI, async (req, r
         // Generate PO number
         const poNumber = await generatePONumber(client);
 
+        // Verify item is Active and parent request is APPROVED before ordering
+        const check = await client.query(
+            `SELECT i.id, i.item_status, r.status AS request_status
+             FROM di_purchase_items i JOIN di_purchase_requests r ON r.id = i.request_id
+             WHERE i.id = $1`, [itemId]);
+        if (check.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Item not found' });
+        }
+        const chk = check.rows[0];
+        if (chk.request_status !== 'APPROVED') {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: 'Parent request must be Approved' });
+        }
+        if ((chk.item_status || 'Active') !== 'Active') {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: 'Item must be Active to mark as ordered' });
+        }
+
         const result = await client.query(
             `UPDATE di_purchase_items SET ordered_at = CURRENT_TIMESTAMP, internal_order_number = $2
-             WHERE id = $1 AND ordered_at IS NULL
+             WHERE id = $1 AND ordered_at IS NULL AND (item_status = 'Active' OR item_status IS NULL)
              RETURNING id, request_id, internal_order_number`,
             [itemId, poNumber]
         );
@@ -5411,12 +5457,326 @@ app.post('/api/di/purchases/item/:itemId/mark-ordered', requirePI, async (req, r
             return res.status(404).json({ error: 'Item not found or already marked as ordered' });
         }
 
+        await purchaseAudit(client, {
+            request_id: result.rows[0].request_id, item_id: itemId, action: 'MARK_ORDERED',
+            actor_id: req.session.user.researcher_id || req.session.user.name || 'PI', actor_role: 'PI',
+            old_json: { ordered_at: null }, new_json: { ordered_at: new Date().toISOString(), internal_order_number: poNumber },
+            note: null
+        });
+
         await client.query('COMMIT');
         console.log(`[PURCHASES] Item ${itemId} marked as ordered, PO: ${poNumber}`);
         res.json({ success: true, internal_order_number: poNumber });
     } catch (err) {
         await client.query('ROLLBACK');
         console.error('[PURCHASES] Mark ordered error:', err);
+        res.status(500).json({ error: 'Server error' });
+    } finally {
+        client.release();
+    }
+});
+
+// ==================== PURCHASE ITEM CORRECTION WORKFLOW ====================
+
+// Helper: fetch item with parent request context for guard validation
+async function fetchItemWithContext(itemId, client) {
+    const q = client || pool;
+    const result = await q.query(
+        `SELECT i.*, r.requester_id, r.status AS request_status, r.id AS parent_request_id
+         FROM di_purchase_items i
+         JOIN di_purchase_requests r ON r.id = i.request_id
+         WHERE i.id = $1`,
+        [itemId]
+    );
+    return result.rows[0] || null;
+}
+
+// Helper: write audit record
+async function purchaseAudit(client, { request_id, item_id, action, actor_id, actor_role, old_json, new_json, note }) {
+    const q = client || pool;
+    await q.query(
+        `INSERT INTO di_purchase_audit (request_id, item_id, action, actor_id, actor_role, old_json, new_json, note)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [request_id, item_id, action, actor_id, actor_role,
+         old_json ? JSON.stringify(old_json) : null,
+         new_json ? JSON.stringify(new_json) : null,
+         note || null]
+    );
+}
+
+// Helper: recompute request_total excluding Cancelled items
+async function recomputeRequestTotal(client, requestId) {
+    await client.query(
+        `UPDATE di_purchase_requests SET request_total = COALESCE((
+            SELECT SUM(item_total) FROM di_purchase_items
+            WHERE request_id = $1 AND COALESCE(item_status, 'Active') != 'Cancelled'
+         ), 0), updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+        [requestId]
+    );
+}
+
+// POST /api/di/purchase-items/:item_id/request-modify — Researcher requests modification
+app.post('/api/di/purchase-items/:item_id/request-modify', requireAuth, requireInternal, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const user = req.session.user;
+        const { item_id } = req.params;
+        const { proposed_vendor, proposed_product, proposed_catalog_id, proposed_link, proposed_qty, proposed_unit_price, note } = req.body;
+
+        if (!note || !note.trim()) {
+            return res.status(400).json({ error: 'A note is required when requesting a modification' });
+        }
+
+        await client.query('BEGIN');
+        const item = await fetchItemWithContext(item_id, client);
+        if (!item) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Item not found' }); }
+        if (item.requester_id !== user.researcher_id) { await client.query('ROLLBACK'); return res.status(403).json({ error: 'Not your request' }); }
+        if (item.request_status !== 'APPROVED') { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Request must be Approved' }); }
+        if (item.ordered_at) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Item already ordered, cannot modify' }); }
+        if ((item.item_status || 'Active') !== 'Active') { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Item must be Active to request modification' }); }
+
+        const oldValues = {
+            vendor_company: item.vendor_company, product_name: item.product_name,
+            catalog_id: item.catalog_id, product_link: item.product_link,
+            quantity: item.quantity, unit_price: item.unit_price
+        };
+
+        await client.query(
+            `UPDATE di_purchase_items SET
+                item_status = 'Modification Requested',
+                status_note = $2,
+                proposed_vendor = COALESCE($3, proposed_vendor),
+                proposed_product = COALESCE($4, proposed_product),
+                proposed_catalog_id = COALESCE($5, proposed_catalog_id),
+                proposed_link = COALESCE($6, proposed_link),
+                proposed_qty = COALESCE($7, proposed_qty),
+                proposed_unit_price = COALESCE($8, proposed_unit_price)
+             WHERE id = $1`,
+            [item_id, note.trim(),
+             proposed_vendor || null, proposed_product || null, proposed_catalog_id || null,
+             proposed_link || null, proposed_qty || null, proposed_unit_price || null]
+        );
+
+        await purchaseAudit(client, {
+            request_id: item.parent_request_id, item_id, action: 'REQ_MODIFY',
+            actor_id: user.researcher_id, actor_role: 'researcher',
+            old_json: oldValues,
+            new_json: { proposed_vendor, proposed_product, proposed_catalog_id, proposed_link, proposed_qty, proposed_unit_price },
+            note: note.trim()
+        });
+
+        await client.query('COMMIT');
+        console.log(`[PURCHASES] Modification requested for item ${item_id} by ${user.researcher_id}`);
+        res.json({ success: true });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('[PURCHASES] Request modify error:', err);
+        res.status(500).json({ error: 'Server error' });
+    } finally {
+        client.release();
+    }
+});
+
+// POST /api/di/purchase-items/:item_id/request-cancel — Researcher requests cancellation
+app.post('/api/di/purchase-items/:item_id/request-cancel', requireAuth, requireInternal, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const user = req.session.user;
+        const { item_id } = req.params;
+        const { note } = req.body;
+
+        if (!note || !note.trim()) {
+            return res.status(400).json({ error: 'A note is required when requesting cancellation' });
+        }
+
+        await client.query('BEGIN');
+        const item = await fetchItemWithContext(item_id, client);
+        if (!item) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Item not found' }); }
+        if (item.requester_id !== user.researcher_id) { await client.query('ROLLBACK'); return res.status(403).json({ error: 'Not your request' }); }
+        if (item.request_status !== 'APPROVED') { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Request must be Approved' }); }
+        if (item.ordered_at) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Item already ordered, cannot cancel' }); }
+        if ((item.item_status || 'Active') !== 'Active') { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Item must be Active to request cancellation' }); }
+
+        await client.query(
+            `UPDATE di_purchase_items SET item_status = 'Cancel Requested', status_note = $2 WHERE id = $1`,
+            [item_id, note.trim()]
+        );
+
+        await purchaseAudit(client, {
+            request_id: item.parent_request_id, item_id, action: 'REQ_CANCEL',
+            actor_id: user.researcher_id, actor_role: 'researcher',
+            old_json: { item_status: item.item_status || 'Active' },
+            new_json: { item_status: 'Cancel Requested' },
+            note: note.trim()
+        });
+
+        await client.query('COMMIT');
+        console.log(`[PURCHASES] Cancellation requested for item ${item_id} by ${user.researcher_id}`);
+        res.json({ success: true });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('[PURCHASES] Request cancel error:', err);
+        res.status(500).json({ error: 'Server error' });
+    } finally {
+        client.release();
+    }
+});
+
+// POST /api/di/purchase-items/:item_id/pi-accept — PI accepts modification or cancellation
+app.post('/api/di/purchase-items/:item_id/pi-accept', requirePI, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const user = req.session.user;
+        const { item_id } = req.params;
+        const { decision_note } = req.body;
+
+        await client.query('BEGIN');
+        const item = await fetchItemWithContext(item_id, client);
+        if (!item) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Item not found' }); }
+        if (item.request_status !== 'APPROVED') { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Request must be Approved' }); }
+        if (item.ordered_at) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Item already ordered' }); }
+
+        const itemStatus = item.item_status || 'Active';
+        if (itemStatus !== 'Modification Requested' && itemStatus !== 'Cancel Requested') {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: 'Item has no pending change request' });
+        }
+
+        if (itemStatus === 'Modification Requested') {
+            // Apply proposed values to live fields
+            const oldValues = {
+                vendor_company: item.vendor_company, product_name: item.product_name,
+                catalog_id: item.catalog_id, product_link: item.product_link,
+                quantity: item.quantity, unit_price: item.unit_price, item_total: item.item_total
+            };
+
+            const newVendor = item.proposed_vendor || item.vendor_company;
+            const newProduct = item.proposed_product || item.product_name;
+            const newCatalog = item.proposed_catalog_id || item.catalog_id;
+            const newLink = item.proposed_link || item.product_link;
+            const newQty = item.proposed_qty || item.quantity;
+            const newPrice = item.proposed_unit_price || item.unit_price;
+            const newTotal = Math.round(Number(newQty) * Number(newPrice) * 100) / 100;
+
+            await client.query(
+                `UPDATE di_purchase_items SET
+                    vendor_company = $2, product_name = $3, catalog_id = $4, product_link = $5,
+                    quantity = $6, unit_price = $7, item_total = $8,
+                    item_status = 'Active',
+                    proposed_vendor = NULL, proposed_product = NULL, proposed_catalog_id = NULL,
+                    proposed_link = NULL, proposed_qty = NULL, proposed_unit_price = NULL,
+                    status_note = NULL,
+                    modified_by = $9, modified_at = NOW(),
+                    pi_decision_note = $10, pi_decision_at = NOW()
+                 WHERE id = $1`,
+                [item_id, newVendor, newProduct, newCatalog, newLink, newQty, newPrice, newTotal,
+                 user.researcher_id || user.name || 'PI', decision_note || null]
+            );
+
+            await purchaseAudit(client, {
+                request_id: item.parent_request_id, item_id, action: 'PI_ACCEPT_MODIFY',
+                actor_id: user.researcher_id || user.name || 'PI', actor_role: 'PI',
+                old_json: oldValues,
+                new_json: { vendor_company: newVendor, product_name: newProduct, catalog_id: newCatalog, product_link: newLink, quantity: newQty, unit_price: newPrice, item_total: newTotal },
+                note: decision_note || null
+            });
+
+            // Recompute request total
+            await recomputeRequestTotal(client, item.parent_request_id);
+
+        } else {
+            // Cancel Requested — accept cancellation
+            await client.query(
+                `UPDATE di_purchase_items SET
+                    item_status = 'Cancelled',
+                    modified_by = $2, modified_at = NOW(),
+                    pi_decision_note = $3, pi_decision_at = NOW()
+                 WHERE id = $1`,
+                [item_id, user.researcher_id || user.name || 'PI', decision_note || null]
+            );
+
+            await purchaseAudit(client, {
+                request_id: item.parent_request_id, item_id, action: 'PI_ACCEPT_CANCEL',
+                actor_id: user.researcher_id || user.name || 'PI', actor_role: 'PI',
+                old_json: { item_status: 'Cancel Requested' },
+                new_json: { item_status: 'Cancelled' },
+                note: decision_note || null
+            });
+
+            // Recompute request total excluding cancelled
+            await recomputeRequestTotal(client, item.parent_request_id);
+        }
+
+        await client.query('COMMIT');
+        console.log(`[PURCHASES] PI accepted ${itemStatus} for item ${item_id}`);
+
+        // Return updated item and request total
+        const updated = await pool.query(
+            `SELECT i.*, r.request_total FROM di_purchase_items i
+             JOIN di_purchase_requests r ON r.id = i.request_id WHERE i.id = $1`, [item_id]);
+        res.json({ success: true, item: updated.rows[0] });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('[PURCHASES] PI accept error:', err);
+        res.status(500).json({ error: 'Server error' });
+    } finally {
+        client.release();
+    }
+});
+
+// POST /api/di/purchase-items/:item_id/pi-reject — PI rejects modification or cancellation
+app.post('/api/di/purchase-items/:item_id/pi-reject', requirePI, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const user = req.session.user;
+        const { item_id } = req.params;
+        const { decision_note } = req.body;
+
+        if (!decision_note || !decision_note.trim()) {
+            return res.status(400).json({ error: 'A decision note is required when rejecting' });
+        }
+
+        await client.query('BEGIN');
+        const item = await fetchItemWithContext(item_id, client);
+        if (!item) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Item not found' }); }
+        if (item.request_status !== 'APPROVED') { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Request must be Approved' }); }
+        if (item.ordered_at) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Item already ordered' }); }
+
+        const itemStatus = item.item_status || 'Active';
+        if (itemStatus !== 'Modification Requested' && itemStatus !== 'Cancel Requested') {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: 'Item has no pending change request' });
+        }
+
+        const auditAction = itemStatus === 'Modification Requested' ? 'PI_REJECT_MODIFY' : 'PI_REJECT_CANCEL';
+
+        await client.query(
+            `UPDATE di_purchase_items SET
+                item_status = 'Active',
+                proposed_vendor = NULL, proposed_product = NULL, proposed_catalog_id = NULL,
+                proposed_link = NULL, proposed_qty = NULL, proposed_unit_price = NULL,
+                status_note = NULL,
+                pi_decision_note = $2, pi_decision_at = NOW()
+             WHERE id = $1`,
+            [item_id, decision_note.trim()]
+        );
+
+        await purchaseAudit(client, {
+            request_id: item.parent_request_id, item_id, action: auditAction,
+            actor_id: user.researcher_id || user.name || 'PI', actor_role: 'PI',
+            old_json: { item_status: itemStatus },
+            new_json: { item_status: 'Active' },
+            note: decision_note.trim()
+        });
+
+        await client.query('COMMIT');
+        console.log(`[PURCHASES] PI rejected ${itemStatus} for item ${item_id}`);
+
+        const updated = await pool.query(`SELECT * FROM di_purchase_items WHERE id = $1`, [item_id]);
+        res.json({ success: true, item: updated.rows[0] });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('[PURCHASES] PI reject error:', err);
         res.status(500).json({ error: 'Server error' });
     } finally {
         client.release();
@@ -5440,6 +5800,7 @@ app.get('/api/di/purchases/consolidated', requirePI, async (req, res) => {
              JOIN di_purchase_requests r ON r.id = i.request_id
              LEFT JOIN di_allowlist a ON a.researcher_id = r.requester_id
              WHERE r.status = 'APPROVED' AND r.affiliation = $1 AND i.ordered_at IS NULL
+               AND (i.item_status = 'Active' OR i.item_status IS NULL)
              ORDER BY r.created_at, i.created_at`,
             [affiliation]
         );
@@ -6297,6 +6658,7 @@ app.post('/api/di/purchases/copy-email', requireAuth, requireInternal, async (re
              FROM di_purchase_items i
              JOIN di_purchase_requests r ON r.id = i.request_id
              WHERE r.requester_id = $1 AND r.status = 'APPROVED' AND r.affiliation = $2 AND i.ordered_at IS NULL
+               AND (i.item_status = 'Active' OR i.item_status IS NULL)
              ORDER BY i.created_at`,
             [user.researcher_id, user.affiliation]
         );

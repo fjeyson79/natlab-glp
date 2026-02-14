@@ -1740,6 +1740,7 @@
                         <option value="SUBMITTED" selected>Submitted</option>
                         <option value="APPROVED">Approved</option>
                         <option value="DECLINED">Declined</option>
+                        <option value="PENDING_CHANGES">Pending Changes</option>
                     </select>
                 </div>
                 <div style="max-height:500px;overflow-y:auto;">
@@ -4419,7 +4420,11 @@
                 let requests = data.requests || [];
 
                 const statusFilter = document.getElementById('prFilterStatus').value;
-                if (statusFilter) requests = requests.filter(r => r.status === statusFilter);
+                if (statusFilter === 'PENDING_CHANGES') {
+                    requests = requests.filter(r => r.has_pending_changes);
+                } else if (statusFilter) {
+                    requests = requests.filter(r => r.status === statusFilter);
+                }
 
                 if (requests.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#999;">No purchase requests found</td></tr>';
@@ -4430,6 +4435,7 @@
                 tbody.innerHTML = requests.map(r => {
                     const items = r.items || [];
                     const itemNames = items.map(i => i.product_name).join(', ');
+                    const pendingBadge = r.has_pending_changes ? '<span style="display:inline-block;margin-left:4px;padding:1px 6px;border-radius:8px;font-size:10px;color:#856404;background:#fff3cd;">Pending Changes</span>' : '';
                     return `<tr>
                         <td style="white-space:nowrap;">${new Date(r.created_at).toLocaleDateString()}</td>
                         <td>${escapeHtml(r.requester_name || r.requester_id)}</td>
@@ -4437,7 +4443,7 @@
                         <td title="${escapeHtml(r.justification)}" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(r.justification)}</td>
                         <td title="${escapeHtml(itemNames)}" style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${items.length} item${items.length>1?'s':''}</td>
                         <td style="white-space:nowrap;font-weight:600;">${Number(r.request_total).toFixed(2)} ${escapeHtml(r.currency)}</td>
-                        <td><span style="padding:2px 8px;border-radius:10px;font-size:11px;color:#fff;background:${statusColors[r.status]||'#666'};">${r.status}</span></td>
+                        <td><span style="padding:2px 8px;border-radius:10px;font-size:11px;color:#fff;background:${statusColors[r.status]||'#666'};">${r.status}</span>${pendingBadge}</td>
                         <td><button class="btn btn-sm btn-primary" onclick="showPrDetail('${r.id}')">Review</button></td>
                     </tr>`;
                 }).join('');
@@ -4467,11 +4473,58 @@
             const items = req.items || [];
             const tbody = document.getElementById('prDetailItemsBody');
             tbody.innerHTML = items.map(i => {
+                const st = i.item_status || 'Active';
                 const orderedLabel = i.ordered_at ? `<span style="color:#28a745;" title="${new Date(i.ordered_at).toLocaleDateString()}">Yes</span>` : '<span style="color:#999;">No</span>';
-                const markOrderedBtn = (req.status === 'APPROVED' && !i.ordered_at)
-                    ? `<button class="btn btn-sm btn-secondary" onclick="markItemOrdered('${i.id}','${requestId}')">Mark Ordered</button>`
-                    : '';
-                return `<tr>
+
+                // Actions column logic
+                let actions = '';
+                if (i.ordered_at) {
+                    // Read only — ordered
+                } else if (st === 'Modification Requested') {
+                    actions = `<button class="btn btn-sm btn-success" style="font-size:11px;padding:2px 8px;" onclick="piAcceptItem('${i.id}','${requestId}')">Accept</button>
+                               <button class="btn btn-sm" style="font-size:11px;padding:2px 8px;background:#dc3545;color:#fff;" onclick="piRejectItem('${i.id}','${requestId}')">Reject</button>`;
+                } else if (st === 'Cancel Requested') {
+                    actions = `<button class="btn btn-sm btn-success" style="font-size:11px;padding:2px 8px;" onclick="piAcceptItem('${i.id}','${requestId}')">Accept</button>
+                               <button class="btn btn-sm" style="font-size:11px;padding:2px 8px;background:#dc3545;color:#fff;" onclick="piRejectItem('${i.id}','${requestId}')">Reject</button>`;
+                } else if (st === 'Cancelled') {
+                    // No actions
+                } else if (req.status === 'APPROVED') {
+                    actions = `<button class="btn btn-sm btn-secondary" onclick="markItemOrdered('${i.id}','${requestId}')">Mark Ordered</button>`;
+                }
+
+                // Status label
+                let statusTag = '';
+                if (st === 'Modification Requested') {
+                    statusTag = '<span style="display:inline-block;padding:1px 6px;border-radius:8px;font-size:10px;color:#856404;background:#fff3cd;">Modification Requested</span>';
+                } else if (st === 'Cancel Requested') {
+                    statusTag = '<span style="display:inline-block;padding:1px 6px;border-radius:8px;font-size:10px;color:#856404;background:#fff3cd;">Cancel Requested</span>';
+                } else if (st === 'Cancelled') {
+                    statusTag = '<span style="display:inline-block;padding:1px 6px;border-radius:8px;font-size:10px;color:#721c24;background:#f8d7da;">Cancelled</span>';
+                } else if (i.modified_by) {
+                    statusTag = `<span style="display:inline-block;padding:1px 6px;border-radius:8px;font-size:10px;color:#155724;background:#d4edda;">Modified by PI</span>`;
+                    if (i.modified_at) statusTag += `<br><small style="color:#999;">${new Date(i.modified_at).toLocaleDateString()}</small>`;
+                }
+
+                // Show proposed values for Modification Requested
+                let proposedRow = '';
+                if (st === 'Modification Requested') {
+                    const pVendor = i.proposed_vendor ? `<strong>Vendor:</strong> ${escapeHtml(i.proposed_vendor)}` : '';
+                    const pProduct = i.proposed_product ? `<strong>Product:</strong> ${escapeHtml(i.proposed_product)}` : '';
+                    const pQty = i.proposed_qty ? `<strong>Qty:</strong> ${i.proposed_qty}` : '';
+                    const pPrice = i.proposed_unit_price ? `<strong>Price:</strong> ${Number(i.proposed_unit_price).toFixed(2)}` : '';
+                    const parts = [pVendor, pProduct, pQty, pPrice].filter(Boolean).join(', ');
+                    const noteText = i.status_note ? `<br><em>Note: ${escapeHtml(i.status_note)}</em>` : '';
+                    proposedRow = `<tr style="background:#fff8e1;"><td colspan="9" style="padding:4px 12px;font-size:11px;color:#856404;">
+                        <strong>Proposed changes:</strong> ${parts}${noteText}
+                    </td></tr>`;
+                } else if (st === 'Cancel Requested') {
+                    const noteText = i.status_note ? escapeHtml(i.status_note) : '';
+                    proposedRow = `<tr style="background:#fff8e1;"><td colspan="9" style="padding:4px 12px;font-size:11px;color:#856404;">
+                        <strong>Cancellation requested:</strong> ${noteText}
+                    </td></tr>`;
+                }
+
+                return `<tr${st === 'Cancelled' ? ' style="opacity:0.5;"' : ''}>
                     <td>${escapeHtml(i.vendor_company)}</td>
                     <td>${escapeHtml(i.product_name)}</td>
                     <td>${escapeHtml(i.catalog_id)}</td>
@@ -4479,9 +4532,9 @@
                     <td>${i.quantity}</td>
                     <td>${Number(i.unit_price).toFixed(2)}</td>
                     <td style="font-weight:600;">${Number(i.item_total).toFixed(2)}</td>
-                    <td>${orderedLabel}</td>
-                    <td>${markOrderedBtn}</td>
-                </tr>`;
+                    <td>${orderedLabel}${statusTag ? '<br>' + statusTag : ''}</td>
+                    <td>${actions}</td>
+                </tr>${proposedRow}`;
             }).join('');
 
             const actionsEl = document.getElementById('prDetailActions');
@@ -4535,6 +4588,39 @@
                 const resp = await fetch(`/api/di/purchases/item/${itemId}/mark-ordered`, { method: 'POST', credentials: 'include' });
                 if (!resp.ok) { const d = await resp.json(); throw new Error(d.error || 'Failed'); }
                 showPrDetail(requestId);
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        async function piAcceptItem(itemId, requestId) {
+            const note = prompt('Decision note (optional):');
+            if (note === null) return;
+            try {
+                const resp = await fetch(`/api/di/purchase-items/${itemId}/pi-accept`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ decision_note: note || '' }),
+                    credentials: 'include'
+                });
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data.error || 'Failed');
+                showPrDetail(requestId);
+                loadAllPurchaseRequests();
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        async function piRejectItem(itemId, requestId) {
+            const note = prompt('Decision note (required):');
+            if (note === null) return;
+            if (!note.trim()) { alert('A decision note is required when rejecting.'); return; }
+            try {
+                const resp = await fetch(`/api/di/purchase-items/${itemId}/pi-reject`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ decision_note: note }),
+                    credentials: 'include'
+                });
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data.error || 'Failed');
+                showPrDetail(requestId);
+                loadAllPurchaseRequests();
             } catch (err) { alert('Error: ' + err.message); }
         }
 
