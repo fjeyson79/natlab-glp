@@ -8570,3 +8570,9 @@ dialog :link{
     display:none;
   }
 }
+
+/* NATLAB DIC: hide print and download from primary toolbar */
+#printButton,
+#downloadButton {
+  display: none !important;
+}

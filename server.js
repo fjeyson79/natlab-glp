@@ -2928,6 +2928,7 @@ app.get('/api/di/lab-files-enriched', requirePI, async (req, res) => {
         const query = hasAssoc
             ? `SELECT s.submission_id, s.researcher_id, s.original_filename, s.file_type,
                       s.status, s.created_at, s.signed_at, s.ai_review,
+                      s.pi_dragon_seal,
                       COALESCE(s.drive_file_id, s.signed_pdf_path) as r2_object_key,
                       a.name as researcher_name, a.affiliation,
                       COALESCE(sop_c.cnt, 0)::int as linked_sop_count,
@@ -2944,6 +2945,7 @@ app.get('/api/di/lab-files-enriched', requirePI, async (req, res) => {
                ORDER BY s.created_at DESC`
             : `SELECT s.submission_id, s.researcher_id, s.original_filename, s.file_type,
                       s.status, s.created_at, s.signed_at, s.ai_review,
+                      s.pi_dragon_seal,
                       COALESCE(s.drive_file_id, s.signed_pdf_path) as r2_object_key,
                       a.name as researcher_name, a.affiliation,
                       0 as linked_sop_count, 0 as linked_pres_count
@@ -3144,6 +3146,27 @@ app.post('/api/di/revise-inline/:id', requirePI, async (req, res) => {
         res.json({ success: true });
     } catch (err) {
         console.error('[REVISE-INLINE] Error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/di/documents/:id/dragon-seal — Toggle PI Dragon Seal
+app.post('/api/di/documents/:id/dragon-seal', requirePI, async (req, res) => {
+    try {
+        const { enabled } = req.body;
+        if (typeof enabled !== 'boolean') {
+            return res.status(400).json({ error: 'enabled must be a boolean' });
+        }
+        const result = await pool.query(
+            'UPDATE di_submissions SET pi_dragon_seal = $1 WHERE submission_id = $2 RETURNING submission_id, pi_dragon_seal',
+            [enabled, req.params.id]
+        );
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'File not found' });
+        }
+        res.json({ success: true, pi_dragon_seal: result.rows[0].pi_dragon_seal });
+    } catch (err) {
+        console.error('Dragon seal toggle error:', err);
         res.status(500).json({ error: 'Server error' });
     }
 });

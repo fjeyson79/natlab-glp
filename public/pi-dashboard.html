@@ -580,10 +580,10 @@
             color: #1a365d;
             font-weight: 600;
         }
-        .dic-chip.dic-chip-warn.active {
-            background: #fff7ed;
-            border-color: #fd7e14;
-            color: #c2410c;
+        .dic-chip.dic-chip-dragon.active {
+            background: #fef2f2;
+            border-color: #dc2626;
+            color: #991b1b;
         }
         .dic-months-label {
             font-size: 10px;
@@ -699,11 +699,21 @@
             background: #eef2ff;
             color: #4338ca;
         }
-        .dic-nc-indicator {
-            font-size: 9px;
-            color: #fd7e14;
-            font-weight: 600;
+        .dic-dragon-badge {
+            font-size: 10px;
         }
+        .dic-toolbar-dragon {
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            border: 1px solid #d1d5db;
+            background: #fff;
+            line-height: 1;
+            transition: all 0.15s;
+        }
+        .dic-toolbar-dragon:hover { background: #fef2f2; border-color: #fca5a5; }
+        .dic-toolbar-dragon.sealed { background: #fef2f2; border-color: #dc2626; }
         .dic-empty-state {
             display: flex;
             flex-direction: column;
@@ -1183,7 +1193,7 @@
                     <span class="dic-chip" data-filter="status" data-val="PENDING" onclick="dicSetChip('status','PENDING')">Pending</span>
                     <span class="dic-chip" data-filter="status" data-val="APPROVED" onclick="dicSetChip('status','APPROVED')">Approved</span>
                     <span class="dic-chip" data-filter="status" data-val="REVISION_NEEDED" onclick="dicSetChip('status','REVISION_NEEDED')">Revision</span>
-                    <span class="dic-chip dic-chip-warn" data-filter="nonCompliant" onclick="dicToggleNonCompliant(this)">Non-Compliant</span>
+                    <span class="dic-chip dic-chip-dragon" data-filter="dragonSeal" onclick="dicToggleDragonSeal(this)">&#x1F409; Dragon Seal</span>
                 </div>
                 <div class="dic-filter-row">
                     <span class="dic-chip active" data-filter="time" data-val="" onclick="dicSetChip('time','')">All Time</span>
@@ -2782,7 +2792,7 @@
 
         let dicAllFiles = [], dicFilteredFiles = [], dicSelectedFileId = null;
         let dicCurrentScope = 'DATA';
-        let dicFilters = { status: '', researcher: '', year: '', search: '', time: '', sort: 'newest', nonCompliant: false };
+        let dicFilters = { status: '', researcher: '', year: '', search: '', time: '', sort: 'newest', dragonSeal: false };
         let dicResearcherMetrics = {}, dicAssociationsCache = {};
         let dicMonthsUsed = 12;
         let dicLinkModalType = '';
@@ -2907,9 +2917,9 @@
             dicApplyFilters();
         }
 
-        function dicToggleNonCompliant(el) {
-            dicFilters.nonCompliant = !dicFilters.nonCompliant;
-            el.classList.toggle('active', dicFilters.nonCompliant);
+        function dicToggleDragonSeal(el) {
+            dicFilters.dragonSeal = !dicFilters.dragonSeal;
+            el.classList.toggle('active', dicFilters.dragonSeal);
             dicApplyFilters();
         }
 
@@ -2931,9 +2941,8 @@
                     const fileDate = new Date(f.created_at);
                     if ((now - fileDate) / (1000 * 60 * 60 * 24) > days) return false;
                 }
-                if (dicFilters.nonCompliant) {
-                    const parsed = parseNatlabFilename(f.original_filename || '');
-                    if (parsed.is_compliant) return false;
+                if (dicFilters.dragonSeal) {
+                    if (!f.pi_dragon_seal) return false;
                 }
                 return true;
             });
@@ -3003,7 +3012,7 @@
                 }
 
                 let metaHtml = `<span class="dic-badge ${statusClass}">${statusLabel}</span>`;
-                if (!parsed.is_compliant) metaHtml += '<span class="dic-nc-indicator">Non-Compliant</span>';
+                if (f.pi_dragon_seal) metaHtml += '<span class="dic-dragon-badge">&#x1F409;</span>';
                 const sopCount = f.linked_sop_count || 0;
                 const presCount = f.linked_pres_count || 0;
                 if (sopCount > 0) metaHtml += `<span class="dic-assoc-chip">${sopCount} SOP</span>`;
@@ -3063,7 +3072,9 @@
             const toolbar = document.getElementById('dicToolbar');
             const statusLabel = f.status === 'REVISION_NEEDED' ? 'REVISION' : (f.status || '');
             const statusClass = (f.status || '').toLowerCase().replace('_needed', '');
-            let btns = `<a class="dic-toolbar-btn" href="/api/di/download/${f.submission_id}" target="_blank">Download</a>`;
+            const dragonClass = f.pi_dragon_seal ? ' sealed' : '';
+            let btns = `<button class="dic-toolbar-dragon${dragonClass}" onclick="dicToggleDragonSealFile('${f.submission_id}')" title="Toggle Dragon Seal">&#x1F409;</button>`;
+            btns += `<a class="dic-toolbar-btn" href="/api/di/download/${f.submission_id}" target="_blank">Download</a>`;
             btns += `<button class="dic-toolbar-btn" onclick="window.open('/api/di/download/${f.submission_id}','_blank')">Open Tab</button>`;
             if (f.status === 'PENDING') {
                 btns += `<button class="dic-toolbar-btn approve" onclick="dicApproveFile('${f.submission_id}')">Approve</button>`;
@@ -3147,6 +3158,30 @@
 
         function dicTruncate(str, max) {
             return str.length > max ? str.substring(0, max - 1) + '\u2026' : str;
+        }
+
+        async function dicToggleDragonSealFile(id) {
+            const f = dicAllFiles.find(x => x.submission_id === id);
+            if (!f) return;
+            const newVal = !f.pi_dragon_seal;
+            try {
+                const res = await fetch(`/api/di/documents/${id}/dragon-seal`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ enabled: newVal })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    f.pi_dragon_seal = data.pi_dragon_seal;
+                    dicRenderResults();
+                    dicSelectFile(id);
+                } else {
+                    alert(data.error || 'Failed to toggle Dragon Seal');
+                }
+            } catch (err) {
+                alert('Error toggling Dragon Seal');
+            }
         }
 
         async function dicApproveFile(id) {
