@@ -8300,6 +8300,390 @@ app.get('/api/glp/status/current', requireAuth, async (req, res) => {
     }
 });
 
+// =====================================================
+// GLP COHORT MEMBERSHIP – PI-only endpoints
+// =====================================================
+
+let cohortTableExists = null;
+let cohortTableLastCheck = 0;
+async function checkCohortTable() {
+    const now = Date.now();
+    if (cohortTableExists === null || cohortTableExists === false || (now - cohortTableLastCheck > 60000)) {
+        try {
+            const r = await pool.query("SELECT 1 FROM information_schema.tables WHERE table_name='di_glp_cohort_members'");
+            cohortTableExists = r.rows.length > 0;
+            cohortTableLastCheck = now;
+        } catch (err) { cohortTableExists = false; }
+    }
+    return cohortTableExists;
+}
+
+let groupIndexTableExists = null;
+let groupIndexTableLastCheck = 0;
+async function checkGroupIndexTable() {
+    const now = Date.now();
+    if (groupIndexTableExists === null || groupIndexTableExists === false || (now - groupIndexTableLastCheck > 60000)) {
+        try {
+            const r = await pool.query("SELECT 1 FROM information_schema.tables WHERE table_name='glp_group_weekly_status_index'");
+            groupIndexTableExists = r.rows.length > 0;
+            groupIndexTableLastCheck = now;
+        } catch (err) { groupIndexTableExists = false; }
+    }
+    return groupIndexTableExists;
+}
+
+// GET cohort members — PI only
+app.get('/api/glp/cohorts/members', requirePI, async (req, res) => {
+    try {
+        if (!(await checkCohortTable())) return res.status(501).json({ error: 'Cohort table not available' });
+
+        const cohortId = (req.query.cohort_id || '').toUpperCase();
+        if (!['LIU', 'UNAV'].includes(cohortId)) return res.status(400).json({ error: 'cohort_id must be LIU or UNAV' });
+
+        // Get all active allowlist members for the affiliation
+        const affiliation = cohortId === 'LIU' ? 'LiU' : 'UNAV';
+        const result = await pool.query(`
+            SELECT a.researcher_id AS user_id, a.name, COALESCE(a.role, 'researcher') AS role,
+                   a.affiliation AS institution, a.active,
+                   COALESCE(c.included, FALSE) AS included,
+                   c.note,
+                   (SELECT MAX(s.created_at) FROM di_submissions s WHERE s.researcher_id = a.researcher_id) AS last_activity,
+                   (SELECT g.iso_week FROM glp_weekly_status_index g WHERE g.user_id = a.researcher_id ORDER BY g.iso_week DESC LIMIT 1) AS last_iso_week
+            FROM di_allowlist a
+            LEFT JOIN di_glp_cohort_members c ON c.user_id = a.researcher_id AND c.cohort_id = $1
+            WHERE a.affiliation = $2
+            ORDER BY a.name
+        `, [cohortId, affiliation]);
+
+        res.json({ success: true, cohort_id: cohortId, members: result.rows });
+    } catch (err) {
+        console.error('[GLP-COHORT] members error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// SET cohort members — PI only (upsert inclusion flags)
+app.post('/api/glp/cohorts/members/set', requirePI, async (req, res) => {
+    try {
+        if (!(await checkCohortTable())) return res.status(501).json({ error: 'Cohort table not available' });
+
+        const cohortId = (req.body.cohort_id || '').toUpperCase();
+        if (!['LIU', 'UNAV'].includes(cohortId)) return res.status(400).json({ error: 'cohort_id must be LIU or UNAV' });
+
+        const updates = req.body.updates;
+        if (!Array.isArray(updates) || updates.length === 0) return res.status(400).json({ error: 'updates array required' });
+
+        const piId = req.session.user.researcher_id;
+        let count = 0;
+
+        for (const u of updates) {
+            if (!u.user_id) continue;
+            await pool.query(`
+                INSERT INTO di_glp_cohort_members (cohort_id, user_id, included, note, updated_by, updated_at)
+                VALUES ($1, $2, $3, $4, $5, NOW())
+                ON CONFLICT (cohort_id, user_id) DO UPDATE
+                SET included = $3, note = $4, updated_by = $5, updated_at = NOW()
+            `, [cohortId, u.user_id, u.included !== false, u.note || null, piId]);
+            count++;
+        }
+
+        console.log(`[GLP-COHORT] PI ${piId} updated ${count} members in cohort ${cohortId}`);
+        res.json({ success: true, updated: count });
+    } catch (err) {
+        console.error('[GLP-COHORT] set error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// =====================================================
+// GLP GROUP SNAPSHOT – PI-only endpoints
+// =====================================================
+
+// Generate group snapshot — PI only (or n8n via API key)
+app.post('/api/glp/status/generate-group', requirePI, async (req, res) => {
+    try {
+        if (!(await checkGlpStatusTable())) return res.status(501).json({ error: 'GLP status table not available' });
+        if (!(await checkCohortTable())) return res.status(501).json({ error: 'Cohort table not available' });
+        if (!(await checkGroupIndexTable())) return res.status(501).json({ error: 'Group index table not available' });
+
+        const cohortId = (req.body.cohort_id || '').toUpperCase();
+        if (!['LIU', 'UNAV', 'BOTH'].includes(cohortId)) return res.status(400).json({ error: 'cohort_id must be LIU, UNAV, or BOTH' });
+
+        const isoWeek = (req.body.iso_week || '').trim() || currentIsoWeek();
+        const crypto = require('crypto');
+
+        // Resolve included member user_ids
+        let memberQuery;
+        if (cohortId === 'BOTH') {
+            memberQuery = await pool.query(
+                `SELECT DISTINCT user_id FROM di_glp_cohort_members WHERE included = TRUE`
+            );
+        } else {
+            memberQuery = await pool.query(
+                `SELECT user_id FROM di_glp_cohort_members WHERE cohort_id = $1 AND included = TRUE`,
+                [cohortId]
+            );
+        }
+
+        const memberIds = memberQuery.rows.map(r => r.user_id).sort();
+        if (memberIds.length === 0) return res.status(400).json({ error: 'No included members in cohort' });
+
+        const membershipHash = crypto.createHash('sha256')
+            .update(cohortId + ':' + memberIds.join(','))
+            .digest('hex').slice(0, 16);
+
+        // For each member, ensure individual snapshot exists, then load it
+        const snapshots = [];
+        for (const userId of memberIds) {
+            // Check if individual snapshot exists for this week
+            const idx = await pool.query(
+                'SELECT r2_snapshot_key FROM glp_weekly_status_index WHERE user_id = $1 AND iso_week = $2',
+                [userId, isoWeek]
+            );
+
+            let snapshot;
+            if (idx.rows.length > 0) {
+                try {
+                    snapshot = await downloadR2Json(idx.rows[0].r2_snapshot_key);
+                } catch (e) {
+                    console.warn(`[GLP-GROUP] Failed to download snapshot for ${userId} week ${isoWeek}:`, e.message);
+                    continue;
+                }
+            } else {
+                // Generate individual snapshot
+                const userRow = await pool.query(
+                    'SELECT affiliation FROM di_allowlist WHERE researcher_id = $1 AND active = true',
+                    [userId]
+                );
+                if (userRow.rows.length === 0) continue;
+
+                const affiliation = userRow.rows[0].affiliation;
+                const { snapshot: s, hash } = await buildGlpSnapshot(userId);
+                const keys = glpR2Keys(affiliation, userId, isoWeek);
+                await uploadToR2(Buffer.from(JSON.stringify(s, null, 2)), keys.snapshot, 'application/json');
+                await pool.query(`
+                    INSERT INTO glp_weekly_status_index
+                        (user_id, iso_week, generated_at, r2_snapshot_key, evidence_hash, snapshot_version, model_version)
+                    VALUES ($1, $2, NOW(), $3, $4, $5, $6)
+                    ON CONFLICT (user_id, iso_week) DO NOTHING
+                `, [userId, isoWeek, keys.snapshot, hash, 1, '1.0.0']);
+                snapshot = s;
+            }
+            snapshots.push(snapshot);
+        }
+
+        if (snapshots.length === 0) return res.status(400).json({ error: 'No snapshots could be loaded' });
+
+        // Aggregate using median
+        function median(arr) {
+            if (arr.length === 0) return 0;
+            const sorted = [...arr].sort((a, b) => a - b);
+            const mid = Math.floor(sorted.length / 2);
+            return sorted.length % 2 !== 0 ? sorted[mid] : Math.round((sorted[mid - 1] + sorted[mid]) / 2);
+        }
+
+        const overallScores = snapshots.map(s => s.overall_score || 0);
+        const docScores = snapshots.map(s => s.spheres?.documentation?.score || 0);
+        const trainScores = snapshots.map(s => s.spheres?.training?.score || 0);
+        const traceScores = snapshots.map(s => s.spheres?.traceability?.score || 0);
+        const dataScores = snapshots.map(s => s.spheres?.data_integrity?.score || 0);
+
+        const aggOverall = median(overallScores);
+        const aggLevel = resolveGlpLevel(aggOverall);
+
+        // Sum evidence counts
+        const sumEvidence = {
+            sops: { total: 0, approved: 0 },
+            data: { total: 0 },
+            presentations: { total: 0, approved: 0 },
+            inventory: { total: 0, products: 0, samples: 0, oligos: 0 },
+            training: { certifiedEntries: 0 }
+        };
+        for (const s of snapshots) {
+            const ev = s.evidence || {};
+            if (ev.sops) { sumEvidence.sops.total += (ev.sops.total || 0); sumEvidence.sops.approved += (ev.sops.approved || 0); }
+            if (ev.data) { sumEvidence.data.total += (ev.data.total || 0); }
+            if (ev.presentations) { sumEvidence.presentations.total += (ev.presentations.total || 0); sumEvidence.presentations.approved += (ev.presentations.approved || 0); }
+            if (ev.inventory) {
+                sumEvidence.inventory.total += (ev.inventory.total || 0);
+                sumEvidence.inventory.products += (ev.inventory.products || 0);
+                sumEvidence.inventory.samples += (ev.inventory.samples || 0);
+                sumEvidence.inventory.oligos += (ev.inventory.oligos || 0);
+            }
+            if (ev.training) { sumEvidence.training.certifiedEntries += (ev.training.certifiedEntries || 0); }
+        }
+
+        // Conformity: use conservative (min) for boolean flags
+        const conformity = {};
+        const confKeys = ['training_sealed', 'all_agreements_confirmed', 'has_approved_sops', 'inventory_active',
+                          'no_open_revisions', 'sop_coverage_adequate', 'data_coverage_adequate', 'recent_activity'];
+        for (const k of confKeys) {
+            const vals = snapshots.map(s => s.conformity?.[k]).filter(v => v !== undefined);
+            conformity[k] = vals.length > 0 ? vals.every(v => v === true) : false;
+        }
+
+        const groupSnapshot = {
+            schema_version: 1,
+            model_version: '1.0.0',
+            scoring_version: '1.0.0',
+            entity_type: 'group',
+            cohort_id: cohortId,
+            iso_week: isoWeek,
+            generated_at: new Date().toISOString(),
+            member_count: snapshots.length,
+            membership_hash: membershipHash,
+            overall_score: aggOverall,
+            glp_level: aggLevel,
+            spheres: {
+                documentation: { score: median(docScores) },
+                training: { score: median(trainScores) },
+                traceability: { score: median(traceScores) },
+                data_integrity: { score: median(dataScores) }
+            },
+            evidence: sumEvidence,
+            conformity
+        };
+
+        // Store in R2
+        const year = isoWeek.slice(0, 4);
+        const wPart = isoWeek.slice(4);
+        const r2Key = `glp-status/weekly/GROUP/${cohortId}/${year}/${wPart}/snapshot.json`;
+        await uploadToR2(Buffer.from(JSON.stringify(groupSnapshot, null, 2)), r2Key, 'application/json');
+
+        // Upsert index row
+        await pool.query(`
+            INSERT INTO glp_group_weekly_status_index (cohort_id, iso_week, r2_snapshot_key, member_count, membership_hash)
+            VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT (cohort_id, iso_week) DO UPDATE
+            SET r2_snapshot_key = $3, member_count = $4, membership_hash = $5, created_at = NOW()
+        `, [cohortId, isoWeek, r2Key, snapshots.length, membershipHash]);
+
+        console.log(`[GLP-GROUP] Generated group snapshot for ${cohortId} week ${isoWeek}, members=${snapshots.length}, score=${aggOverall}`);
+
+        res.json({
+            success: true,
+            generated: true,
+            cohort_id: cohortId,
+            iso_week: isoWeek,
+            member_count: snapshots.length,
+            r2_snapshot_key: r2Key
+        });
+    } catch (err) {
+        console.error('[GLP-GROUP] generate error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// List group weeks — PI only
+app.get('/api/glp/status/group/weeks', requirePI, async (req, res) => {
+    try {
+        if (!(await checkGroupIndexTable())) return res.json({ success: true, weeks: [] });
+
+        const cohortId = (req.query.cohort_id || 'BOTH').toUpperCase();
+        if (!['LIU', 'UNAV', 'BOTH'].includes(cohortId)) return res.status(400).json({ error: 'Invalid cohort_id' });
+
+        const result = await pool.query(
+            `SELECT iso_week, member_count, membership_hash, created_at
+             FROM glp_group_weekly_status_index
+             WHERE cohort_id = $1
+             ORDER BY iso_week DESC
+             LIMIT 52`,
+            [cohortId]
+        );
+        res.json({ success: true, cohort_id: cohortId, weeks: result.rows });
+    } catch (err) {
+        console.error('[GLP-GROUP] weeks error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// Fetch group snapshot — PI only
+app.get('/api/glp/status/group/snapshot', requirePI, async (req, res) => {
+    try {
+        if (!(await checkGroupIndexTable())) return res.status(404).json({ error: 'No data available' });
+
+        const cohortId = (req.query.cohort_id || '').toUpperCase();
+        const isoWeek = req.query.iso_week || '';
+        if (!cohortId || !isoWeek) return res.status(400).json({ error: 'cohort_id and iso_week required' });
+
+        const idx = await pool.query(
+            'SELECT * FROM glp_group_weekly_status_index WHERE cohort_id = $1 AND iso_week = $2',
+            [cohortId, isoWeek]
+        );
+        if (idx.rows.length === 0) return res.status(404).json({ error: 'Group snapshot not found' });
+
+        const row = idx.rows[0];
+        const snapshot = await downloadR2Json(row.r2_snapshot_key);
+
+        res.json({
+            success: true,
+            cohort_id: cohortId,
+            iso_week: row.iso_week,
+            created_at: row.created_at,
+            member_count: row.member_count,
+            membership_hash: row.membership_hash,
+            snapshot
+        });
+    } catch (err) {
+        console.error('[GLP-GROUP] snapshot error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// PI-only: fetch weeks list for a specific user (for viewing other members' GLP status)
+app.get('/api/glp/status/user/:userId/weeks', requirePI, async (req, res) => {
+    try {
+        if (!(await checkGlpStatusTable())) return res.json({ success: true, weeks: [] });
+
+        const userId = req.params.userId;
+        const result = await pool.query(
+            `SELECT iso_week, generated_at, r2_harmony_key IS NOT NULL AS has_harmony
+             FROM glp_weekly_status_index
+             WHERE user_id = $1
+             ORDER BY iso_week DESC
+             LIMIT 52`,
+            [userId]
+        );
+        res.json({ success: true, weeks: result.rows });
+    } catch (err) {
+        console.error('[GLP-STATUS] user weeks error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// PI-only: fetch snapshot for a specific user and week
+app.get('/api/glp/status/user/:userId/week/:isoWeek', requirePI, async (req, res) => {
+    try {
+        if (!(await checkGlpStatusTable())) return res.status(404).json({ error: 'No data available' });
+
+        const idx = await pool.query(
+            'SELECT * FROM glp_weekly_status_index WHERE user_id = $1 AND iso_week = $2',
+            [req.params.userId, req.params.isoWeek]
+        );
+        if (idx.rows.length === 0) return res.status(404).json({ error: 'Week not found' });
+
+        const row = idx.rows[0];
+        const snapshot = await downloadR2Json(row.r2_snapshot_key);
+
+        let harmony = null;
+        if (row.r2_harmony_key) {
+            try { harmony = await downloadR2Json(row.r2_harmony_key); } catch (e) { /* swallow */ }
+        }
+
+        res.json({
+            success: true,
+            iso_week: row.iso_week,
+            generated_at: row.generated_at,
+            evidence_hash: row.evidence_hash,
+            snapshot,
+            harmony
+        });
+    } catch (err) {
+        console.error('[GLP-STATUS] user week error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
 //
 // Server start
 //

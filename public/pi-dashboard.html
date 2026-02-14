@@ -1064,6 +1064,341 @@
         }
         .dic-sidebar-toggle:hover { background: #f5f7fa; color: #374151; }
 
+        /* ==================== GLP CONSOLE ==================== */
+        .glpc-layout {
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            height: calc(100vh - 140px);
+            gap: 0;
+            background: #f8f9fa;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid #e4e7eb;
+        }
+        .glpc-left {
+            background: #ffffff;
+            border-right: 1px solid #e4e7eb;
+            overflow-y: auto;
+            padding: 16px;
+        }
+        .glpc-right {
+            overflow-y: auto;
+            padding: 20px;
+            background: #f8f9fa;
+        }
+        .glpc-section {
+            margin-bottom: 20px;
+        }
+        .glpc-section-title {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 1.6px;
+            text-transform: uppercase;
+            color: #8c95a1;
+            margin-bottom: 10px;
+        }
+        .glpc-mode-switch {
+            display: flex;
+            gap: 4px;
+            background: #f3f4f6;
+            border-radius: 8px;
+            padding: 3px;
+            margin-bottom: 12px;
+        }
+        .glpc-mode-btn {
+            flex: 1;
+            padding: 6px 0;
+            border: none;
+            background: transparent;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            color: #6b7280;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .glpc-mode-btn.active {
+            background: #ffffff;
+            color: #1a365d;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+        .glpc-search {
+            width: 100%;
+            padding: 7px 10px;
+            border: 1px solid #e4e7eb;
+            border-radius: 8px;
+            font-size: 12px;
+            outline: none;
+            margin-bottom: 8px;
+            box-sizing: border-box;
+        }
+        .glpc-search:focus { border-color: #2d5a87; }
+        .glpc-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            margin-bottom: 10px;
+        }
+        .glpc-chip {
+            padding: 4px 8px;
+            border: 1px solid #e4e7eb;
+            border-radius: 12px;
+            background: #ffffff;
+            font-size: 10px;
+            font-weight: 600;
+            color: #6b7280;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .glpc-chip:hover { border-color: #2d5a87; color: #2d5a87; }
+        .glpc-chip.active {
+            background: #1a365d;
+            color: #ffffff;
+            border-color: #1a365d;
+        }
+        .glpc-member-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .glpc-member-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 8px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.12s;
+        }
+        .glpc-member-row:hover { background: #f3f4f6; }
+        .glpc-member-row.glpc-member-selected { background: #e8f0fe; }
+        .glpc-member-avatar {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            font-weight: 700;
+            color: #ffffff;
+            flex-shrink: 0;
+        }
+        .glpc-member-info { min-width: 0; }
+        .glpc-member-name {
+            font-size: 12px;
+            font-weight: 600;
+            color: #1a365d;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .glpc-member-meta {
+            display: flex;
+            gap: 4px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .glpc-member-badge {
+            font-size: 9px;
+            font-weight: 600;
+            color: #6b7280;
+            background: #f3f4f6;
+            padding: 1px 5px;
+            border-radius: 4px;
+        }
+        .glpc-member-week {
+            font-size: 9px;
+            color: #9ca3af;
+        }
+        .glpc-overview-cards {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 6px;
+            margin: 10px 0;
+        }
+        .glpc-overview-card {
+            background: #fafbfc;
+            border: 1px solid #e4e7eb;
+            border-radius: 8px;
+            padding: 8px;
+            text-align: center;
+        }
+        .glpc-overview-label {
+            font-size: 8px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: #8c95a1;
+            margin-bottom: 2px;
+        }
+        .glpc-overview-value {
+            font-size: 14px;
+            font-weight: 700;
+            color: #1a365d;
+        }
+        .glpc-group-actions { margin-top: 10px; }
+        .glpc-btn-generate {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #2d5a87;
+            border-radius: 8px;
+            background: #ffffff;
+            color: #2d5a87;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .glpc-btn-generate:hover { background: #2d5a87; color: #ffffff; }
+        .glpc-btn-generate:disabled { opacity: 0.5; cursor: not-allowed; }
+        .glpc-mgmt-tabs {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 8px;
+        }
+        .glpc-mgmt-tab {
+            flex: 1;
+            padding: 5px;
+            border: 1px solid #e4e7eb;
+            border-radius: 6px;
+            background: #ffffff;
+            font-size: 11px;
+            font-weight: 600;
+            color: #6b7280;
+            cursor: pointer;
+        }
+        .glpc-mgmt-tab.active { background: #1a365d; color: #ffffff; border-color: #1a365d; }
+        .glpc-mgmt-filter { margin-bottom: 8px; }
+        .glpc-toggle-label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            color: #6b7280;
+            cursor: pointer;
+        }
+        .glpc-toggle-label input[type="checkbox"] { accent-color: #2d5a87; }
+        .glpc-mgmt-list {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .glpc-mgmt-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 4px 0;
+            border-bottom: 1px solid #f3f4f6;
+        }
+        .glpc-mgmt-row.glpc-mgmt-inactive { opacity: 0.5; }
+        .glpc-mgmt-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            color: #374151;
+            cursor: pointer;
+        }
+        .glpc-mgmt-checkbox input { accent-color: #2d5a87; }
+        .glpc-mgmt-meta {
+            font-size: 9px;
+            color: #9ca3af;
+        }
+        .glpc-mgmt-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 8px;
+        }
+        .glpc-btn-apply {
+            padding: 6px 16px;
+            border: none;
+            border-radius: 6px;
+            background: #2d5a87;
+            color: #ffffff;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .glpc-btn-apply:disabled { opacity: 0.4; cursor: not-allowed; }
+        .glpc-saved-msg {
+            font-size: 11px;
+            color: #16a34a;
+            font-weight: 600;
+        }
+        .glpc-empty {
+            text-align: center;
+            color: #9ca3af;
+            font-size: 12px;
+            padding: 20px 10px;
+        }
+        .glpc-empty-state {
+            text-align: center;
+            padding: 60px 20px;
+        }
+        .glpc-empty-icon { margin-bottom: 16px; }
+        .glpc-empty-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #374151;
+            margin-bottom: 6px;
+        }
+        .glpc-empty-sub {
+            font-size: 12px;
+            color: #9ca3af;
+            max-width: 300px;
+            margin: 0 auto;
+        }
+        /* Trajectory Insights */
+        .glpc-trajectory-header {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 8px;
+        }
+        .glpc-trajectory-panel {
+            background: #ffffff;
+            border: 1px solid #e4e7eb;
+            border-radius: 10px;
+            padding: 14px;
+            margin-bottom: 12px;
+        }
+        .glpc-trajectory-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .glpc-trajectory-wide { grid-column: 1 / -1; }
+        .glpc-trajectory-label {
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: #8c95a1;
+            margin-bottom: 2px;
+        }
+        .glpc-trajectory-value {
+            font-size: 13px;
+            font-weight: 700;
+            color: #1a365d;
+        }
+        .glpc-trajectory-suggestions { }
+        .glpc-trajectory-suggestion {
+            font-size: 11px;
+            color: #4b5563;
+            padding: 4px 0;
+            border-top: 1px solid #f3f4f6;
+        }
+        .glpc-trajectory-suggestion:first-child { border-top: none; }
+
+        /* GLP Console responsive */
+        @media (max-width: 900px) {
+            .glpc-layout {
+                grid-template-columns: 1fr;
+                height: auto;
+            }
+            .glpc-left { border-right: none; border-bottom: 1px solid #e4e7eb; max-height: 400px; }
+        }
+
         /* Responsive */
         @media (max-width: 1200px) {
             .dic-container {
@@ -1108,7 +1443,7 @@
         <button class="tab-btn" data-tab="lab-files">Laboratory Files</button>
         <button class="tab-btn" data-tab="group-docs">Group Documents</button>
         <button class="tab-btn" data-tab="user-mgmt">User Management</button>
-        <button class="tab-btn" data-tab="reports">Reports</button>
+        <button class="tab-btn" data-tab="glp-console">GLP Status</button>
         <button class="tab-btn" data-tab="backup">Backup</button>
         <button class="tab-btn" data-tab="purchases-inventory">Purchases &amp; Inventory</button>
         <button class="tab-btn" data-tab="training">Training &amp; Approvals</button>
@@ -1526,98 +1861,229 @@
         </div>
     </div>
 
-    <!-- ==================== REPORTS TAB ==================== -->
-    <div class="tab-content" id="tab-reports">
-        <div class="stats-row">
-            <div class="stat-card">
-                <div class="stat-value" id="reportTotalSubmissions">-</div>
-                <div class="stat-label">Total Submissions</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value" id="reportTotalResearchers">-</div>
-                <div class="stat-label">Active Researchers</div>
-            </div>
-            <div class="stat-card approved">
-                <div class="stat-value" id="reportApprovalRate">-</div>
-                <div class="stat-label">Approval Rate</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value" id="reportThisMonth">-</div>
-                <div class="stat-label">This Month</div>
-            </div>
-        </div>
+    <!-- ==================== GLP CONSOLE TAB ==================== -->
+    <div class="tab-content" id="tab-glp-console">
+        <div class="glpc-layout">
+            <!-- LEFT PANEL -->
+            <div class="glpc-left" id="glpcLeftPanel">
+                <!-- Visualization Section -->
+                <div class="glpc-section">
+                    <div class="glpc-section-title">VISUALIZATION</div>
 
-        <div class="two-column">
-            <!-- Submissions by Status -->
-            <div class="panel">
-                <div class="panel-header">
-                    <h2><span class="icon">&#128202;</span> Submissions by Status</h2>
+                    <!-- Mode Switch -->
+                    <div class="glpc-mode-switch">
+                        <button class="glpc-mode-btn active" id="glpcModeIndividual" onclick="glpcSetMode('individual')">Individual</button>
+                        <button class="glpc-mode-btn" id="glpcModeGroup" onclick="glpcSetMode('group')">Group</button>
+                    </div>
+
+                    <!-- Individual Mode: Member List -->
+                    <div id="glpcIndividualPanel">
+                        <input type="text" class="glpc-search" id="glpcMemberSearch" placeholder="Search members..." oninput="glpcFilterMembers()">
+                        <div class="glpc-chips" id="glpcFilterChips">
+                            <button class="glpc-chip active" onclick="glpcSetMemberFilter('all', this)">All</button>
+                            <button class="glpc-chip" onclick="glpcSetMemberFilter('researcher', this)">Researchers</button>
+                            <button class="glpc-chip" onclick="glpcSetMemberFilter('supervisor', this)">Supervisors</button>
+                            <button class="glpc-chip" onclick="glpcSetMemberFilter('LiU', this)">LiU</button>
+                            <button class="glpc-chip" onclick="glpcSetMemberFilter('UNAV', this)">UNAV</button>
+                        </div>
+                        <div class="glpc-member-list" id="glpcMemberList">
+                            <div class="glpc-empty">Loading members...</div>
+                        </div>
+                    </div>
+
+                    <!-- Group Mode: Group Selector -->
+                    <div id="glpcGroupPanel" style="display:none;">
+                        <div class="glpc-chips">
+                            <button class="glpc-chip active" id="glpcGroupBoth" onclick="glpcSelectGroup('BOTH')">Both</button>
+                            <button class="glpc-chip" id="glpcGroupLiU" onclick="glpcSelectGroup('LIU')">LiU</button>
+                            <button class="glpc-chip" id="glpcGroupUNAV" onclick="glpcSelectGroup('UNAV')">UNAV</button>
+                        </div>
+                        <!-- Group Overview Cards -->
+                        <div class="glpc-overview-cards" id="glpcGroupOverview">
+                            <div class="glpc-overview-card">
+                                <div class="glpc-overview-label">MEMBERS</div>
+                                <div class="glpc-overview-value" id="glpcGroupMembers">--</div>
+                            </div>
+                            <div class="glpc-overview-card">
+                                <div class="glpc-overview-label">MATURITY</div>
+                                <div class="glpc-overview-value" id="glpcGroupMaturity">--</div>
+                            </div>
+                            <div class="glpc-overview-card">
+                                <div class="glpc-overview-label">WEEK DELTA</div>
+                                <div class="glpc-overview-value" id="glpcGroupDelta">--</div>
+                            </div>
+                        </div>
+                        <div class="glpc-group-actions">
+                            <button class="glpc-btn-generate" onclick="glpcGenerateGroup()">Generate Group Snapshot</button>
+                        </div>
+                    </div>
                 </div>
-                <div class="panel-content">
-                    <table class="data-table" id="statusBreakdownTable">
-                        <thead>
-                            <tr>
-                                <th>Status</th>
-                                <th>Count</th>
-                                <th>Percentage</th>
-                            </tr>
-                        </thead>
-                        <tbody id="statusBreakdownBody">
-                            <tr><td colspan="3"><div class="loading"><div class="spinner"></div>Loading...</div></td></tr>
-                        </tbody>
-                    </table>
+
+                <!-- Management Section -->
+                <div class="glpc-section">
+                    <div class="glpc-section-title">MANAGEMENT</div>
+                    <div class="glpc-mgmt-tabs">
+                        <button class="glpc-mgmt-tab active" onclick="glpcSetMgmtTab('LIU', this)">LiU</button>
+                        <button class="glpc-mgmt-tab" onclick="glpcSetMgmtTab('UNAV', this)">UNAV</button>
+                    </div>
+                    <div class="glpc-mgmt-filter">
+                        <label class="glpc-toggle-label">
+                            <input type="checkbox" id="glpcShowInactive" onchange="glpcLoadMgmt(glpcCurrentMgmtCohort)"> Show inactive
+                        </label>
+                    </div>
+                    <div class="glpc-mgmt-list" id="glpcMgmtList">
+                        <div class="glpc-empty">Loading...</div>
+                    </div>
+                    <div class="glpc-mgmt-actions">
+                        <button class="glpc-btn-apply" id="glpcApplyBtn" onclick="glpcApplyMgmt()" disabled>Apply Changes</button>
+                        <span class="glpc-saved-msg" id="glpcSavedMsg"></span>
+                    </div>
                 </div>
             </div>
 
-            <!-- Submissions by Researcher -->
-            <div class="panel">
-                <div class="panel-header">
-                    <h2><span class="icon">&#128100;</span> Top Researchers</h2>
+            <!-- RIGHT PANEL: GLP Status Viewer -->
+            <div class="glpc-right" id="glpcRightPanel">
+                <!-- Trajectory Insights Toggle -->
+                <div class="glpc-trajectory-header">
+                    <label class="glpc-toggle-label">
+                        <input type="checkbox" id="glpcTrajectoryToggle" onchange="glpcToggleTrajectory()">
+                        Trajectory Insights
+                    </label>
                 </div>
-                <div class="panel-content">
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>Researcher</th>
-                                <th>Submissions</th>
-                                <th>Approved</th>
-                            </tr>
-                        </thead>
-                        <tbody id="researcherBreakdownBody">
-                            <tr><td colspan="3"><div class="loading"><div class="spinner"></div>Loading...</div></td></tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
 
-        <!-- Export Section -->
-        <div class="panel">
-            <div class="panel-header">
-                <h2><span class="icon">&#128190;</span> Export Data</h2>
-            </div>
-            <div class="panel-content">
-                <div class="filter-bar">
-                    <div class="filter-group">
-                        <label>From Date</label>
-                        <input type="date" id="exportFromDate">
+                <!-- Trajectory Insights Panel (hidden by default) -->
+                <div class="glpc-trajectory-panel" id="glpcTrajectoryPanel" style="display:none;">
+                    <div class="glpc-trajectory-grid">
+                        <div class="glpc-trajectory-item">
+                            <div class="glpc-trajectory-label">TRAJECTORY</div>
+                            <div class="glpc-trajectory-value" id="glpcTrajSlope">--</div>
+                        </div>
+                        <div class="glpc-trajectory-item">
+                            <div class="glpc-trajectory-label">VOLATILITY</div>
+                            <div class="glpc-trajectory-value" id="glpcTrajVolatility">--</div>
+                        </div>
+                        <div class="glpc-trajectory-item glpc-trajectory-wide">
+                            <div class="glpc-trajectory-label">TOP DOMAINS DRIVING CHANGE</div>
+                            <div class="glpc-trajectory-value" id="glpcTrajDomains">--</div>
+                        </div>
                     </div>
-                    <div class="filter-group">
-                        <label>To Date</label>
-                        <input type="date" id="exportToDate">
+                    <div class="glpc-trajectory-suggestions" id="glpcTrajSuggestions"></div>
+                </div>
+
+                <!-- GLP Status Viewer (replicates upload.html structure) -->
+                <div class="glpWrap" id="glpcViewer">
+                    <div class="glpc-empty-state" id="glpcEmptyState">
+                        <div class="glpc-empty-icon">
+                            <img src="/assets/glp-icons/Owl.png" alt="GLP" style="width:64px;opacity:0.5;">
+                        </div>
+                        <div class="glpc-empty-title">Select a member or group</div>
+                        <div class="glpc-empty-sub">Choose an individual member from the list or switch to Group mode to view aggregated GLP status.</div>
                     </div>
-                    <div class="filter-group">
-                        <label>Status</label>
-                        <select id="exportStatus">
-                            <option value="">All Statuses</option>
-                            <option value="PENDING">Pending</option>
-                            <option value="APPROVED">Approved</option>
-                            <option value="REVISION_NEEDED">Revision Needed</option>
-                        </select>
+
+                    <!-- A. Header card -->
+                    <div class="glpCard" id="glpcHeaderCard" style="display:none;">
+                        <div class="glpHdr__topRow">
+                            <span class="glpHdr__title">GLP Status</span>
+                            <div class="glpWeekSelector" id="glpcWeekSelector">
+                                <button class="glpWeekNav" id="glpcWeekPrev" onclick="glpcNavWeek(-1)" title="Previous week" disabled>&lsaquo;</button>
+                                <span class="glpWeekLabel" id="glpcWeekLabel">--</span>
+                                <button class="glpWeekNav" id="glpcWeekNext" onclick="glpcNavWeek(1)" title="Next week" disabled>&rsaquo;</button>
+                            </div>
+                        </div>
+                        <div class="glpHdr__mainRow">
+                            <div class="glpHdr__mainLeft">
+                                <div class="glpName" id="glpcName"></div>
+                                <div class="glpBadgeRow">
+                                    <span class="glpBadge glpBadge--role" id="glpcRoleBadge"></span>
+                                    <span class="glpBadge glpBadge--aff" id="glpcAffiliationBadge"></span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="glpHdr__divider"></div>
+                        <div class="glpHdr__statusRow">
+                            <div id="glpcMaturityIcon">
+                                <img src="/assets/glp-icons/Owl.png" alt="Owl" />
+                            </div>
+                            <div class="glpHdr__statusText">
+                                <div class="glpHdr__maturityLine" id="glpcStateText">GLP in development</div>
+                                <div class="glpHdr__qualifierLine" id="glpcQualifier">Partial implementation</div>
+                            </div>
+                            <div class="glpHdr__timestamp" id="glpcLastUpdated">Last updated: &mdash;</div>
+                        </div>
                     </div>
-                    <div class="filter-group" style="justify-content: flex-end;">
-                        <label>&nbsp;</label>
-                        <button class="btn btn-success" onclick="exportToCSV()">Export to CSV</button>
+
+                    <!-- B. Evidence Harmony card -->
+                    <div class="glpCard" id="glpcEvidenceCard" style="display:none;">
+                        <div class="glpMicroTitle">Evidence Harmony</div>
+                        <div class="glpVisionTable" id="glpcVisionTable">
+                            <div class="glpVT__row">
+                                <div class="glpVT__cell">
+                                    <div class="glpVT__label">Overall</div>
+                                    <div class="glpVT__score" id="glpcVTOverall">--</div>
+                                    <div class="glpVT__delta" id="glpcVTOverallDelta"></div>
+                                </div>
+                                <div class="glpVT__cell">
+                                    <div class="glpVT__label">Documentation</div>
+                                    <div class="glpVT__score" id="glpcVTDoc">--</div>
+                                    <div class="glpVT__delta" id="glpcVTDocDelta"></div>
+                                </div>
+                                <div class="glpVT__cell">
+                                    <div class="glpVT__label">Training</div>
+                                    <div class="glpVT__score" id="glpcVTTrain">--</div>
+                                    <div class="glpVT__delta" id="glpcVTTrainDelta"></div>
+                                </div>
+                                <div class="glpVT__cell">
+                                    <div class="glpVT__label">Traceability</div>
+                                    <div class="glpVT__score" id="glpcVTTrace">--</div>
+                                    <div class="glpVT__delta" id="glpcVTTraceDelta"></div>
+                                </div>
+                                <div class="glpVT__cell">
+                                    <div class="glpVT__label">Data Integrity</div>
+                                    <div class="glpVT__score" id="glpcVTData">--</div>
+                                    <div class="glpVT__delta" id="glpcVTDataDelta"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="glpMiniCards">
+                            <div class="glpMiniCard">
+                                <div class="glpMiniCard__title">SOPs</div>
+                                <div class="glpMiniCard__big" id="glpcSopApproved">--</div>
+                                <div class="glpMiniCard__coverage" id="glpcSopCoverage">--</div>
+                            </div>
+                            <div class="glpMiniCard">
+                                <div class="glpMiniCard__title">Experiments</div>
+                                <div class="glpMiniCard__big" id="glpcExpReported">--</div>
+                                <div class="glpMiniCard__coverage" id="glpcExpCoverage">--</div>
+                            </div>
+                            <div class="glpMiniCard">
+                                <div class="glpMiniCard__title">Inventory</div>
+                                <div class="glpMiniCard__big" id="glpcInvTotal">--</div>
+                                <div class="glpMiniCard__row"><span>Products</span><span class="glpMiniCard__rowVal" id="glpcInvProducts">--</span></div>
+                                <div class="glpMiniCard__row"><span>Samples</span><span class="glpMiniCard__rowVal" id="glpcInvSamples">--</span></div>
+                                <div class="glpMiniCard__row"><span>Oligos</span><span class="glpMiniCard__rowVal" id="glpcInvOligos">--</span></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- C. GLP Conformity card -->
+                    <div class="glpCard" id="glpcConformityCard" style="display:none;">
+                        <div class="glpMicroTitle">GLP Conformity</div>
+                        <div class="glpConformityInner">
+                            <div class="glpConfContent">
+                                <div class="glpConfSection">
+                                    <div class="glpConfSection__title">What is working well</div>
+                                    <ul class="glpConfSection__list" id="glpcConfWorking"></ul>
+                                </div>
+                                <div class="glpConfSection">
+                                    <div class="glpConfSection__title">Main improvement</div>
+                                    <ul class="glpConfSection__list" id="glpcConfImprovement"></ul>
+                                </div>
+                                <div class="glpConfSection">
+                                    <div class="glpConfSection__title">Focus for the coming week</div>
+                                    <ul class="glpConfSection__list" id="glpcConfFocus"></ul>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -2116,7 +2582,6 @@
                 populateResearcherDropdown();
                 loadGroupDocuments();
                 loadAllUsers();
-                loadReportsData();
 
             } catch (err) {
                 window.location.href = 'access.html';
@@ -2141,7 +2606,7 @@
 
                 // Load tab-specific data
                 if (tabId === 'lab-files') dicInit();
-                if (tabId === 'reports') loadReportsData();
+                if (tabId === 'glp-console') glpcInit();
                 if (tabId === 'purchases-inventory') { loadAllPurchaseRequests(); loadAllInventoryV2(); loadPONumbers(); }
                 if (tabId === 'training') { loadTrainingDocuments(); loadPendingTrainingPacks(); loadSealedTrainingPacks(); }
             });
@@ -3793,64 +4258,662 @@
         }
 
         // =====================================================
-        // REPORTS TAB
+        // GLP CONSOLE (PI-only)
         // =====================================================
-        async function loadReportsData() {
+
+        const glpcLevelLabels = {
+            hatchling: 'GLP initiation phase', fledgling: 'GLP emerging',
+            owl: 'GLP in development', eagle: 'GLP consolidated', dragon: 'GLP fully integrated'
+        };
+        const glpcLevelQualifiers = {
+            hatchling: 'Documentation starting', fledgling: 'Building foundations',
+            owl: 'Partial implementation', eagle: 'Consistent implementation', dragon: 'Full integration'
+        };
+        const glpcLevelIcons = {
+            hatchling: 'Hatchling', fledgling: 'Fledgling', owl: 'Owl', eagle: 'Eagle-GLP', dragon: 'Dragon-GLP'
+        };
+
+        let glpcAllMembers = [];
+        let glpcFilteredMembers = [];
+        let glpcMemberFilter = 'all';
+        let glpcMode = 'individual'; // 'individual' or 'group'
+        let glpcSelectedUserId = null;
+        let glpcSelectedGroup = 'BOTH';
+        let glpcCurrentMgmtCohort = 'LIU';
+        let glpcMgmtData = {};
+        let glpcMgmtDirty = false;
+
+        // Viewer state
+        let glpcWeeks = [];
+        let glpcCurrentWeekIdx = 0;
+        let glpcViewerEntity = null; // { type: 'individual', userId } or { type: 'group', cohortId }
+        let glpcInitDone = false;
+
+        // Snapshot cache for trajectory insights
+        let glpcSnapshotCache = {};
+
+        async function glpcInit() {
+            if (glpcInitDone) return;
+            glpcInitDone = true;
+
+            // Restore trajectory toggle from localStorage
+            const trajPref = localStorage.getItem('glpcTrajectoryOn');
+            if (trajPref === 'true') {
+                document.getElementById('glpcTrajectoryToggle').checked = true;
+            }
+
+            // Load all members for sidebar
             try {
-                const response = await fetch('/api/di/metrics', { credentials: 'include' });
-                if (!response.ok) throw new Error('Failed to load');
-                const data = await response.json();
+                const [liuResp, unavResp] = await Promise.all([
+                    fetch('/api/glp/cohorts/members?cohort_id=LIU', { credentials: 'include' }),
+                    fetch('/api/glp/cohorts/members?cohort_id=UNAV', { credentials: 'include' })
+                ]);
+                const liuData = liuResp.ok ? await liuResp.json() : { members: [] };
+                const unavData = unavResp.ok ? await unavResp.json() : { members: [] };
 
-                // Update summary stats
-                document.getElementById('reportTotalSubmissions').textContent = data.total || 0;
-                document.getElementById('reportTotalResearchers').textContent = data.totalResearchers || 0;
-                document.getElementById('reportThisMonth').textContent = data.thisMonth || 0;
+                glpcAllMembers = [
+                    ...(liuData.members || []).map(m => ({ ...m, cohort: 'LIU' })),
+                    ...(unavData.members || []).map(m => ({ ...m, cohort: 'UNAV' }))
+                ];
+                // De-duplicate by user_id (a user appears in one cohort only)
+                const seen = new Set();
+                glpcAllMembers = glpcAllMembers.filter(m => {
+                    if (seen.has(m.user_id)) return false;
+                    seen.add(m.user_id);
+                    return true;
+                });
+                glpcAllMembers.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+            } catch (e) {
+                console.warn('[GLP-CONSOLE] Failed to load members:', e);
+                glpcAllMembers = [];
+            }
 
-                const approved = data.byStatus?.APPROVED || 0;
-                const total = data.total || 1;
-                document.getElementById('reportApprovalRate').textContent = Math.round((approved / total) * 100) + '%';
+            glpcFilterMembers();
+            glpcLoadMgmt(glpcCurrentMgmtCohort);
 
-                // Status breakdown
-                const statusBody = document.getElementById('statusBreakdownBody');
-                statusBody.innerHTML = Object.entries(data.byStatus || {}).map(([status, count]) => {
-                    const pct = Math.round((count / total) * 100);
-                    const statusClass = status === 'APPROVED' ? 'status-approved' : status === 'REVISION_NEEDED' ? 'status-revision' : 'status-pending';
-                    return `
-                        <tr>
-                            <td><span class="status-badge ${statusClass}">${status.replace('_', ' ')}</span></td>
-                            <td>${count}</td>
-                            <td>${pct}%</td>
-                        </tr>
-                    `;
-                }).join('') || '<tr><td colspan="3" style="text-align:center;color:#666;">No data</td></tr>';
+            // Default: group mode, BOTH
+            glpcSetMode('group');
+        }
 
-                // Researcher breakdown
-                const researcherBody = document.getElementById('researcherBreakdownBody');
-                const topResearchers = (data.byResearcher || []).slice(0, 10);
-                researcherBody.innerHTML = topResearchers.map(r => `
-                    <tr>
-                        <td>${escapeHtml(r.researcher_id)}</td>
-                        <td>${r.total}</td>
-                        <td>${r.approved || 0}</td>
-                    </tr>
-                `).join('') || '<tr><td colspan="3" style="text-align:center;color:#666;">No data</td></tr>';
+        function glpcFormatName(name) {
+            if (!name) return '?';
+            const parts = name.trim().split(/\s+/);
+            if (parts.length < 2) return parts[0];
+            return parts[0] + ' ' + parts[parts.length - 1].charAt(0) + '.';
+        }
 
-            } catch (err) {
-                console.error('Error loading reports:', err);
+        function glpcGetInitials(name) {
+            if (!name) return '?';
+            const parts = name.trim().split(/\s+/);
+            return parts.map(p => p.charAt(0).toUpperCase()).slice(0, 2).join('');
+        }
+
+        function glpcSetMode(mode) {
+            glpcMode = mode;
+            document.getElementById('glpcModeIndividual').classList.toggle('active', mode === 'individual');
+            document.getElementById('glpcModeGroup').classList.toggle('active', mode === 'group');
+            document.getElementById('glpcIndividualPanel').style.display = mode === 'individual' ? '' : 'none';
+            document.getElementById('glpcGroupPanel').style.display = mode === 'group' ? '' : 'none';
+
+            if (mode === 'group') {
+                glpcSelectGroup(glpcSelectedGroup);
             }
         }
 
-        async function exportToCSV() {
-            const from = document.getElementById('exportFromDate').value;
-            const to = document.getElementById('exportToDate').value;
-            const status = document.getElementById('exportStatus').value;
+        function glpcSetMemberFilter(filter, el) {
+            glpcMemberFilter = filter;
+            document.querySelectorAll('#glpcFilterChips .glpc-chip').forEach(c => c.classList.remove('active'));
+            if (el) el.classList.add('active');
+            glpcFilterMembers();
+        }
 
-            let url = '/api/di/reports/export?format=csv';
-            if (from) url += `&from=${from}`;
-            if (to) url += `&to=${to}`;
-            if (status) url += `&status=${status}`;
+        function glpcFilterMembers() {
+            const search = (document.getElementById('glpcMemberSearch')?.value || '').toLowerCase();
+            glpcFilteredMembers = glpcAllMembers.filter(m => {
+                if (!m.active) return false;
+                if (search && !(m.name || '').toLowerCase().includes(search) && !(m.user_id || '').toLowerCase().includes(search)) return false;
+                if (glpcMemberFilter === 'researcher' && m.role !== 'researcher') return false;
+                if (glpcMemberFilter === 'supervisor' && m.role !== 'supervisor') return false;
+                if (glpcMemberFilter === 'LiU' && m.institution !== 'LiU') return false;
+                if (glpcMemberFilter === 'UNAV' && m.institution !== 'UNAV') return false;
+                return true;
+            });
+            glpcRenderMemberList();
+        }
 
-            window.location.href = url;
+        function glpcRenderMemberList() {
+            const container = document.getElementById('glpcMemberList');
+            if (glpcFilteredMembers.length === 0) {
+                container.innerHTML = '<div class="glpc-empty">No members found</div>';
+                return;
+            }
+            container.innerHTML = glpcFilteredMembers.map(m => {
+                const selected = m.user_id === glpcSelectedUserId ? ' glpc-member-selected' : '';
+                const initials = glpcGetInitials(m.name);
+                const affColor = m.institution === 'LiU' ? '#1565c0' : '#2e7d32';
+                const lastWeek = m.last_iso_week ? `<span class="glpc-member-week">${m.last_iso_week}</span>` : '';
+                return `<div class="glpc-member-row${selected}" onclick="glpcSelectMember('${m.user_id}')">
+                    <div class="glpc-member-avatar" style="background:${affColor}">${initials}</div>
+                    <div class="glpc-member-info">
+                        <div class="glpc-member-name">${escapeHtml(glpcFormatName(m.name))}</div>
+                        <div class="glpc-member-meta">
+                            <span class="glpc-member-badge">${m.institution || '?'}</span>
+                            <span class="glpc-member-badge">${m.role || 'researcher'}</span>
+                            ${lastWeek}
+                        </div>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        async function glpcSelectMember(userId) {
+            glpcSelectedUserId = userId;
+            glpcRenderMemberList();
+
+            const member = glpcAllMembers.find(m => m.user_id === userId);
+            glpcViewerEntity = { type: 'individual', userId };
+
+            // Show viewer, hide empty state
+            document.getElementById('glpcEmptyState').style.display = 'none';
+            document.getElementById('glpcHeaderCard').style.display = '';
+            document.getElementById('glpcEvidenceCard').style.display = '';
+            document.getElementById('glpcConformityCard').style.display = '';
+
+            // Set header info
+            document.getElementById('glpcName').textContent = member ? member.name : userId;
+            const roleBadge = document.getElementById('glpcRoleBadge');
+            const affBadge = document.getElementById('glpcAffiliationBadge');
+            if (roleBadge) roleBadge.textContent = member?.role || 'researcher';
+            if (affBadge) affBadge.textContent = member?.institution || '';
+
+            // Load weeks
+            try {
+                const resp = await fetch(`/api/glp/status/user/${userId}/weeks`, { credentials: 'include' });
+                if (!resp.ok) throw new Error('Failed');
+                const data = await resp.json();
+                glpcWeeks = data.weeks || [];
+                glpcCurrentWeekIdx = 0;
+                glpcSnapshotCache = {};
+
+                if (glpcWeeks.length > 0) {
+                    await glpcLoadWeek(glpcWeeks[0].iso_week);
+                    glpcUpdateWeekNav();
+                } else {
+                    glpcShowNoData();
+                }
+            } catch (e) {
+                console.warn('[GLP-CONSOLE] Failed to load weeks for', userId, e);
+                glpcShowNoData();
+            }
+        }
+
+        async function glpcSelectGroup(cohortId) {
+            glpcSelectedGroup = cohortId;
+            document.getElementById('glpcGroupBoth').classList.toggle('active', cohortId === 'BOTH');
+            document.getElementById('glpcGroupLiU').classList.toggle('active', cohortId === 'LIU');
+            document.getElementById('glpcGroupUNAV').classList.toggle('active', cohortId === 'UNAV');
+
+            glpcViewerEntity = { type: 'group', cohortId };
+
+            document.getElementById('glpcEmptyState').style.display = 'none';
+            document.getElementById('glpcHeaderCard').style.display = '';
+            document.getElementById('glpcEvidenceCard').style.display = '';
+            document.getElementById('glpcConformityCard').style.display = '';
+
+            const label = cohortId === 'BOTH' ? 'All Members' : cohortId === 'LIU' ? 'LiU Group' : 'UNAV Group';
+            document.getElementById('glpcName').textContent = label;
+            const roleBadge = document.getElementById('glpcRoleBadge');
+            const affBadge = document.getElementById('glpcAffiliationBadge');
+            if (roleBadge) roleBadge.textContent = 'Group';
+            if (affBadge) affBadge.textContent = cohortId === 'BOTH' ? 'LiU + UNAV' : cohortId;
+
+            // Load group weeks
+            try {
+                const resp = await fetch(`/api/glp/status/group/weeks?cohort_id=${cohortId}`, { credentials: 'include' });
+                if (!resp.ok) throw new Error('Failed');
+                const data = await resp.json();
+                glpcWeeks = data.weeks || [];
+                glpcCurrentWeekIdx = 0;
+                glpcSnapshotCache = {};
+
+                if (glpcWeeks.length > 0) {
+                    await glpcLoadGroupWeek(glpcWeeks[0].iso_week);
+                    glpcUpdateWeekNav();
+                    // Update overview cards
+                    const w = glpcWeeks[0];
+                    document.getElementById('glpcGroupMembers').textContent = w.member_count || '--';
+                } else {
+                    glpcShowNoData();
+                    document.getElementById('glpcGroupMembers').textContent = '--';
+                    document.getElementById('glpcGroupMaturity').textContent = '--';
+                    document.getElementById('glpcGroupDelta').textContent = '--';
+                }
+            } catch (e) {
+                console.warn('[GLP-CONSOLE] Failed to load group weeks:', e);
+                glpcShowNoData();
+            }
+        }
+
+        async function glpcLoadWeek(isoWeek) {
+            try {
+                const userId = glpcViewerEntity.userId;
+                const resp = await fetch(`/api/glp/status/user/${userId}/week/${isoWeek}`, { credentials: 'include' });
+                if (!resp.ok) return;
+                const data = await resp.json();
+                if (!data.success) return;
+
+                glpcSnapshotCache[isoWeek] = data.snapshot;
+
+                // Previous week for delta
+                let prevSnap = null;
+                if (glpcCurrentWeekIdx + 1 < glpcWeeks.length) {
+                    const prevWeek = glpcWeeks[glpcCurrentWeekIdx + 1].iso_week;
+                    if (glpcSnapshotCache[prevWeek]) {
+                        prevSnap = glpcSnapshotCache[prevWeek];
+                    } else {
+                        try {
+                            const prevResp = await fetch(`/api/glp/status/user/${userId}/week/${prevWeek}`, { credentials: 'include' });
+                            if (prevResp.ok) {
+                                const prevData = await prevResp.json();
+                                if (prevData.success) { prevSnap = prevData.snapshot; glpcSnapshotCache[prevWeek] = prevSnap; }
+                            }
+                        } catch (e) { /* no delta */ }
+                    }
+                }
+
+                glpcRenderSnapshot(data.snapshot, prevSnap, data.harmony, data.generated_at, isoWeek);
+                glpcComputeTrajectory();
+            } catch (e) {
+                console.warn('[GLP-CONSOLE] loadWeek error:', e);
+            }
+        }
+
+        async function glpcLoadGroupWeek(isoWeek) {
+            try {
+                const cohortId = glpcViewerEntity.cohortId;
+                const resp = await fetch(`/api/glp/status/group/snapshot?cohort_id=${cohortId}&iso_week=${isoWeek}`, { credentials: 'include' });
+                if (!resp.ok) return;
+                const data = await resp.json();
+                if (!data.success) return;
+
+                glpcSnapshotCache[isoWeek] = data.snapshot;
+
+                // Previous week for delta
+                let prevSnap = null;
+                if (glpcCurrentWeekIdx + 1 < glpcWeeks.length) {
+                    const prevWeek = glpcWeeks[glpcCurrentWeekIdx + 1].iso_week;
+                    if (glpcSnapshotCache[prevWeek]) {
+                        prevSnap = glpcSnapshotCache[prevWeek];
+                    } else {
+                        try {
+                            const prevResp = await fetch(`/api/glp/status/group/snapshot?cohort_id=${cohortId}&iso_week=${prevWeek}`, { credentials: 'include' });
+                            if (prevResp.ok) {
+                                const prevData = await prevResp.json();
+                                if (prevData.success) { prevSnap = prevData.snapshot; glpcSnapshotCache[prevWeek] = prevSnap; }
+                            }
+                        } catch (e) { /* no delta */ }
+                    }
+                }
+
+                glpcRenderSnapshot(data.snapshot, prevSnap, null, data.created_at, isoWeek);
+
+                // Update group overview cards
+                document.getElementById('glpcGroupMembers').textContent = data.snapshot.member_count || '--';
+                document.getElementById('glpcGroupMaturity').textContent = glpcLevelLabels[data.snapshot.glp_level] || '--';
+                if (prevSnap) {
+                    const d = (data.snapshot.overall_score || 0) - (prevSnap.overall_score || 0);
+                    document.getElementById('glpcGroupDelta').textContent = (d > 0 ? '+' : '') + d;
+                    document.getElementById('glpcGroupDelta').style.color = d > 0 ? '#16a34a' : d < 0 ? '#dc2626' : '#6b7280';
+                } else {
+                    document.getElementById('glpcGroupDelta').textContent = '--';
+                }
+
+                glpcComputeTrajectory();
+            } catch (e) {
+                console.warn('[GLP-CONSOLE] loadGroupWeek error:', e);
+            }
+        }
+
+        function glpcRenderSnapshot(snap, prevSnap, harmony, generatedAt, isoWeek) {
+            // Header maturity
+            const levelKey = snap.glp_level || 'owl';
+            document.getElementById('glpcStateText').textContent = glpcLevelLabels[levelKey] || levelKey;
+            document.getElementById('glpcQualifier').textContent = glpcLevelQualifiers[levelKey] || '';
+            const iconName = glpcLevelIcons[levelKey] || 'Owl';
+            document.getElementById('glpcMaturityIcon').innerHTML = `<img src="/assets/glp-icons/${iconName}.png" alt="${levelKey}" />`;
+
+            // Timestamp
+            const ts = new Date(generatedAt);
+            document.getElementById('glpcLastUpdated').textContent = 'Snapshot: ' + isoWeek + ', ' +
+                ts.toLocaleDateString('en-SE', { weekday: 'short' }) + ' ' +
+                ts.toLocaleTimeString('en-SE', { hour: '2-digit', minute: '2-digit' });
+
+            // Vision table
+            glpcSetVT('glpcVTOverall', snap.overall_score, prevSnap?.overall_score);
+            glpcSetVT('glpcVTDoc', snap.spheres?.documentation?.score, prevSnap?.spheres?.documentation?.score);
+            glpcSetVT('glpcVTTrain', snap.spheres?.training?.score, prevSnap?.spheres?.training?.score);
+            glpcSetVT('glpcVTTrace', snap.spheres?.traceability?.score, prevSnap?.spheres?.traceability?.score);
+            glpcSetVT('glpcVTData', snap.spheres?.data_integrity?.score, prevSnap?.spheres?.data_integrity?.score);
+
+            // Evidence mini-cards
+            const ev = snap.evidence || {};
+            document.getElementById('glpcSopApproved').textContent = ev.sops?.approved ?? '--';
+            document.getElementById('glpcSopCoverage').textContent = ev.sops ? (ev.sops.approved + ' of ' + (ev.sops.total || 0) + ' approved') : '--';
+
+            const expObj = ev.experiments || ev.data;
+            document.getElementById('glpcExpReported').textContent = expObj?.total ?? '--';
+            document.getElementById('glpcExpCoverage').textContent = expObj ? ((expObj.linked_to_sops ?? expObj.linked ?? 0) + ' linked to SOPs') : '--';
+
+            document.getElementById('glpcInvTotal').textContent = ev.inventory?.total ?? '--';
+            document.getElementById('glpcInvProducts').textContent = ev.inventory?.products ?? '--';
+            document.getElementById('glpcInvSamples').textContent = ev.inventory?.samples ?? '--';
+            document.getElementById('glpcInvOligos').textContent = ev.inventory?.oligos ?? '--';
+
+            // Conformity
+            glpcRenderConformity(snap);
+        }
+
+        function glpcSetVT(id, score, prevScore) {
+            const el = document.getElementById(id);
+            const deltaEl = document.getElementById(id + 'Delta');
+            if (el) el.textContent = score ?? '--';
+            if (deltaEl) {
+                if (prevScore !== null && prevScore !== undefined && score !== null && score !== undefined) {
+                    const d = score - prevScore;
+                    deltaEl.textContent = (d > 0 ? '+' : '') + d;
+                    deltaEl.className = 'glpVT__delta ' + (d > 0 ? 'glpVT__delta--up' : d < 0 ? 'glpVT__delta--down' : '');
+                } else {
+                    deltaEl.textContent = '';
+                    deltaEl.className = 'glpVT__delta';
+                }
+            }
+        }
+
+        function glpcRenderConformity(snap) {
+            const c = snap.conformity || {};
+            const working = [];
+            const improvements = [];
+            const focus = [];
+
+            if (c.has_approved_sops) working.push('SOPs are approved and active.');
+            if (c.training_sealed) working.push('Training pack is sealed and certified.');
+            if (c.all_agreements_confirmed) working.push('All required agreements have been confirmed.');
+            if (c.inventory_active) working.push('Inventory tracking is active.');
+            if (c.no_open_revisions) working.push('No open revision requests.');
+            if (working.length === 0) working.push('GLP documentation is in its early stages.');
+
+            if (c.missing_sop_links) improvements.push('Link data records to approved SOPs.');
+            if (c.missing_training) improvements.push('Complete training entries and seek certification.');
+            if (c.missing_inventory) improvements.push('Begin tracking inventory items.');
+            if (!c.sop_coverage_adequate) improvements.push('Expand SOP coverage (target: 3+ approved).');
+            if (!c.data_coverage_adequate) improvements.push('Submit additional data records for review.');
+            if (improvements.length === 0) improvements.push('Maintain current documentation quality.');
+
+            if (!c.training_sealed) focus.push('Prioritize completing and sealing the training pack.');
+            if (!c.no_open_revisions) focus.push('Address open revision requests before next snapshot.');
+            if (!c.recent_activity) focus.push('Resume documented activity to maintain momentum.');
+            if (focus.length === 0) focus.push('Sustain practices and prepare for next review cycle.');
+
+            document.getElementById('glpcConfWorking').innerHTML = working.map(t => `<li>${escapeHtml(t)}</li>`).join('');
+            document.getElementById('glpcConfImprovement').innerHTML = improvements.map(t => `<li>${escapeHtml(t)}</li>`).join('');
+            document.getElementById('glpcConfFocus').innerHTML = focus.map(t => `<li>${escapeHtml(t)}</li>`).join('');
+        }
+
+        function glpcShowNoData() {
+            document.getElementById('glpcHeaderCard').style.display = '';
+            document.getElementById('glpcEvidenceCard').style.display = 'none';
+            document.getElementById('glpcConformityCard').style.display = 'none';
+            document.getElementById('glpcLastUpdated').textContent = 'No snapshots available';
+            document.getElementById('glpcWeekLabel').textContent = '--';
+        }
+
+        function glpcNavWeek(delta) {
+            const newIdx = glpcCurrentWeekIdx - delta;
+            if (newIdx < 0 || newIdx >= glpcWeeks.length) return;
+            glpcCurrentWeekIdx = newIdx;
+            const isoWeek = glpcWeeks[newIdx].iso_week;
+            if (glpcViewerEntity?.type === 'group') {
+                glpcLoadGroupWeek(isoWeek);
+            } else {
+                glpcLoadWeek(isoWeek);
+            }
+            glpcUpdateWeekNav();
+        }
+
+        function glpcUpdateWeekNav() {
+            const label = document.getElementById('glpcWeekLabel');
+            if (label && glpcWeeks[glpcCurrentWeekIdx]) label.textContent = glpcWeeks[glpcCurrentWeekIdx].iso_week;
+            const prev = document.getElementById('glpcWeekPrev');
+            const next = document.getElementById('glpcWeekNext');
+            if (prev) prev.disabled = (glpcCurrentWeekIdx >= glpcWeeks.length - 1);
+            if (next) next.disabled = (glpcCurrentWeekIdx <= 0);
+        }
+
+        // --- Group snapshot generation ---
+        async function glpcGenerateGroup() {
+            const btn = document.querySelector('.glpc-btn-generate');
+            btn.disabled = true;
+            btn.textContent = 'Generating...';
+            try {
+                const resp = await fetch('/api/glp/status/generate-group', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ cohort_id: glpcSelectedGroup })
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    btn.textContent = 'Generated!';
+                    setTimeout(() => { btn.textContent = 'Generate Group Snapshot'; btn.disabled = false; }, 2000);
+                    // Reload group view
+                    glpcSelectGroup(glpcSelectedGroup);
+                } else {
+                    btn.textContent = data.error || 'Failed';
+                    setTimeout(() => { btn.textContent = 'Generate Group Snapshot'; btn.disabled = false; }, 3000);
+                }
+            } catch (e) {
+                btn.textContent = 'Error';
+                setTimeout(() => { btn.textContent = 'Generate Group Snapshot'; btn.disabled = false; }, 3000);
+            }
+        }
+
+        // --- Management ---
+        async function glpcLoadMgmt(cohortId) {
+            glpcCurrentMgmtCohort = cohortId;
+            const container = document.getElementById('glpcMgmtList');
+            container.innerHTML = '<div class="glpc-empty">Loading...</div>';
+
+            try {
+                const resp = await fetch(`/api/glp/cohorts/members?cohort_id=${cohortId}`, { credentials: 'include' });
+                if (!resp.ok) throw new Error('Failed');
+                const data = await resp.json();
+                glpcMgmtData[cohortId] = data.members || [];
+            } catch (e) {
+                container.innerHTML = '<div class="glpc-empty">Failed to load</div>';
+                return;
+            }
+
+            glpcRenderMgmtList();
+        }
+
+        function glpcRenderMgmtList() {
+            const container = document.getElementById('glpcMgmtList');
+            const showInactive = document.getElementById('glpcShowInactive')?.checked || false;
+            const members = (glpcMgmtData[glpcCurrentMgmtCohort] || []).filter(m => showInactive || m.active);
+
+            if (members.length === 0) {
+                container.innerHTML = '<div class="glpc-empty">No members</div>';
+                return;
+            }
+
+            container.innerHTML = members.map(m => {
+                const checked = m.included ? 'checked' : '';
+                const lastWeek = m.last_iso_week || '';
+                const inactive = !m.active ? ' glpc-mgmt-inactive' : '';
+                return `<div class="glpc-mgmt-row${inactive}">
+                    <label class="glpc-mgmt-checkbox">
+                        <input type="checkbox" ${checked} data-userid="${m.user_id}" onchange="glpcMgmtChanged()">
+                        <span>${escapeHtml(glpcFormatName(m.name))}</span>
+                    </label>
+                    <span class="glpc-mgmt-meta">${lastWeek}</span>
+                </div>`;
+            }).join('');
+
+            glpcMgmtDirty = false;
+            document.getElementById('glpcApplyBtn').disabled = true;
+        }
+
+        function glpcMgmtChanged() {
+            glpcMgmtDirty = true;
+            document.getElementById('glpcApplyBtn').disabled = false;
+            document.getElementById('glpcSavedMsg').textContent = '';
+        }
+
+        function glpcSetMgmtTab(cohortId, el) {
+            document.querySelectorAll('.glpc-mgmt-tab').forEach(t => t.classList.remove('active'));
+            if (el) el.classList.add('active');
+            glpcLoadMgmt(cohortId);
+        }
+
+        async function glpcApplyMgmt() {
+            const checkboxes = document.querySelectorAll('#glpcMgmtList input[type="checkbox"]');
+            const updates = [];
+            checkboxes.forEach(cb => {
+                updates.push({ user_id: cb.dataset.userid, included: cb.checked });
+            });
+
+            try {
+                const resp = await fetch('/api/glp/cohorts/members/set', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ cohort_id: glpcCurrentMgmtCohort, updates })
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    document.getElementById('glpcSavedMsg').textContent = 'Saved';
+                    document.getElementById('glpcApplyBtn').disabled = true;
+                    glpcMgmtDirty = false;
+                    // Refresh sidebar members
+                    glpcInitDone = false;
+                    glpcInit();
+                }
+            } catch (e) {
+                document.getElementById('glpcSavedMsg').textContent = 'Error saving';
+            }
+        }
+
+        // --- Trajectory Insights (PI-only, client-side) ---
+        function glpcToggleTrajectory() {
+            const on = document.getElementById('glpcTrajectoryToggle').checked;
+            document.getElementById('glpcTrajectoryPanel').style.display = on ? '' : 'none';
+            localStorage.setItem('glpcTrajectoryOn', on ? 'true' : 'false');
+            if (on) glpcComputeTrajectory();
+        }
+
+        async function glpcComputeTrajectory() {
+            if (!document.getElementById('glpcTrajectoryToggle').checked) return;
+            if (glpcWeeks.length < 2) {
+                document.getElementById('glpcTrajSlope').textContent = 'Insufficient data';
+                document.getElementById('glpcTrajVolatility').textContent = '--';
+                document.getElementById('glpcTrajDomains').textContent = '--';
+                document.getElementById('glpcTrajSuggestions').innerHTML = '';
+                return;
+            }
+
+            // Load last N snapshots (up to 6)
+            const weekSlice = glpcWeeks.slice(0, Math.min(6, glpcWeeks.length));
+            const snaps = [];
+            for (const w of weekSlice) {
+                if (glpcSnapshotCache[w.iso_week]) {
+                    snaps.push(glpcSnapshotCache[w.iso_week]);
+                } else {
+                    try {
+                        let resp;
+                        if (glpcViewerEntity?.type === 'group') {
+                            resp = await fetch(`/api/glp/status/group/snapshot?cohort_id=${glpcViewerEntity.cohortId}&iso_week=${w.iso_week}`, { credentials: 'include' });
+                        } else {
+                            resp = await fetch(`/api/glp/status/user/${glpcViewerEntity.userId}/week/${w.iso_week}`, { credentials: 'include' });
+                        }
+                        if (resp.ok) {
+                            const d = await resp.json();
+                            if (d.success) {
+                                const s = d.snapshot;
+                                glpcSnapshotCache[w.iso_week] = s;
+                                snaps.push(s);
+                            }
+                        }
+                    } catch (e) { /* skip */ }
+                }
+            }
+
+            if (snaps.length < 2) {
+                document.getElementById('glpcTrajSlope').textContent = 'Insufficient data';
+                return;
+            }
+
+            // Compute slope: linear trend on overall_score (newest=0, oldest=N)
+            const scores = snaps.map(s => s.overall_score || 0);
+            const n = scores.length;
+            const xMean = (n - 1) / 2;
+            const yMean = scores.reduce((a, b) => a + b, 0) / n;
+            let num = 0, den = 0;
+            for (let i = 0; i < n; i++) {
+                num += (i - xMean) * (scores[i] - yMean);
+                den += (i - xMean) * (i - xMean);
+            }
+            const slope = den !== 0 ? num / den : 0;
+            // slope < 0 means improving (newest has lower index), but scores[0] is newest
+            // Actually: index 0 = newest, so negative slope = declining (scores decreasing from old to new)
+            // Let's recalculate: if newest (i=0) has higher score than oldest (i=n-1), slope is negative
+            // We want: improving if newest > oldest => slope < 0
+            let slopeClass;
+            if (slope < -1.5) slopeClass = 'Improving';
+            else if (slope > 1.5) slopeClass = 'Declining';
+            else slopeClass = 'Stable';
+
+            const slopeEl = document.getElementById('glpcTrajSlope');
+            slopeEl.textContent = slopeClass;
+            slopeEl.style.color = slopeClass === 'Improving' ? '#16a34a' : slopeClass === 'Declining' ? '#dc2626' : '#6b7280';
+
+            // Volatility: std dev of overall_score
+            const variance = scores.reduce((sum, s) => sum + Math.pow(s - yMean, 2), 0) / n;
+            const stdDev = Math.sqrt(variance);
+            let volatility;
+            if (stdDev < 3) volatility = 'Low';
+            else if (stdDev < 8) volatility = 'Medium';
+            else volatility = 'High';
+            document.getElementById('glpcTrajVolatility').textContent = volatility;
+
+            // Domain contribution: find which spheres changed the most this week
+            const newest = snaps[0];
+            const prev = snaps[1];
+            const domains = ['documentation', 'training', 'traceability', 'data_integrity'];
+            const deltas = domains.map(d => ({
+                name: d.replace('_', ' '),
+                delta: (newest.spheres?.[d]?.score || 0) - (prev.spheres?.[d]?.score || 0)
+            }));
+            deltas.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+            const top2 = deltas.slice(0, 2).filter(d => d.delta !== 0);
+            document.getElementById('glpcTrajDomains').textContent = top2.length > 0
+                ? top2.map(d => `${d.name} (${d.delta > 0 ? '+' : ''}${d.delta})`).join(', ')
+                : 'No significant changes';
+
+            // Suggestions (max 3)
+            const suggestions = [];
+            if (slopeClass === 'Declining') suggestions.push('Overall score is trending downward. Review recent changes in documentation and training.');
+            if (volatility === 'High') suggestions.push('Score volatility is high. Focus on consistent weekly documentation habits.');
+            for (const d of deltas) {
+                if (d.delta < -3 && suggestions.length < 3) {
+                    suggestions.push(`${d.name.charAt(0).toUpperCase() + d.name.slice(1)} dropped by ${Math.abs(d.delta)} points. Investigate recent gaps.`);
+                }
+            }
+            if (suggestions.length === 0 && slopeClass === 'Improving') suggestions.push('Trajectory is positive. Continue current practices.');
+            if (suggestions.length === 0) suggestions.push('Status is stable. Maintain documentation consistency.');
+
+            document.getElementById('glpcTrajSuggestions').innerHTML = suggestions.map(s =>
+                `<div class="glpc-trajectory-suggestion">${escapeHtml(s)}</div>`
+            ).join('');
         }
 
         // =====================================================
