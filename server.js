@@ -9326,11 +9326,13 @@ app.get('/api/internal-docs/open', (req, res, next) => {
       key = Buffer.from(padded, 'base64').toString('utf8');
     } catch (e) {}
 
+      // Pass decoded key to handler for both token and PI session paths
+      req.query.key = key;
+
     if (token && key) {
       const expected = Buffer.from(key + '_glp_2024_sec').toString('base64').replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
       if (token === expected) {
-        req.query.key = key;
-        return next();
+          return next();
       }
     }
     requirePI(req, res, next);
