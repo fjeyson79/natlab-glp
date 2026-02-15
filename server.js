@@ -9316,6 +9316,45 @@ app.get('/api/internal-docs/open', (req, res, next) => {
   }
 });
 
+  // 7b. GET /api/internal-docs/openb64/:k  (PI session OR token)
+  // k is base64url-encoded internal-docs key
+  app.get('/api/internal-docs/openb64/:k', (req, res, next) => {
+    const { token } = req.query;
+    let key = '';
+    try {
+      const b64 = (req.params.k || '').replace(/-/g, '+').replace(/_/g, '/');
+      const padded = b64 + '==='.slice((b64.length + 3) % 4);
+      key = Buffer.from(padded, 'base64').toString('utf8');
+    } catch (e) {}
+
+    if (token && key) {
+      const expected = Buffer.from(key + '_glp_2024_sec').toString('base64').replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
+      if (token === expected) {
+        req.query.key = key;
+        return next();
+      }
+    }
+    requirePI(req, res, next);
+  }, async (req, res) => {
+    try {
+      const key = req.query.key;
+      if (!key || !key.startsWith(INTDOC_PREFIX)) return res.status(400).json({ error: 'Invalid key' });
+
+      const obj = await downloadFromR2(key);
+      res.setHeader('Content-Type', 'application/pdf');
+      const filename = key.split('/').pop() || 'document.pdf';
+      res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+      if (obj.ContentLength) res.setHeader('Content-Length', String(obj.ContentLength));
+
+      if (obj.Body.pipe) { obj.Body.pipe(res); }
+      else { res.send(Buffer.from(await obj.Body.transformToByteArray())); }
+    } catch (err) {
+      console.error('[INTERNAL-DOCS] openb64 error:', err);
+      res.status(500).json({ error: 'Failed to open document' });
+    }
+  });
+
+
 // 8. GET /api/internal-docs/trash
 app.get('/api/internal-docs/trash', requirePI, async (req, res) => {
   try {
