@@ -3532,7 +3532,8 @@ function dicRenderInternalDocs(items) {
   if (!container) return;
 
   const search = (document.getElementById('dicSearchInput')?.value || '').toLowerCase();
-  const filtered = (items || []).filter(it => !search || ((it.name || '').toLowerCase().includes(search)));
+  let filtered = (items || []).filter(it => !search || ((it.name || '').toLowerCase().includes(search)));
+    filtered = filtered.sort((a, b) => (b.name || "").localeCompare(a.name || ""));
 
   if (filtered.length === 0) {
     container.innerHTML = '<div class="dic-empty-state"><h3>No internal documents found</h3></div>';
@@ -3557,14 +3558,15 @@ function dicRenderInternalDocs(items) {
 }
 
 function dicOpenInternalDoc(key) {
-  const openUrl = "/api/internal-docs/open?key=" + encodeURIComponent(key) + "#pagemode=none&zoom=page-width";
+  const fileUrl = "/api/internal-docs/open?key=" + encodeURIComponent(key);
+  const viewerUrl = "/pdfjs/web/viewer.html?file=" + encodeURIComponent(fileUrl) + "#pagemode=none&zoom=page-width";
 
   const iframe = dicFindViewerIframe();
   if (iframe) {
-    iframe.src = openUrl;
+    iframe.src = viewerUrl;
     return;
   }
-  window.open(openUrl, "_blank", "noopener");
+  window.open(viewerUrl, "_blank", "noopener");
 }
 
 async function dicIntdocsChanged(sel) {
@@ -3572,7 +3574,6 @@ async function dicIntdocsChanged(sel) {
   const folderSel = document.getElementById('dicIntdocsFolderSel');
 
   dicInternalDocsMode = true;
-  dicSetScopePillsEnabled(false);
 
   if (folderSel) folderSel.style.display = 'none';
 
