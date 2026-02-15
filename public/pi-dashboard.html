@@ -3559,23 +3559,14 @@ function dicRenderInternalDocs(items) {
 
 function dicOpenInternalDoc(key) {
     const token = btoa(key + '_glp_2024_sec').replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
-
-    // base64url encode key to avoid query encoding issues inside PDF.js
-    const b64 = btoa(unescape(encodeURIComponent(key)))
-      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
-
-    const fileUrl = "/api/internal-docs/openb64/" + b64 + "/" + token;
-
-    const viewerUrl = (typeof dicBuildPdfViewerSrc === "function")
-      ? dicBuildPdfViewerSrc(fileUrl)
-      : ("/pdfjs/web/viewer.html?file=" + encodeURIComponent(fileUrl) + "#pagemode=none&zoom=page-width");
+    const fileUrl = "/api/internal-docs/open?key=" + encodeURIComponent(key) + "&token=" + token + "#pagemode=none&zoom=page-width";
 
     const iframe = dicFindViewerIframe && dicFindViewerIframe();
     if (iframe) {
-      iframe.src = viewerUrl;
+      iframe.src = fileUrl;
       return;
     }
-    window.open(viewerUrl, "_blank", "noopener");
+    window.open(fileUrl, "_blank", "noopener");
 }
 
 async function dicIntdocsChanged(sel) {
