@@ -2272,6 +2272,16 @@
                 treeContainer.innerHTML = content;
 
                 document.getElementById('fileFilterBar').style.display = 'flex';
+
+                  // InternalDocs dropdown is inside fileFilterBar, show it for PI only after the bar is visible
+                  if (currentUserRole === 'pi') {
+                      const intdocsSel = document.getElementById('intdocsSelect');
+                      if (intdocsSel) {
+                          intdocsSel.style.display = 'inline-block';
+                          if (!intdocsSel.value) intdocsSel.value = 'papers';
+                            intdocsChanged(intdocsSel);
+                      }
+                  }
                 applyFileFilters();
 
             } catch (err) {
