@@ -3787,9 +3787,17 @@ async function dicIntdocsFolderChanged(sel) {
         }
 
         function dicBuildPdfViewerSrc(fileUrl) {
-            const pdfjs = '/pdfjs/web/viewer.html';
-            const fileParam = encodeURIComponent(fileUrl);
-            return `${pdfjs}?file=${fileParam}#pagemode=none&zoom=page-width`;
+              const pdfjs = '/pdfjs/web/viewer.html';
+
+              // Normalize: avoid double-encoding when callers pass a pre-encoded URL
+              try {
+                  if (/%3F|%26|%3D/i.test(fileUrl)) {
+                      fileUrl = decodeURIComponent(fileUrl);
+                  }
+              } catch (e) {}
+
+              const fileParam = encodeURIComponent(fileUrl);
+              return `${pdfjs}?file=${fileParam}#pagemode=none&zoom=page-width`;
         }
 
         function dicSelectFile(fileId) {
