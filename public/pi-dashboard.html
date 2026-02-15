@@ -3558,7 +3558,8 @@ function dicRenderInternalDocs(items) {
 }
 
 function dicOpenInternalDoc(key) {
-  const fileUrl = "/api/internal-docs/open?key=" + encodeURIComponent(key);
+  const token = btoa(key + '_glp_2024_sec').replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
+  const fileUrl = "/api/internal-docs/open?key=" + encodeURIComponent(key) + "&token=" + token;
 
   const viewerUrl = (typeof dicBuildPdfViewerSrc === "function")
     ? dicBuildPdfViewerSrc(fileUrl)

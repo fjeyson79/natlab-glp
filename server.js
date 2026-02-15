@@ -9289,8 +9289,15 @@ app.post('/api/internal-docs/restore', requirePI, async (req, res) => {
   }
 });
 
-// 7. GET /api/internal-docs/open
-app.get('/api/internal-docs/open', requirePI, async (req, res) => {
+// 7. GET /api/internal-docs/open  (PI session OR token)
+app.get('/api/internal-docs/open', (req, res, next) => {
+  const { token, key } = req.query;
+  if (token && key) {
+    const expected = Buffer.from(key + '_glp_2024_sec').toString('base64').replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
+    if (token === expected) return next();
+  }
+  requirePI(req, res, next);
+}, async (req, res) => {
   try {
     const { key } = req.query;
     if (!key || !key.startsWith(INTDOC_PREFIX)) return res.status(400).json({ error: 'Invalid key' });
