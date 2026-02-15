@@ -858,7 +858,8 @@
             color: #1e293b; box-shadow: 0 2px 8px rgba(0,0,0,0.3);
         }
         #dicPresentationOverlay .dic-pres-close:hover { background: #fff; }
-        .dic-badge.paper { background: #f3e8ef; color: #6b2150; }
+        .dic-badge.paper { background: #6b214f; color: #fff; border: 1px solid rgba(255,255,255,0.2); }
+        .dic-result-icon.paper { background: #6b214f; }
         .dic-intel-panel {
             border-top: 1px solid #e4e7eb;
             background: #fafbfc;
@@ -3499,6 +3500,7 @@
 let dicInternalDocsMode = false;
 let dicInternalDocsTree = null;
 let dicInternalDocsItems = [];
+let dicSelectedInternalKey = null;
 
 function dicFindViewerIframe() {
   return document.getElementById('dicViewerPdf');
@@ -3577,7 +3579,7 @@ function dicRenderInternalDocs(items) {
 
   const search = (document.getElementById('dicSearchInput')?.value || '').toLowerCase();
   let filtered = (items || []).filter(it => !search || ((it.name || '').toLowerCase().includes(search)));
-    filtered = filtered.sort((a, b) => (b.name || "").localeCompare(a.name || ""));
+  filtered = filtered.sort((a, b) => (b.name || "").localeCompare(a.name || ""));
 
   if (filtered.length === 0) {
     container.innerHTML = '<div class="dic-empty-state"><h3>No internal documents found</h3></div>';
@@ -3585,25 +3587,27 @@ function dicRenderInternalDocs(items) {
   }
 
   container.innerHTML = filtered.map(it => {
+    const keyEsc = (it.key || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
     const nameEsc = (it.name || '').replace(/"/g, '&quot;');
-    const meta = (it.size ? (Math.round(it.size / 1024) + ' KB') : '');
-    const badge = it.scope_label ? ('<span class="dic-badge">' + it.scope_label + '</span>') : '';
-    return '' +
-      '<div class="dic-result-row" style="cursor:default;">' +
-        '<div class="dic-result-main">' +
-          '<div class="dic-result-title">' + nameEsc + ' ' + badge + '</div>' +
-          '<div class="dic-result-sub">' + meta + '</div>' +
-        '</div>' +
-        '<div class="dic-result-actions">' +
-          '<button class="dic-action-btn" onclick="dicOpenInternalDoc(\'' + (it.key || '').replace(/'/g, "\\'") + '\')">View</button>' +
-        '</div>' +
-      '</div>';
+    const isActive = it.key === dicSelectedInternalKey;
+    const sizeTxt = it.size ? (it.size >= 1048576 ? (Math.round(it.size / 104857.6) / 10 + ' MB') : (Math.round(it.size / 1024) + ' KB')) : '';
+    return '<div class="dic-result-item' + (isActive ? ' active' : '') + '" onclick="dicOpenInternalDoc(\'' + keyEsc + '\')">' +
+      '<div class="dic-result-icon paper">PDF</div>' +
+      '<div class="dic-result-body">' +
+        '<div class="dic-result-title" title="' + nameEsc + '">' + nameEsc + '</div>' +
+        '<div class="dic-result-sub">' + sizeTxt + '</div>' +
+        '<div class="dic-result-meta"><span class="dic-badge paper">PAPER</span></div>' +
+      '</div>' +
+    '</div>';
   }).join('');
 }
 
 function dicOpenInternalDoc(key) {
     const token = btoa(key + '_glp_2024_sec').replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
     const fileUrl = "/api/internal-docs/open?key=" + encodeURIComponent(key) + "&token=" + token + "#pagemode=none&zoom=page-width";
+
+    dicSelectedInternalKey = key;
+    dicRenderInternalDocs(dicInternalDocsItems);
 
     dicSetViewerHeaderForInternalDoc(key);
     const iframe = dicEnsureViewerIframe();
