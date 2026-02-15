@@ -3559,9 +3559,12 @@ function dicRenderInternalDocs(items) {
 
 function dicOpenInternalDoc(key) {
   const fileUrl = "/api/internal-docs/open?key=" + encodeURIComponent(key);
-  const viewerUrl = "/pdfjs/web/viewer.html?file=" + encodeURIComponent(fileUrl) + "#pagemode=none&zoom=page-width";
 
-  const iframe = dicFindViewerIframe();
+  const viewerUrl = (typeof dicBuildPdfViewerSrc === "function")
+    ? dicBuildPdfViewerSrc(fileUrl)
+    : ("/pdfjs/web/viewer.html?file=" + encodeURIComponent(fileUrl) + "#pagemode=none&zoom=page-width");
+
+  const iframe = dicFindViewerIframe && dicFindViewerIframe();
   if (iframe) {
     iframe.src = viewerUrl;
     return;
