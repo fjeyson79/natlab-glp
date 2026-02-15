@@ -9315,11 +9315,10 @@ app.get('/api/internal-docs/open', (req, res, next) => {
     res.status(500).json({ error: 'Failed to open document' });
   }
 });
-
-  // 7b. GET /api/internal-docs/openb64/:k  (PI session OR token)
-  // k is base64url-encoded internal-docs key
-  app.get('/api/internal-docs/openb64/:k', (req, res, next) => {
-    const { token } = req.query;
+  // 7b. GET /api/internal-docs/openb64/:k/:token  (PI session OR token)
+  // k is base64url-encoded internal-docs key, token is derived from key
+  app.get('/api/internal-docs/openb64/:k/:token', (req, res, next) => {
+    const token = req.params.token || '';
     let key = '';
     try {
       const b64 = (req.params.k || '').replace(/-/g, '+').replace(/_/g, '/');
@@ -9353,6 +9352,7 @@ app.get('/api/internal-docs/open', (req, res, next) => {
       res.status(500).json({ error: 'Failed to open document' });
     }
   });
+
 
 
 // 8. GET /api/internal-docs/trash

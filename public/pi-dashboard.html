@@ -3564,7 +3564,7 @@ function dicOpenInternalDoc(key) {
     const b64 = btoa(unescape(encodeURIComponent(key)))
       .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
 
-    const fileUrl = "/api/internal-docs/openb64/" + b64 + "?token=" + token;
+    const fileUrl = "/api/internal-docs/openb64/" + b64 + "/" + token;
 
     const viewerUrl = (typeof dicBuildPdfViewerSrc === "function")
       ? dicBuildPdfViewerSrc(fileUrl)
