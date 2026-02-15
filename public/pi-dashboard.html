@@ -840,7 +840,9 @@
             color: #9ca3af;
             font-size: 14px;
         }
-        /* Presentation mode overlay */
+          /* Presentation mode overlay */
+        #dicPresentationOverlay:fullscreen,
+        #dicPresentationOverlay:-webkit-full-screen { background: #000; }
         #dicPresentationOverlay {
             position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
             z-index: 99999; background: #000; display: none;
@@ -3954,6 +3956,7 @@ async function dicIntdocsFolderChanged(sel) {
             var viewer = document.getElementById('dicViewerPdf');
             var src = viewer && viewer.src;
             if (!src) return;
+              var isDataPdfjs = src.indexOf('/pdfjs/web/viewer.html') !== -1;
             // Create overlay if needed
             if (!overlay) {
                 overlay = document.createElement('div');
@@ -3966,10 +3969,21 @@ async function dicIntdocsFolderChanged(sel) {
             oIframe.src = src;
             overlay.style.display = 'block';
             document.body.style.overflow = 'hidden';
+              // True fullscreen for DATA (PDF.js). Papers keep overlay, but we can still attempt fullscreen safely.
+              if (isDataPdfjs) {
+                try {
+                  if (overlay.requestFullscreen) { overlay.requestFullscreen().catch(function(){}); }
+                  else if (overlay.webkitRequestFullscreen) { overlay.webkitRequestFullscreen(); }
+                } catch (e) {}
+              }
             _dicPresEscHandler = function(e) { if (e.key === 'Escape') _dicPresClose(); };
             document.addEventListener('keydown', _dicPresEscHandler);
         }
         function _dicPresClose() {
+              try {
+                if (document.fullscreenElement && document.exitFullscreen) { document.exitFullscreen().catch(function(){}); }
+                else if (document.webkitFullscreenElement && document.webkitExitFullscreen) { document.webkitExitFullscreen(); }
+              } catch (e) {}
             var overlay = document.getElementById('dicPresentationOverlay');
             if (overlay) {
                 overlay.style.display = 'none';
