@@ -1554,6 +1554,15 @@
                         <span class="dic-scope-pill" data-scope="PRESENTATION" onclick="dicSetScope(this)">PRES</span>
                         <span class="dic-scope-pill" data-scope="SOP" onclick="dicSetScope(this)">SOP</span>
                         <span class="dic-scope-pill" data-scope="" onclick="dicSetScope(this)">ALL</span>
+                        <select id="dicIntdocsSelect" class="dic-scope-pill" style="display:none;cursor:pointer;padding:6px 12px;border:2px solid #dbe3ee;border-radius:999px;background:white;font-weight:700;" onchange="dicIntdocsChanged(this)">
+                            <option value="papers">Papers</option>
+                            <option value="projects">Projects</option>
+                            <option value="grants">Grant applications</option>
+                            <option value="collaborators">Collaborators</option>
+                            <option value="other">Other</option>
+                            <option value="all">All internal docs</option>
+                        </select>
+                        <select id="dicIntdocsFolderSel" class="dic-scope-pill" style="display:none;cursor:pointer;padding:6px 12px;border:2px solid #dbe3ee;border-radius:999px;background:white;font-weight:700;" onchange="dicIntdocsFolderChanged(this)"></select>
                     </div>
                 </div>
                 <div class="dic-months-label" id="dicMonthsLabel">Showing last 12 months</div>
@@ -3463,6 +3472,164 @@
             el.classList.add('active');
             dicApplyFilters();
         }
+// ===============================
+// InternalDocs, PI-only, DIC integration (pi-dashboard)
+// ===============================
+let dicInternalDocsMode = false;
+let dicInternalDocsTree = null;
+let dicInternalDocsItems = [];
+
+function dicFindViewerIframe() {
+  // Try common ids or fall back to the first iframe inside the DIC viewer area
+  return document.getElementById('dicPdfFrame')
+    || document.getElementById('dicViewerFrame')
+    || document.querySelector('.dic-viewer iframe')
+    || document.querySelector('#dicViewer iframe')
+    || document.querySelector('iframe');
+}
+
+function dicSetScopePillsEnabled(enabled) {
+  const pillsWrap = document.querySelector('.dic-scope-pills');
+  if (!pillsWrap) return;
+  pillsWrap.querySelectorAll('.dic-scope-pill').forEach(p => {
+    if (p.tagName === 'SELECT') return;
+    p.style.opacity = enabled ? '' : '0.45';
+    p.style.pointerEvents = enabled ? '' : 'none';
+  });
+}
+
+async function dicInitInternalDocs() {
+  const sel = document.getElementById('dicIntdocsSelect');
+  if (!sel) return;
+
+  try {
+    const r = await fetch('/api/internal-docs/tree', { credentials: 'include' });
+    if (!r.ok) { sel.style.display = 'none'; return; }
+    const data = await r.json();
+    dicInternalDocsTree = data.categories || {};
+    sel.style.display = 'inline-block';
+    if (!sel.value) sel.value = 'papers';
+    await dicIntdocsChanged(sel);
+  } catch (e) {
+    sel.style.display = 'none';
+  }
+}
+
+async function dicFetchInternalDocsList(category, folder) {
+  let url = '/api/internal-docs/list?category=' + encodeURIComponent(category);
+  if (folder) url += '&folder=' + encodeURIComponent(folder);
+  const r = await fetch(url, { credentials: 'include' });
+  const data = await r.json();
+  if (!r.ok) throw new Error((data && (data.error || data.message)) || 'Failed to list internal docs');
+  return data;
+}
+
+function dicRenderInternalDocs(items) {
+  const container = document.getElementById('dicResults');
+  if (!container) return;
+
+  const search = (document.getElementById('dicSearchInput')?.value || '').toLowerCase();
+  const filtered = (items || []).filter(it => !search || ((it.name || '').toLowerCase().includes(search)));
+
+  if (filtered.length === 0) {
+    container.innerHTML = '<div class="dic-empty-state"><h3>No internal documents found</h3></div>';
+    return;
+  }
+
+  container.innerHTML = filtered.map(it => {
+    const nameEsc = (it.name || '').replace(/"/g, '&quot;');
+    const meta = (it.size ? (Math.round(it.size / 1024) + ' KB') : '');
+    const badge = it.scope_label ? ('<span class="dic-badge">' + it.scope_label + '</span>') : '';
+    return '' +
+      '<div class="dic-result-row" style="cursor:default;">' +
+        '<div class="dic-result-main">' +
+          '<div class="dic-result-title">' + nameEsc + ' ' + badge + '</div>' +
+          '<div class="dic-result-sub">' + meta + '</div>' +
+        '</div>' +
+        '<div class="dic-result-actions">' +
+          '<button class="dic-action-btn" onclick="dicOpenInternalDoc(\'' + (it.key || '').replace(/'/g, "\\'") + '\')">View</button>' +
+        '</div>' +
+      '</div>';
+  }).join('');
+}
+
+function dicOpenInternalDoc(key) {
+  const fileUrl = '/api/internal-docs/open?key=' + encodeURIComponent(key);
+  const viewerUrl = '/pdfjs/web/viewer.html?file=' + encodeURIComponent(fileUrl) + '#pagemode=none&zoom=page-width';
+
+  const iframe = dicFindViewerIframe();
+  if (iframe) {
+    iframe.src = viewerUrl;
+    return;
+  }
+  window.open(viewerUrl, '_blank', 'noopener');
+}
+
+async function dicIntdocsChanged(sel) {
+  const category = sel.value || 'papers';
+  const folderSel = document.getElementById('dicIntdocsFolderSel');
+
+  dicInternalDocsMode = true;
+  dicSetScopePillsEnabled(false);
+
+  if (folderSel) folderSel.style.display = 'none';
+
+  const needsFolder = (category !== 'papers' && category !== 'all');
+  if (needsFolder) {
+    const folders = ((dicInternalDocsTree[category] || {}).folders || []).map(f => f.name);
+    if (folderSel) {
+      folderSel.innerHTML = '';
+      folders.forEach(fn => {
+        const opt = document.createElement('option');
+        opt.value = fn;
+        opt.textContent = fn;
+        folderSel.appendChild(opt);
+      });
+      folderSel.style.display = 'inline-block';
+    }
+    const firstFolder = folders.length ? folders[0] : '';
+    const data = await dicFetchInternalDocsList(category, firstFolder);
+    dicInternalDocsItems = (data.items || []).map(it => {
+      it.scope_label = category + (firstFolder ? (': ' + firstFolder) : '');
+      return it;
+    });
+    dicRenderInternalDocs(dicInternalDocsItems);
+    return;
+  }
+
+  const data = await dicFetchInternalDocsList(category, '');
+  dicInternalDocsItems = (data.items || []).map(it => {
+    let label = category;
+    if (category === 'all') {
+      const k = it.key || '';
+      const rel = k.replace('group-docs/internal/', '');
+      const parts = rel.split('/');
+      if (parts.length >= 2) {
+        const top = parts[0];
+        const maybeFolder = parts[1];
+        label = (top === 'papers') ? 'papers' : (top + ': ' + maybeFolder);
+      }
+    }
+    it.scope_label = label;
+    return it;
+  });
+
+  dicRenderInternalDocs(dicInternalDocsItems);
+}
+
+async function dicIntdocsFolderChanged(sel) {
+  const categorySel = document.getElementById('dicIntdocsSelect');
+  if (!categorySel) return;
+  const category = categorySel.value;
+  const folder = sel.value;
+
+  const data = await dicFetchInternalDocsList(category, folder);
+  dicInternalDocsItems = (data.items || []).map(it => {
+    it.scope_label = category + ': ' + folder;
+    return it;
+  });
+  dicRenderInternalDocs(dicInternalDocsItems);
+}
 
         function dicSetChip(key, val) {
             if (key === 'status') {
@@ -6744,6 +6911,8 @@
                 alert('Error: ' + err.message);
             }
         }
+        // Init InternalDocs dropdown (PI-only) after page scripts load
+        try { setTimeout(() => { try { dicInitInternalDocs(); } catch (e) {} }, 0); } catch (e) {}
     </script>
 </body>
 </html>
