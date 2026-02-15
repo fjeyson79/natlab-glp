@@ -1554,15 +1554,15 @@
                         <span class="dic-scope-pill" data-scope="PRESENTATION" onclick="dicSetScope(this)">PRES</span>
                         <span class="dic-scope-pill" data-scope="SOP" onclick="dicSetScope(this)">SOP</span>
                         <span class="dic-scope-pill" data-scope="" onclick="dicSetScope(this)">ALL</span>
-                        <select id="dicIntdocsSelect" class="dic-scope-pill" style="display:none;cursor:pointer;padding:6px 12px;border:2px solid #dbe3ee;border-radius:999px;background:white;font-weight:700;" onchange="dicIntdocsChanged(this)">
+                        <select id="dicIntdocsSelect" class="dic-scope-pill" style="display:none;cursor:pointer;padding:6px 10px; min-width:110px;border:2px solid #dbe3ee;border-radius:999px;background:white;font-weight:700;" onchange="dicIntdocsChanged(this)">
                             <option value="papers">Papers</option>
                             <option value="projects">Projects</option>
-                            <option value="grants">Grant applications</option>
+                            <option value="grants">Grants</option>
                             <option value="collaborators">Collaborators</option>
                             <option value="other">Other</option>
                             <option value="all">All internal docs</option>
                         </select>
-                        <select id="dicIntdocsFolderSel" class="dic-scope-pill" style="display:none;cursor:pointer;padding:6px 12px;border:2px solid #dbe3ee;border-radius:999px;background:white;font-weight:700;" onchange="dicIntdocsFolderChanged(this)"></select>
+                        <select id="dicIntdocsFolderSel" class="dic-scope-pill" style="display:none;cursor:pointer;padding:6px 10px; min-width:110px;border:2px solid #dbe3ee;border-radius:999px;background:white;font-weight:700;" onchange="dicIntdocsFolderChanged(this)"></select>
                     </div>
                 </div>
                 <div class="dic-months-label" id="dicMonthsLabel">Showing last 12 months</div>
@@ -2576,7 +2576,7 @@
                         <select id="intdocCategory" onchange="intdocCategoryChanged()">
                             <option value="papers">Papers</option>
                             <option value="projects">Projects</option>
-                            <option value="grants">Grant applications</option>
+                            <option value="grants">Grants</option>
                             <option value="collaborators">Collaborators</option>
                             <option value="other">Other</option>
                         </select>
@@ -3520,6 +3520,7 @@ async function dicFetchInternalDocsList(category, folder) {
   if (folder) url += '&folder=' + encodeURIComponent(folder);
   const r = await fetch(url, { credentials: 'include' });
   const data = await r.json();
+  data.items = data.items || data.files || [];
   if (!r.ok) throw new Error((data && (data.error || data.message)) || 'Failed to list internal docs');
   return data;
 }
@@ -6560,7 +6561,7 @@ async function dicIntdocsFolderChanged(sel) {
         // INTERNAL DOCUMENTS TAB
         // =====================================================
         let intdocTreeData = null;
-        const intdocSlugLabels = { papers: 'Papers', projects: 'Projects', grants: 'Grant applications', collaborators: 'Collaborators', other: 'Other' };
+        const intdocSlugLabels = { papers: 'Papers', projects: 'Projects', grants: 'Grants', collaborators: 'Collaborators', other: 'Other' };
 
         function intdocInit() {
             intdocLoadTree();
