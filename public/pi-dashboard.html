@@ -840,17 +840,22 @@
             color: #9ca3af;
             font-size: 14px;
         }
-        /* Presentation mode: expand viewer, hide sidebar+finder */
-        .dic-container.dic-presentation {
-            grid-template-columns: 1fr;
+        /* Presentation mode overlay */
+        #dicPresentationOverlay {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            z-index: 99999; background: #000; display: none;
         }
-        .dic-container.dic-presentation .dic-sidebar,
-        .dic-container.dic-presentation .dic-finder {
-            display: none;
+        #dicPresentationOverlay iframe {
+            width: 100%; height: 100%; border: 0;
         }
-        .dic-container.dic-presentation .dic-viewer {
-            min-height: 0;
+        #dicPresentationOverlay .dic-pres-close {
+            position: absolute; top: 12px; right: 16px; z-index: 100000;
+            background: rgba(255,255,255,0.85); border: none; border-radius: 8px;
+            font-size: 22px; width: 40px; height: 40px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            color: #1e293b; box-shadow: 0 2px 8px rgba(0,0,0,0.3);
         }
+        #dicPresentationOverlay .dic-pres-close:hover { background: #fff; }
         .dic-badge.paper { background: #f3e8ef; color: #6b2150; }
         .dic-intel-panel {
             border-top: 1px solid #e4e7eb;
@@ -3938,10 +3943,44 @@ async function dicIntdocsFolderChanged(sel) {
             return str.length > max ? str.substring(0, max - 1) + '\u2026' : str;
         }
 
+        var _dicPresEscHandler = null;
         function dicPresentationMode() {
-            var container = document.querySelector('.dic-container');
-            if (!container) return;
-            container.classList.toggle('dic-presentation');
+            var overlay = document.getElementById('dicPresentationOverlay');
+            // Toggle off if already open
+            if (overlay && overlay.style.display === 'block') {
+                _dicPresClose();
+                return;
+            }
+            var viewer = document.getElementById('dicViewerPdf');
+            var src = viewer && viewer.src;
+            if (!src) return;
+            // Create overlay if needed
+            if (!overlay) {
+                overlay = document.createElement('div');
+                overlay.id = 'dicPresentationOverlay';
+                overlay.innerHTML = '<button class="dic-pres-close" onclick="dicPresentationMode()" title="Exit (ESC)">\u00D7</button><iframe></iframe>';
+                document.body.appendChild(overlay);
+            }
+            var oIframe = overlay.querySelector('iframe');
+            if (!oIframe) { window.open(src, '_blank'); return; }
+            oIframe.src = src;
+            overlay.style.display = 'block';
+            document.body.style.overflow = 'hidden';
+            _dicPresEscHandler = function(e) { if (e.key === 'Escape') _dicPresClose(); };
+            document.addEventListener('keydown', _dicPresEscHandler);
+        }
+        function _dicPresClose() {
+            var overlay = document.getElementById('dicPresentationOverlay');
+            if (overlay) {
+                overlay.style.display = 'none';
+                var oIframe = overlay.querySelector('iframe');
+                if (oIframe) oIframe.src = 'about:blank';
+            }
+            document.body.style.overflow = '';
+            if (_dicPresEscHandler) {
+                document.removeEventListener('keydown', _dicPresEscHandler);
+                _dicPresEscHandler = null;
+            }
         }
 
         async function dicToggleDragonSealFile(id) {
