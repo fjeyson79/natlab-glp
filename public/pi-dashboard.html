@@ -840,6 +840,18 @@
             color: #9ca3af;
             font-size: 14px;
         }
+        /* Presentation mode: expand viewer, hide sidebar+finder */
+        .dic-container.dic-presentation {
+            grid-template-columns: 1fr;
+        }
+        .dic-container.dic-presentation .dic-sidebar,
+        .dic-container.dic-presentation .dic-finder {
+            display: none;
+        }
+        .dic-container.dic-presentation .dic-viewer {
+            min-height: 0;
+        }
+        .dic-badge.paper { background: #f3e8ef; color: #6b2150; }
         .dic-intel-panel {
             border-top: 1px solid #e4e7eb;
             background: #fafbfc;
@@ -3482,12 +3494,37 @@ let dicInternalDocsTree = null;
 let dicInternalDocsItems = [];
 
 function dicFindViewerIframe() {
-  // Try common ids or fall back to the first iframe inside the DIC viewer area
-  return document.getElementById('dicPdfFrame')
-    || document.getElementById('dicViewerFrame')
-    || document.querySelector('.dic-viewer iframe')
-    || document.querySelector('#dicViewer iframe')
-    || document.querySelector('iframe');
+  return document.getElementById('dicViewerPdf');
+}
+
+function dicEnsureViewerIframe() {
+  var iframe = document.getElementById('dicViewerPdf');
+  if (iframe) return iframe;
+  // Create the iframe with the same id/class/styles used by DATA
+  iframe = document.createElement('iframe');
+  iframe.id = 'dicViewerPdf';
+  iframe.className = 'dic-viewer-pdf';
+  iframe.style.cssText = 'display:block;width:100%;height:100%;border:0;';
+  var viewer = document.querySelector('.dic-viewer');
+  if (viewer) {
+    var empty = document.getElementById('dicViewerEmpty');
+    if (empty) empty.style.display = 'none';
+    viewer.appendChild(iframe);
+  }
+  return iframe;
+}
+
+function dicSetViewerHeaderForInternalDoc(key) {
+  var filename = key.split('/').pop() || 'document.pdf';
+  var toolbar = document.getElementById('dicToolbar');
+  if (!toolbar) return;
+  toolbar.innerHTML =
+    '<span class="dic-viewer-filename" title="' + filename.replace(/"/g, '&quot;') + '">' + filename + '</span>' +
+    '<span class="dic-badge paper">PAPER</span>' +
+    '<button class="dic-toolbar-icon dic-toolbar-presentation" onclick="dicPresentationMode()" title="Presentation Mode" aria-label="Presentation Mode"><span class="dic-emoji-icon" aria-hidden="true">\uD83C\uDFAC</span></button>';
+  // Hide intel panel (not relevant for Papers)
+  var intel = document.getElementById('dicIntelPanel');
+  if (intel) intel.style.display = 'none';
 }
 
 function dicSetScopePillsEnabled(enabled) {
@@ -3561,7 +3598,8 @@ function dicOpenInternalDoc(key) {
     const token = btoa(key + '_glp_2024_sec').replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
     const fileUrl = "/api/internal-docs/open?key=" + encodeURIComponent(key) + "&token=" + token + "#pagemode=none&zoom=page-width";
 
-    const iframe = dicFindViewerIframe && dicFindViewerIframe();
+    dicSetViewerHeaderForInternalDoc(key);
+    const iframe = dicEnsureViewerIframe();
     if (iframe) {
       iframe.src = fileUrl;
       return;
@@ -3901,15 +3939,9 @@ async function dicIntdocsFolderChanged(sel) {
         }
 
         function dicPresentationMode() {
-            try {
-                const iframe = document.getElementById('dicViewerPdf');
-                if (iframe && iframe.contentWindow) {
-                    const btn = iframe.contentDocument.getElementById('presentationMode');
-                    if (btn) { btn.click(); return; }
-                }
-            } catch (e) { /* cross-origin fallback */ }
-            const iframe2 = document.getElementById('dicViewerPdf');
-            if (iframe2) iframe2.contentWindow.postMessage({ type: 'presentationMode' }, '*');
+            var container = document.querySelector('.dic-container');
+            if (!container) return;
+            container.classList.toggle('dic-presentation');
         }
 
         async function dicToggleDragonSealFile(id) {
