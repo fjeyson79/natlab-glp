@@ -843,9 +843,6 @@
           /* Presentation mode overlay */
         #dicPresentationOverlay:fullscreen,
         #dicPresentationOverlay:-webkit-full-screen { background: #000; }
-          .dic-pres-data:fullscreen .dic-pres-close,
-          .dic-pres-data:-webkit-full-screen .dic-pres-close { display: none !important; }
-
         #dicPresentationOverlay {
             position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
             z-index: 99999; background: #000; display: none;
@@ -3949,118 +3946,50 @@ async function dicIntdocsFolderChanged(sel) {
         }
 
         var _dicPresEscHandler = null;
-          var _dicPresFsHandler = null;
-          var _dicPresClosing = false;
-
-          function dicPresentationMode() {
-              var overlay = document.getElementById('dicPresentationOverlay');
-
-              // Toggle off if already open
-              if (overlay && overlay.style.display === 'block') {
-                  _dicPresClose();
-                  return;
+        function dicPresentationMode() {
+            var overlay = document.getElementById('dicPresentationOverlay');
+            // Toggle off if already open
+            if (overlay && overlay.style.display === 'block') {
+                _dicPresClose();
+                return;
+            }
+            var viewer = document.getElementById('dicViewerPdf');
+            var src = viewer && viewer.src;
+            if (!src) return;
+              var isDataPdfjs = src.indexOf('/pdfjs/web/viewer.html') !== -1;
+            // Create overlay if needed
+            if (!overlay) {
+                overlay = document.createElement('div');
+                overlay.id = 'dicPresentationOverlay';
+                overlay.innerHTML = '<button class="dic-pres-close" onclick="dicPresentationMode()" title="Exit (ESC)">\u00D7</button><iframe></iframe>';
+                document.body.appendChild(overlay);
+            }
+            var oIframe = overlay.querySelector('iframe');
+            if (!oIframe) { window.open(src, '_blank'); return; }
+            oIframe.src = src;
+            overlay.style.display = 'block';
+            document.body.style.overflow = 'hidden';
+              // True fullscreen for DATA (PDF.js). Papers keep overlay, but we can still attempt fullscreen safely.
+              if (isDataPdfjs) {
+                try {
+                  if (overlay.requestFullscreen) { overlay.requestFullscreen().catch(function(){}); }
+                  else if (overlay.webkitRequestFullscreen) { overlay.webkitRequestFullscreen(); }
+                } catch (e) {}
               }
-
-              var viewer = document.getElementById('dicViewerPdf');
-              var src = viewer && viewer.src;
-              if (!src) return;
-
-              // GLP docs (DATA/SOP/PRES/ALL) use PDF.js; Papers use native PDF endpoint
-              var isGlpPdfjs = src.indexOf('/pdfjs/web/viewer.html') !== -1;
-
-              // Create overlay if needed
-              if (!overlay) {
-                  overlay = document.createElement('div');
-                  overlay.id = 'dicPresentationOverlay';
-                  overlay.innerHTML = '<button class="dic-pres-close" onclick="dicPresentationMode()" title="Exit (ESC)">×</button><iframe></iframe>';
-                  document.body.appendChild(overlay);
-              }
-
-              // Tag overlay mode for styling and logic
-              if (isGlpPdfjs) overlay.classList.add('dic-pres-data');
-              else overlay.classList.remove('dic-pres-data');
-
-              var oIframe = overlay.querySelector('iframe');
-              if (!oIframe) { window.open(src, '_blank'); return; }
-
-              oIframe.src = src;
-              overlay.style.display = 'block';
-              document.body.style.overflow = 'hidden';
-
-              _dicPresEscHandler = function(e) {
-                  if (e.key !== 'Escape') return;
-
-                  // If fullscreen, exit fullscreen; fullscreenchange will close overlay (one-step ESC)
-                  try {
-                      if (document.fullscreenElement && document.exitFullscreen) {
-                          document.exitFullscreen().catch(function(){});
-                          return;
-                      }
-                      if (document.webkitFullscreenElement && document.webkitExitFullscreen) {
-                          document.webkitExitFullscreen();
-                          return;
-                      }
-                  } catch (err) {}
-
-                  _dicPresClose(true);
-              };
-              document.addEventListener('keydown', _dicPresEscHandler);
-
-              _dicPresFsHandler = function() {
-                  var fsEl = document.fullscreenElement || document.webkitFullscreenElement;
-                  if (!fsEl) {
-                      _dicPresClose(true);
-                  }
-              };
-              document.addEventListener('fullscreenchange', _dicPresFsHandler);
-              document.addEventListener('webkitfullscreenchange', _dicPresFsHandler);
-
-              // Premium true fullscreen for GLP docs only
-              if (isGlpPdfjs) {
-                  try {
-                      if (overlay.requestFullscreen) { overlay.requestFullscreen().catch(function(){}); }
-                      else if (overlay.webkitRequestFullscreen) { overlay.webkitRequestFullscreen(); }
-                  } catch (e) {}
-              }
-          }
-
-          function _dicPresClose(skipFsExit) {
-              if (_dicPresClosing) return;
-              _dicPresClosing = true;
-
+            _dicPresEscHandler = function(e) { if (e.key === 'Escape') _dicPresClose(); };
+            document.addEventListener('keydown', _dicPresEscHandler);
+        }
+        function _dicPresClose() {
               try {
-                  if (!skipFsExit) {
-                      if (document.fullscreenElement && document.exitFullscreen) {
-                          document.exitFullscreen().catch(function(){});
-                      } else if (document.webkitFullscreenElement && document.webkitExitFullscreen) {
-                          document.webkitExitFullscreen();
-                      }
-                  }
+                if (document.fullscreenElement && document.exitFullscreen) { document.exitFullscreen().catch(function(){}); }
+                else if (document.webkitFullscreenElement && document.webkitExitFullscreen) { document.webkitExitFullscreen(); }
               } catch (e) {}
-
-              var overlay = document.getElementById('dicPresentationOverlay');
-              if (overlay) {
-                  overlay.style.display = 'none';
-                  var oIframe = overlay.querySelector('iframe');
-                  if (oIframe) oIframe.src = 'about:blank';
-                  overlay.classList.remove('dic-pres-data');
-              }
-
-              document.body.style.overflow = '';
-
-              if (_dicPresEscHandler) {
-                  document.removeEventListener('keydown', _dicPresEscHandler);
-                  _dicPresEscHandler = null;
-              }
-              if (_dicPresFsHandler) {
-                  document.removeEventListener('fullscreenchange', _dicPresFsHandler);
-                  document.removeEventListener('webkitfullscreenchange', _dicPresFsHandler);
-                  _dicPresFsHandler = null;
-              }
-
-              _dicPresClosing = false;
-          }
-
+            var overlay = document.getElementById('dicPresentationOverlay');
+            if (overlay) {
+                overlay.style.display = 'none';
+                var oIframe = overlay.querySelector('iframe');
+                if (oIframe) oIframe.src = 'about:blank';
+            }
             document.body.style.overflow = '';
             if (_dicPresEscHandler) {
                 document.removeEventListener('keydown', _dicPresEscHandler);
