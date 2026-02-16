@@ -7906,29 +7906,28 @@ async function buildGlpSnapshot(userId) {
     };
 
     const snapshot = {
-        schema_version: 1,
-        model_version: '1.0.0',
-        scoring_version: '1.0.0',
-        user_id: userId,
-        generated_at: new Date().toISOString(),
-        overall_score: overallScore,
-        glp_level: glpLevel,
-        spheres: {
-            documentation:  { score: docScore,     label: 'Documentation' },
-            training:       { score: trainScore,   label: 'Training & Agreements' },
-            traceability:   { score: traceScore,   label: 'Traceability' },
-            data_integrity: { score: dataIntScore, label: 'Data Integrity Practice' }
-        },
-        evidence: {
-            sops:          { approved: sopM.approved, total: sopM.total, avg_ai_score: sopM.avgAiScore, recent: sopM.recentCount },
-            data:          { approved: dataM.approved, total: dataM.total, avg_ai_score: dataM.avgAiScore, recent: dataM.recentCount },
-            presentations: { approved: presM.approved, total: presM.total },
-            inventory:     { products: invProducts, samples: invSamples, oligos: invOligos, total: invTotal, approved: invApproved },
-            training:      { sealed_packs: sealedCount, certified_entries: certifiedEntries, agreements: agreementCount, required_docs: requiredDocs },
-            revisions:     { open_count: openRevisions }
-        },
-        conformity
-    };
+    schema_version: '1.0.0',
+    scoring_version: '1.0.0',
+    user_id: userId,
+    generated_at: new Date().toISOString(),
+    overall_score: overallScore,
+    glp_level: glpLevel,
+    spheres: {
+        documentation: docScore,
+        training: trainScore,
+        traceability: traceScore,
+        data_integrity: dataIntScore
+    },
+    evidence: {
+        sops:          { approved: sopM.approved, total: sopM.total, avg_ai_score: sopM.avgAiScore, recent: sopM.recentCount },
+        data:          { approved: dataM.approved, total: dataM.total, avg_ai_score: dataM.avgAiScore, recent: dataM.recentCount },
+        presentations: { approved: presM.approved, total: presM.total },
+        inventory:     { products: invProducts, samples: invSamples, oligos: invOligos, total: invTotal, approved: invApproved },
+        training:      { sealed_packs: sealedCount, certified_entries: certifiedEntries, agreements: agreementCount, required_docs: requiredDocs },
+        revisions:     { open_count: openRevisions }
+    },
+    conformity
+};
 
     // Deterministic hash: deep-sorted keys, scoring-relevant data only (no timestamps)
     function stableStringify(obj) {
@@ -7938,16 +7937,16 @@ async function buildGlpSnapshot(userId) {
         return '{' + keys.map(k => JSON.stringify(k) + ':' + stableStringify(obj[k])).join(',') + '}';
     }
     const hashable = {
-        user_id: snapshot.user_id,
-        scoring_version: snapshot.scoring_version,
-        overall_score: snapshot.overall_score,
-        glp_level: snapshot.glp_level,
-        spheres: snapshot.spheres,
-        evidence: snapshot.evidence,
-        conformity: snapshot.conformity
-    };
+    scoring_version: snapshot.scoring_version,
+    overall_score: snapshot.overall_score,
+    glp_level: snapshot.glp_level,
+    spheres: snapshot.spheres,
+    evidence: snapshot.evidence,
+    conformity: snapshot.conformity
+};
     const canonical = stableStringify(hashable);
     const hash = crypto.createHash('sha256').update(canonical).digest('hex');
+    snapshot.hash = hash;
 
     return { snapshot, hash };
 }
@@ -8070,6 +8069,25 @@ app.get('/api/di/glp-status/coherence', requireAuth, async (req, res) => {
 // =====================================================
 // GLP WEEKLY SNAPSHOT – Internal endpoints (API-key)
 // =====================================================
+
+  // Build deterministic snapshot authority endpoint (no DB writes, no AI)
+  app.get('/api/glp/status/build-snapshot/:userId', async (req, res) => {
+      try {
+          const apiKey = (req.headers['x-api-key'] || '').toString().trim();
+          if (!apiKey || apiKey !== ((process.env.API_SECRET_KEY || '').toString().trim())) {
+              return res.status(401).json({ error: 'Invalid or missing API key' });
+          }
+
+          const userId = (req.params.userId || '').trim();
+          if (!userId) return res.status(400).json({ error: 'userId required' });
+
+          const { snapshot, hash } = await buildGlpSnapshot(userId);
+          return res.json({ success: true, snapshot, hash });
+      } catch (err) {
+          console.error('[GLP-STATUS] build-snapshot error:', err);
+          res.status(500).json({ error: 'Server error' });
+      }
+  });
 
 // GET eligible users for weekly snapshot generation (n8n calls this)
 app.get('/api/glp/status/eligible-users', async (req, res) => {
