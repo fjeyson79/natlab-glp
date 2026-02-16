@@ -8286,7 +8286,7 @@ app.get('/api/glp/status/user-facts/:userId', async (req, res) => {
                     COUNT(*) FILTER (WHERE status = 'PENDING')::int AS pending,
                     COUNT(*) FILTER (WHERE status = 'REVISION_NEEDED')::int AS revision_needed,
                     COUNT(*) FILTER (WHERE created_at >= CURRENT_DATE - INTERVAL '28 days')::int AS recent_4w,
-                    ROUND(AVG(ai_review_score)::numeric, 1) AS avg_ai_score
+                    NULL::numeric AS avg_ai_score
                 FROM di_submissions
                 WHERE researcher_id = $1
                 GROUP BY file_type
