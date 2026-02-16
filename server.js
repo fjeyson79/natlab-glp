@@ -1197,12 +1197,12 @@ app.post('/api/di/upload', requireAuth, upload.single('file'), async (req, res) 
         const fileId = 'r2:' + key;
 
         const submissionResult = await pool.query(
-            'INSERT INTO di_submissions (researcher_id, affiliation, file_type, original_filename, drive_file_id, presentation_type, presentation_other) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING submission_id',
-            [user.researcher_id, user.affiliation, normalizedType, file.originalname, fileId, presentationType, presentationOther]
+            'INSERT INTO di_submissions (researcher_id, affiliation, file_type, original_filename, drive_file_id, r2_object_key, presentation_type, presentation_other) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING submission_id',
+            [user.researcher_id, user.affiliation, normalizedType, file.originalname, fileId, key, presentationType, presentationOther]
         );
 
         const submissionId = submissionResult.rows[0].submission_id;
-        console.log('[UPLOAD] Submission recorded: submission_id=' + submissionId + ', drive_file_id=' + fileId);
+        console.log('[UPLOAD] Submission recorded: submission_id=' + submissionId + ', r2_object_key=' + key);
 
         // Close revision request if this is a resubmission
         const revisionRequestId = req.body.revision_request_id;
@@ -1919,8 +1919,8 @@ async function performApproval(submissionId) {
     const verificationCode = `NATLAB-${submissionId}-${signatureHash.substring(0, 8).toUpperCase()}`;
 
     await pool.query(
-        `UPDATE di_submissions SET status='APPROVED', signed_at=$1, signer_name=$2, drive_file_id=$3, signed_pdf_path=$3, signature_hash=$4, verification_code=$5 WHERE submission_id=$6`,
-        [signedAt, signerName, newFileId, signatureHash, verificationCode, submissionId]
+        `UPDATE di_submissions SET status='APPROVED', signed_at=$1, signer_name=$2, drive_file_id=$3, r2_object_key=$4, signed_pdf_path=$3, signature_hash=$5, verification_code=$6 WHERE submission_id=$7`,
+        [signedAt, signerName, newFileId, approvedKey, signatureHash, verificationCode, submissionId]
     );
 
     const researcherResult = await pool.query(
@@ -1962,7 +1962,7 @@ async function performRevision(submissionId, comments) {
     }
 
     await pool.query(
-        `UPDATE di_submissions SET status='REVISION_NEEDED', drive_file_id=NULL, revision_comments=$1 WHERE submission_id=$2`,
+        `UPDATE di_submissions SET status='REVISION_NEEDED', revision_comments=$1 WHERE submission_id=$2`,
         [comments || '', submissionId]
     );
 
@@ -4608,10 +4608,10 @@ app.post('/api/di/inventory/upload', requireAuth, requireInternal, inventoryUplo
 
         // Insert into di_submissions with status SUBMITTED
         const result = await pool.query(
-            `INSERT INTO di_submissions (researcher_id, affiliation, file_type, original_filename, drive_file_id, status)
-             VALUES ($1, $2, 'INVENTORY', $3, $4, 'SUBMITTED')
+            `INSERT INTO di_submissions (researcher_id, affiliation, file_type, original_filename, drive_file_id, r2_object_key, status)
+             VALUES ($1, $2, 'INVENTORY', $3, $4, $5, 'SUBMITTED')
              RETURNING submission_id`,
-            [user.researcher_id, user.affiliation, file.originalname, fileId]
+            [user.researcher_id, user.affiliation, file.originalname, fileId, key]
         );
 
         const submissionId = result.rows[0].submission_id;
@@ -4842,7 +4842,7 @@ app.post('/api/di/inventory/import/revise/:id', requirePI, async (req, res) => {
 
         // Update submission
         await pool.query(
-            `UPDATE di_submissions SET status='REVISION_NEEDED', drive_file_id=NULL, revision_comments=$1 WHERE submission_id=$2`,
+            `UPDATE di_submissions SET status='REVISION_NEEDED', revision_comments=$1 WHERE submission_id=$2`,
             [comments || '', id]
         );
 

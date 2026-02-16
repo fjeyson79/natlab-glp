@@ -275,6 +275,9 @@ async function migrate() {
             `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS presentation_type TEXT`,
             `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS presentation_other TEXT`,
 
+            // ==================== R2 OBJECT KEY (canonical storage pointer) ====================
+            `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS r2_object_key TEXT`,
+
             // ==================== DRAGON SEAL ====================
             `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS pi_dragon_seal BOOLEAN NOT NULL DEFAULT FALSE`,
             `CREATE INDEX IF NOT EXISTS idx_di_submissions_dragon_seal ON di_submissions(pi_dragon_seal) WHERE pi_dragon_seal = TRUE`,
