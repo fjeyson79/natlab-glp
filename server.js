@@ -8227,8 +8227,9 @@ async function checkPurchaseTable() {
     const now = Date.now();
     if (purchaseTableExists === null || purchaseTableExists === false || (now - purchaseTableLastCheck > 60000)) {
         try {
-            const r = await pool.query("SELECT 1 FROM information_schema.tables WHERE table_name='di_purchase_requests'");
-            purchaseTableExists = r.rows.length > 0;
+            const r1 = await pool.query("SELECT 1 FROM information_schema.tables WHERE table_name='di_purchase_requests'");
+              const r2 = await pool.query("SELECT 1 FROM information_schema.tables WHERE table_name='di_purchase_items'");
+              purchaseTableExists = (r1.rows.length > 0) && (r2.rows.length > 0);
             purchaseTableLastCheck = now;
         } catch (err) { purchaseTableExists = false; }
     }
