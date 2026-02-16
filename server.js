@@ -8448,9 +8448,11 @@ app.get('/api/glp/status/user-facts/:userId', async (req, res) => {
             }
         });
     } catch (err) {
-        console.error('[GLP-STATUS-V2] user-facts error:', err);
-        res.status(500).json({ error: 'Server error' });
-    }
+          const rid = (req.headers['x-railway-request-id'] || req.headers['x-request-id'] || '').toString();
+          console.error('[GLP-STATUS-V2] user-facts error', { userId: req.params.userId, rid, message: err?.message, code: err?.code });
+          console.error(err);
+          res.status(500).json({ error: 'Server error', rid });
+      }
 });
 
 // 1A2. GET history snapshots (last N) — for n8n longitudinal analysis (R2-backed)
