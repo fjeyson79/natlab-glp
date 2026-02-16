@@ -8452,6 +8452,61 @@ app.get('/api/glp/status/user-facts/:userId', async (req, res) => {
     }
 });
 
+// 1A2. GET history snapshots (last N) — for n8n longitudinal analysis (R2-backed)
+app.get('/api/glp/status/history/:userId', async (req, res) => {
+    try {
+        const apiKey = (req.headers['x-api-key'] || '').toString().trim();
+        if (!apiKey || apiKey !== ((process.env.API_SECRET_KEY || '').toString().trim())) {
+            return res.status(401).json({ error: 'Invalid or missing API key' });
+        }
+        if (!(await checkGlpStatusTable())) {
+            return res.json({ success: true, user_id: req.params.userId, count: 0, weeks: [] });
+        }
+
+        const userId = req.params.userId;
+
+        let limit = parseInt((req.query.limit || '').toString(), 10);
+        if (!Number.isFinite(limit) || limit <= 0) limit = 8;
+        limit = Math.max(1, Math.min(52, limit));
+
+        const idx = await pool.query(
+            `SELECT iso_week, generated_at, r2_snapshot_key, r2_harmony_key
+             FROM glp_weekly_status_index
+             WHERE user_id = $1
+             ORDER BY iso_week DESC
+             LIMIT ${limit}`,
+            [userId]
+        );
+
+        const weeks = [];
+        for (const row of idx.rows) {
+            let snapshot = null;
+            try {
+                snapshot = await downloadR2Json(row.r2_snapshot_key);
+            } catch (e) {
+                snapshot = null;
+            }
+            weeks.push({
+                iso_week: row.iso_week,
+                generated_at: row.generated_at,
+                r2_snapshot_key: row.r2_snapshot_key,
+                has_harmony: !!row.r2_harmony_key,
+                snapshot
+            });
+        }
+
+        return res.json({
+            success: true,
+            user_id: userId,
+            count: weeks.length,
+            weeks
+        });
+    } catch (err) {
+        console.error('[GLP-STATUS-V2] history error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
 // 1C. POST write weekly snapshot — n8n sends computed snapshot, server writes to R2 and DB
 app.post('/api/glp/status/write-weekly-snapshot', async (req, res) => {
     try {
