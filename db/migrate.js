@@ -271,6 +271,10 @@ async function migrate() {
             `CREATE INDEX IF NOT EXISTS idx_file_assoc_source_type ON di_file_associations(source_id, link_type)`,
             `CREATE INDEX IF NOT EXISTS idx_file_assoc_target_type ON di_file_associations(target_id, link_type)`,
 
+            // ==================== PRESENTATION TYPE (migration 012) ====================
+            `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS presentation_type TEXT`,
+            `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS presentation_other TEXT`,
+
             // ==================== DRAGON SEAL ====================
             `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS pi_dragon_seal BOOLEAN NOT NULL DEFAULT FALSE`,
             `CREATE INDEX IF NOT EXISTS idx_di_submissions_dragon_seal ON di_submissions(pi_dragon_seal) WHERE pi_dragon_seal = TRUE`,

@@ -2701,13 +2701,22 @@
                     credentials: 'include'
                 });
 
-                const data = await response.json();
+                let data;
+                try {
+                    data = await response.json();
+                } catch (parseErr) {
+                    uploadLoading.style.display = 'none';
+                    uploadForm.style.display = 'block';
+                    showMessage('uploadMessage', 'Upload failed (HTTP ' + response.status + '). Please try again.', 'error');
+                    uploadBtn.disabled = false;
+                    return;
+                }
 
                 uploadLoading.style.display = 'none';
                 uploadForm.style.display = 'block';
 
                 if (!response.ok) {
-                    showMessage('uploadMessage', data.error || 'Upload failed.', 'error');
+                    showMessage('uploadMessage', data.message || data.error || 'Upload failed.', 'error');
                     uploadBtn.disabled = false;
                 } else {
                     showMessage('uploadMessage', `File uploaded successfully! Submission ID: ${data.submission_id}`, 'success');
