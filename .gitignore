@@ -17,3 +17,4 @@ SEALED
 local_notes/
 .claude/settings.local.json
 .claude/
+local-backups/
