@@ -8853,11 +8853,11 @@ app.get('/api/glp/cohorts/members', requirePI, async (req, res) => {
         res.status(500).json({ error: 'Server error' });
     }
 });
+  // SET cohort members — PI only (upsert inclusion flags)
+  app.post('/api/glp/cohorts/members/set', requirePI, async (req, res) => {
+      try {
+          if (!(await checkCohortTable())) return res.status(501).json({ error: 'Cohort table not available' });
 
-// SET cohort members — PI only (upsert inclusion flags)
-app.post('/api/glp/cohorts/members/set', requirePI, async (req, res) => {
-    try {
-        if (!(await checkCohortTable())) return res.status(501).json({ error: 'Cohort table not available' });
 
   // GET PI cohorts summary for n8n — API key auth (returns included members per cohort)
   app.get('/api/glp/status/pi/cohorts', async (req, res) => {
@@ -8899,8 +8899,6 @@ app.post('/api/glp/cohorts/members/set', requirePI, async (req, res) => {
           res.status(500).json({ error: 'Server error' });
       }
   });
-
-
 
         const cohortId = (req.body.cohort_id || '').toUpperCase();
         if (!['LIU', 'UNAV', 'EXTERNAL'].includes(cohortId)) return res.status(400).json({ error: 'cohort_id must be LIU, UNAV, or EXTERNAL' });
