@@ -9584,6 +9584,33 @@ app.get('/api/version', (req, res) => {
   res.json({ ok: true, sha: 'bc6fa12' });
 });
 
+// Debug (API key): check if a given route is registered (method + path)
+app.get('/api/debug/has-route', (req, res) => {
+  try {
+    const apiKey = (req.headers['x-api-key'] || '').toString().trim();
+    if (!apiKey || apiKey !== ((process.env.API_SECRET_KEY || '').toString().trim())) {
+      return res.status(401).json({ error: 'Invalid or missing API key' });
+    }
+
+    const path = (req.query.path || '').toString();
+    const method = ((req.query.method || 'get').toString().toLowerCase());
+
+    const stack = (app && app._router && Array.isArray(app._router.stack)) ? app._router.stack : [];
+    const found = stack.some(layer => {
+      if (!layer || !layer.route) return false;
+      const r = layer.route;
+      return r.path === path && r.methods && r.methods[method] === true;
+    });
+
+    return res.json({ ok: true, method, path, found });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: 'Server error' });
+  }
+});
+
+
+
+
 
 app.listen(PORT, "0.0.0.0", () => console.log("[STARTUP] Server listening on port " + PORT));
 
