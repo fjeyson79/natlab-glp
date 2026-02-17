@@ -9578,6 +9578,13 @@ app.post('/api/internal-docs/delete-folder', requirePI, async (req, res) => {
 //
 // Server start
 //
+
+// Build marker (debug): exposes deployed git SHA
+app.get('/api/version', (req, res) => {
+  res.json({ ok: true, sha: 'bc6fa12' });
+});
+
+
 app.listen(PORT, "0.0.0.0", () => console.log("[STARTUP] Server listening on port " + PORT));
 
 
