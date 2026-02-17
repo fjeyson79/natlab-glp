@@ -1035,7 +1035,7 @@ app.get('/api/di/my-files', requireAuth, async (req, res) => {
         const result = await pool.query(
             `SELECT submission_id, file_type, original_filename, status, created_at, signed_at, drive_file_id
              FROM di_submissions
-             WHERE researcher_id = $1
+             WHERE researcher_id = $1 AND status != 'DISCARDED'
              ORDER BY created_at DESC`,
             [user.researcher_id]
         );
@@ -1464,8 +1464,8 @@ app.patch('/api/di/submissions/:id', async (req, res) => {
             }
         }
 
-        if (!status || !['PENDING', 'APPROVED', 'REVISION_NEEDED'].includes(status)) {
-            return res.status(400).json({ error: 'status must be PENDING, APPROVED, or REVISION_NEEDED' });
+        if (!status || !['PENDING', 'APPROVED', 'REVISION_NEEDED', 'DISCARDED'].includes(status)) {
+            return res.status(400).json({ error: 'status must be PENDING, APPROVED, REVISION_NEEDED, or DISCARDED' });
         }
 
         const result = await pool.query(
@@ -1882,7 +1882,7 @@ if (fileId && isR2Id(fileId)) {
 });
 
 // ─── Shared approval/revision helpers (used by token-based and inline endpoints) ───
-async function performApproval(submissionId) {
+async function performApproval(submissionId, approvalComment) {
     const result = await pool.query('SELECT * FROM di_submissions WHERE submission_id = $1', [submissionId]);
     if (result.rows.length === 0) return { success: false, error: 'Submission not found', status: 404 };
 
@@ -1894,6 +1894,7 @@ async function performApproval(submissionId) {
     if (!isR2) return { success: false, error: 'Drive not configured. Only R2 supported.', status: 400 };
     if (!fileId) return { success: false, error: 'No file associated.', status: 400 };
     if (submission.status === 'APPROVED') return { success: false, error: 'Already approved.', status: 409 };
+    if (submission.status === 'DISCARDED') return { success: false, error: 'Cannot approve a discarded submission.', status: 409 };
 
     const signedAt = new Date().toISOString();
     const signerName = 'Frank J. Hernandez';
@@ -1919,8 +1920,8 @@ async function performApproval(submissionId) {
     const verificationCode = `NATLAB-${submissionId}-${signatureHash.substring(0, 8).toUpperCase()}`;
 
     await pool.query(
-        `UPDATE di_submissions SET status='APPROVED', signed_at=$1, signer_name=$2, drive_file_id=$3, r2_object_key=$4, signed_pdf_path=$3, signature_hash=$5, verification_code=$6 WHERE submission_id=$7`,
-        [signedAt, signerName, newFileId, approvedKey, signatureHash, verificationCode, submissionId]
+        `UPDATE di_submissions SET status='APPROVED', signed_at=$1, signer_name=$2, drive_file_id=$3, r2_object_key=$4, signed_pdf_path=$3, signature_hash=$5, verification_code=$6, approval_comment=$8 WHERE submission_id=$7`,
+        [signedAt, signerName, newFileId, approvedKey, signatureHash, verificationCode, submissionId, approvalComment || null]
     );
 
     const researcherResult = await pool.query(
@@ -1938,7 +1939,8 @@ async function performApproval(submissionId) {
             affiliation: submission.affiliation,
             view_url: `https://natlab-glp-production.up.railway.app/api/di/download/${submissionId}`,
             download_url: `https://natlab-glp-production.up.railway.app/api/di/download/${submissionId}?download=true`,
-            verification_code: verificationCode
+            verification_code: verificationCode,
+            approval_comment: approvalComment || ''
         });
     }
 
@@ -1947,10 +1949,11 @@ async function performApproval(submissionId) {
 }
 
 async function performRevision(submissionId, comments) {
-    const result = await pool.query('SELECT drive_file_id, researcher_id, original_filename, affiliation, file_type, created_at FROM di_submissions WHERE submission_id = $1', [submissionId]);
+    const result = await pool.query('SELECT drive_file_id, researcher_id, original_filename, affiliation, file_type, created_at, status FROM di_submissions WHERE submission_id = $1', [submissionId]);
     if (result.rows.length === 0) return { success: false, error: 'Submission not found', status: 404 };
 
     const submission = result.rows[0];
+    if (submission.status === 'DISCARDED') return { success: false, error: 'Cannot revise a discarded submission.', status: 409 };
     const fileId = (submission.drive_file_id || '').trim();
     const isR2 = fileId.startsWith('r2:');
     console.log(`[REVISE] id=${submissionId} fileId=${fileId} isR2=${isR2}`);
@@ -2407,6 +2410,7 @@ app.get('/api/di/directory', requirePI, async (req, res) => {
                     s.original_filename, s.status, s.created_at, s.drive_file_id,
                     EXTRACT(YEAR FROM s.created_at) as year
              FROM di_submissions s
+             WHERE s.status != 'DISCARDED'
              ORDER BY s.created_at DESC`
         );
 
@@ -2894,6 +2898,7 @@ app.get('/api/di/lab-files', requirePI, async (req, res) => {
                     a.name as researcher_name
              FROM di_submissions s
              LEFT JOIN di_allowlist a ON s.researcher_id = a.researcher_id
+             WHERE s.status != 'DISCARDED'
              ORDER BY s.created_at DESC`
         );
 
@@ -2920,7 +2925,7 @@ app.get('/api/di/lab-files-enriched', requirePI, async (req, res) => {
         const hasAssoc = await checkAssociationsTable();
 
         // Implementation note: structured for easy future extension with ?researcher_id=
-        const conditions = ['s.created_at >= NOW() - make_interval(months => $1)'];
+        const conditions = ['s.created_at >= NOW() - make_interval(months => $1)', "s.status != 'DISCARDED'"];
         const params = [months];
 
         const whereClause = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
@@ -2975,6 +2980,7 @@ app.get('/api/di/researcher-file-metrics', requirePI, async (req, res) => {
                 MAX(s.created_at) as last_upload
             FROM di_submissions s
             LEFT JOIN di_allowlist a ON s.researcher_id = a.researcher_id
+            WHERE s.status != 'DISCARDED'
             GROUP BY s.researcher_id, a.name
             ORDER BY a.name
         `);
@@ -3061,7 +3067,7 @@ app.get('/api/di/file-associations/:id', requirePI, async (req, res) => {
         const sopResult = await pool.query(`
             SELECT s.submission_id, s.researcher_id, s.original_filename, s.status, s.created_at
             FROM di_submissions s
-            WHERE s.file_type = 'SOP' AND s.researcher_id = $1 AND s.submission_id != $2
+            WHERE s.file_type = 'SOP' AND s.researcher_id = $1 AND s.submission_id != $2 AND s.status != 'DISCARDED'
             ${sopExclusion}
             ORDER BY s.created_at DESC LIMIT 30
         `, [sourceFile.researcher_id, sourceFileId]);
@@ -3075,7 +3081,7 @@ app.get('/api/di/file-associations/:id', requirePI, async (req, res) => {
         const presResult = await pool.query(`
             SELECT s.submission_id, s.researcher_id, s.original_filename, s.status, s.created_at
             FROM di_submissions s
-            WHERE s.file_type = 'PRESENTATION' AND s.researcher_id = $1 AND s.submission_id != $2
+            WHERE s.file_type = 'PRESENTATION' AND s.researcher_id = $1 AND s.submission_id != $2 AND s.status != 'DISCARDED'
             ${presExclusion}
             ORDER BY s.created_at DESC LIMIT 30
         `, [sourceFile.researcher_id, sourceFileId]);
@@ -3128,7 +3134,8 @@ app.delete('/api/di/file-associations/:id', requirePI, async (req, res) => {
 // POST /api/di/approve-inline/:id — Session-based approval (DIC)
 app.post('/api/di/approve-inline/:id', requirePI, async (req, res) => {
     try {
-        const result = await performApproval(req.params.id);
+        const { approval_comment } = req.body || {};
+        const result = await performApproval(req.params.id, approval_comment);
         if (!result.success) return res.status(result.status || 500).json({ error: result.error });
         res.json({ success: true, verification_code: result.verification_code });
     } catch (err) {
@@ -3146,6 +3153,70 @@ app.post('/api/di/revise-inline/:id', requirePI, async (req, res) => {
         res.json({ success: true });
     } catch (err) {
         console.error('[REVISE-INLINE] Error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/di/discard-inline/:id — PI discards a submission (final, audit preserved)
+app.post('/api/di/discard-inline/:id', requirePI, async (req, res) => {
+    try {
+        const submissionId = req.params.id;
+        const { reason, note } = req.body;
+
+        const validReasons = [
+            'Mistaken upload',
+            'Training material',
+            'Wrong category',
+            'Duplicate',
+            'Not admissible for GLP records',
+            'Other'
+        ];
+        if (!reason || !validReasons.includes(reason)) {
+            return res.status(400).json({ error: 'Valid discard reason is required' });
+        }
+
+        const result = await pool.query(
+            'SELECT submission_id, status, researcher_id, original_filename, affiliation FROM di_submissions WHERE submission_id = $1',
+            [submissionId]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Submission not found' });
+
+        const submission = result.rows[0];
+        if (submission.status === 'DISCARDED') return res.status(409).json({ error: 'Already discarded' });
+        if (submission.status === 'APPROVED') return res.status(409).json({ error: 'Cannot discard an approved submission' });
+
+        const piId = req.session.user.researcher_id;
+        await pool.query(
+            `UPDATE di_submissions
+             SET status = 'DISCARDED', discarded_by = $1, discarded_at = NOW(),
+                 discard_reason = $2, discard_note = $3
+             WHERE submission_id = $4`,
+            [piId, reason, note || null, submissionId]
+        );
+
+        // Notify researcher
+        const researcherResult = await pool.query(
+            'SELECT institution_email, researcher_id FROM di_allowlist WHERE researcher_id = $1',
+            [submission.researcher_id]
+        );
+        if (researcherResult.rows.length > 0) {
+            const researcher = researcherResult.rows[0];
+            await notifyResearcher({
+                submission_id: submissionId,
+                decision: 'DISCARDED',
+                researcher_email: researcher.institution_email,
+                researcher_name: researcher.researcher_id,
+                file_name: submission.original_filename,
+                affiliation: submission.affiliation,
+                discard_reason: reason,
+                discard_note: note || ''
+            });
+        }
+
+        console.log(`[DISCARD] PI ${piId} discarded ${submissionId}, reason: ${reason}`);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[DISCARD] Error:', err);
         res.status(500).json({ error: 'Server error' });
     }
 });
@@ -3247,7 +3318,7 @@ app.get('/api/di/all-members', requirePI, async (req, res) => {
                     a.active, COALESCE(a.role, 'researcher') as role,
                     a.created_at, a.deactivated_at, a.deactivated_by,
                     u.last_login,
-                    (SELECT COUNT(*) FROM di_submissions s WHERE s.researcher_id = a.researcher_id) as submission_count
+                    (SELECT COUNT(*) FROM di_submissions s WHERE s.researcher_id = a.researcher_id AND s.status != 'DISCARDED') as submission_count
              FROM di_allowlist a
              LEFT JOIN di_users u ON a.institution_email = u.institution_email
              ORDER BY a.active DESC, a.name`
@@ -3409,7 +3480,7 @@ app.get('/api/di/metrics', requirePI, async (req, res) => {
         let total = 0;
         statusResult.rows.forEach(row => {
             byStatus[row.status] = row.count;
-            total += row.count;
+            if (row.status !== 'DISCARDED') total += row.count;
         });
 
         // Get submissions by researcher
@@ -3418,6 +3489,7 @@ app.get('/api/di/metrics', requirePI, async (req, res) => {
                     COUNT(*)::int as total,
                     COUNT(CASE WHEN status = 'APPROVED' THEN 1 END)::int as approved
              FROM di_submissions
+             WHERE status != 'DISCARDED'
              GROUP BY researcher_id
              ORDER BY total DESC
              LIMIT 10`
@@ -3432,7 +3504,7 @@ app.get('/api/di/metrics', requirePI, async (req, res) => {
         const thisMonthResult = await pool.query(
             `SELECT COUNT(*)::int as count
              FROM di_submissions
-             WHERE created_at >= date_trunc('month', CURRENT_DATE)`
+             WHERE created_at >= date_trunc('month', CURRENT_DATE) AND status != 'DISCARDED'`
         );
 
         // Get open revision requests count (from dedicated table)
@@ -3778,7 +3850,7 @@ app.get('/api/di/supervision/researchers', requireSupervisor, async (req, res) =
         const result = await pool.query(
             `SELECT a.researcher_id, a.name, a.institution_email, a.affiliation,
                     sr.assigned_at,
-                    (SELECT COUNT(*) FROM di_submissions s WHERE s.researcher_id = a.researcher_id) as file_count
+                    (SELECT COUNT(*) FROM di_submissions s WHERE s.researcher_id = a.researcher_id AND s.status != 'DISCARDED') as file_count
              FROM di_supervisor_researchers sr
              JOIN di_allowlist a ON sr.researcher_id = a.researcher_id
              WHERE sr.supervisor_id = $1 AND a.active = true
@@ -3819,7 +3891,7 @@ app.get('/api/di/supervision/researchers/:researcher_id/files', requireSuperviso
         const result = await pool.query(
             `SELECT submission_id, file_type, original_filename, status, created_at, signed_at, drive_file_id
              FROM di_submissions
-             WHERE researcher_id = $1
+             WHERE researcher_id = $1 AND status != 'DISCARDED'
              ORDER BY created_at DESC`,
             [researcher_id]
         );
@@ -7780,7 +7852,7 @@ async function buildGlpSnapshot(userId) {
                 NULL::int AS avg_ai_score,
                 COUNT(*) FILTER (WHERE created_at >= CURRENT_DATE - INTERVAL '28 days')::int AS recent_count
             FROM di_submissions
-            WHERE researcher_id = $1
+            WHERE researcher_id = $1 AND status != 'DISCARDED'
             GROUP BY file_type
         `, [userId]),
 
@@ -7970,7 +8042,7 @@ app.get('/api/di/glp-status/coherence', requireAuth, async (req, res) => {
                 COUNT(*) FILTER (WHERE s.created_at >= b.pw_start AND s.created_at < b.tw_start)::int AS prev_week,
                 COUNT(*) FILTER (WHERE s.status = 'APPROVED')::int AS approved_total
             FROM di_submissions s, b
-            WHERE s.researcher_id = $1
+            WHERE s.researcher_id = $1 AND s.status != 'DISCARDED'
             GROUP BY s.file_type, b.tw_start, b.pw_start
         `, [rid]);
 
@@ -8322,7 +8394,7 @@ app.get('/api/glp/status/user-facts/:userId', async (req, res) => {
                     COUNT(*) FILTER (WHERE created_at >= CURRENT_DATE - INTERVAL '28 days')::int AS recent_4w,
                     NULL::numeric AS avg_ai_score
                 FROM di_submissions
-                WHERE researcher_id = $1
+                WHERE researcher_id = $1 AND status != 'DISCARDED'
                 GROUP BY file_type
             `, [userId]),
 

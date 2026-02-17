@@ -1063,6 +1063,50 @@
             border-color: #1a365d;
         }
         .dic-modal-btn.primary:hover { background: #2d5a87; }
+        .dic-modal-btn.danger {
+            background: #dc3545;
+            color: #fff;
+            border-color: #dc3545;
+        }
+        .dic-modal-btn.danger:hover { background: #c82333; }
+        .dic-modal-label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 4px;
+        }
+        .dic-modal-select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1.5px solid #d1d5db;
+            border-radius: 8px;
+            font-size: 13px;
+            font-family: inherit;
+            box-sizing: border-box;
+            background: #fff;
+        }
+        .dic-modal-select:focus { border-color: #2d5a87; outline: none; }
+        .dic-modal-input {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1.5px solid #d1d5db;
+            border-radius: 8px;
+            font-size: 13px;
+            font-family: inherit;
+            box-sizing: border-box;
+        }
+        .dic-modal-input:focus { border-color: #2d5a87; outline: none; }
+        .dic-modal-warning {
+            background: #fff3cd;
+            color: #856404;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-top: 12px;
+        }
+        .dic-modal-field + .dic-modal-field { margin-top: 12px; }
 
         /* --- Sidebar toggle --- */
         .dic-sidebar-toggle {
@@ -1661,6 +1705,61 @@
                 <div class="dic-modal-footer">
                     <button class="dic-modal-btn" onclick="dicCloseReviseModal()">Cancel</button>
                     <button class="dic-modal-btn primary" onclick="dicSubmitRevision()">Submit Revision</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Approve Modal (Pending Approvals) -->
+        <div class="dic-modal-overlay" id="paApproveModal">
+            <div class="dic-modal">
+                <div class="dic-modal-header">
+                    <span>Approve Submission</span>
+                    <button class="dic-modal-close" onclick="paCloseApproveModal()">&times;</button>
+                </div>
+                <div class="dic-modal-body">
+                    <p style="font-size:13px;color:#374151;margin:0 0 12px;">Approve <strong id="paApproveFilename"></strong>?</p>
+                    <div class="dic-modal-field">
+                        <label class="dic-modal-label">Approval comment (optional)</label>
+                        <input type="text" class="dic-modal-input" id="paApproveComment" placeholder="Optional one-line comment for the researcher" maxlength="500">
+                    </div>
+                </div>
+                <div class="dic-modal-footer">
+                    <button class="dic-modal-btn" onclick="paCloseApproveModal()">Cancel</button>
+                    <button class="dic-modal-btn primary" id="paApproveConfirmBtn" onclick="paConfirmApprove()">Approve</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Discard Modal (Pending Approvals) -->
+        <div class="dic-modal-overlay" id="paDiscardModal">
+            <div class="dic-modal">
+                <div class="dic-modal-header">
+                    <span>Discard Submission</span>
+                    <button class="dic-modal-close" onclick="paCloseDiscardModal()">&times;</button>
+                </div>
+                <div class="dic-modal-body">
+                    <p style="font-size:13px;color:#374151;margin:0 0 12px;">Discard <strong id="paDiscardFilename"></strong>?</p>
+                    <div class="dic-modal-field">
+                        <label class="dic-modal-label">Discard reason (required)</label>
+                        <select class="dic-modal-select" id="paDiscardReason">
+                            <option value="">Select a reason...</option>
+                            <option value="Mistaken upload">Mistaken upload</option>
+                            <option value="Training material">Training material</option>
+                            <option value="Wrong category">Wrong category</option>
+                            <option value="Duplicate">Duplicate</option>
+                            <option value="Not admissible for GLP records">Not admissible for GLP records</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div class="dic-modal-field">
+                        <label class="dic-modal-label">Note (optional)</label>
+                        <input type="text" class="dic-modal-input" id="paDiscardNote" placeholder="Optional note" maxlength="500">
+                    </div>
+                    <div class="dic-modal-warning">This action is final. The file will be removed from all views but preserved for audit.</div>
+                </div>
+                <div class="dic-modal-footer">
+                    <button class="dic-modal-btn" onclick="paCloseDiscardModal()">Cancel</button>
+                    <button class="dic-modal-btn danger" id="paDiscardConfirmBtn" onclick="paConfirmDiscard()">Discard</button>
                 </div>
             </div>
         </div>
@@ -2751,6 +2850,9 @@
 
                 // Filter out INVENTORY submissions — they are reviewed in Purchases & Inventory tab
                 data.submissions = (data.submissions || []).filter(s => s.file_type !== 'INVENTORY');
+                // Cache for modal lookups (avoids single-quote injection in onclick)
+                window._paSubmissions = {};
+                data.submissions.forEach(s => { window._paSubmissions[s.submission_id] = s; });
 
                 if (!data.submissions || data.submissions.length === 0) {
                     container.innerHTML = '<p style="text-align:center;color:#666;padding:20px;">No pending approvals</p>';
@@ -2786,6 +2888,7 @@
                                                 <button class="btn btn-sm btn-primary" onclick="viewFile('${s.submission_id}')">View</button>
                                                 <button class="btn btn-sm btn-success" onclick="quickApprove('${s.submission_id}')">Approve</button>
                                                 <button class="btn btn-sm btn-warning" onclick="quickRevise('${s.submission_id}')">Revise</button>
+                                                <button class="btn btn-sm btn-danger" onclick="quickDiscard('${s.submission_id}')">Discard</button>
                                             </div>
                                         </td>
                                     </tr>
@@ -2803,20 +2906,99 @@
             window.open(`/api/di/download/${id}`, '_blank');
         }
 
-        async function quickApprove(id) {
-            if (!confirm('Are you sure you want to approve this submission?')) return;
+        // --- Approve modal ---
+        let paApproveTargetId = null;
 
+        function quickApprove(id) {
+            paApproveTargetId = id;
+            const s = (window._paSubmissions || {})[id];
+            document.getElementById('paApproveFilename').textContent = s ? s.original_filename : id;
+            document.getElementById('paApproveComment').value = '';
+            document.getElementById('paApproveConfirmBtn').disabled = false;
+            document.getElementById('paApproveModal').classList.add('active');
+        }
+
+        function paCloseApproveModal() {
+            document.getElementById('paApproveModal').classList.remove('active');
+            paApproveTargetId = null;
+        }
+
+        async function paConfirmApprove() {
+            if (!paApproveTargetId) return;
+            const btn = document.getElementById('paApproveConfirmBtn');
+            btn.disabled = true;
+            btn.textContent = 'Approving...';
             try {
-                // Generate token for approval link
-                const token = btoa(id + '_glp_2024_sec').replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
-                window.open(`/api/di/approve/${id}?token=${token}`, '_blank');
-                setTimeout(() => {
+                const comment = document.getElementById('paApproveComment').value.trim();
+                const resp = await fetch(`/api/di/approve-inline/${paApproveTargetId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ approval_comment: comment || undefined })
+                });
+                const data = await resp.json();
+                if (resp.ok && data.success) {
+                    paCloseApproveModal();
+                    alert('Approved');
                     loadPendingApprovals();
                     loadStats();
-                }, 2000);
+                } else {
+                    alert(data.error || 'Failed to approve');
+                }
             } catch (err) {
                 alert('Error approving submission');
             }
+            btn.disabled = false;
+            btn.textContent = 'Approve';
+        }
+
+        // --- Discard modal ---
+        let paDiscardTargetId = null;
+
+        function quickDiscard(id) {
+            paDiscardTargetId = id;
+            const s = (window._paSubmissions || {})[id];
+            document.getElementById('paDiscardFilename').textContent = s ? s.original_filename : id;
+            document.getElementById('paDiscardReason').value = '';
+            document.getElementById('paDiscardNote').value = '';
+            document.getElementById('paDiscardConfirmBtn').disabled = false;
+            document.getElementById('paDiscardModal').classList.add('active');
+        }
+
+        function paCloseDiscardModal() {
+            document.getElementById('paDiscardModal').classList.remove('active');
+            paDiscardTargetId = null;
+        }
+
+        async function paConfirmDiscard() {
+            if (!paDiscardTargetId) return;
+            const reason = document.getElementById('paDiscardReason').value;
+            if (!reason) { alert('Please select a discard reason.'); return; }
+            const note = document.getElementById('paDiscardNote').value.trim();
+            const btn = document.getElementById('paDiscardConfirmBtn');
+            btn.disabled = true;
+            btn.textContent = 'Discarding...';
+            try {
+                const resp = await fetch(`/api/di/discard-inline/${paDiscardTargetId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ reason, note: note || undefined })
+                });
+                const data = await resp.json();
+                if (resp.ok && data.success) {
+                    paCloseDiscardModal();
+                    alert('Submission discarded');
+                    loadPendingApprovals();
+                    loadStats();
+                } else {
+                    alert(data.error || 'Failed to discard');
+                }
+            } catch (err) {
+                alert('Error discarding submission');
+            }
+            btn.disabled = false;
+            btn.textContent = 'Discard';
         }
 
         async function quickRevise(id) {
