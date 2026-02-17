@@ -8859,6 +8859,49 @@ app.post('/api/glp/cohorts/members/set', requirePI, async (req, res) => {
     try {
         if (!(await checkCohortTable())) return res.status(501).json({ error: 'Cohort table not available' });
 
+  // GET PI cohorts summary for n8n — API key auth (returns included members per cohort)
+  app.get('/api/glp/status/pi/cohorts', async (req, res) => {
+      try {
+          const apiKey = (req.headers['x-api-key'] || '').toString().trim();
+          if (!apiKey || apiKey !== ((process.env.API_SECRET_KEY || '').toString().trim())) {
+              return res.status(401).json({ error: 'Invalid or missing API key' });
+          }
+          if (!(await checkCohortTable())) return res.status(501).json({ error: 'Cohort table not available' });
+
+          const rows = await pool.query(`
+              SELECT cohort_id, array_agg(user_id ORDER BY user_id) AS members
+              FROM di_glp_cohort_members
+              WHERE included = TRUE
+              GROUP BY cohort_id
+              ORDER BY cohort_id
+          `);
+
+          const cohorts = rows.rows.map(r => ({
+              cohort_id: (r.cohort_id || '').toString().toUpperCase(),
+              cohort_name: (r.cohort_id || '').toString().toUpperCase(),
+              members: Array.isArray(r.members) ? r.members : []
+          }));
+
+          // Add BOTH as union of all included members (LIU + UNAV + EXTERNAL)
+          const all = [];
+          for (const c of cohorts) for (const id of (c.members || [])) all.push(id);
+          const both = Array.from(new Set(all)).sort();
+
+          cohorts.push({
+              cohort_id: 'BOTH',
+              cohort_name: 'BOTH',
+              members: both
+          });
+
+          res.json({ success: true, cohorts });
+      } catch (err) {
+          console.error('[GLP-COHORT] pi/cohorts error:', err);
+          res.status(500).json({ error: 'Server error' });
+      }
+  });
+
+
+
         const cohortId = (req.body.cohort_id || '').toUpperCase();
         if (!['LIU', 'UNAV', 'EXTERNAL'].includes(cohortId)) return res.status(400).json({ error: 'cohort_id must be LIU, UNAV, or EXTERNAL' });
 
