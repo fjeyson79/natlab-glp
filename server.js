@@ -3161,7 +3161,7 @@ app.post('/api/di/revise-inline/:id', requirePI, async (req, res) => {
 app.post('/api/di/discard-inline/:id', requirePI, async (req, res) => {
     try {
         const submissionId = req.params.id;
-        const { reason, note } = req.body;
+        const { reason, note } = req.body || {};
 
         const validReasons = [
             'Mistaken upload',
@@ -3185,7 +3185,8 @@ app.post('/api/di/discard-inline/:id', requirePI, async (req, res) => {
         if (submission.status === 'DISCARDED') return res.status(409).json({ error: 'Already discarded' });
         if (submission.status === 'APPROVED') return res.status(409).json({ error: 'Cannot discard an approved submission' });
 
-        const piId = req.session.user.researcher_id;
+        const piId = req.session?.user?.researcher_id;
+          if (!piId) return res.status(401).json({ error: 'Not authenticated' });
         await pool.query(
             `UPDATE di_submissions
              SET status = 'DISCARDED', discarded_by = $1, discarded_at = NOW(),
@@ -7311,7 +7312,8 @@ app.post('/api/di/training/entries/:id/pi-certify', requirePI, async (req, res) 
         if (entry.rows[0].status !== 'PENDING') return res.status(400).json({ error: 'Entry is not pending' });
         if (entry.rows[0].certified_at) return res.status(400).json({ error: 'Entry is already certified' });
 
-        const piId = req.session.user.researcher_id;
+        const piId = req.session?.user?.researcher_id;
+          if (!piId) return res.status(401).json({ error: 'Not authenticated' });
         await pool.query(
             `UPDATE di_training_entries SET status = 'CERTIFIED', certified_at = CURRENT_TIMESTAMP, certified_by = $1 WHERE id = $2`,
             [piId, req.params.id]
@@ -8936,7 +8938,8 @@ app.get('/api/glp/cohorts/members', requirePI, async (req, res) => {
           const updates = req.body.updates;
           if (!Array.isArray(updates) || updates.length === 0) return res.status(400).json({ error: 'updates array required' });
 
-          const piId = req.session.user.researcher_id;
+          const piId = req.session?.user?.researcher_id;
+          if (!piId) return res.status(401).json({ error: 'Not authenticated' });
           let count = 0;
 
           for (const u of updates) {
