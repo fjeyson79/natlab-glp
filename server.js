@@ -8930,6 +8930,33 @@ app.get('/api/glp/cohorts/members', requirePI, async (req, res) => {
       try {
           if (!(await checkCohortTable())) return res.status(501).json({ error: 'Cohort table not available' });
 
+          const cohortId = (req.body.cohort_id || '').toUpperCase();
+          if (!['LIU', 'UNAV', 'EXTERNAL'].includes(cohortId)) return res.status(400).json({ error: 'cohort_id must be LIU, UNAV, or EXTERNAL' });
+
+          const updates = req.body.updates;
+          if (!Array.isArray(updates) || updates.length === 0) return res.status(400).json({ error: 'updates array required' });
+
+          const piId = req.session.user.researcher_id;
+          let count = 0;
+
+          for (const u of updates) {
+              if (!u.user_id) continue;
+              await pool.query(`
+                  INSERT INTO di_glp_cohort_members (cohort_id, user_id, included, note, updated_by, updated_at)
+                  VALUES ($1, $2, $3, $4, $5, NOW())
+                  ON CONFLICT (cohort_id, user_id) DO UPDATE
+                  SET included = $3, note = $4, updated_by = $5, updated_at = NOW()
+              `, [cohortId, u.user_id, u.included !== false, u.note || null, piId]);
+              count++;
+          }
+
+          console.log(`[GLP-COHORT] PI ${piId} updated ${count} members in cohort ${cohortId}`);
+          res.json({ success: true, updated: count });
+      } catch (err) {
+          console.error('[GLP-COHORT] set error:', err);
+          res.status(500).json({ error: 'Server error' });
+      }
+  });
 
   // GET PI cohorts summary for n8n — API key auth (returns included members per cohort)
   app.get('/api/glp/status/pi/cohorts', async (req, res) => {
@@ -8972,33 +8999,6 @@ app.get('/api/glp/cohorts/members', requirePI, async (req, res) => {
       }
   });
 
-        const cohortId = (req.body.cohort_id || '').toUpperCase();
-        if (!['LIU', 'UNAV', 'EXTERNAL'].includes(cohortId)) return res.status(400).json({ error: 'cohort_id must be LIU, UNAV, or EXTERNAL' });
-
-        const updates = req.body.updates;
-        if (!Array.isArray(updates) || updates.length === 0) return res.status(400).json({ error: 'updates array required' });
-
-        const piId = req.session.user.researcher_id;
-        let count = 0;
-
-        for (const u of updates) {
-            if (!u.user_id) continue;
-            await pool.query(`
-                INSERT INTO di_glp_cohort_members (cohort_id, user_id, included, note, updated_by, updated_at)
-                VALUES ($1, $2, $3, $4, $5, NOW())
-                ON CONFLICT (cohort_id, user_id) DO UPDATE
-                SET included = $3, note = $4, updated_by = $5, updated_at = NOW()
-            `, [cohortId, u.user_id, u.included !== false, u.note || null, piId]);
-            count++;
-        }
-
-        console.log(`[GLP-COHORT] PI ${piId} updated ${count} members in cohort ${cohortId}`);
-        res.json({ success: true, updated: count });
-    } catch (err) {
-        console.error('[GLP-COHORT] set error:', err);
-        res.status(500).json({ error: 'Server error' });
-    }
-});
 
 // =====================================================
 // GLP GROUP SNAPSHOT – PI-only endpoints
