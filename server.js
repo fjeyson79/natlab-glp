@@ -8257,6 +8257,40 @@ app.get('/api/glp/status/users-active', async (req, res) => {
     }
 });
 
+// 1A-bis. GET selected cohort members for n8n (API key auth)
+// Returns PI-curated member list grouped by cohort, including EXTERNAL.
+// n8n should use this instead of users-active for the GLP weekly workflow.
+app.get('/api/glp/cohorts/selected', async (req, res) => {
+    try {
+        const apiKey = (req.headers['x-api-key'] || '').toString().trim();
+        if (!apiKey || apiKey !== ((process.env.API_SECRET_KEY || '').toString().trim())) {
+            return res.status(401).json({ error: 'Invalid or missing API key' });
+        }
+        if (!(await checkCohortTable())) return res.status(501).json({ error: 'Cohort table not available' });
+
+        const result = await pool.query(`
+            SELECT c.cohort_id, c.user_id, a.name,
+                   COALESCE(a.role, 'researcher') AS role,
+                   a.affiliation AS institution, a.active
+            FROM di_glp_cohort_members c
+            JOIN di_allowlist a ON a.researcher_id = c.user_id
+            WHERE c.included = TRUE AND a.active = TRUE
+            ORDER BY c.cohort_id, a.name
+        `);
+
+        const grouped = {};
+        for (const row of result.rows) {
+            if (!grouped[row.cohort_id]) grouped[row.cohort_id] = [];
+            grouped[row.cohort_id].push(row);
+        }
+
+        res.json({ success: true, cohorts: grouped, total: result.rows.length });
+    } catch (err) {
+        console.error('[GLP-COHORT] selected error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
 // 1B. GET user facts — aggregated raw facts for scoring in n8n
 app.get('/api/glp/status/user-facts/:userId', async (req, res) => {
     try {
@@ -8795,10 +8829,11 @@ app.get('/api/glp/cohorts/members', requirePI, async (req, res) => {
         if (!(await checkCohortTable())) return res.status(501).json({ error: 'Cohort table not available' });
 
         const cohortId = (req.query.cohort_id || '').toUpperCase();
-        if (!['LIU', 'UNAV'].includes(cohortId)) return res.status(400).json({ error: 'cohort_id must be LIU or UNAV' });
+        if (!['LIU', 'UNAV', 'EXTERNAL'].includes(cohortId)) return res.status(400).json({ error: 'cohort_id must be LIU, UNAV, or EXTERNAL' });
 
         // Get all active allowlist members for the affiliation
-        const affiliation = cohortId === 'LIU' ? 'LiU' : 'UNAV';
+        const affiliationMap = { LIU: 'LiU', UNAV: 'UNAV', EXTERNAL: 'EXTERNAL' };
+        const affiliation = affiliationMap[cohortId];
         const result = await pool.query(`
             SELECT a.researcher_id AS user_id, a.name, COALESCE(a.role, 'researcher') AS role,
                    a.affiliation AS institution, a.active,
@@ -8825,7 +8860,7 @@ app.post('/api/glp/cohorts/members/set', requirePI, async (req, res) => {
         if (!(await checkCohortTable())) return res.status(501).json({ error: 'Cohort table not available' });
 
         const cohortId = (req.body.cohort_id || '').toUpperCase();
-        if (!['LIU', 'UNAV'].includes(cohortId)) return res.status(400).json({ error: 'cohort_id must be LIU or UNAV' });
+        if (!['LIU', 'UNAV', 'EXTERNAL'].includes(cohortId)) return res.status(400).json({ error: 'cohort_id must be LIU, UNAV, or EXTERNAL' });
 
         const updates = req.body.updates;
         if (!Array.isArray(updates) || updates.length === 0) return res.status(400).json({ error: 'updates array required' });
@@ -8864,7 +8899,7 @@ app.post('/api/glp/status/generate-group', requirePI, async (req, res) => {
         if (!(await checkGroupIndexTable())) return res.status(501).json({ error: 'Group index table not available' });
 
         const cohortId = (req.body.cohort_id || '').toUpperCase();
-        if (!['LIU', 'UNAV', 'BOTH'].includes(cohortId)) return res.status(400).json({ error: 'cohort_id must be LIU, UNAV, or BOTH' });
+        if (!['LIU', 'UNAV', 'EXTERNAL', 'BOTH'].includes(cohortId)) return res.status(400).json({ error: 'cohort_id must be LIU, UNAV, EXTERNAL, or BOTH' });
 
         const isoWeek = (req.body.iso_week || '').trim() || currentIsoWeek();
         const crypto = require('crypto');
@@ -9037,7 +9072,7 @@ app.get('/api/glp/status/group/weeks', requirePI, async (req, res) => {
         if (!(await checkGroupIndexTable())) return res.json({ success: true, weeks: [] });
 
         const cohortId = (req.query.cohort_id || 'BOTH').toUpperCase();
-        if (!['LIU', 'UNAV', 'BOTH'].includes(cohortId)) return res.status(400).json({ error: 'Invalid cohort_id' });
+        if (!['LIU', 'UNAV', 'EXTERNAL', 'BOTH'].includes(cohortId)) return res.status(400).json({ error: 'Invalid cohort_id' });
 
         const result = await pool.query(
             `SELECT iso_week, member_count, membership_hash, created_at

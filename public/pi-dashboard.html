@@ -1957,6 +1957,7 @@
                     <div class="glpc-mgmt-tabs">
                         <button class="glpc-mgmt-tab active" onclick="glpcSetMgmtTab('LIU', this)">LiU</button>
                         <button class="glpc-mgmt-tab" onclick="glpcSetMgmtTab('UNAV', this)">UNAV</button>
+                        <button class="glpc-mgmt-tab" onclick="glpcSetMgmtTab('EXTERNAL', this)">External</button>
                     </div>
                     <div class="glpc-mgmt-filter">
                         <label class="glpc-toggle-label">
@@ -4702,16 +4703,19 @@ async function dicIntdocsFolderChanged(sel) {
 
             // Load all members for sidebar
             try {
-                const [liuResp, unavResp] = await Promise.all([
+                const [liuResp, unavResp, extResp] = await Promise.all([
                     fetch('/api/glp/cohorts/members?cohort_id=LIU', { credentials: 'include' }),
-                    fetch('/api/glp/cohorts/members?cohort_id=UNAV', { credentials: 'include' })
+                    fetch('/api/glp/cohorts/members?cohort_id=UNAV', { credentials: 'include' }),
+                    fetch('/api/glp/cohorts/members?cohort_id=EXTERNAL', { credentials: 'include' })
                 ]);
                 const liuData = liuResp.ok ? await liuResp.json() : { members: [] };
                 const unavData = unavResp.ok ? await unavResp.json() : { members: [] };
+                const extData = extResp.ok ? await extResp.json() : { members: [] };
 
                 glpcAllMembers = [
                     ...(liuData.members || []).map(m => ({ ...m, cohort: 'LIU' })),
-                    ...(unavData.members || []).map(m => ({ ...m, cohort: 'UNAV' }))
+                    ...(unavData.members || []).map(m => ({ ...m, cohort: 'UNAV' })),
+                    ...(extData.members || []).map(m => ({ ...m, cohort: 'EXTERNAL' }))
                 ];
                 // De-duplicate by user_id (a user appears in one cohort only)
                 const seen = new Set();
