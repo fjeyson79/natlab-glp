@@ -47,7 +47,7 @@ async function migrate() {
 
             // Extend di_submissions status CHECK to include SUBMITTED (canonical GLP wording; PENDING is legacy for SOP/DATA)
             `ALTER TABLE di_submissions DROP CONSTRAINT IF EXISTS di_submissions_status_check`,
-            `ALTER TABLE di_submissions ADD CONSTRAINT di_submissions_status_check CHECK (status IN ('PENDING', 'APPROVED', 'REVISION_NEEDED', 'SUBMITTED'))`,
+            `ALTER TABLE di_submissions ADD CONSTRAINT di_submissions_status_check CHECK (status IN ('PENDING', 'APPROVED', 'REVISION_NEEDED', 'SUBMITTED', 'DISCARDED'))`,
 
             // Inventory table — tracks what physically exists in the lab
             `CREATE TABLE IF NOT EXISTS di_inventory (
