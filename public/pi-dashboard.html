@@ -1708,59 +1708,59 @@
                 </div>
             </div>
         </div>
+    </div>
 
-        <!-- Approve Modal (Pending Approvals) -->
-        <div class="dic-modal-overlay" id="paApproveModal">
-            <div class="dic-modal">
-                <div class="dic-modal-header">
-                    <span>Approve Submission</span>
-                    <button class="dic-modal-close" onclick="paCloseApproveModal()">&times;</button>
-                </div>
-                <div class="dic-modal-body">
-                    <p style="font-size:13px;color:#374151;margin:0 0 12px;">Approve <strong id="paApproveFilename"></strong>?</p>
-                    <div class="dic-modal-field">
-                        <label class="dic-modal-label">Approval comment (optional)</label>
-                        <input type="text" class="dic-modal-input" id="paApproveComment" placeholder="Optional one-line comment for the researcher" maxlength="500">
-                    </div>
-                </div>
-                <div class="dic-modal-footer">
-                    <button class="dic-modal-btn" onclick="paCloseApproveModal()">Cancel</button>
-                    <button class="dic-modal-btn primary" id="paApproveConfirmBtn" onclick="paConfirmApprove()">Approve</button>
+    <!-- Approve Modal (Pending Approvals) — top-level so visible from any tab -->
+    <div class="dic-modal-overlay" id="paApproveModal">
+        <div class="dic-modal">
+            <div class="dic-modal-header">
+                <span>Approve Submission</span>
+                <button class="dic-modal-close" onclick="paCloseApproveModal()">&times;</button>
+            </div>
+            <div class="dic-modal-body">
+                <p style="font-size:13px;color:#374151;margin:0 0 12px;">Approve <strong id="paApproveFilename"></strong>?</p>
+                <div class="dic-modal-field">
+                    <label class="dic-modal-label">Approval comment (optional)</label>
+                    <input type="text" class="dic-modal-input" id="paApproveComment" placeholder="Optional one-line comment for the researcher" maxlength="500">
                 </div>
             </div>
+            <div class="dic-modal-footer">
+                <button class="dic-modal-btn" onclick="paCloseApproveModal()">Cancel</button>
+                <button class="dic-modal-btn primary" id="paApproveConfirmBtn" onclick="paConfirmApprove()">Approve</button>
+            </div>
         </div>
+    </div>
 
-        <!-- Discard Modal (Pending Approvals) -->
-        <div class="dic-modal-overlay" id="paDiscardModal">
-            <div class="dic-modal">
-                <div class="dic-modal-header">
-                    <span>Discard Submission</span>
-                    <button class="dic-modal-close" onclick="paCloseDiscardModal()">&times;</button>
+    <!-- Discard Modal (Pending Approvals) — top-level so visible from any tab -->
+    <div class="dic-modal-overlay" id="paDiscardModal">
+        <div class="dic-modal">
+            <div class="dic-modal-header">
+                <span>Discard Submission</span>
+                <button class="dic-modal-close" onclick="paCloseDiscardModal()">&times;</button>
+            </div>
+            <div class="dic-modal-body">
+                <p style="font-size:13px;color:#374151;margin:0 0 12px;">Discard <strong id="paDiscardFilename"></strong>?</p>
+                <div class="dic-modal-field">
+                    <label class="dic-modal-label">Discard reason (required)</label>
+                    <select class="dic-modal-select" id="paDiscardReason">
+                        <option value="">Select a reason...</option>
+                        <option value="Mistaken upload">Mistaken upload</option>
+                        <option value="Training material">Training material</option>
+                        <option value="Wrong category">Wrong category</option>
+                        <option value="Duplicate">Duplicate</option>
+                        <option value="Not admissible for GLP records">Not admissible for GLP records</option>
+                        <option value="Other">Other</option>
+                    </select>
                 </div>
-                <div class="dic-modal-body">
-                    <p style="font-size:13px;color:#374151;margin:0 0 12px;">Discard <strong id="paDiscardFilename"></strong>?</p>
-                    <div class="dic-modal-field">
-                        <label class="dic-modal-label">Discard reason (required)</label>
-                        <select class="dic-modal-select" id="paDiscardReason">
-                            <option value="">Select a reason...</option>
-                            <option value="Mistaken upload">Mistaken upload</option>
-                            <option value="Training material">Training material</option>
-                            <option value="Wrong category">Wrong category</option>
-                            <option value="Duplicate">Duplicate</option>
-                            <option value="Not admissible for GLP records">Not admissible for GLP records</option>
-                            <option value="Other">Other</option>
-                        </select>
-                    </div>
-                    <div class="dic-modal-field">
-                        <label class="dic-modal-label">Note (optional)</label>
-                        <input type="text" class="dic-modal-input" id="paDiscardNote" placeholder="Optional note" maxlength="500">
-                    </div>
-                    <div class="dic-modal-warning">This action is final. The file will be removed from all views but preserved for audit.</div>
+                <div class="dic-modal-field">
+                    <label class="dic-modal-label">Note (optional)</label>
+                    <input type="text" class="dic-modal-input" id="paDiscardNote" placeholder="Optional note" maxlength="500">
                 </div>
-                <div class="dic-modal-footer">
-                    <button class="dic-modal-btn" onclick="paCloseDiscardModal()">Cancel</button>
-                    <button class="dic-modal-btn danger" id="paDiscardConfirmBtn" onclick="paConfirmDiscard()">Discard</button>
-                </div>
+                <div class="dic-modal-warning">This action is final. The file will be removed from all views but preserved for audit.</div>
+            </div>
+            <div class="dic-modal-footer">
+                <button class="dic-modal-btn" onclick="paCloseDiscardModal()">Cancel</button>
+                <button class="dic-modal-btn danger" id="paDiscardConfirmBtn" onclick="paConfirmDiscard()">Discard</button>
             </div>
         </div>
     </div>
