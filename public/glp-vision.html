@@ -173,19 +173,53 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .gv-toolbar-btn.pres-btn { background: #1a365d; color: #fff; border-color: #1a365d; }
 .gv-toolbar-btn.pres-btn:hover { background: #2d5a87; }
 
-.gv-icon-btn {
-    font-size: 18px;
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    padding: 6px 8px;
-    transition: transform 0.15s ease, opacity 0.15s ease;
+/* PI-clone: compact icon buttons (Vision) */
+.gv-toolbar-icon{
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.15s ease, opacity 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.06);
 }
 
-.gv-icon-btn:hover {
-    transform: scale(1.15);
-    opacity: 0.8;
+.gv-toolbar-icon:hover{
+  transform: translateY(-1px);
+  opacity: 0.85;
 }
+
+.gv-toolbar-icon:focus-visible{
+  outline: 2px solid #2d5a87;
+  outline-offset: 2px;
+}
+
+.gv-toolbar-icon svg{
+  width: 20px;
+  height: 20px;
+}
+
+.gv-emoji-icon{
+  font-size: 18px;
+  line-height: 1;
+}
+
+/* presentation icon background matches PI feel */
+.gv-toolbar-presentation{
+  background: #1a365d;
+  border-color: #1a365d;
+  color: #ffffff;
+}
+
+.gv-toolbar-presentation:hover{
+  background: #2d5a87;
+}
+
+
 .gv-viewer-empty {
     flex: 1; display: flex; align-items: center; justify-content: center;
     color: #9ca3af; font-size: 14px;
@@ -662,8 +696,8 @@ function gvSelectFile(fileId) {
         <span class="gv-viewer-filename" title="${gvEsc(file.original_filename)}">${gvEsc(gvTruncate(file.original_filename, 40))}</span>
         ${statusBadge}
         <span style="flex:1;"></span>
-        <button class="gv-icon-btn" onclick="gvEnterPresentation()" title="Presentation mode">🎬</button>
-        <a class="gv-icon-btn" href="/api/di/download/${fileId}?download=true" target="_blank" title="Download">⬇️</a>
+        <button class="gv-toolbar-icon gv-toolbar-presentation" onclick="gvEnterPresentation()" title="Presentation Mode" aria-label="Presentation Mode"><span class="gv-emoji-icon" aria-hidden="true">🎬</span></button>
+        <a class="gv-toolbar-icon" style="background:#ffffff;border:1px solid #e5e7eb;text-decoration:none;" href="/api/di/download/${fileId}?download=true" target="_blank" title="Download" aria-label="Download"><svg viewBox="0 0 20 20" fill="none"><path d="M10 3v10M10 13l-3.5-3.5M10 13l3.5-3.5M4 16h12" stroke="#111827" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
     `;
 
     // PDF viewer
