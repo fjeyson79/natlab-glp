@@ -172,6 +172,20 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .gv-toolbar-btn:hover { background: #f5f7fa; }
 .gv-toolbar-btn.pres-btn { background: #1a365d; color: #fff; border-color: #1a365d; }
 .gv-toolbar-btn.pres-btn:hover { background: #2d5a87; }
+
+.gv-icon-btn {
+    font-size: 18px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 6px 8px;
+    transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.gv-icon-btn:hover {
+    transform: scale(1.15);
+    opacity: 0.8;
+}
 .gv-viewer-empty {
     flex: 1; display: flex; align-items: center; justify-content: center;
     color: #9ca3af; font-size: 14px;
@@ -648,8 +662,8 @@ function gvSelectFile(fileId) {
         <span class="gv-viewer-filename" title="${gvEsc(file.original_filename)}">${gvEsc(gvTruncate(file.original_filename, 40))}</span>
         ${statusBadge}
         <span style="flex:1;"></span>
-        <button class="gv-toolbar-btn pres-btn" onclick="gvEnterPresentation()">🎬 Presentation</button>
-        <a class="gv-toolbar-btn" href="/api/di/download/${fileId}?download=true" target="_blank" style="text-decoration:none;">⬇️ Download</a>
+        <button class="gv-icon-btn" onclick="gvEnterPresentation()" title="Presentation mode">🎬</button>
+        <a class="gv-icon-btn" href="/api/di/download/${fileId}?download=true" target="_blank" title="Download">⬇️</a>
     `;
 
     // PDF viewer
