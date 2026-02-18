@@ -1187,11 +1187,11 @@
     <!-- Section navigation for internal users (hidden for EXTERNAL) -->
     <div id="sectionNav" class="section-nav" style="display:none;">
         <button class="section-btn active" data-section="files" onclick="switchSection('files')">Files &amp; Documents</button>
+        <button class="section-btn" data-section="inventory" onclick="switchSection('inventory')">Purchases &amp; Inventory</button>
+        <button class="section-btn" data-section="training" onclick="switchSection('training')">Training &amp; Approvals</button>
         <button class="section-btn" data-section="glpVision" onclick="switchSection('glpVision')">GLP Vision</button>
         <button id="tabGLPStatus" class="section-btn" data-section="glpStatus" onclick="switchSection('glpStatus')">GLP Status</button>
         <button id="supervisionTabBtn" class="section-btn" data-section="supervision" onclick="switchSection('supervision')" style="display:none;">Supervision</button>
-        <button class="section-btn" data-section="inventory" onclick="switchSection('inventory')">Purchases &amp; Inventory</button>
-        <button class="section-btn" data-section="training" onclick="switchSection('training')">Training &amp; Approvals</button>
     </div>
 
     <div id="section-files" class="section-content">
@@ -1432,6 +1432,13 @@
     </div><!-- end section-files -->
 
     <!-- Purchases & Inventory section (hidden by default, internal users only) -->
+
+    <div id="section-glpVision" class="section-content" style="display:none;">
+      <div style="height: calc(100vh - 170px); border-radius: 16px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.08); border: 1px solid #e5e7eb;">
+        <iframe id="glpVisionFrame" src="/glp-vision.html" style="width: 100%; height: 100%; border: 0; background: #fff;"></iframe>
+      </div>
+    </div>
+
     <div id="section-inventory" class="section-content" style="display:none;">
         <div class="main-container" style="grid-template-columns:1fr;">
 
@@ -3268,14 +3275,12 @@ credentials: 'include'
         }
 
         function switchSection(section) {
-            if (section === 'glpVision') {
-                window.location.href = '/glp-vision.html';
-                return;
-            }
             document.querySelectorAll('.section-btn').forEach(b => b.classList.remove('active'));
             document.querySelector(`[data-section="${section}"]`).classList.add('active');
             document.getElementById('section-files').style.display = section === 'files' ? 'block' : 'none';
             document.getElementById('section-inventory').style.display = section === 'inventory' ? 'block' : 'none';
+              const visionSection = document.getElementById('section-glpVision');
+              if (visionSection) visionSection.style.display = section === 'glpVision' ? 'block' : 'none';
             const supSection = document.getElementById('section-supervision');
             if (supSection) supSection.style.display = section === 'supervision' ? 'block' : 'none';
             const trainSection = document.getElementById('section-training');
