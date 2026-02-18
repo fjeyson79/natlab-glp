@@ -1187,10 +1187,11 @@
     <!-- Section navigation for internal users (hidden for EXTERNAL) -->
     <div id="sectionNav" class="section-nav" style="display:none;">
         <button class="section-btn active" data-section="files" onclick="switchSection('files')">Files &amp; Documents</button>
+        <button class="section-btn" data-section="glpVision" onclick="switchSection('glpVision')">GLP Vision</button>
+        <button id="tabGLPStatus" class="section-btn" data-section="glpStatus" onclick="switchSection('glpStatus')">GLP Status</button>
         <button id="supervisionTabBtn" class="section-btn" data-section="supervision" onclick="switchSection('supervision')" style="display:none;">Supervision</button>
         <button class="section-btn" data-section="inventory" onclick="switchSection('inventory')">Purchases &amp; Inventory</button>
         <button class="section-btn" data-section="training" onclick="switchSection('training')">Training &amp; Approvals</button>
-        <button id="tabGLPStatus" class="section-btn" data-section="glpStatus" onclick="switchSection('glpStatus')">GLP Status</button>
     </div>
 
     <div id="section-files" class="section-content">
@@ -3267,6 +3268,10 @@ credentials: 'include'
         }
 
         function switchSection(section) {
+            if (section === 'glpVision') {
+                window.location.href = '/glp-vision.html';
+                return;
+            }
             document.querySelectorAll('.section-btn').forEach(b => b.classList.remove('active'));
             document.querySelector(`[data-section="${section}"]`).classList.add('active');
             document.getElementById('section-files').style.display = section === 'files' ? 'block' : 'none';

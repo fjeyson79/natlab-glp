@@ -713,6 +713,27 @@ async function checkLegacyColumns() {
     return legacyColumnsExist;
 }
 
+// Helper function to check if vision columns exist on di_file_associations (migration 021)
+let visionColsExist = null;
+let visionColsLastCheck = 0;
+
+async function checkVisionColumns() {
+    const now = Date.now();
+    if (visionColsExist === null || visionColsExist === false || (now - visionColsLastCheck > ROLE_COLUMN_CHECK_INTERVAL)) {
+        try {
+            const result = await pool.query(`
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'di_file_associations' AND column_name = 'created_by_role'
+            `);
+            visionColsExist = result.rows.length > 0;
+            visionColsLastCheck = now;
+        } catch (err) {
+            visionColsExist = false;
+        }
+    }
+    return visionColsExist;
+}
+
 // Helper to get allowlist query based on role column existence
 function getAllowlistQuery(hasRole) {
     if (hasRole) {
@@ -3190,6 +3211,8 @@ app.get('/api/di/lab-files-enriched', requirePI, async (req, res) => {
         const months = Math.min(Math.max(parseInt(req.query.months) || 12, 6), 60);
         const hasAssoc = await checkAssociationsTable();
         const hasLegacy = await checkLegacyColumns();
+        const hasVC = await checkVisionColumns();
+        const delFilt = hasVC ? ' AND deleted_at IS NULL' : '';
 
         const legacyCols = hasLegacy
             ? `, s.record_origin, s.original_created_at, s.legacy_pack_id,
@@ -3215,10 +3238,10 @@ app.get('/api/di/lab-files-enriched', requirePI, async (req, res) => {
                FROM di_submissions s
                LEFT JOIN di_allowlist a ON s.researcher_id = a.researcher_id
                LEFT JOIN (SELECT source_id, COUNT(*) as cnt FROM di_file_associations
-                          WHERE link_type='SOP' GROUP BY source_id) sop_c
+                          WHERE link_type='SOP'${delFilt} GROUP BY source_id) sop_c
                           ON s.submission_id = sop_c.source_id
                LEFT JOIN (SELECT source_id, COUNT(*) as cnt FROM di_file_associations
-                          WHERE link_type='PRESENTATION' GROUP BY source_id) pres_c
+                          WHERE link_type='PRESENTATION'${delFilt} GROUP BY source_id) pres_c
                           ON s.submission_id = pres_c.source_id
                ${whereClause}
                ORDER BY s.created_at DESC`
@@ -3281,6 +3304,8 @@ app.get('/api/di/file-associations/:id', requirePI, async (req, res) => {
         // Manual links
         let manual = [];
         if (hasAssoc) {
+            const hasVC = await checkVisionColumns();
+            const delFilter = hasVC ? ' AND fa.deleted_at IS NULL' : '';
             const manualResult = await pool.query(`
                 SELECT fa.id, fa.target_id, fa.link_type, fa.created_at,
                        s.original_filename, s.status, s.created_at as file_created_at,
@@ -3288,7 +3313,7 @@ app.get('/api/di/file-associations/:id', requirePI, async (req, res) => {
                 FROM di_file_associations fa
                 JOIN di_submissions s ON fa.target_id = s.submission_id
                 LEFT JOIN di_allowlist a ON s.researcher_id = a.researcher_id
-                WHERE fa.source_id = $1
+                WHERE fa.source_id = $1${delFilter}
                 ORDER BY fa.link_type, fa.created_at DESC
             `, [sourceFileId]);
             manual = manualResult.rows;
@@ -3336,8 +3361,10 @@ app.get('/api/di/file-associations/:id', requirePI, async (req, res) => {
 
         // Heuristic SOP candidates
         let heuristic_sops = [];
+        const hasVC2 = await checkVisionColumns();
+        const delExcl = hasVC2 ? ' AND fa.deleted_at IS NULL' : '';
         const sopExclusion = hasAssoc
-            ? `AND NOT EXISTS (SELECT 1 FROM di_file_associations fa WHERE fa.source_id = $2 AND fa.target_id = s.submission_id AND fa.link_type = 'SOP')`
+            ? `AND NOT EXISTS (SELECT 1 FROM di_file_associations fa WHERE fa.source_id = $2 AND fa.target_id = s.submission_id AND fa.link_type = 'SOP'${delExcl})`
             : '';
         const sopResult = await pool.query(`
             SELECT s.submission_id, s.researcher_id, s.original_filename, s.status, s.created_at
@@ -3351,7 +3378,7 @@ app.get('/api/di/file-associations/:id', requirePI, async (req, res) => {
         // Heuristic PRES candidates
         let heuristic_presentations = [];
         const presExclusion = hasAssoc
-            ? `AND NOT EXISTS (SELECT 1 FROM di_file_associations fa WHERE fa.source_id = $2 AND fa.target_id = s.submission_id AND fa.link_type = 'PRESENTATION')`
+            ? `AND NOT EXISTS (SELECT 1 FROM di_file_associations fa WHERE fa.source_id = $2 AND fa.target_id = s.submission_id AND fa.link_type = 'PRESENTATION'${delExcl})`
             : '';
         const presResult = await pool.query(`
             SELECT s.submission_id, s.researcher_id, s.original_filename, s.status, s.created_at
@@ -3402,6 +3429,263 @@ app.delete('/api/di/file-associations/:id', requirePI, async (req, res) => {
         res.json({ success: true });
     } catch (err) {
         console.error('Delete file association error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// =====================================================
+// GLP VISION — Read-only console for Researchers & Supervisors
+// =====================================================
+
+// GET /api/di/vision/me — Current user + assigned researchers (if supervisor)
+app.get('/api/di/vision/me', requireAuth, async (req, res) => {
+    try {
+        const user = req.session.user;
+        const result = { researcher_id: user.researcher_id, name: user.name, role: user.role || 'researcher', affiliation: user.affiliation };
+
+        if (user.role === 'supervisor' && await checkSupervisorTable()) {
+            const assigned = await pool.query(
+                `SELECT sr.researcher_id, a.name, a.affiliation
+                 FROM di_supervisor_researchers sr
+                 JOIN di_allowlist a ON sr.researcher_id = a.researcher_id
+                 WHERE sr.supervisor_id = $1
+                 ORDER BY a.name`,
+                [user.researcher_id]
+            );
+            result.assigned_researchers = assigned.rows;
+        }
+
+        res.json({ success: true, user: result });
+    } catch (err) {
+        console.error('[VISION-ME] Error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/di/vision/files — List files (own or assigned researcher)
+app.get('/api/di/vision/files', requireAuth, async (req, res) => {
+    try {
+        const user = req.session.user;
+        const scope = req.query.scope || 'my';
+        let targetResearcherId = user.researcher_id;
+
+        if (scope === 'researcher') {
+            // Supervisor only — validate assignment
+            if (user.role !== 'supervisor') return res.status(403).json({ error: 'Supervisor role required' });
+            targetResearcherId = req.query.researcher_id;
+            if (!targetResearcherId) return res.status(400).json({ error: 'researcher_id required' });
+
+            if (await checkSupervisorTable()) {
+                const check = await pool.query(
+                    `SELECT 1 FROM di_supervisor_researchers WHERE supervisor_id = $1 AND researcher_id = $2`,
+                    [user.researcher_id, targetResearcherId]
+                );
+                if (check.rows.length === 0) return res.status(403).json({ error: 'Researcher not assigned to you' });
+            } else {
+                return res.status(403).json({ error: 'Supervision not available' });
+            }
+        }
+
+        const hasAssoc = await checkAssociationsTable();
+        const hasVisionCols = await checkVisionColumns();
+        const deletedFilter = hasVisionCols ? ' AND fa.deleted_at IS NULL' : '';
+
+        const sopCountJoin = hasAssoc
+            ? `LEFT JOIN (SELECT source_id, COUNT(*) as cnt FROM di_file_associations fa WHERE fa.link_type='SOP'${deletedFilter} GROUP BY source_id) sop_c ON s.submission_id = sop_c.source_id`
+            : '';
+        const presCountJoin = hasAssoc
+            ? `LEFT JOIN (SELECT source_id, COUNT(*) as cnt FROM di_file_associations fa WHERE fa.link_type='PRESENTATION'${deletedFilter} GROUP BY source_id) pres_c ON s.submission_id = pres_c.source_id`
+            : '';
+        const sopCountCol = hasAssoc ? ', COALESCE(sop_c.cnt, 0)::int as linked_sop_count' : ', 0 as linked_sop_count';
+        const presCountCol = hasAssoc ? ', COALESCE(pres_c.cnt, 0)::int as linked_pres_count' : ', 0 as linked_pres_count';
+
+        const result = await pool.query(`
+            SELECT s.submission_id, s.researcher_id, s.original_filename, s.file_type,
+                   s.status, s.created_at, s.signed_at,
+                   COALESCE(s.drive_file_id, s.signed_pdf_path) as r2_object_key,
+                   a.name as researcher_name, a.affiliation
+                   ${sopCountCol}${presCountCol}
+            FROM di_submissions s
+            LEFT JOIN di_allowlist a ON s.researcher_id = a.researcher_id
+            ${sopCountJoin}
+            ${presCountJoin}
+            WHERE s.researcher_id = $1 AND s.status != 'DISCARDED'
+            ORDER BY s.created_at DESC
+        `, [targetResearcherId]);
+
+        res.json({ success: true, files: result.rows, scope, researcher_id: targetResearcherId });
+    } catch (err) {
+        console.error('[VISION-FILES] Error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/di/vision/associations/:fileId — Get associations for a file
+app.get('/api/di/vision/associations/:fileId', requireAuth, async (req, res) => {
+    try {
+        const user = req.session.user;
+        const fileId = req.params.fileId;
+        const hasAssoc = await checkAssociationsTable();
+        const hasVisionCols = await checkVisionColumns();
+
+        // Verify access: user owns the file or is supervisor assigned to the file's researcher
+        const srcResult = await pool.query('SELECT * FROM di_submissions WHERE submission_id = $1', [fileId]);
+        if (srcResult.rows.length === 0) return res.status(404).json({ error: 'File not found' });
+        const sourceFile = srcResult.rows[0];
+
+        const isOwner = sourceFile.researcher_id === user.researcher_id;
+        let isAssignedSupervisor = false;
+        if (!isOwner && user.role === 'supervisor' && await checkSupervisorTable()) {
+            const check = await pool.query(
+                `SELECT 1 FROM di_supervisor_researchers WHERE supervisor_id = $1 AND researcher_id = $2`,
+                [user.researcher_id, sourceFile.researcher_id]
+            );
+            isAssignedSupervisor = check.rows.length > 0;
+        }
+        if (!isOwner && !isAssignedSupervisor) return res.status(403).json({ error: 'Access denied' });
+
+        // Manual links
+        let manual = [];
+        if (hasAssoc) {
+            const roleCol = hasVisionCols ? ', fa.created_by_role' : ", 'pi' as created_by_role";
+            const deletedFilter = hasVisionCols ? ' AND fa.deleted_at IS NULL' : '';
+            const manualResult = await pool.query(`
+                SELECT fa.id, fa.target_id, fa.link_type, fa.created_at, fa.created_by
+                       ${roleCol},
+                       s.original_filename, s.status, s.created_at as file_created_at,
+                       al.name as researcher_name
+                FROM di_file_associations fa
+                JOIN di_submissions s ON fa.target_id = s.submission_id
+                LEFT JOIN di_allowlist al ON s.researcher_id = al.researcher_id
+                WHERE fa.source_id = $1${deletedFilter}
+                ORDER BY fa.link_type, fa.created_at DESC
+            `, [fileId]);
+            manual = manualResult.rows;
+        }
+
+        // Heuristic candidates (same scoring as PI DIC)
+        const sourceParsed = parseNatlabFilename(sourceFile.original_filename);
+        function resolveDate(parsed, createdAt) {
+            return parsed.is_compliant && parsed.parsed_date ? new Date(parsed.parsed_date) : new Date(createdAt);
+        }
+        function scoreCandidate(candidate) {
+            const cParsed = parseNatlabFilename(candidate.original_filename);
+            const sDate = resolveDate(sourceParsed, sourceFile.created_at);
+            const cDate = resolveDate(cParsed, candidate.created_at);
+            const daysBetween = Math.abs((sDate - cDate) / (1000 * 60 * 60 * 24));
+            let score = 0;
+            if (sourceParsed.is_compliant && cParsed.is_compliant &&
+                sourceParsed.parsed_project && cParsed.parsed_project &&
+                sourceParsed.parsed_project.toLowerCase() === cParsed.parsed_project.toLowerCase()) {
+                score += 40;
+            }
+            score += 25 * Math.max(0, 1 - daysBetween / 30);
+            if (sourceParsed.is_compliant && cParsed.is_compliant &&
+                sourceParsed.parsed_description && cParsed.parsed_description) {
+                const sTokens = new Set(sourceParsed.parsed_description.toLowerCase().split(/\s+/).filter(t => t.length >= 3));
+                const cTokens = new Set(cParsed.parsed_description.toLowerCase().split(/\s+/).filter(t => t.length >= 3));
+                const intersection = [...sTokens].filter(t => cTokens.has(t)).length;
+                const union = new Set([...sTokens, ...cTokens]).size;
+                if (union > 0) score += 15 * (intersection / union);
+            }
+            if (sDate.getFullYear() === cDate.getFullYear()) score += 10;
+            if (candidate.status === 'APPROVED') score += 10;
+            return { ...candidate, score: Math.round(score * 10) / 10, filename: candidate.original_filename };
+        }
+
+        const deletedExclusion = hasVisionCols
+            ? `AND NOT EXISTS (SELECT 1 FROM di_file_associations fa WHERE fa.source_id = $2 AND fa.target_id = s.submission_id AND fa.link_type = '%%TYPE%%' AND fa.deleted_at IS NULL)`
+            : (hasAssoc ? `AND NOT EXISTS (SELECT 1 FROM di_file_associations fa WHERE fa.source_id = $2 AND fa.target_id = s.submission_id AND fa.link_type = '%%TYPE%%')` : '');
+
+        let heuristic_sops = [];
+        const sopExcl = deletedExclusion.replace(/%%TYPE%%/g, 'SOP');
+        const sopResult = await pool.query(`
+            SELECT s.submission_id, s.researcher_id, s.original_filename, s.status, s.created_at
+            FROM di_submissions s
+            WHERE s.file_type = 'SOP' AND s.researcher_id = $1 AND s.submission_id != $2 AND s.status != 'DISCARDED'
+            ${sopExcl}
+            ORDER BY s.created_at DESC LIMIT 30
+        `, [sourceFile.researcher_id, fileId]);
+        heuristic_sops = sopResult.rows.map(scoreCandidate).sort((a, b) => b.score - a.score).slice(0, 2);
+
+        let heuristic_presentations = [];
+        const presExcl = deletedExclusion.replace(/%%TYPE%%/g, 'PRESENTATION');
+        const presResult = await pool.query(`
+            SELECT s.submission_id, s.researcher_id, s.original_filename, s.status, s.created_at
+            FROM di_submissions s
+            WHERE s.file_type = 'PRESENTATION' AND s.researcher_id = $1 AND s.submission_id != $2 AND s.status != 'DISCARDED'
+            ${presExcl}
+            ORDER BY s.created_at DESC LIMIT 30
+        `, [sourceFile.researcher_id, fileId]);
+        heuristic_presentations = presResult.rows.map(scoreCandidate).sort((a, b) => b.score - a.score).slice(0, 2);
+
+        res.json({ success: true, manual, heuristic_sops, heuristic_presentations, is_owner: isOwner });
+    } catch (err) {
+        console.error('[VISION-ASSOC-GET] Error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/di/vision/associations — Create association (own files only)
+app.post('/api/di/vision/associations', requireAuth, async (req, res) => {
+    try {
+        if (!await checkAssociationsTable()) return res.status(404).json({ error: 'Feature not available' });
+        const { source_id, target_id, link_type } = req.body;
+        if (!source_id || !target_id || !link_type) return res.status(400).json({ error: 'Missing required fields' });
+        if (!['SOP', 'PRESENTATION'].includes(link_type)) return res.status(400).json({ error: 'Invalid link_type' });
+        if (source_id === target_id) return res.status(400).json({ error: 'Cannot link a file to itself' });
+
+        // Validate user owns the source file
+        const srcCheck = await pool.query('SELECT researcher_id FROM di_submissions WHERE submission_id = $1', [source_id]);
+        if (srcCheck.rows.length === 0) return res.status(404).json({ error: 'Source file not found' });
+        if (srcCheck.rows[0].researcher_id !== req.session.user.researcher_id) {
+            return res.status(403).json({ error: 'Cannot create associations for files you do not own' });
+        }
+
+        const hasVisionCols = await checkVisionColumns();
+        const userId = req.session.user.researcher_id;
+        const userRole = req.session.user.role || 'researcher';
+
+        if (hasVisionCols) {
+            await pool.query(
+                `INSERT INTO di_file_associations (source_id, target_id, link_type, created_by, created_by_role)
+                 VALUES ($1, $2, $3, $4, $5)`,
+                [source_id, target_id, link_type, userId, userRole]
+            );
+        } else {
+            await pool.query(
+                `INSERT INTO di_file_associations (source_id, target_id, link_type, created_by)
+                 VALUES ($1, $2, $3, $4)`,
+                [source_id, target_id, link_type, userId]
+            );
+        }
+
+        res.json({ success: true });
+    } catch (err) {
+        if (err.code === '23505') return res.status(409).json({ error: 'Association already exists' });
+        if (err.code === '23514') return res.status(400).json({ error: 'Invalid association' });
+        console.error('[VISION-ASSOC-CREATE] Error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// DELETE /api/di/vision/associations/:id — Soft-delete own association
+app.delete('/api/di/vision/associations/:id', requireAuth, async (req, res) => {
+    try {
+        if (!await checkAssociationsTable()) return res.status(404).json({ error: 'Feature not available' });
+        if (!await checkVisionColumns()) return res.status(404).json({ error: 'Feature not available' });
+
+        const userId = req.session.user.researcher_id;
+        // Only allow deleting own associations (not PI-created)
+        const result = await pool.query(
+            `UPDATE di_file_associations SET deleted_at = NOW()
+             WHERE id = $1 AND created_by = $2 AND deleted_at IS NULL`,
+            [req.params.id, userId]
+        );
+        if (result.rowCount === 0) return res.status(404).json({ error: 'Association not found or not yours' });
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[VISION-ASSOC-DELETE] Error:', err);
         res.status(500).json({ error: 'Server error' });
     }
 });
