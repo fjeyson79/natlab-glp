@@ -692,6 +692,27 @@ async function checkAssociationsTable() {
     return assocTableExists;
 }
 
+// Helper function to check if legacy columns exist (migration 020)
+let legacyColumnsExist = null;
+let legacyColumnsLastCheck = 0;
+
+async function checkLegacyColumns() {
+    const now = Date.now();
+    if (legacyColumnsExist === null || legacyColumnsExist === false || (now - legacyColumnsLastCheck > ROLE_COLUMN_CHECK_INTERVAL)) {
+        try {
+            const result = await pool.query(`
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'di_submissions' AND column_name = 'record_origin'
+            `);
+            legacyColumnsExist = result.rows.length > 0;
+            legacyColumnsLastCheck = now;
+        } catch (err) {
+            legacyColumnsExist = false;
+        }
+    }
+    return legacyColumnsExist;
+}
+
 // Helper to get allowlist query based on role column existence
 function getAllowlistQuery(hasRole) {
     if (hasRole) {
@@ -1015,6 +1036,240 @@ app.get('/api/di/me', requireAuth, (req, res) => {
     });
 });
 
+// =====================================================
+// LEGACY DATA IMPORT ENDPOINTS
+// =====================================================
+
+// GET /api/di/legacy-status
+// Check if legacy upload is enabled for the current researcher
+app.get('/api/di/legacy-status', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkLegacyColumns())) {
+            return res.json({ enabled: false });
+        }
+        const user = req.session.user;
+        const result = await pool.query(
+            `SELECT legacy_enabled, legacy_expires_at
+             FROM di_allowlist WHERE researcher_id = $1`,
+            [user.researcher_id]
+        );
+        if (result.rows.length === 0) return res.json({ enabled: false });
+        const row = result.rows[0];
+        const enabled = row.legacy_enabled === true && row.legacy_expires_at && new Date(row.legacy_expires_at) > new Date();
+        return res.json({
+            enabled,
+            legacy_expires_at: row.legacy_expires_at
+        });
+    } catch (err) {
+        console.error('[LEGACY] Status check error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/di/legacy-upload
+// Upload a single legacy file as a draft (SUBMITTED status, no PI notification)
+app.post('/api/di/legacy-upload', requireAuth, upload.single('file'), async (req, res) => {
+    try {
+        if (!(await checkLegacyColumns())) {
+            return res.status(400).json({ error: 'Legacy import not available' });
+        }
+        const user = req.session.user;
+
+        // Check legacy enabled + not expired
+        const allowResult = await pool.query(
+            `SELECT legacy_enabled, legacy_expires_at FROM di_allowlist WHERE researcher_id = $1`,
+            [user.researcher_id]
+        );
+        if (allowResult.rows.length === 0) return res.status(403).json({ error: 'User not found' });
+        const allow = allowResult.rows[0];
+        if (!allow.legacy_enabled || !allow.legacy_expires_at || new Date(allow.legacy_expires_at) <= new Date()) {
+            return res.status(403).json({ error: 'Legacy upload window expired or not enabled' });
+        }
+
+        const { fileType, original_created_at, legacy_note } = req.body;
+        const file = req.file;
+        const normalizedType = String(fileType || '').trim().toUpperCase();
+
+        if (!normalizedType || !['SOP', 'DATA', 'PRESENTATION'].includes(normalizedType)) {
+            return res.status(400).json({ error: 'fileType must be SOP, DATA or PRESENTATION' });
+        }
+        if (!file) return res.status(400).json({ error: 'No file uploaded' });
+        if (file.mimetype !== 'application/pdf') return res.status(400).json({ error: 'Only PDF files are accepted' });
+
+        // Validate .pdf extension
+        const ext = (file.originalname || '').toLowerCase().split('.').pop();
+        if (ext !== 'pdf') return res.status(400).json({ error: 'Only PDF files are accepted' });
+
+        const sizeLimit = normalizedType === 'PRESENTATION' ? 20 * 1024 * 1024 : 10 * 1024 * 1024;
+        if (file.size > sizeLimit) return res.status(400).json({ error: `File exceeds ${sizeLimit / (1024 * 1024)}MB limit` });
+
+        if (!original_created_at) return res.status(400).json({ error: 'original_created_at is required' });
+        const parsedDate = new Date(original_created_at);
+        if (isNaN(parsedDate.getTime()) || parsedDate >= new Date('2026-01-01')) {
+            return res.status(400).json({ error: 'original_created_at must be a valid date before 2026' });
+        }
+
+        if (!r2Enabled()) return res.status(503).json({ error: 'R2 storage not configured' });
+
+        const safeOriginal = (file.originalname || 'upload.pdf').replace(/[^\w.\-]+/g, '_');
+        const dateStamp = new Date().toISOString().slice(0, 10);
+        const year = new Date().getFullYear();
+        const key = `di/${user.affiliation}/Submitted/${year}/${dateStamp}_${user.researcher_id}_LEGACY_${safeOriginal}`;
+
+        console.log(`[LEGACY] Uploading file to R2: key=${key}`);
+        await uploadToR2(file.buffer, key, file.mimetype);
+        const fileId = 'r2:' + key;
+
+        const submissionResult = await pool.query(
+            `INSERT INTO di_submissions
+             (researcher_id, affiliation, file_type, original_filename, drive_file_id, r2_object_key,
+              status, record_origin, original_created_at, legacy_note)
+             VALUES ($1, $2, $3, $4, $5, $6, 'SUBMITTED', 'legacy_pre2026', $7, $8)
+             RETURNING submission_id`,
+            [user.researcher_id, user.affiliation, normalizedType, file.originalname,
+             fileId, key, parsedDate.toISOString(), (legacy_note || '').trim() || null]
+        );
+
+        console.log(`[LEGACY] Draft uploaded: ${submissionResult.rows[0].submission_id} by ${user.researcher_id}`);
+        // NO webhook call for legacy uploads
+
+        return res.json({
+            success: true,
+            submission_id: submissionResult.rows[0].submission_id,
+            message: 'Legacy file saved as draft'
+        });
+    } catch (err) {
+        console.error('[LEGACY] Upload error:', err);
+        res.status(500).json({ error: 'UPLOAD_FAILED', message: err.message });
+    }
+});
+
+// GET /api/di/legacy-drafts
+// List current researcher's unsent legacy drafts
+app.get('/api/di/legacy-drafts', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkLegacyColumns())) return res.json({ drafts: [] });
+        const user = req.session.user;
+        const result = await pool.query(
+            `SELECT submission_id, file_type, original_filename, original_created_at, legacy_note, created_at
+             FROM di_submissions
+             WHERE researcher_id = $1 AND record_origin = 'legacy_pre2026' AND status = 'SUBMITTED'
+             ORDER BY created_at DESC`,
+            [user.researcher_id]
+        );
+        res.json({ success: true, drafts: result.rows });
+    } catch (err) {
+        console.error('[LEGACY] Drafts error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// PUT /api/di/legacy-drafts/:id/discard
+// Discard a legacy draft (keeps R2 object, sets DISCARDED status)
+app.put('/api/di/legacy-drafts/:id/discard', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkLegacyColumns())) return res.status(400).json({ error: 'Legacy import not available' });
+        const user = req.session.user;
+        const submissionId = req.params.id;
+
+        const result = await pool.query(
+            `SELECT submission_id, researcher_id, status, record_origin
+             FROM di_submissions WHERE submission_id = $1`,
+            [submissionId]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+        const row = result.rows[0];
+        if (row.researcher_id !== user.researcher_id) return res.status(403).json({ error: 'Not your submission' });
+        if (row.record_origin !== 'legacy_pre2026') return res.status(400).json({ error: 'Not a legacy item' });
+        if (row.status !== 'SUBMITTED') return res.status(400).json({ error: 'Can only discard drafts' });
+
+        // Discard — keep R2 object for audit trail
+        await pool.query(
+            `UPDATE di_submissions
+             SET status = 'DISCARDED',
+                 discarded_by = $1,
+                 discarded_at = NOW(),
+                 discard_reason = 'Removed by uploader (legacy draft)'
+             WHERE submission_id = $2`,
+            [user.researcher_id, submissionId]
+        );
+
+        console.log(`[LEGACY] Draft discarded: ${submissionId} by ${user.researcher_id}`);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[LEGACY] Discard draft error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/di/legacy-pack-submit
+// Submit all legacy drafts as a pack (atomically sets pack metadata and status=PENDING)
+app.post('/api/di/legacy-pack-submit', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkLegacyColumns())) return res.status(400).json({ error: 'Legacy import not available' });
+        const user = req.session.user;
+
+        // Re-check legacy window
+        const allowResult = await pool.query(
+            `SELECT legacy_enabled, legacy_expires_at FROM di_allowlist WHERE researcher_id = $1`,
+            [user.researcher_id]
+        );
+        if (allowResult.rows.length === 0) return res.status(403).json({ error: 'User not found' });
+        const allow = allowResult.rows[0];
+        if (!allow.legacy_enabled || !allow.legacy_expires_at || new Date(allow.legacy_expires_at) <= new Date()) {
+            return res.status(403).json({ error: 'Legacy upload window expired' });
+        }
+
+        const { pack_title, context_type, pack_reference } = req.body;
+        if (!pack_title || !pack_title.trim()) return res.status(400).json({ error: 'pack_title is required' });
+        const validContextTypes = ['published', 'manuscript', 'internal', 'none'];
+        if (!context_type || !validContextTypes.includes(context_type)) {
+            return res.status(400).json({ error: 'context_type must be one of: published, manuscript, internal, none' });
+        }
+
+        // Count pending legacy drafts (SUBMITTED + legacy_pre2026 + no pack yet)
+        const drafts = await pool.query(
+            `SELECT submission_id FROM di_submissions
+             WHERE researcher_id = $1 AND record_origin = 'legacy_pre2026' AND status = 'SUBMITTED' AND legacy_pack_id IS NULL`,
+            [user.researcher_id]
+        );
+        if (drafts.rows.length === 0) return res.status(400).json({ error: 'No legacy drafts to submit' });
+
+        const crypto = require('crypto');
+        const packId = crypto.randomUUID();
+        const now = new Date().toISOString();
+
+        // Atomic transaction: update all drafts to PENDING with pack metadata
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            await client.query(
+                `UPDATE di_submissions
+                 SET status = 'PENDING',
+                     legacy_pack_id = $1,
+                     legacy_pack_title = $2,
+                     legacy_pack_context_type = $3,
+                     legacy_pack_reference = $4,
+                     legacy_pack_submitted_at = $5
+                 WHERE researcher_id = $6 AND record_origin = 'legacy_pre2026' AND status = 'SUBMITTED' AND legacy_pack_id IS NULL`,
+                [packId, pack_title.trim(), context_type, (pack_reference || '').trim() || null, now, user.researcher_id]
+            );
+            await client.query('COMMIT');
+        } catch (txErr) {
+            await client.query('ROLLBACK');
+            throw txErr;
+        } finally {
+            client.release();
+        }
+
+        console.log(`[LEGACY] Pack submitted: ${packId} with ${drafts.rows.length} files by ${user.researcher_id}`);
+        res.json({ success: true, pack_id: packId, file_count: drafts.rows.length });
+    } catch (err) {
+        console.error('[LEGACY] Pack submit error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
 // GET /api/di/my-files
 // Get current researcher's files organized by status (flat structure)
 // - Submitted: files with status PENDING (under review)
@@ -1032,8 +1287,11 @@ app.get('/api/di/my-files', requireAuth, async (req, res) => {
 
         // Get all submissions for this researcher
         // Only select columns that exist in the database
+        const hasLegacy = await checkLegacyColumns();
+        const legacyCol = hasLegacy ? ', record_origin' : ", NULL as record_origin";
         const result = await pool.query(
             `SELECT submission_id, file_type, original_filename, status, created_at, signed_at, drive_file_id
+                    ${legacyCol}
              FROM di_submissions
              WHERE researcher_id = $1 AND status != 'DISCARDED'
              ORDER BY created_at DESC`,
@@ -1076,7 +1334,10 @@ app.get('/api/di/my-files', requireAuth, async (req, res) => {
             };
 
             // Place file in appropriate folder based on status
-            if (status === 'APPROVED') {
+            // Legacy SUBMITTED drafts are shown in the legacy panel, not here
+            if (status === 'SUBMITTED' && file.record_origin === 'legacy_pre2026') {
+                // Skip — legacy drafts shown in legacy upload panel
+            } else if (status === 'APPROVED') {
                 approvedFiles.push(fileNode);
                 approvedCount++;
             } else if (status === 'PENDING') {
@@ -2865,10 +3126,15 @@ app.delete('/api/di/group-documents/:id', requirePI, async (req, res) => {
 // List pending submissions for PI review
 app.get('/api/di/pending-approvals', requirePI, async (req, res) => {
     try {
+        const hasLegacy = await checkLegacyColumns();
+        const legacyCols = hasLegacy
+            ? ', s.record_origin, s.original_created_at'
+            : ', NULL as record_origin, NULL as original_created_at';
         const result = await pool.query(
             `SELECT s.submission_id, s.researcher_id, s.original_filename, s.file_type,
                     s.status, s.created_at, s.ai_review,
                     a.name as researcher_name
+                    ${legacyCols}
              FROM di_submissions s
              LEFT JOIN di_allowlist a ON s.researcher_id = a.researcher_id
              WHERE s.status = 'PENDING'
@@ -2923,6 +3189,13 @@ app.get('/api/di/lab-files-enriched', requirePI, async (req, res) => {
     try {
         const months = Math.min(Math.max(parseInt(req.query.months) || 12, 6), 60);
         const hasAssoc = await checkAssociationsTable();
+        const hasLegacy = await checkLegacyColumns();
+
+        const legacyCols = hasLegacy
+            ? `, s.record_origin, s.original_created_at, s.legacy_pack_id,
+                 s.legacy_pack_title, s.legacy_pack_context_type, s.legacy_pack_submitted_at`
+            : `, NULL as record_origin, NULL as original_created_at, NULL as legacy_pack_id,
+                 NULL as legacy_pack_title, NULL as legacy_pack_context_type, NULL as legacy_pack_submitted_at`;
 
         // Implementation note: structured for easy future extension with ?researcher_id=
         const conditions = ['s.created_at >= NOW() - make_interval(months => $1)', "s.status != 'DISCARDED'"];
@@ -2938,6 +3211,7 @@ app.get('/api/di/lab-files-enriched', requirePI, async (req, res) => {
                       a.name as researcher_name, a.affiliation,
                       COALESCE(sop_c.cnt, 0)::int as linked_sop_count,
                       COALESCE(pres_c.cnt, 0)::int as linked_pres_count
+                      ${legacyCols}
                FROM di_submissions s
                LEFT JOIN di_allowlist a ON s.researcher_id = a.researcher_id
                LEFT JOIN (SELECT source_id, COUNT(*) as cnt FROM di_file_associations
@@ -2954,6 +3228,7 @@ app.get('/api/di/lab-files-enriched', requirePI, async (req, res) => {
                       COALESCE(s.drive_file_id, s.signed_pdf_path) as r2_object_key,
                       a.name as researcher_name, a.affiliation,
                       0 as linked_sop_count, 0 as linked_pres_count
+                      ${legacyCols}
                FROM di_submissions s
                LEFT JOIN di_allowlist a ON s.researcher_id = a.researcher_id
                ${whereClause}
@@ -3169,6 +3444,7 @@ app.post('/api/di/discard-inline/:id', requirePI, async (req, res) => {
             'Wrong category',
             'Duplicate',
             'Not admissible for GLP records',
+            'Refused by PI (legacy)',
             'Other'
         ];
         if (!reason || !validReasons.includes(reason)) {
@@ -3314,12 +3590,17 @@ app.post('/api/di/bulk-download', requirePI, async (req, res) => {
 // Get all members including inactive (for User Management)
 app.get('/api/di/all-members', requirePI, async (req, res) => {
     try {
+        const hasLegacy = await checkLegacyColumns();
+        const legacyCols = hasLegacy
+            ? ', COALESCE(a.legacy_enabled, false) as legacy_enabled, a.legacy_expires_at'
+            : ', false as legacy_enabled, NULL as legacy_expires_at';
         const result = await pool.query(
             `SELECT a.researcher_id, a.name, a.institution_email, a.affiliation,
                     a.active, COALESCE(a.role, 'researcher') as role,
                     a.created_at, a.deactivated_at, a.deactivated_by,
                     u.last_login,
                     (SELECT COUNT(*) FROM di_submissions s WHERE s.researcher_id = a.researcher_id AND s.status != 'DISCARDED') as submission_count
+                    ${legacyCols}
              FROM di_allowlist a
              LEFT JOIN di_users u ON a.institution_email = u.institution_email
              ORDER BY a.active DESC, a.name`
@@ -3411,6 +3692,50 @@ app.put('/api/di/members/:id/reactivate', requirePI, async (req, res) => {
 
     } catch (err) {
         console.error('Reactivate user error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// PUT /api/di/members/:id/legacy-enable
+// Enable legacy upload window for a researcher (48h)
+app.put('/api/di/members/:id/legacy-enable', requirePI, async (req, res) => {
+    try {
+        if (!(await checkLegacyColumns())) return res.status(400).json({ error: 'Legacy columns not available' });
+        const { id } = req.params;
+        const result = await pool.query(
+            `UPDATE di_allowlist
+             SET legacy_enabled = true, legacy_expires_at = NOW() + INTERVAL '48 hours'
+             WHERE researcher_id = $1
+             RETURNING researcher_id, name, legacy_enabled, legacy_expires_at`,
+            [id]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+        console.log(`[LEGACY] Enabled for ${id} by PI ${req.session.user.researcher_id}`);
+        res.json({ success: true, member: result.rows[0] });
+    } catch (err) {
+        console.error('[LEGACY] Enable error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// PUT /api/di/members/:id/legacy-disable
+// Disable legacy upload window for a researcher
+app.put('/api/di/members/:id/legacy-disable', requirePI, async (req, res) => {
+    try {
+        if (!(await checkLegacyColumns())) return res.status(400).json({ error: 'Legacy columns not available' });
+        const { id } = req.params;
+        const result = await pool.query(
+            `UPDATE di_allowlist
+             SET legacy_enabled = false, legacy_expires_at = NULL
+             WHERE researcher_id = $1
+             RETURNING researcher_id, name, legacy_enabled`,
+            [id]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+        console.log(`[LEGACY] Disabled for ${id} by PI ${req.session.user.researcher_id}`);
+        res.json({ success: true, member: result.rows[0] });
+    } catch (err) {
+        console.error('[LEGACY] Disable error:', err);
         res.status(500).json({ error: 'Server error' });
     }
 });

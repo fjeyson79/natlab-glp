@@ -1491,6 +1491,22 @@
   display: inline-flex;
   margin: 1%;
 }
+
+/* Legacy badges and pack cards */
+.legacy-badge {
+    display: inline-block; background: #f59e0b; color: #78350f;
+    padding: 1px 6px; border-radius: 8px; font-size: 9px; font-weight: 700;
+    margin-left: 4px; letter-spacing: 0.5px; vertical-align: middle;
+}
+.legacy-pack-card {
+    background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px;
+    padding: 14px; margin-bottom: 10px; cursor: pointer;
+    transition: border-color 0.2s;
+}
+.legacy-pack-card:hover { border-color: #f59e0b; }
+.legacy-pack-header { display: flex; align-items: center; gap: 8px; }
+.legacy-pack-meta { font-size: 11px; color: #92400e; margin-top: 4px; }
+.dic-year-item.legacy-year { color: #92400e; font-weight: 600; }
 </style>
 </head>
 <body>
@@ -2866,6 +2882,7 @@
                                 <th>File</th>
                                 <th>Researcher</th>
                                 <th>Type</th>
+                                <th>Origin Date</th>
                                 <th>Uploaded</th>
                                 <th>AI Review</th>
                                 <th>Actions</th>
@@ -2876,11 +2893,15 @@
                                 const aiScore = s.ai_review?.score;
                                 const aiClass = aiScore >= 80 ? 'high' : aiScore >= 50 ? 'medium' : 'low';
                                 const date = new Date(s.created_at).toLocaleDateString();
+                                const isLegacy = s.record_origin === 'legacy_pre2026';
+                                const originDate = isLegacy && s.original_created_at ? new Date(s.original_created_at).toLocaleDateString() : '-';
+                                const legacyBadge = isLegacy ? '<span class="legacy-badge">LEGACY</span>' : '';
                                 return `
                                     <tr>
                                         <td title="${escapeHtml(s.original_filename)}" style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(s.original_filename)}</td>
                                         <td>${escapeHtml(s.researcher_id)}</td>
-                                        <td><span class="type-badge ${s.file_type?.toLowerCase()}">${s.file_type}</span></td>
+                                        <td><span class="type-badge ${s.file_type?.toLowerCase()}">${s.file_type}</span>${legacyBadge}</td>
+                                        <td>${originDate}</td>
                                         <td>${date}</td>
                                         <td>${aiScore !== undefined ? `<span class="ai-score ${aiClass}">${aiScore}%</span>` : '<span style="color:#999;">-</span>'}</td>
                                         <td>
@@ -2962,6 +2983,22 @@
             document.getElementById('paDiscardReason').value = '';
             document.getElementById('paDiscardNote').value = '';
             document.getElementById('paDiscardConfirmBtn').disabled = false;
+
+            // Add/remove legacy-specific discard reason
+            const sel = document.getElementById('paDiscardReason');
+            const legacyOpt = sel.querySelector('[value="Refused by PI (legacy)"]');
+            if (s && s.record_origin === 'legacy_pre2026') {
+                if (!legacyOpt) {
+                    const opt = document.createElement('option');
+                    opt.value = 'Refused by PI (legacy)';
+                    opt.textContent = 'Refused by PI (legacy)';
+                    const otherOpt = sel.querySelector('[value="Other"]');
+                    sel.insertBefore(opt, otherOpt);
+                }
+            } else if (legacyOpt) {
+                legacyOpt.remove();
+            }
+
             document.getElementById('paDiscardModal').classList.add('active');
         }
 
@@ -3635,7 +3672,13 @@
             });
             const sortedYears = [...years].sort().reverse();
             const yearEl = document.getElementById('dicYearList');
+            // Check if any legacy files exist to show legacy filter
+            const hasLegacyFiles = dicAllFiles.some(f => f.record_origin === 'legacy_pre2026');
+            const legacyItem = hasLegacyFiles
+                ? `<div class="dic-year-item legacy-year${dicFilters.year === 'legacy' ? ' active' : ''}" onclick="dicSetSidebarFilter('year','legacy')">Legacy &lt;2026</div>`
+                : '';
             yearEl.innerHTML = `<div class="dic-year-item${!dicFilters.year ? ' active' : ''}" onclick="dicSetSidebarFilter('year','')">All Years</div>` +
+                legacyItem +
                 sortedYears.map(y => `<div class="dic-year-item${dicFilters.year === y ? ' active' : ''}" onclick="dicSetSidebarFilter('year','${y}')">${y}</div>`).join('');
 
             // Researcher list
@@ -3894,7 +3937,9 @@ async function dicIntdocsFolderChanged(sel) {
                 if (dicCurrentScope && f.file_type !== dicCurrentScope) return false;
                 if (dicFilters.status && f.status !== dicFilters.status) return false;
                 if (dicFilters.researcher && f.researcher_id !== dicFilters.researcher) return false;
-                if (dicFilters.year) {
+                if (dicFilters.year === 'legacy') {
+                    if (f.record_origin !== 'legacy_pre2026') return false;
+                } else if (dicFilters.year) {
                     const yr = (f.created_at || '').substring(0, 4);
                     if (yr !== dicFilters.year) return false;
                 }
@@ -3924,6 +3969,12 @@ async function dicIntdocsFolderChanged(sel) {
 
         function dicRenderResults() {
             const container = document.getElementById('dicResults');
+
+            // Legacy pack-grouped view
+            if (dicFilters.year === 'legacy') {
+                return dicRenderLegacyPacks(container);
+            }
+
             if (dicFilteredFiles.length === 0) {
                 const resName = dicFilters.researcher ? dicFormatResearcherName(
                     (dicResearcherMetrics[dicFilters.researcher] || {}).researcher_name || dicFilters.researcher
@@ -3975,6 +4026,7 @@ async function dicIntdocsFolderChanged(sel) {
                 }
 
                 let metaHtml = `<span class="dic-badge ${statusClass}">${statusLabel}</span>`;
+                if (f.record_origin === 'legacy_pre2026') metaHtml += '<span class="legacy-badge">LEGACY</span>';
                 if (f.pi_dragon_seal) metaHtml += '<span class="dic-dragon-badge">&#x1F409;</span>';
                 const sopCount = f.linked_sop_count || 0;
                 const presCount = f.linked_pres_count || 0;
@@ -3990,6 +4042,106 @@ async function dicIntdocsFolderChanged(sel) {
                     </div>
                 </div>`;
             }).join('');
+        }
+
+        // Legacy pack-grouped view for Laboratory Files
+        let dicLegacyExpandedPack = null;
+
+        function dicRenderLegacyPacks(container) {
+            if (dicFilteredFiles.length === 0) {
+                container.innerHTML = '<div class="dic-empty-state"><h3>No legacy files found</h3></div>';
+                return;
+            }
+
+            // If a pack is expanded, show its files
+            if (dicLegacyExpandedPack) {
+                const packFiles = dicFilteredFiles.filter(f => f.legacy_pack_id === dicLegacyExpandedPack);
+                if (packFiles.length === 0) { dicLegacyExpandedPack = null; }
+                else {
+                    const p = packFiles[0];
+                    container.innerHTML = `<div style="margin-bottom:10px;">
+                        <button style="background:none;border:none;cursor:pointer;color:#92400e;font-size:12px;" onclick="dicCollapseLegacyPack()">&larr; Back to packs</button>
+                        <div style="margin-top:6px;"><span class="legacy-badge">LEGACY</span> <strong style="color:#78350f;">${escapeHtml(p.legacy_pack_title || 'Untitled Pack')}</strong></div>
+                        <div style="font-size:11px;color:#92400e;margin-top:2px;">${p.legacy_pack_context_type !== 'none' ? p.legacy_pack_context_type + ' &middot; ' : ''}Submitted: ${p.legacy_pack_submitted_at ? new Date(p.legacy_pack_submitted_at).toLocaleDateString() : '-'}</div>
+                    </div>` + packFiles.map(f => {
+                        const isActive = f.submission_id === dicSelectedFileId;
+                        const statusClass = (f.status || '').toLowerCase().replace('_needed', '');
+                        const statusLabel = f.status === 'REVISION_NEEDED' ? 'REVISION' : (f.status || '');
+                        const origDate = f.original_created_at ? new Date(f.original_created_at).toLocaleDateString() : '-';
+                        let typeClass = 'data'; let typeLabel = 'DATA';
+                        if (f.file_type === 'SOP') { typeClass = 'sop'; typeLabel = 'SOP'; }
+                        else if (f.file_type === 'PRESENTATION') { typeClass = 'pres'; typeLabel = 'PRES'; }
+                        return `<div class="dic-result-item${isActive ? ' active' : ''}" onclick="dicSelectFile('${f.submission_id}')">
+                            <div class="dic-result-icon ${typeClass}">${typeLabel}</div>
+                            <div class="dic-result-body">
+                                <div class="dic-result-title" title="${(f.original_filename || '').replace(/"/g, '&quot;')}">${escapeHtml(f.original_filename)}</div>
+                                <div class="dic-result-sub">Original: ${origDate} &middot; ${dicFormatResearcherName(f.researcher_name)}</div>
+                                <div class="dic-result-meta"><span class="dic-badge ${statusClass}">${statusLabel}</span><span class="legacy-badge">LEGACY</span></div>
+                            </div>
+                        </div>`;
+                    }).join('');
+                    return;
+                }
+            }
+
+            // Group by pack_id
+            const packs = {};
+            const unpackedFiles = [];
+            dicFilteredFiles.forEach(f => {
+                if (f.legacy_pack_id) {
+                    if (!packs[f.legacy_pack_id]) {
+                        packs[f.legacy_pack_id] = {
+                            title: f.legacy_pack_title, context: f.legacy_pack_context_type,
+                            submitted: f.legacy_pack_submitted_at, files: []
+                        };
+                    }
+                    packs[f.legacy_pack_id].files.push(f);
+                } else {
+                    unpackedFiles.push(f);
+                }
+            });
+
+            const packList = Object.entries(packs).sort((a, b) => new Date(b[1].submitted || 0) - new Date(a[1].submitted || 0));
+
+            container.innerHTML = packList.map(([packId, p]) => `
+                <div class="legacy-pack-card" onclick="dicExpandLegacyPack('${packId}')">
+                    <div class="legacy-pack-header">
+                        <span class="legacy-badge">LEGACY</span>
+                        <strong>${escapeHtml(p.title || 'Untitled Pack')}</strong>
+                        <span style="margin-left:auto;font-size:12px;color:#6b7280;">${p.files.length} file(s)</span>
+                    </div>
+                    <div class="legacy-pack-meta">
+                        ${p.context && p.context !== 'none' ? escapeHtml(p.context) + ' &middot; ' : ''}Submitted: ${p.submitted ? new Date(p.submitted).toLocaleDateString() : '-'}
+                    </div>
+                </div>
+            `).join('') + (unpackedFiles.length > 0
+                ? '<div style="margin-top:12px;font-size:12px;color:#6b7280;border-top:1px solid #e5e7eb;padding-top:10px;">' + unpackedFiles.length + ' file(s) not in a pack</div>'
+                    + unpackedFiles.map(f => {
+                        const isActive = f.submission_id === dicSelectedFileId;
+                        const statusClass = (f.status || '').toLowerCase().replace('_needed', '');
+                        const statusLabel = f.status === 'REVISION_NEEDED' ? 'REVISION' : (f.status || '');
+                        let typeClass = 'data'; let typeLabel = 'DATA';
+                        if (f.file_type === 'SOP') { typeClass = 'sop'; typeLabel = 'SOP'; }
+                        else if (f.file_type === 'PRESENTATION') { typeClass = 'pres'; typeLabel = 'PRES'; }
+                        return `<div class="dic-result-item${isActive ? ' active' : ''}" onclick="dicSelectFile('${f.submission_id}')">
+                            <div class="dic-result-icon ${typeClass}">${typeLabel}</div>
+                            <div class="dic-result-body">
+                                <div class="dic-result-title">${escapeHtml(f.original_filename)}</div>
+                                <div class="dic-result-meta"><span class="dic-badge ${statusClass}">${statusLabel}</span><span class="legacy-badge">LEGACY</span></div>
+                            </div>
+                        </div>`;
+                    }).join('')
+                : '');
+        }
+
+        function dicExpandLegacyPack(packId) {
+            dicLegacyExpandedPack = packId;
+            dicRenderResults();
+        }
+
+        function dicCollapseLegacyPack() {
+            dicLegacyExpandedPack = null;
+            dicRenderResults();
         }
 
         function dicRenderQuickMetrics(researcherId) {
@@ -4690,6 +4842,8 @@ async function dicIntdocsFolderChanged(sel) {
                     const roleClass = u.role === 'pi' ? 'pi' : (u.role === 'supervisor' ? 'supervisor' : 'researcher');
                     const statusClass = u.active ? 'status-active' : 'status-inactive';
                     const canResetPassword = u.active && u.role !== 'pi' && u.last_login;
+                    const legacyActive = u.legacy_enabled && u.legacy_expires_at && new Date(u.legacy_expires_at) > new Date();
+                    const canLegacy = u.active && u.role !== 'pi';
                     return `
                         <tr>
                             <td>${escapeHtml(u.name || '-')}</td>
@@ -4708,6 +4862,10 @@ async function dicIntdocsFolderChanged(sel) {
                                     ${canResetPassword ?
                                         `<button class="btn btn-sm btn-warning" onclick="resetUserPassword('${u.researcher_id}', '${escapeHtml(u.name || u.researcher_id)}')">Reset Password</button>` : ''
                                     }
+                                    ${canLegacy ? (legacyActive
+                                        ? `<button class="btn btn-sm" style="background:#f59e0b;color:#78350f;" onclick="toggleLegacy('${u.researcher_id}', '${escapeHtml(u.name || u.researcher_id)}', false)">Legacy ON</button>`
+                                        : `<button class="btn btn-sm btn-secondary" onclick="toggleLegacy('${u.researcher_id}', '${escapeHtml(u.name || u.researcher_id)}', true)">Legacy</button>`
+                                    ) : ''}
                                 </div>
                             </td>
                         </tr>
@@ -4815,6 +4973,26 @@ async function dicIntdocsFolderChanged(sel) {
             } catch (err) {
                 alert('Error reactivating user');
             }
+        }
+
+        async function toggleLegacy(id, name, enable) {
+            const action = enable ? 'enable' : 'disable';
+            const msg = enable
+                ? `Enable legacy upload for "${name}"?\n\nThey will have 48 hours to upload pre-2026 documents.`
+                : `Disable legacy upload for "${name}"?`;
+            if (!confirm(msg)) return;
+            try {
+                const resp = await fetch(`/api/di/members/${id}/legacy-${action}`, {
+                    method: 'PUT', credentials: 'include'
+                });
+                if (resp.ok) {
+                    alert(enable ? 'Legacy upload enabled (48h window)' : 'Legacy upload disabled');
+                    loadAllUsers();
+                } else {
+                    const data = await resp.json();
+                    alert(data.error || `Failed to ${action} legacy`);
+                }
+            } catch (err) { alert('Connection error'); }
         }
 
         async function resetUserPassword(id, name) {

@@ -473,6 +473,89 @@
         }
         .selected-researcher-info strong { display: block; font-size: 14px; }
         .selected-researcher-info span { font-size: 12px; opacity: 0.9; }
+
+        /* Legacy Upload Panel */
+        .legacy-panel {
+            background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+            border: 2px solid #f59e0b;
+            border-radius: 8px;
+            padding: 20px;
+            grid-column: 1 / -1;
+        }
+        .legacy-panel-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+        .legacy-panel-header h2 { margin: 0; font-size: 16px; color: #78350f; }
+        .legacy-badge {
+            display: inline-block; background: #f59e0b; color: #78350f;
+            padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 700;
+            letter-spacing: 0.5px; text-transform: uppercase;
+        }
+        .legacy-expires { font-size: 12px; color: #92400e; margin-left: auto; }
+        .legacy-notice {
+            background: #fef3c7; border: 1px solid #fde68a; border-radius: 6px;
+            padding: 8px 12px; font-size: 12px; color: #92400e; margin-bottom: 14px;
+        }
+        .legacy-form-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+        .legacy-form-row label { font-size: 12px; font-weight: 600; color: #78350f; display: block; margin-bottom: 3px; }
+        .legacy-form-row select, .legacy-form-row input {
+            width: 100%; padding: 7px 8px; border: 1px solid #fde68a; border-radius: 4px;
+            font-size: 13px; background: white; box-sizing: border-box;
+        }
+        .legacy-note-row { margin-bottom: 10px; }
+        .legacy-note-row label { font-size: 12px; font-weight: 600; color: #78350f; display: block; margin-bottom: 3px; }
+        .legacy-note-row input {
+            width: 100%; padding: 7px 8px; border: 1px solid #fde68a; border-radius: 4px;
+            font-size: 13px; box-sizing: border-box;
+        }
+        .legacy-file-row { display: flex; gap: 10px; align-items: flex-end; margin-bottom: 14px; }
+        .legacy-file-row .file-upload {
+            flex: 1; padding: 10px; border: 2px dashed #fde68a; border-radius: 6px;
+            text-align: center; cursor: pointer; background: #fffef5;
+        }
+        .legacy-upload-btn {
+            background: #92400e; color: white; border: none; padding: 9px 20px;
+            border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 13px; white-space: nowrap;
+        }
+        .legacy-upload-btn:hover { background: #78350f; }
+        .legacy-upload-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .legacy-draft-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
+        .legacy-draft-table th {
+            background: #fef3c7; padding: 6px 10px; text-align: left;
+            border-bottom: 1px solid #f59e0b; font-size: 11px; color: #92400e; text-transform: uppercase;
+        }
+        .legacy-draft-table td { padding: 6px 10px; border-bottom: 1px solid #fde68a; }
+        .legacy-submit-btn {
+            background: #f59e0b; color: #78350f; border: none; padding: 10px 24px;
+            border-radius: 6px; font-weight: 600; cursor: pointer; margin-top: 12px; font-size: 14px;
+        }
+        .legacy-submit-btn:hover { background: #d97706; }
+        .legacy-submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .legacy-pack-modal-overlay {
+            display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5); z-index: 9999; justify-content: center; align-items: center;
+        }
+        .legacy-pack-modal-overlay.active { display: flex; }
+        .legacy-pack-modal {
+            background: white; border-radius: 10px; padding: 24px; width: 480px; max-width: 90vw;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        .legacy-pack-modal h3 { margin: 0 0 16px; color: #78350f; font-size: 16px; }
+        .legacy-pack-modal .form-group { margin-bottom: 12px; }
+        .legacy-pack-modal .form-group label { display: block; font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 3px; }
+        .legacy-pack-modal .form-group input,
+        .legacy-pack-modal .form-group select {
+            width: 100%; padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 4px;
+            font-size: 13px; box-sizing: border-box;
+        }
+        .legacy-pack-modal .modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+        .legacy-pack-modal .btn-cancel {
+            padding: 8px 16px; border: 1px solid #d1d5db; border-radius: 4px;
+            background: white; cursor: pointer; font-size: 13px;
+        }
+        .legacy-pack-modal .btn-submit {
+            padding: 8px 16px; border: none; border-radius: 4px;
+            background: #f59e0b; color: #78350f; font-weight: 600; cursor: pointer; font-size: 13px;
+        }
+        .legacy-pack-modal .btn-submit:disabled { opacity: 0.5; cursor: not-allowed; }
     </style>
     <!-- GLP Status styles -->
     <style>
@@ -1112,6 +1195,97 @@
 
     <div id="section-files" class="section-content">
     <div class="main-container">
+
+        <!-- Legacy Upload Panel (hidden by default, shown when PI enables legacy for this user) -->
+        <div id="legacyPanel" class="legacy-panel" style="display:none;">
+            <div class="legacy-panel-header">
+                <span class="legacy-badge">LEGACY</span>
+                <h2>Legacy pre-2026 Upload</h2>
+                <span class="legacy-expires" id="legacyExpiresLabel"></span>
+            </div>
+
+            <div class="legacy-notice">
+                Upload PDF files only. Follow the standard NATLAB naming convention.
+            </div>
+
+            <form id="legacyUploadForm" onsubmit="uploadLegacyFile(event)">
+                <div class="legacy-form-row">
+                    <div>
+                        <label for="legacyFileType">File Type *</label>
+                        <select id="legacyFileType" required>
+                            <option value="">Select...</option>
+                            <option value="SOP">SOP</option>
+                            <option value="DATA">DATA</option>
+                            <option value="PRESENTATION">PRESENTATION</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="legacyOriginalDate">Original Date *</label>
+                        <input type="date" id="legacyOriginalDate" required max="2025-12-31">
+                    </div>
+                    <div>
+                        <label>&nbsp;</label>
+                        <button type="submit" class="legacy-upload-btn" id="legacyUploadBtn">Add to Legacy Pack</button>
+                    </div>
+                </div>
+                <div class="legacy-note-row">
+                    <label for="legacyNote">Note (optional)</label>
+                    <input type="text" id="legacyNote" placeholder="Brief description of this file..." maxlength="500">
+                </div>
+                <div class="legacy-file-row">
+                    <div class="file-upload" id="legacyFileUploadArea" onclick="document.getElementById('legacyFileInput').click()">
+                        <input type="file" id="legacyFileInput" accept=".pdf" required style="display:none;" onchange="legacyFileSelected(this)">
+                        <p style="margin:0;font-size:13px;color:#92400e;"><strong>Click to select PDF</strong> or drag and drop</p>
+                        <p id="legacyFileName" style="margin:4px 0 0;font-size:12px;color:#78350f;font-weight:600;"></p>
+                    </div>
+                </div>
+            </form>
+
+            <div style="border-top:1px solid #fde68a;padding-top:10px;margin-top:4px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;">
+                    <strong style="font-size:13px;color:#78350f;">Draft Files <span id="legacyDraftCount" style="font-weight:400;color:#92400e;">(0)</span></strong>
+                    <button class="legacy-submit-btn" id="legacySubmitPackBtn" disabled onclick="openLegacyPackModal()">Submit Legacy Pack</button>
+                </div>
+                <table class="legacy-draft-table">
+                    <thead>
+                        <tr><th>File</th><th>Type</th><th>Original Date</th><th>Note</th><th>Action</th></tr>
+                    </thead>
+                    <tbody id="legacyDraftTableBody">
+                        <tr><td colspan="5" style="text-align:center;color:#92400e;padding:12px;">No drafts yet. Upload files above.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Legacy Pack Submit Modal -->
+        <div id="legacyPackModal" class="legacy-pack-modal-overlay">
+            <div class="legacy-pack-modal">
+                <h3><span class="legacy-badge">LEGACY</span> Submit Legacy Pack</h3>
+                <div class="form-group">
+                    <label for="legacyPackTitle">Pack Title *</label>
+                    <input type="text" id="legacyPackTitle" placeholder="e.g. Initial binding assay dataset" maxlength="255" required>
+                </div>
+                <div class="form-group">
+                    <label for="legacyContextType">Is this part of a paper? *</label>
+                    <select id="legacyContextType" onchange="legacyContextTypeChanged()">
+                        <option value="">Select...</option>
+                        <option value="published">Published paper</option>
+                        <option value="manuscript">Manuscript</option>
+                        <option value="internal">Internal report</option>
+                        <option value="none">No</option>
+                    </select>
+                </div>
+                <div class="form-group" id="legacyReferenceGroup" style="display:none;">
+                    <label for="legacyPackReference">Paper / Manuscript Reference</label>
+                    <input type="text" id="legacyPackReference" placeholder="e.g. DOI, journal ref, or manuscript title" maxlength="500">
+                </div>
+                <div class="modal-footer">
+                    <button class="btn-cancel" onclick="closeLegacyPackModal()">Cancel</button>
+                    <button class="btn-submit" id="legacyPackSubmitBtn" onclick="submitLegacyPack()">Submit Pack</button>
+                </div>
+            </div>
+        </div>
+
         <!-- Panel 1: Upload -->
         <div class="panel">
             <div class="panel-header">
@@ -2144,6 +2318,7 @@
                 loadMyFiles();
                 loadRevisionRequestCount();
                 loadGroupDocuments();
+                checkLegacyStatus();
 
                 // Handle ?section= URL param (e.g. PI navigating from pi-dashboard)
                 const urlSection = new URLSearchParams(window.location.search).get('section');
@@ -2903,6 +3078,193 @@ credentials: 'include'
         let currentGrpInvType = 'product';
         let currentSupInvType = 'product';
         let selectedSupInvResearcher = null;
+
+        // =====================================================
+        // LEGACY UPLOAD FUNCTIONS
+        // =====================================================
+
+        let legacyEnabled = false;
+        let legacyExpiresAt = null;
+
+        async function checkLegacyStatus() {
+            try {
+                const resp = await fetch('/api/di/legacy-status', { credentials: 'include' });
+                if (!resp.ok) return;
+                const data = await resp.json();
+                legacyEnabled = data.enabled;
+                legacyExpiresAt = data.legacy_expires_at;
+                const panel = document.getElementById('legacyPanel');
+                if (panel) {
+                    panel.style.display = legacyEnabled ? '' : 'none';
+                    if (legacyEnabled && legacyExpiresAt) {
+                        document.getElementById('legacyExpiresLabel').textContent =
+                            'Enabled until ' + new Date(legacyExpiresAt).toLocaleString('sv-SE', { timeZone: 'Europe/Stockholm' }) + ' (Stockholm)';
+                        loadLegacyDrafts();
+                    }
+                }
+            } catch (e) { console.error('[LEGACY] Status check error:', e); }
+        }
+
+        async function loadLegacyDrafts() {
+            try {
+                const resp = await fetch('/api/di/legacy-drafts', { credentials: 'include' });
+                if (!resp.ok) return;
+                const data = await resp.json();
+                renderLegacyDrafts(data.drafts || []);
+            } catch (e) { console.error('[LEGACY] Load drafts error:', e); }
+        }
+
+        function renderLegacyDrafts(drafts) {
+            const tbody = document.getElementById('legacyDraftTableBody');
+            const submitBtn = document.getElementById('legacySubmitPackBtn');
+            const countEl = document.getElementById('legacyDraftCount');
+            countEl.textContent = '(' + drafts.length + ')';
+            if (drafts.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#92400e;padding:12px;">No drafts yet. Upload files above.</td></tr>';
+                submitBtn.disabled = true;
+                return;
+            }
+            submitBtn.disabled = false;
+            tbody.innerHTML = drafts.map(d => `
+                <tr>
+                    <td title="${escapeHtml(d.original_filename)}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(d.original_filename)}</td>
+                    <td><span class="legacy-badge">${escapeHtml(d.file_type)}</span></td>
+                    <td>${d.original_created_at ? new Date(d.original_created_at).toLocaleDateString() : '-'}</td>
+                    <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(d.legacy_note || '')}">${escapeHtml(d.legacy_note || '-')}</td>
+                    <td><button style="color:#dc3545;font-size:11px;background:none;border:none;cursor:pointer;text-decoration:underline;" onclick="discardLegacyDraft('${d.submission_id}')">Remove</button></td>
+                </tr>
+            `).join('');
+        }
+
+        function legacyFileSelected(input) {
+            const nameEl = document.getElementById('legacyFileName');
+            if (input.files && input.files[0]) {
+                nameEl.textContent = input.files[0].name;
+            } else {
+                nameEl.textContent = '';
+            }
+        }
+
+        // Drag and drop for legacy upload area
+        (function() {
+            const area = document.getElementById('legacyFileUploadArea');
+            if (!area) return;
+            area.addEventListener('dragover', e => { e.preventDefault(); area.style.borderColor = '#f59e0b'; });
+            area.addEventListener('dragleave', e => { e.preventDefault(); area.style.borderColor = '#fde68a'; });
+            area.addEventListener('drop', e => {
+                e.preventDefault();
+                area.style.borderColor = '#fde68a';
+                const input = document.getElementById('legacyFileInput');
+                if (e.dataTransfer.files.length > 0) {
+                    input.files = e.dataTransfer.files;
+                    legacyFileSelected(input);
+                }
+            });
+        })();
+
+        async function uploadLegacyFile(e) {
+            e.preventDefault();
+            const fileInput = document.getElementById('legacyFileInput');
+            const btn = document.getElementById('legacyUploadBtn');
+
+            const fileType = document.getElementById('legacyFileType').value;
+            const originalDate = document.getElementById('legacyOriginalDate').value;
+            const note = document.getElementById('legacyNote').value.trim();
+            const file = fileInput.files[0];
+
+            if (!fileType || !originalDate || !file) {
+                alert('Please fill in file type, original date, and select a file.');
+                return;
+            }
+
+            btn.disabled = true;
+            btn.textContent = 'Uploading...';
+
+            const fd = new FormData();
+            fd.append('fileType', fileType);
+            fd.append('original_created_at', originalDate);
+            fd.append('legacy_note', note);
+            fd.append('file', file);
+
+            try {
+                const resp = await fetch('/api/di/legacy-upload', { method: 'POST', body: fd, credentials: 'include' });
+                const data = await resp.json();
+                if (resp.ok && data.success) {
+                    document.getElementById('legacyUploadForm').reset();
+                    document.getElementById('legacyFileName').textContent = '';
+                    loadLegacyDrafts();
+                } else {
+                    alert(data.error || 'Upload failed');
+                }
+            } catch (err) {
+                alert('Connection error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Add to Legacy Pack';
+            }
+        }
+
+        async function discardLegacyDraft(id) {
+            if (!confirm('Remove this file from the legacy pack?')) return;
+            try {
+                const resp = await fetch(`/api/di/legacy-drafts/${id}/discard`, { method: 'PUT', credentials: 'include' });
+                if (resp.ok) loadLegacyDrafts();
+                else alert('Failed to remove file');
+            } catch (err) { alert('Connection error'); }
+        }
+
+        function openLegacyPackModal() {
+            document.getElementById('legacyPackModal').classList.add('active');
+        }
+
+        function closeLegacyPackModal() {
+            document.getElementById('legacyPackModal').classList.remove('active');
+        }
+
+        function legacyContextTypeChanged() {
+            const val = document.getElementById('legacyContextType').value;
+            document.getElementById('legacyReferenceGroup').style.display = (val && val !== 'none') ? '' : 'none';
+        }
+
+        async function submitLegacyPack() {
+            const title = document.getElementById('legacyPackTitle').value.trim();
+            const contextType = document.getElementById('legacyContextType').value;
+            const reference = document.getElementById('legacyPackReference').value.trim();
+
+            if (!title) { alert('Pack title is required'); return; }
+            if (!contextType) { alert('Please select a context type'); return; }
+
+            const btn = document.getElementById('legacyPackSubmitBtn');
+            btn.disabled = true;
+            btn.textContent = 'Submitting...';
+
+            try {
+                const resp = await fetch('/api/di/legacy-pack-submit', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ pack_title: title, context_type: contextType, pack_reference: reference || null })
+                });
+                const data = await resp.json();
+                if (resp.ok && data.success) {
+                    closeLegacyPackModal();
+                    document.getElementById('legacyPackTitle').value = '';
+                    document.getElementById('legacyContextType').value = '';
+                    document.getElementById('legacyPackReference').value = '';
+                    document.getElementById('legacyReferenceGroup').style.display = 'none';
+                    alert('Legacy pack submitted with ' + data.file_count + ' file(s). Your PI will review them.');
+                    loadLegacyDrafts();
+                    loadMyFiles();
+                } else {
+                    alert(data.error || 'Submission failed');
+                }
+            } catch (err) {
+                alert('Connection error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Submit Pack';
+            }
+        }
 
         function switchSection(section) {
             document.querySelectorAll('.section-btn').forEach(b => b.classList.remove('active'));
