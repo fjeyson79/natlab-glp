@@ -1522,14 +1522,13 @@
     <!-- Tab Navigation -->
     <div class="tab-nav">
         <button class="tab-btn active" data-tab="dashboard">Dashboard <span class="badge" id="pendingBadge" style="display:none;">0</span></button>
-        <button class="tab-btn" data-tab="lab-files">Laboratory Files</button>
-        <button class="tab-btn" data-tab="group-docs">Group Documents</button>
-        <button class="tab-btn" data-tab="user-mgmt">User Management</button>
+        <button class="tab-btn" data-tab="lab-files">GLP Vision</button>
+        <button class="tab-btn" data-tab="group-docs">Group Docs</button>
+        <button class="tab-btn" data-tab="user-mgmt">User Control</button>
         <button class="tab-btn" data-tab="glp-console">GLP Status</button>
         <button class="tab-btn" data-tab="backup">Backup</button>
-        <button class="tab-btn" data-tab="purchases-inventory">Purchases &amp; Inventory</button>
-        <button class="tab-btn" data-tab="training">Training &amp; Approvals</button>
-        <button class="tab-btn" data-tab="internal-docs">Internal Documents</button>
+        <button class="tab-btn" data-tab="purchases-inventory">Inventory</button>
+        <button class="tab-btn" data-tab="training">Training</button>
     </div>
 
     <!-- ==================== DASHBOARD TAB ==================== -->
@@ -1572,8 +1571,7 @@
             <div class="panel upload-column">
                 <div class="panel-header">
                     <h2><span class="icon">&#128194;</span> Quick Upload</h2>
-                </div>
-                <div class="panel-content">
+                </div>              <div class="panel-content">
                     <div id="uploadMessage" class="message"></div>
                     <form id="uploadForm">
                         <div class="form-group">
@@ -1788,6 +1786,11 @@
                 <h2><span class="icon">&#128218;</span> Group Documents</h2>
                 <button class="btn btn-sm btn-secondary" onclick="loadGroupDocuments()">Refresh</button>
             </div>
+
+              <div class="dic-scope-pills" style="margin: 12px 0 0 0;">
+                  <button class="dic-pill active" id="gdModeDocs" type="button">GROUP DOCS</button>
+                  <button class="dic-pill" id="gdModeInternal" type="button">INTERNAL</button>
+              </div>
             <div class="panel-content">
                 <!-- Upload Form -->
                 <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
@@ -2809,6 +2812,9 @@
 
                 // Update active tab content
                 const tabId = btn.dataset.tab;
+                  // Special handling: Group Docs has an INTERNAL sub-mode
+                  if (tabId === 'group-docs' && typeof gdOpenMode === 'function') { gdOpenMode('docs'); return; }
+                  if (tabId !== 'group-docs' && typeof _gdSetPill === 'function') { _gdSetPill('docs'); }
                 document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
                 document.getElementById('tab-' + tabId).classList.add('active');
 
@@ -2817,11 +2823,54 @@
                 if (tabId === 'glp-console') glpcInit();
                 if (tabId === 'purchases-inventory') { loadAllPurchaseRequests(); loadAllInventoryV2(); loadPONumbers(); }
                 if (tabId === 'training') { loadTrainingDocuments(); loadPendingTrainingPacks(); loadSealedTrainingPacks(); }
-                if (tabId === 'internal-docs') intdocInit();
             });
         });
 
         // =====================================================
+          // GROUP DOCS MODE TOGGLE (GROUP DOCS | INTERNAL)
+          // =====================================================
+          function _gdSetPill(mode) {
+              const a = document.getElementById("gdModeDocs");
+              const b = document.getElementById("gdModeInternal");
+              if (!a || !b) return;
+              a.classList.toggle("active", mode === "docs");
+              b.classList.toggle("active", mode === "internal");
+          }
+
+          function _gdActivateTopTab() {
+              const top = document.querySelector('.tab-btn[data-tab="group-docs"]');
+              if (!top) return;
+              document.querySelectorAll('.tab-btn').forEach(x => x.classList.remove('active'));
+              top.classList.add('active');
+          }
+
+          function gdOpenMode(mode) {
+              if (mode === "internal") {
+                  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+                  const el = document.getElementById("tab-internal-docs");
+                  if (el) el.classList.add('active');
+                  _gdActivateTopTab();
+                  _gdSetPill("internal");
+                  if (typeof intdocInit === "function") intdocInit();
+                  return;
+              }
+              // default: group docs
+              document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+              const el = document.getElementById("tab-group-docs");
+              if (el) el.classList.add('active');
+              _gdActivateTopTab();
+              _gdSetPill("docs");
+              if (typeof loadGroupDocuments === "function") loadGroupDocuments();
+          }
+
+          (function _wireGroupDocsMode() {
+              const a = document.getElementById("gdModeDocs");
+              const b = document.getElementById("gdModeInternal");
+              if (a) a.addEventListener("click", () => gdOpenMode("docs"));
+              if (b) b.addEventListener("click", () => gdOpenMode("internal"));
+          })();
+
+
         // DASHBOARD TAB
         // =====================================================
         async function loadDashboardData() {
