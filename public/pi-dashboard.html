@@ -2472,6 +2472,9 @@
                         <div class="glpc-member-list" id="glpcMemberList">
                             <div class="glpc-empty">Loading members...</div>
                         </div>
+                        <div class="glpc-group-actions" id="glpcIndividualActions" style="display:none;">
+                            <button class="glpc-btn-generate" id="glpcBtnUpdateStatus" onclick="glpcUpdateSelectedProfilePreview()">Update Status</button>
+                        </div>
                     </div>
 
                     <!-- Group Mode: Group Selector -->
@@ -2497,7 +2500,7 @@
                             </div>
                         </div>
                         <div class="glpc-group-actions">
-                            <button class="glpc-btn-generate" onclick="glpcGenerateGroup()">Generate Group Snapshot</button>
+                            <button class="glpc-btn-generate" id="glpcBtnGenerateGroup" onclick="glpcGenerateGroup()">Generate Group Snapshot</button>
                         </div>
                     </div>
                 </div>
@@ -5698,6 +5701,10 @@ async function dicIntdocsFolderChanged(sel) {
             const member = glpcAllMembers.find(m => m.user_id === userId);
             glpcViewerEntity = { type: 'individual', userId };
 
+            // Show Update Status button
+            const actionsEl = document.getElementById('glpcIndividualActions');
+            if (actionsEl) actionsEl.style.display = userId ? '' : 'none';
+
             // Show viewer, hide empty state
             document.getElementById('glpcEmptyState').style.display = 'none';
             document.getElementById('glpcHeaderCard').style.display = '';
@@ -6061,7 +6068,7 @@ async function dicIntdocsFolderChanged(sel) {
 
         // --- Group snapshot generation ---
         async function glpcGenerateGroup() {
-            const btn = document.querySelector('.glpc-btn-generate');
+            const btn = document.getElementById('glpcBtnGenerateGroup');
             btn.disabled = true;
             btn.textContent = 'Generating...';
             try {
@@ -6085,6 +6092,55 @@ async function dicIntdocsFolderChanged(sel) {
                 btn.textContent = 'Error';
                 setTimeout(() => { btn.textContent = 'Generate Group Snapshot'; btn.disabled = false; }, 3000);
             }
+        }
+
+        // --- Individual status preview (no DB/R2 writes) ---
+        async function glpcUpdateSelectedProfilePreview() {
+            if (!glpcSelectedUserId) return;
+            const btn = document.getElementById('glpcBtnUpdateStatus');
+            if (!btn) return;
+            btn.disabled = true;
+            btn.textContent = 'Updating...';
+
+            const isoWeek = (glpcWeeks[glpcCurrentWeekIdx] && glpcWeeks[glpcCurrentWeekIdx].iso_week) || currentIsoWeekClient();
+
+            try {
+                const resp = await fetch('/api/glp/status/preview', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ user_id: glpcSelectedUserId, iso_week: isoWeek })
+                });
+                const data = await resp.json();
+                if (!resp.ok || !data.success) throw new Error(data.error || 'Preview failed');
+
+                // Get previous week snapshot for delta comparison
+                let prevSnap = null;
+                if (glpcCurrentWeekIdx + 1 < glpcWeeks.length) {
+                    const prevWeek = glpcWeeks[glpcCurrentWeekIdx + 1].iso_week;
+                    prevSnap = glpcSnapshotCache[prevWeek] || null;
+                }
+
+                // Render the preview snapshot using the same rendering path
+                glpcRenderSnapshot(data.snapshot, prevSnap, data.harmony, data.generated_at, isoWeek);
+
+                btn.textContent = 'Updated!';
+                setTimeout(() => { btn.textContent = 'Update Status'; btn.disabled = false; }, 2000);
+            } catch (e) {
+                console.warn('[GLP-CONSOLE] preview error:', e);
+                btn.textContent = 'Error';
+                setTimeout(() => { btn.textContent = 'Update Status'; btn.disabled = false; }, 3000);
+            }
+        }
+
+        // Client-side ISO week helper (fallback if no weeks loaded)
+        function currentIsoWeekClient() {
+            const now = new Date();
+            const d = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+            d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+            const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+            const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+            return `${d.getUTCFullYear()}W${String(weekNo).padStart(2, '0')}`;
         }
 
         // --- Management ---

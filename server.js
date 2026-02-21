@@ -8772,6 +8772,186 @@ app.get('/api/di/glp-status/coherence', requireAuth, async (req, res) => {
       }
   });
 
+// PI-only: preview snapshot for a user (deterministic + AI harmony, no DB/R2 writes)
+app.post('/api/glp/status/preview', requirePI, async (req, res) => {
+    try {
+        const userId = (req.body.user_id || '').trim();
+        if (!userId) return res.status(400).json({ error: 'user_id required' });
+
+        const isoWeek = (req.body.iso_week || '').trim() || currentIsoWeek();
+
+        // 1. Build deterministic snapshot
+        const { snapshot: raw } = await buildGlpSnapshot(userId);
+
+        // Normalise sphere format to { score: number } for UI compatibility
+        const snapshot = {
+            ...raw,
+            iso_week: isoWeek,
+            spheres: {
+                documentation: { score: raw.spheres.documentation },
+                training:      { score: raw.spheres.training },
+                traceability:  { score: raw.spheres.traceability },
+                data_integrity:{ score: raw.spheres.data_integrity }
+            }
+        };
+
+        // 2. Attempt AI harmony generation (graceful degradation if not configured)
+        const openaiKey = (process.env.OPENAI_API_KEY || '').trim();
+        const openaiBase = (process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/+$/, '');
+        const openaiModel = (process.env.OPENAI_MODEL || 'gpt-4o-mini').trim();
+
+        let harmony = null;
+        let aiValid = false;
+
+        if (openaiKey) {
+            try {
+                // Fetch recent history for AI context (up to 5 weeks)
+                let weeks = [];
+                if (await checkGlpStatusTable()) {
+                    const idx = await pool.query(
+                        `SELECT iso_week, r2_snapshot_key FROM glp_weekly_status_index
+                         WHERE user_id = $1 ORDER BY iso_week DESC LIMIT 5`, [userId]
+                    );
+                    for (const row of idx.rows) {
+                        try {
+                            const s = await downloadR2Json(row.r2_snapshot_key);
+                            weeks.push({ iso_week: row.iso_week, snapshot: s });
+                        } catch (e) { /* skip */ }
+                    }
+                }
+
+                // Fetch user facts inline (reuse the same queries as user-facts endpoint)
+                const profileRow = await pool.query(
+                    `SELECT name, COALESCE(role, 'researcher') AS role, affiliation
+                     FROM di_allowlist WHERE researcher_id = $1 AND active = true`, [userId]
+                );
+                const facts = profileRow.rows[0] || {};
+
+                // Build prompt (same template as n8n Prepare Context and AI Prompt)
+                function safeJson(x) { try { return JSON.stringify(x ?? null, null, 2); } catch { return String(x); } }
+
+                const prompt = `You are the NAT Lab GLP weekly analyst for Good Laboratory Practice compliance.
+
+TASK: Analyze the researcher's GLP status data and produce a structured harmony assessment.
+
+RULES:
+- Return ONLY valid JSON matching the exact schema below.
+- No markdown, no commentary, no extra keys.
+- harmony_map.wins_this_week: 2-3 short bullet strings highlighting this week's GLP wins.
+- harmony_map.best_upgrade_next_week: single sentence, most impactful improvement for next week.
+- harmony_map.trend: one of "improving", "stable", "declining", or "insufficient_data".
+- conformity.what_is_working_well: 2-3 bullet strings on GLP conformity strengths.
+- conformity.main_improvement_next_week: single sentence, key conformity improvement.
+- conformity.trend_vs_previous_weeks: one of "improving", "stable", "declining", or "insufficient_data".
+- conformity.focus_for_coming_week: 2-3 actionable bullet strings for focus areas.
+- confidence: float 0.0-1.0 reflecting data quality and completeness.
+- Do NOT assign GLP level or mascot (server handles those).
+- If data is sparse, still produce the JSON with confidence near 0 and trend "insufficient_data".
+
+OUTPUT JSON SCHEMA (return exactly this structure):
+{
+  "schema_version": 1,
+  "generated_at": "<ISO 8601 timestamp>",
+  "user_id": "${userId}",
+  "iso_week": "${isoWeek}",
+  "confidence": 0.0,
+  "harmony_map": {
+    "wins_this_week": ["string", "string"],
+    "best_upgrade_next_week": "string",
+    "trend": "string"
+  },
+  "conformity": {
+    "what_is_working_well": ["string", "string"],
+    "main_improvement_next_week": "string",
+    "trend_vs_previous_weeks": "string",
+    "focus_for_coming_week": ["string", "string"]
+  }
+}
+
+INPUT DATA:
+user_id: ${userId}
+iso_week: ${isoWeek}
+
+Current snapshot:
+${safeJson(snapshot)}
+
+User facts:
+${safeJson(facts)}
+
+Recent history (up to 5 weeks):
+${safeJson(weeks)}`;
+
+                // Call OpenAI-compatible API
+                const aiResp = await fetch(`${openaiBase}/chat/completions`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${openaiKey}`
+                    },
+                    body: JSON.stringify({
+                        model: openaiModel,
+                        messages: [{ role: 'user', content: prompt }],
+                        temperature: 0,
+                        response_format: { type: 'json_object' }
+                    })
+                });
+
+                if (aiResp.ok) {
+                    const aiData = await aiResp.json();
+                    const content = aiData.choices?.[0]?.message?.content;
+                    let ai = null;
+                    if (content) {
+                        try { ai = typeof content === 'object' ? content : JSON.parse(content); } catch { /* parse fail */ }
+                    }
+
+                    // Validate harmony schema (same as n8n Validate AI node)
+                    if (ai && typeof ai === 'object') {
+                        const hm = ai.harmony_map;
+                        const conf = ai.conformity;
+                        aiValid = !!(
+                            ai.schema_version === 1 &&
+                            typeof ai.user_id === 'string' &&
+                            typeof ai.iso_week === 'string' &&
+                            typeof ai.confidence === 'number' &&
+                            ai.confidence >= 0 && ai.confidence <= 1 &&
+                            hm && typeof hm === 'object' &&
+                            Array.isArray(hm.wins_this_week) && hm.wins_this_week.length >= 1 &&
+                            typeof hm.best_upgrade_next_week === 'string' &&
+                            typeof hm.trend === 'string' &&
+                            conf && typeof conf === 'object' &&
+                            Array.isArray(conf.what_is_working_well) && conf.what_is_working_well.length >= 1 &&
+                            typeof conf.main_improvement_next_week === 'string' &&
+                            typeof conf.trend_vs_previous_weeks === 'string' &&
+                            Array.isArray(conf.focus_for_coming_week) && conf.focus_for_coming_week.length >= 1
+                        );
+                        if (aiValid) harmony = ai;
+                    }
+                } else {
+                    console.warn('[GLP-PREVIEW] OpenAI call failed:', aiResp.status, await aiResp.text().catch(() => ''));
+                }
+            } catch (aiErr) {
+                console.warn('[GLP-PREVIEW] AI harmony error (continuing without):', aiErr.message);
+            }
+        }
+
+        // 3. Compose final snapshot with harmony
+        snapshot.has_harmony = aiValid;
+        snapshot.harmony = harmony;
+
+        return res.json({
+            success: true,
+            preview: true,
+            iso_week: isoWeek,
+            generated_at: snapshot.generated_at,
+            snapshot,
+            harmony: null  // harmony is embedded in snapshot.harmony for v3 compat
+        });
+    } catch (err) {
+        console.error('[GLP-PREVIEW] error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
 // GET eligible users for weekly snapshot generation (n8n calls this)
 app.get('/api/glp/status/eligible-users', async (req, res) => {
     try {
