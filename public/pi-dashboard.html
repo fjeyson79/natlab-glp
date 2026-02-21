@@ -1456,6 +1456,81 @@
         }
         .glpc-trajectory-suggestion:first-child { border-top: none; }
 
+        /* ── Harmony Map (PI mirror of researcher UI) ── */
+        .glpHarmonyMap {
+            margin-top: 20px;
+            border-radius: 14px;
+            padding: 36px 24px 28px;
+            text-align: center;
+            background: linear-gradient(180deg, #f4f6fa 0%, #eaedf2 100%);
+            border: 1px solid #dce0e8;
+        }
+        .glpHarmonyMap__title {
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 0.6px;
+            color: #3a5068;
+            margin-bottom: 4px;
+        }
+        .glpHarmonyMap__sub {
+            font-size: 12px;
+            color: #8c95a1;
+            margin-bottom: 16px;
+        }
+        .glpHarmonyMap__body {
+            display: grid;
+            grid-template-columns: 1fr auto 1fr;
+            gap: 20px;
+            align-items: center;
+        }
+        .glpHarmonyImg {
+            width: 520px;
+            max-width: 100%;
+            height: auto;
+            display: block;
+            margin: 0 auto;
+        }
+        .glpHarmonyPanel { padding: 4px 0; }
+        .glpHarmonyPanel--left  { text-align: right; }
+        .glpHarmonyPanel--right { text-align: left; }
+        .glpHarmonyPanel__title {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 1.2px;
+            text-transform: uppercase;
+            color: #8c95a1;
+            margin-bottom: 8px;
+        }
+        .glpHarmonyPanel__list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        .glpHarmonyPanel__item {
+            font-size: 12.5px;
+            color: #3a5068;
+            line-height: 1.6;
+            padding: 3px 0;
+        }
+        .glpHarmonyPanel__text {
+            font-size: 12.5px;
+            color: #5f6b7a;
+            line-height: 1.6;
+            margin: 0;
+        }
+        @media (max-width: 900px) {
+            .glpHarmonyMap__body {
+                grid-template-columns: 1fr;
+                grid-template-rows: auto auto auto;
+            }
+            .glpHarmonyPanel--left,
+            .glpHarmonyPanel--right { text-align: center; }
+            .glpHarmonyImg { max-width: 280px; }
+        }
+        @media (max-width: 600px) {
+            .glpHarmonyMap { padding: 24px 12px 20px; }
+        }
+
         /* GLP Console responsive */
         @media (max-width: 900px) {
             .glpc-layout {
@@ -2279,6 +2354,33 @@
                                 <div class="glpMiniCard__row"><span>Oligos</span><span class="glpMiniCard__rowVal" id="glpcInvOligos">--</span></div>
                             </div>
                         </div>
+
+                        <!-- Harmony Map section -->
+                        <div class="glpHarmonyMap" id="glpcHarmonyMapWrap">
+                            <div class="glpHarmonyMap__title">Harmony Map</div>
+                            <div class="glpHarmonyMap__sub">SOPs, Data, Inventory, and Training alignment</div>
+                            <div class="glpHarmonyMap__body">
+                                <div class="glpHarmonyPanel glpHarmonyPanel--left">
+                                    <div class="glpHarmonyPanel__title">GLP coherence wins this week</div>
+                                    <ul class="glpHarmonyPanel__list" id="glpcHarmonyWins">
+                                        <li class="glpHarmonyPanel__item">&mdash;</li>
+                                    </ul>
+                                </div>
+                                <img class="glpHarmonyImg" src="/assets/glp/harmony-map.png" alt="Harmony Map showing SOP, Data, Inventory, and Training alignment"/>
+                                <div class="glpHarmonyPanel glpHarmonyPanel--right">
+                                    <div>
+                                        <div class="glpHarmonyPanel__title">Best coherence upgrade next week</div>
+                                        <ul class="glpHarmonyPanel__list">
+                                            <li class="glpHarmonyPanel__item" id="glpcHarmonyUpgrade">&mdash;</li>
+                                        </ul>
+                                    </div>
+                                    <div style="margin-top:14px;">
+                                        <div class="glpHarmonyPanel__title">Trend vs previous weeks</div>
+                                        <p class="glpHarmonyPanel__text" id="glpcHarmonyTrend">&mdash;</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- C. GLP Conformity card -->
@@ -2291,8 +2393,12 @@
                                     <ul class="glpConfSection__list" id="glpcConfWorking"></ul>
                                 </div>
                                 <div class="glpConfSection">
-                                    <div class="glpConfSection__title">Main improvement</div>
+                                    <div class="glpConfSection__title">Main improvement for next week</div>
                                     <ul class="glpConfSection__list" id="glpcConfImprovement"></ul>
+                                </div>
+                                <div class="glpConfSection">
+                                    <div class="glpConfSection__title">Trend vs previous weeks</div>
+                                    <p class="glpConfSection__text" id="glpcConfTrend"></p>
                                 </div>
                                 <div class="glpConfSection">
                                     <div class="glpConfSection__title">Focus for the coming week</div>
@@ -5495,8 +5601,23 @@ async function dicIntdocsFolderChanged(sel) {
             document.getElementById('glpcInvSamples').textContent = ev.inventory?.samples ?? '--';
             document.getElementById('glpcInvOligos').textContent = ev.inventory?.oligos ?? '--';
 
-            // Conformity
-            glpcRenderConformity(snap);
+            // Harmony Map — use snapshot-embedded harmony (v3 workflow) or separate harmony (v1 compat)
+            const h = snap.harmony || null;
+            if (h && h.harmony_map) {
+                glpcRenderHarmonyFromAI(h.harmony_map);
+            } else if (harmony) {
+                // v1 compat: separate harmony object with motivation/reflection/goals/actions
+                glpcRenderHarmonyFromV1(harmony);
+            } else {
+                glpcRenderHarmonyPending();
+            }
+
+            // GLP Conformity — prefer AI conformity, fall back to boolean-derived
+            if (h && h.conformity) {
+                glpcRenderConformityFromAI(h.conformity);
+            } else {
+                glpcRenderConformityFromBooleans(snap);
+            }
         }
 
         function glpcSetVT(id, score, prevScore) {
@@ -5515,7 +5636,74 @@ async function dicIntdocsFolderChanged(sel) {
             }
         }
 
-        function glpcRenderConformity(snap) {
+        // --- Harmony Map renderers ---
+
+        function glpcRenderHarmonyFromAI(hm) {
+            const winsEl = document.getElementById('glpcHarmonyWins');
+            const wins = Array.isArray(hm.wins_this_week) ? hm.wins_this_week : [];
+            winsEl.innerHTML = wins.length > 0
+                ? wins.map(w => `<li class="glpHarmonyPanel__item">${escapeHtml(w)}</li>`).join('')
+                : '<li class="glpHarmonyPanel__item">&mdash;</li>';
+
+            const upEl = document.getElementById('glpcHarmonyUpgrade');
+            upEl.textContent = hm.best_upgrade_next_week || '\u2014';
+
+            const trEl = document.getElementById('glpcHarmonyTrend');
+            trEl.textContent = hm.trend || '\u2014';
+
+            document.getElementById('glpcHarmonyMapWrap').style.display = '';
+        }
+
+        function glpcRenderHarmonyFromV1(harmony) {
+            const winsEl = document.getElementById('glpcHarmonyWins');
+            const items = [harmony.motivation, harmony.reflection].filter(Boolean);
+            winsEl.innerHTML = items.length > 0
+                ? items.map(w => `<li class="glpHarmonyPanel__item">${escapeHtml(w)}</li>`).join('')
+                : '<li class="glpHarmonyPanel__item">&mdash;</li>';
+
+            const upEl = document.getElementById('glpcHarmonyUpgrade');
+            upEl.textContent = (harmony.goals && harmony.goals[0]) || '\u2014';
+
+            const trEl = document.getElementById('glpcHarmonyTrend');
+            trEl.textContent = (harmony.actions && harmony.actions[0]) || '\u2014';
+
+            document.getElementById('glpcHarmonyMapWrap').style.display = '';
+        }
+
+        function glpcRenderHarmonyPending() {
+            const winsEl = document.getElementById('glpcHarmonyWins');
+            winsEl.innerHTML = '<li class="glpHarmonyPanel__item">Harmony analysis in progress\u2026</li>';
+
+            const upEl = document.getElementById('glpcHarmonyUpgrade');
+            upEl.textContent = 'Available after Wednesday 09:00';
+
+            const trEl = document.getElementById('glpcHarmonyTrend');
+            trEl.textContent = '';
+
+            document.getElementById('glpcHarmonyMapWrap').style.display = '';
+        }
+
+        // --- GLP Conformity renderers ---
+
+        function glpcRenderConformityFromAI(conf) {
+            const working = Array.isArray(conf.what_is_working_well) ? conf.what_is_working_well : [];
+            const improvement = conf.main_improvement_next_week || '';
+            const trend = conf.trend_vs_previous_weeks || '';
+            const focus = Array.isArray(conf.focus_for_coming_week) ? conf.focus_for_coming_week : [];
+
+            document.getElementById('glpcConfWorking').innerHTML = working.length > 0
+                ? working.map(t => `<li>${escapeHtml(t)}</li>`).join('')
+                : '<li>GLP documentation is in its early stages.</li>';
+            document.getElementById('glpcConfImprovement').innerHTML = improvement
+                ? `<li>${escapeHtml(improvement)}</li>`
+                : '<li>Maintain current documentation quality.</li>';
+            document.getElementById('glpcConfTrend').textContent = trend || '\u2014';
+            document.getElementById('glpcConfFocus').innerHTML = focus.length > 0
+                ? focus.map(t => `<li>${escapeHtml(t)}</li>`).join('')
+                : '<li>Sustain practices and prepare for next review cycle.</li>';
+        }
+
+        function glpcRenderConformityFromBooleans(snap) {
             const c = snap.conformity || {};
             const working = [];
             const improvements = [];
@@ -5540,8 +5728,11 @@ async function dicIntdocsFolderChanged(sel) {
             if (!c.recent_activity) focus.push('Resume documented activity to maintain momentum.');
             if (focus.length === 0) focus.push('Sustain practices and prepare for next review cycle.');
 
+            const trendText = c.recent_activity ? 'Active documentation this period.' : 'No recent activity recorded.';
+
             document.getElementById('glpcConfWorking').innerHTML = working.map(t => `<li>${escapeHtml(t)}</li>`).join('');
             document.getElementById('glpcConfImprovement').innerHTML = improvements.map(t => `<li>${escapeHtml(t)}</li>`).join('');
+            document.getElementById('glpcConfTrend').textContent = trendText;
             document.getElementById('glpcConfFocus').innerHTML = focus.map(t => `<li>${escapeHtml(t)}</li>`).join('');
         }
 
