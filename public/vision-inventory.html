@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>GLP Vision, Inventory Mirror</title>
+  <style>
+    :root{
+      --bg:#f6f8fb;
+      --card:#ffffff;
+      --text:#0f172a;
+      --muted:#6b7280;
+      --border:#e5e7eb;
+      --accent:#2d5a87;
+      --warn:#f59e0b;
+      --ok:#16a34a;
+      --bad:#dc2626;
+    }
+    html,body{height:100%;}
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+      background:var(--bg);
+      color:var(--text);
+    }
+    .wrap{max-width:1100px;margin:0 auto;padding:18px;}
+    body.embed .wrap{max-width:none;padding:16px;}
+    .top{
+      display:flex;align-items:flex-start;justify-content:space-between;gap:12px;
+      padding:14px 16px;border:1px solid var(--border);border-radius:14px;background:linear-gradient(180deg,#f2f4f8,#eceef3);
+    }
+    body.embed .top{display:none;}
+    .title{font-weight:800;font-size:18px;line-height:1.2;}
+    .sub{margin-top:4px;color:var(--muted);font-size:12px;}
+    .pill{
+      display:inline-flex;align-items:center;gap:8px;
+      font-size:11px;font-weight:800;letter-spacing:.02em;
+      padding:6px 10px;border-radius:999px;border:1px solid var(--border);background:#fff;
+    }
+    .pill.ok{border-color:#bbf7d0;background:#f0fdf4;color:#14532d;}
+    .pill.warn{border-color:#fde68a;background:#fffbeb;color:#7c2d12;}
+    .grid{
+      margin-top:14px;
+      display:grid;
+      grid-template-columns: 1fr;
+      gap:14px;
+    }
+    .card{
+      background:var(--card);
+      border:1px solid var(--border);
+      border-radius:14px;
+      box-shadow: 0 1px 0 rgba(15,23,42,.04);
+      padding:14px 14px;
+    }
+    .micro{font-size:11px;font-weight:900;letter-spacing:.08em;color:#64748b;}
+    .row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:10px;}
+    .meta{font-size:12px;color:#4b5563;}
+    .mini{
+      display:grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap:0;
+      margin-top:10px;
+      border:1px solid var(--border);
+      border-radius:12px;
+      overflow:hidden;
+      background:#fff;
+    }
+    .mini .cell{padding:12px 10px;border-right:1px solid var(--border);text-align:center;}
+    .mini .cell:last-child{border-right:0;}
+    .mini .k{font-size:10px;font-weight:900;letter-spacing:.1em;color:#64748b;}
+    .mini .v{margin-top:6px;font-size:28px;font-weight:900;}
+    .list{margin-top:10px;border-top:1px solid #f1f5f9;}
+    .item{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid #f1f5f9;}
+    .item:last-child{border-bottom:0;}
+    .badge{
+      display:inline-flex;align-items:center;
+      font-size:10px;font-weight:900;
+      padding:3px 8px;border-radius:999px;border:1px solid var(--border);background:#fff;color:#334155;
+      white-space:nowrap;
+    }
+    .badge.pending{border-color:#fde68a;background:#fffbeb;color:#7c2d12;}
+    .badge.revision{border-color:#fecaca;background:#fef2f2;color:#7f1d1d;}
+    .badge.ok{border-color:#bbf7d0;background:#f0fdf4;color:#14532d;}
+    .muted{color:var(--muted);}
+    .loading{padding:22px;text-align:center;color:var(--muted);font-size:13px;}
+    .err{border-color:#fecaca;background:#fef2f2;}
+    .err .micro{color:#7f1d1d;}
+    @media (min-width: 980px){
+      .grid{grid-template-columns: 1fr 1fr;}
+      .span2{grid-column: 1 / span 2;}
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div>
+        <div class="title">Inventory, Mirror View</div>
+        <div class="sub">Read only, researcher scoped, for PI 1 to 1 review</div>
+      </div>
+      <div class="pill" id="statusPill">Loading</div>
+    </div>
+
+    <div id="root" class="grid">
+      <div class="loading">Loading…</div>
+    </div>
+  </div>
+
+  <script>
+    function q(name){
+      try { return new URL(window.location.href).searchParams.get(name) || ''; }
+      catch(e){ return ''; }
+    }
+    function esc(s){
+      return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+    function fmtDate(v){
+      if (!v) return '—';
+      try { return new Date(v).toLocaleDateString('en-SE'); }
+      catch(e){ return '—'; }
+    }
+
+    (function init(){
+      const embed = q('embed') === '1';
+      if (embed) document.body.classList.add('embed');
+
+      const user = q('user').trim();
+      if (!user){
+        document.getElementById('root').innerHTML =
+          '<div class="card err span2"><div class="micro">ERROR</div><div class="meta">Missing user parameter, expected ?user=JB</div></div>';
+        return;
+      }
+
+      load(user);
+    })();
+
+    async function load(user){
+      const root = document.getElementById('root');
+      const pill = document.getElementById('statusPill');
+      try{
+        const resp = await fetch('/api/di/vision/inventory/' + encodeURIComponent(user), { credentials:'include' });
+        const d = await resp.json();
+        if (!d || !d.success){
+          const msg = esc((d && (d.message || d.error)) || 'Failed to load inventory mirror');
+          root.innerHTML = '<div class="card err span2"><div class="micro">ERROR</div><div class="meta">' + msg + '</div></div>';
+          pill.textContent = 'ERROR';
+          pill.className = 'pill';
+          return;
+        }
+
+        const s = d.status || {};
+        const data = d.data || {};
+        const ok = (s.overall === 'ok');
+
+        pill.textContent = ok ? 'OK' : 'NEEDS ATTENTION';
+        pill.className = ok ? 'pill ok' : 'pill warn';
+
+        let html = '';
+
+        html += '<div class="card span2">';
+        html += '<div class="micro">INVENTORY OVERVIEW</div>';
+        html += '<div class="row">';
+        html += '<div class="meta"><b>' + esc(user) + '</b>, last activity: <b>' + fmtDate(s.last_activity_at) + '</b></div>';
+        html += '<div class="badge ' + (ok ? 'ok' : 'pending') + '">' + (ok ? 'OK' : 'NEEDS ATTENTION') + '</div>';
+        html += '</div>';
+        if (Array.isArray(s.reasons) && s.reasons.length){
+          html += '<div class="meta muted" style="margin-top:8px;">' + s.reasons.map(esc).join(' , ') + '</div>';
+        }
+        const counts = s.counts || {};
+        html += '<div class="mini">';
+        html += '<div class="cell"><div class="k">ASSIGNED</div><div class="v">' + (counts.assigned ?? 0) + '</div></div>';
+        html += '<div class="cell"><div class="k">PENDING ONLINE</div><div class="v">' + (counts.pending_online ?? 0) + '</div></div>';
+        html += '<div class="cell"><div class="k">PENDING OFFLINE</div><div class="v">' + (counts.pending_offline ?? 0) + '</div></div>';
+        html += '<div class="cell"><div class="k">EXCEPTIONS</div><div class="v">' + (counts.exceptions ?? 0) + '</div></div>';
+        html += '</div>';
+        html += '</div>';
+
+        html += '<div class="card">';
+        html += '<div class="micro">ASSIGNED ITEMS</div>';
+        html += '<div class="list">';
+        const assigned = data.assigned_items || [];
+        if (assigned.length){
+          assigned.forEach(item => {
+            const left = '<div><b>' + esc(item.name || '') + '</b> <span class="badge">' + esc(item.category || '') + '</span></div>';
+            const right = '<div class="muted" style="text-align:right;">' + esc(item.location || '') +
+              (item.lot ? ' , Lot: ' + esc(item.lot) : '') +
+              (item.expiry ? ' , Exp: ' + esc(item.expiry) : '') +
+              '</div>';
+            html += '<div class="item">' + left + right + '</div>';
+          });
+        } else {
+          html += '<div class="item"><div class="muted">No assigned items</div><div class="badge">—</div></div>';
+        }
+        html += '</div></div>';
+
+        html += '<div class="card">';
+        html += '<div class="micro">PENDING ONLINE</div>';
+        html += '<div class="list">';
+        const pon = data.pending_online_items || [];
+        if (pon.length){
+          pon.forEach(item => {
+            html += '<div class="item"><div>' + esc(item.name || '') + ' <span class="badge pending">' + esc(item.status || 'PENDING') + '</span></div><div class="muted">' + fmtDate(item.requested_at) + '</div></div>';
+          });
+        } else {
+          html += '<div class="item"><div class="muted">No pending items</div><div class="badge ok">OK</div></div>';
+        }
+        html += '</div></div>';
+
+        html += '<div class="card">';
+        html += '<div class="micro">PENDING OFFLINE</div>';
+        html += '<div class="list">';
+        const pof = data.pending_offline_items || [];
+        if (pof.length){
+          pof.forEach(item => {
+            html += '<div class="item"><div>' + esc(item.name || '') + ' <span class="badge pending">PENDING</span></div><div class="muted">' + fmtDate(item.submitted_at) + ' , ' + esc(item.submitted_by || '') + '</div></div>';
+          });
+        } else {
+          html += '<div class="item"><div class="muted">No pending items</div><div class="badge ok">OK</div></div>';
+        }
+        html += '</div></div>';
+
+        const ex = data.exceptions || [];
+        if (ex.length){
+          html += '<div class="card span2">';
+          html += '<div class="micro">EXCEPTIONS</div>';
+          html += '<div class="list">';
+          ex.forEach(e => {
+            const missing = Array.isArray(e.missing) ? e.missing.map(m => '<span class="badge revision">' + esc(m) + '</span>').join(' ') : '';
+            html += '<div class="item"><div><b>' + esc(e.name || '') + '</b></div><div>' + missing + '</div></div>';
+          });
+          html += '</div></div>';
+        }
+
+        root.innerHTML = html;
+      } catch(err){
+        root.innerHTML = '<div class="card err span2"><div class="micro">ERROR</div><div class="meta">Failed to load inventory mirror</div></div>';
+      }
+    }
+  </script>
+</body>
+</html>

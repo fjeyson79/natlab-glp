@@ -2197,7 +2197,9 @@
                 </div>
                 <div class="dic-viewer-empty" id="dicViewerEmpty">Select a file to preview</div>
                 <iframe class="dic-viewer-pdf" id="dicViewerPdf" style="display:none;"></iframe>
-                <div class="dic-vision-overlay" id="dicVisionOverlay" style="display:none;" onclick="try{dicSetVisionMode(\'all\');}catch(e){}"></div>
+                
+                  <iframe id="dicVisionMirrorFrame" style="display:none;width:100%;height:100%;border:0;background:#ffffff;"></iframe>
+<div class="dic-vision-overlay" id="dicVisionOverlay" style="display:none;" onclick="try{dicSetVisionMode(\'all\');}catch(e){}"></div>
                 <div class="dic-intel-panel" id="dicIntelPanel" style="display:none;">
                     <div class="dic-intel-strip">
                         <span class="dic-intel-strip-label" id="dicSopLabel">SOPs (0)</span>
@@ -4430,6 +4432,7 @@
             if (!showChrome && quickMetrics) quickMetrics.style.display = 'none';
 
             if (mode === 'all') {
+                  dicVisionHideMirror();
                 dicVisionHideOverlay();
                 glpVisionRenderAll(selectedUser);
             } else if (mode === 'papers') {
@@ -4575,6 +4578,7 @@
                 html += `</div>`;
 
                 results.innerHTML = html;
+                  dicVisionShowMirror('training', selectedUser);
                   dicVisionShowOverlay(html);
                   dicVisionShowOverlay(html);
 } catch (err) {
@@ -4683,7 +4687,7 @@
                 html += `</div>`;
 
                 results.innerHTML = html;
-                dicVisionShowOverlayIframe(dicMakeEmbedUrl(data.links.open_inventory_url, 'purchases-inventory'));
+                  dicVisionShowMirror('inventory', selectedUser);
 } catch (err) {
                 console.error('[Vision] inventory fetch error:', err);
                 results.innerHTML = '<div class="glpCard" style="border-color:#f8d7da;"><div class="glpMicroTitle">ERROR</div><p style="color:#721c24;font-size:13px;margin:0;">Failed to load inventory data</p></div>';
@@ -5175,6 +5179,42 @@ function dicVisionShowOverlayIframe(url) {
   if (pdfEl) pdfEl.style.display = 'none';
   if (toolbar) toolbar.style.display = 'none';
 }
+
+
+  // ===============================
+  // GLP Vision, Training and Inventory, Mirror iframe
+  // ===============================
+  function dicVisionMirrorUrl(userId, mode) {
+    var base = (mode === 'training') ? '/vision-training.html' : '/vision-inventory.html';
+    var qs = '?embed=1';
+    if (userId) qs += '&user=' + encodeURIComponent(userId);
+    return base + qs;
+  }
+
+  function dicVisionShowMirror(mode, userId) {
+    var mirror = document.getElementById('dicVisionMirrorFrame');
+    var overlay = document.getElementById('dicVisionOverlay');
+    var empty = document.getElementById('dicViewerEmpty');
+    var pdfEl = document.getElementById('dicViewerPdf');
+    var toolbar = document.getElementById('dicToolbar');
+
+    if (overlay) overlay.style.display = 'none';
+    if (pdfEl) pdfEl.style.display = 'none';
+    if (empty) empty.style.display = 'none';
+    if (toolbar) toolbar.style.display = 'none';
+
+    if (!mirror) return;
+    mirror.src = dicVisionMirrorUrl(userId, mode);
+    mirror.style.display = 'block';
+  }
+
+  function dicVisionHideMirror() {
+    var mirror = document.getElementById('dicVisionMirrorFrame');
+    if (!mirror) return;
+    mirror.style.display = 'none';
+    mirror.src = 'about:blank';
+  }
+
 
 function dicVisionShowOverlay(html) {
   const overlay = document.getElementById('dicVisionOverlay');
