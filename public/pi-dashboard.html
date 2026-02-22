@@ -859,17 +859,12 @@
             top:0;left:0;right:0;bottom:0;
             width:100%;
             height:100%;
-            overflow:hidden;
+            overflow:auto;
             background:#ffffff;
             border-radius:12px;
             z-index:5;
-        }
-        .dic-vision-overlay iframe{
-            width:100%;
-            height:100%;
-            border:0;
-            display:block;
-            background:#ffffff;
+            padding:16px;
+            box-sizing:border-box;
         }
 
 .dic-viewer {
@@ -2198,9 +2193,7 @@
                 </div>
                 <div class="dic-viewer-empty" id="dicViewerEmpty">Select a file to preview</div>
                 <iframe class="dic-viewer-pdf" id="dicViewerPdf" style="display:none;"></iframe>
-                
-                  <iframe id="dicVisionMirrorFrame" style="display:none;width:100%;height:100%;border:0;background:#ffffff;"></iframe>
-<div class="dic-vision-overlay" id="dicVisionOverlay" style="display:none;" onclick="try{dicSetVisionMode(\'all\');}catch(e){}"></div>
+                <div class="dic-vision-overlay" id="dicVisionOverlay" style="display:none;"></div>
                 <div class="dic-intel-panel" id="dicIntelPanel" style="display:none;">
                     <div class="dic-intel-strip">
                         <span class="dic-intel-strip-label" id="dicSopLabel">SOPs (0)</span>
@@ -4430,9 +4423,10 @@ function dicInitEmbedModeFromUrl() {
             if (!showChrome && quickMetrics) quickMetrics.style.display = 'none';
 
             if (mode === 'all') {
-                dicVisionHideOverlay();
+                dicRightPanelHide();
                 glpVisionRenderAll(selectedUser);
             } else if (mode === 'papers') {
+                dicRightPanelHide();
                 glpVisionRenderPapers(selectedUser);
             } else if (mode === 'training') {
                 glpVisionRenderTraining(selectedUser);
@@ -4459,20 +4453,18 @@ function dicInitEmbedModeFromUrl() {
         }
 
         async function glpVisionRenderTraining(selectedUser) {
-            const results = document.getElementById('dicResults');
-            if (!results) return;
             if (!selectedUser) {
-                results.innerHTML = '<div class="dic-empty-state"><h3>Select a researcher to view training</h3></div>';
-            dicVisionShowOverlay(results.innerHTML);
-
+                dicRightPanelShow('<div class="dic-empty-state"><h3>Select a researcher to view training</h3></div>');
                 return;
             }
-            results.innerHTML = '<div class="dic-empty-state"><h3>Training</h3><p style="color:#6b7280;margin-top:8px;">Loading\u2026</p></div>';
+            const modeAtStart = dicVisionMode; // stale-guard for async
+            dicRightPanelShow('<div class="dic-empty-state"><h3>Training</h3><p style="color:#6b7280;margin-top:8px;">Loading\u2026</p></div>');
             try {
                 const resp = await fetch(`/api/di/vision/training/${encodeURIComponent(selectedUser)}`, { credentials: 'include' });
+                if (dicVisionMode !== modeAtStart) return; // stale – user switched mode
                 const d = await resp.json();
                 if (!d.success) {
-                    results.innerHTML = `<div class="glpCard" style="border-color:#f8d7da;"><div class="glpMicroTitle">ERROR</div><p style="color:#721c24;font-size:13px;margin:0;">${escapeHtml(d.message || 'Unknown error')} <span class="dic-badge revision">${escapeHtml(d.error_code || '')}</span></p></div>`;
+                    dicRightPanelShow(`<div class="glpCard" style="border-color:#f8d7da;"><div class="glpMicroTitle">ERROR</div><p style="color:#721c24;font-size:13px;margin:0;">${escapeHtml(d.message || 'Unknown error')} <span class="dic-badge revision">${escapeHtml(d.error_code || '')}</span></p></div>`);
                     return;
                 }
                 const s = d.status;
@@ -4574,29 +4566,26 @@ function dicInitEmbedModeFromUrl() {
                 html += `<span style="font-size:10px;color:#b0b8c4;">Generated ${fmtDate(d.generated_at)}</span>`;
                 html += `</div>`;
 
-                results.innerHTML = html;
-                  dicVisionShowOverlay(html);
-} catch (err) {
+                dicRightPanelShow(html);
+            } catch (err) {
                 console.error('[Vision] training fetch error:', err);
-                results.innerHTML = '<div class="glpCard" style="border-color:#f8d7da;"><div class="glpMicroTitle">ERROR</div><p style="color:#721c24;font-size:13px;margin:0;">Failed to load training data</p></div>';
+                dicRightPanelShow('<div class="glpCard" style="border-color:#f8d7da;"><div class="glpMicroTitle">ERROR</div><p style="color:#721c24;font-size:13px;margin:0;">Failed to load training data</p></div>');
             }
         }
 
         async function glpVisionRenderInventory(selectedUser) {
-            const results = document.getElementById('dicResults');
-            if (!results) return;
             if (!selectedUser) {
-                results.innerHTML = '<div class="dic-empty-state"><h3>Select a researcher to view inventory</h3></div>';
-            dicVisionShowOverlay(results.innerHTML);
-
+                dicRightPanelShow('<div class="dic-empty-state"><h3>Select a researcher to view inventory</h3></div>');
                 return;
             }
-            results.innerHTML = '<div class="dic-empty-state"><h3>Inventory</h3><p style="color:#6b7280;margin-top:8px;">Loading\u2026</p></div>';
+            const modeAtStart = dicVisionMode; // stale-guard for async
+            dicRightPanelShow('<div class="dic-empty-state"><h3>Inventory</h3><p style="color:#6b7280;margin-top:8px;">Loading\u2026</p></div>');
             try {
                 const resp = await fetch(`/api/di/vision/inventory/${encodeURIComponent(selectedUser)}`, { credentials: 'include' });
+                if (dicVisionMode !== modeAtStart) return; // stale – user switched mode
                 const d = await resp.json();
                 if (!d.success) {
-                    results.innerHTML = `<div class="glpCard" style="border-color:#f8d7da;"><div class="glpMicroTitle">ERROR</div><p style="color:#721c24;font-size:13px;margin:0;">${escapeHtml(d.message || 'Unknown error')} <span class="dic-badge revision">${escapeHtml(d.error_code || '')}</span></p></div>`;
+                    dicRightPanelShow(`<div class="glpCard" style="border-color:#f8d7da;"><div class="glpMicroTitle">ERROR</div><p style="color:#721c24;font-size:13px;margin:0;">${escapeHtml(d.message || 'Unknown error')} <span class="dic-badge revision">${escapeHtml(d.error_code || '')}</span></p></div>`);
                     return;
                 }
                 const s = d.status;
@@ -4681,11 +4670,10 @@ function dicInitEmbedModeFromUrl() {
                 html += `<span style="font-size:10px;color:#b0b8c4;">Generated ${fmtDate(d.generated_at)}</span>`;
                 html += `</div>`;
 
-                results.innerHTML = html;
-                dicVisionShowOverlay(html);
-} catch (err) {
+                dicRightPanelShow(html);
+            } catch (err) {
                 console.error('[Vision] inventory fetch error:', err);
-                results.innerHTML = '<div class="glpCard" style="border-color:#f8d7da;"><div class="glpMicroTitle">ERROR</div><p style="color:#721c24;font-size:13px;margin:0;">Failed to load inventory data</p></div>';
+                dicRightPanelShow('<div class="glpCard" style="border-color:#f8d7da;"><div class="glpMicroTitle">ERROR</div><p style="color:#721c24;font-size:13px;margin:0;">Failed to load inventory data</p></div>');
             }
         }
 
@@ -5143,41 +5131,38 @@ async function dicIntdocsFolderChanged(sel) {
         
 
 
-function dicVisionShowOverlay(html) {
-  const overlay = document.getElementById('dicVisionOverlay');
-  const empty = document.getElementById('dicViewerEmpty');
-  const pdfEl = document.getElementById('dicViewerPdf');
-  if (!overlay) return;
+// === Right panel helpers (single owner of viewer state) ===
+        // These ONLY touch viewer-side elements. They NEVER touch #dicResults.
+        function dicRightPanelShow(html) {
+  try { console.log('[RightPanel] show', (window.dicVisionMode||''), String(html||'').slice(0,80)); } catch(e) {}
+            var overlay = document.getElementById('dicVisionOverlay');
+            var empty   = document.getElementById('dicViewerEmpty');
+            var pdfEl   = document.getElementById('dicViewerPdf');
+            var intel   = document.getElementById('dicIntelPanel');
+            if (!overlay) return;
+            overlay.innerHTML = '<div style="position:sticky;top:0;z-index:99999;background:#111827;color:#fff;padding:6px 10px;border-radius:10px;font-size:12px;font-weight:700;display:inline-block;margin-bottom:10px;">RIGHT PANEL OVERLAY ACTIVE</div>' + (html || '');
+            overlay.style.display = 'block';
+            if (empty) empty.style.display = 'none';
+            if (pdfEl) pdfEl.style.display = 'none';
+            if (intel) intel.style.display = 'none';
+        }
 
-  overlay.innerHTML = html || '';
-  overlay.style.display = 'block';
-
-  if (empty) empty.style.display = 'none';
-  if (pdfEl) pdfEl.style.display = 'none';
-}
-
-function dicVisionHideOverlay() {
-  const overlay = document.getElementById('dicVisionOverlay');
-  const empty = document.getElementById('dicViewerEmpty');
-  const pdfEl = document.getElementById('dicViewerPdf');
-
-  const toolbar = document.getElementById('dicToolbar');
-  if (overlay) {
-    overlay.style.display = 'none';
-    overlay.innerHTML = '';
-  }
-
-  const hasPdf = pdfEl && pdfEl.src && pdfEl.src.trim() !== '';
-  if (toolbar) toolbar.style.display = '';
-
-  if (hasPdf) {
-    if (pdfEl) pdfEl.style.display = 'block';
-    if (empty) empty.style.display = 'none';
-  } else {
-    if (pdfEl) pdfEl.style.display = 'none';
-    if (empty) empty.style.display = 'block';
-  }
-}
+        function dicRightPanelHide() {
+            var overlay = document.getElementById('dicVisionOverlay');
+            var empty   = document.getElementById('dicViewerEmpty');
+            var pdfEl   = document.getElementById('dicViewerPdf');
+            var toolbar = document.getElementById('dicToolbar');
+            if (overlay) { overlay.style.display = 'none'; overlay.innerHTML = ''; }
+            var hasPdf = pdfEl && pdfEl.src && pdfEl.src !== '' && pdfEl.src !== 'about:blank';
+            if (toolbar) toolbar.style.display = '';
+            if (hasPdf) {
+                if (pdfEl) pdfEl.style.display = 'block';
+                if (empty) empty.style.display = 'none';
+            } else {
+                if (pdfEl) pdfEl.style.display = 'none';
+                if (empty) empty.style.display = 'block';
+            }
+        }
 
 
 function dicBuildPdfViewerSrc(fileUrl) {
@@ -5195,6 +5180,9 @@ function dicBuildPdfViewerSrc(fileUrl) {
         }
 
         function dicSelectFile(fileId) {
+            // Block right-panel changes when overlay modes are active
+            if (dicVisionMode === 'training' || dicVisionMode === 'inventory') return;
+
             dicSelectedFileId = fileId;
             const f = dicAllFiles.find(x => x.submission_id === fileId);
             if (!f) return;
