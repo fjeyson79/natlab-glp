@@ -12,7 +12,29 @@
             min-height: 100vh;
         }
         
+          
           /* =====================================================
+             EMBED MODE (GLP Vision mirror for researcher 1-to-1)
+             Shows only the DIC/GLP Vision content, driven by ?user= &mode=
+             ===================================================== */
+          body.embed-mode { background: #ffffff; }
+          body.embed-mode .header,
+          body.embed-mode .tab-nav { display: none !important; }
+
+          body.embed-mode .tab-content { max-width: none !important; margin: 0 !important; padding: 0 !important; }
+          body.embed-mode .panel { border-radius: 0 !important; box-shadow: none !important; margin-bottom: 0 !important; }
+
+          /* Only show the GLP Vision tab content */
+          body.embed-mode #tab-lab-files { display: block !important; }
+          body.embed-mode .tab-content:not(#tab-lab-files) { display: none !important; }
+
+          /* Within GLP Vision: hide sidebar + PDF viewer, stretch the results column */
+          body.embed-mode #dicSidebar { display: none !important; }
+          body.embed-mode .dic-viewer { display: none !important; }
+          body.embed-mode .dic-finder { width: 100% !important; }
+          body.embed-mode .dic-vision-bar { display: none !important; }
+
+/* =====================================================
              EMBED MODE (iframe mirror for GLP Vision)
              Only show requested module content
              ===================================================== */
@@ -3387,23 +3409,45 @@
           }
 
           function dicInitEmbedModeFromUrl() {
-              try {
-                  const u = new URL(window.location.href);
-                  const isEmbed = u.searchParams.get('embed') === '1';
-                  if (!isEmbed) return;
+  try {
+    const u = new URL(window.location.href);
+    const isEmbed = u.searchParams.get('embed') === '1';
+    if (!isEmbed) return;
 
-                  window.dicEmbed = true;
-                  window.dicEmbedUserId = u.searchParams.get('user') || '';
+    const userId = u.searchParams.get('user') || '';
+    const mode = (u.searchParams.get('mode') || '').toLowerCase(); // training | inventory | onetoone | all
 
-                  document.body.classList.add('embed-mode');
+    window.dicEmbed = true;
+    window.dicEmbedUserId = userId;
+    window.dicEmbedMode = mode;
 
-                  const h = (u.hash || '').trim();
-                  let tabId = '';
-                  if (h.startsWith('#tab-')) tabId = h.replace('#tab-', '');
+    document.body.classList.add('embed-mode');
 
-                  if (tabId) dicOpenTopTab(tabId);
-              } catch (e) {}
+    // Force GLP Vision tab visible
+    try { dicOpenTopTab('lab-files'); } catch(e) {}
+
+    // dicInit is async (loads DIC data + sidebar structures)
+    if (typeof dicInit === 'function') {
+      Promise.resolve(dicInit()).then(() => {
+        try {
+          // Apply researcher filter (this drives the Vision context)
+          if (userId && typeof dicSetSidebarFilter === 'function') {
+            dicSetSidebarFilter('researcher', userId);
           }
+
+          // Activate the requested vision mode
+          const want = (mode === 'training' || mode === 'inventory' || mode === 'onetoone') ? mode : 'all';
+          const btn = document.querySelector('.dic-vision-btn[onclick*="\'' + want + '\'"]') ||
+                      document.querySelector('.dic-vision-btn');
+          if (typeof dicSetVisionMode === 'function') {
+            dicSetVisionMode(want, btn);
+          }
+        } catch(e) {}
+      }).catch(() => {});
+    }
+  } catch (e) {}
+}
+
 
           dicInitEmbedModeFromUrl();
 
@@ -4531,7 +4575,8 @@
                 html += `</div>`;
 
                 results.innerHTML = html;
-                dicVisionShowOverlayIframe(dicMakeEmbedUrl(d.data.links.open_training_url, 'training'));
+                  dicVisionShowOverlayIframe(dicMakeEmbedUrl(selectedUser, 'training'));
+                dicVisionShowOverlayIframe(dicMakeEmbedUrl(selectedUser, 'inventory'));
 } catch (err) {
                 console.error('[Vision] training fetch error:', err);
                 results.innerHTML = '<div class="glpCard" style="border-color:#f8d7da;"><div class="glpMicroTitle">ERROR</div><p style="color:#721c24;font-size:13px;margin:0;">Failed to load training data</p></div>';
@@ -5099,22 +5144,22 @@ async function dicIntdocsFolderChanged(sel) {
         
 
 
-function dicMakeEmbedUrl(rawUrl, tabId) {
+function dicMakeEmbedUrl(userId, mode) {
   try {
-    const u = new URL(rawUrl, window.location.origin);
+    const u = new URL(window.location.origin + '/pi-dashboard.html');
     u.searchParams.set('embed', '1');
-    // Preserve existing user= if present; otherwise keep as-is
-    // Ensure hash points to the correct tab container
-    if (tabId) u.hash = '#tab-' + tabId;
+    if (userId) u.searchParams.set('user', userId);
+    if (mode) u.searchParams.set('mode', mode);
+    // Force the GLP Vision tab
+    u.hash = '#tab-lab-files';
     return u.toString();
   } catch (e) {
-    // Fallback: best-effort append
-    const base = String(rawUrl || '');
-    const join = base.includes('?') ? '&' : '?';
-    const h = tabId ? ('#tab-' + tabId) : '';
-    return base + join + 'embed=1' + h;
+    const base = '/pi-dashboard.html';
+    const qs = `?embed=1${userId ? '&user=' + encodeURIComponent(userId) : ''}${mode ? '&mode=' + encodeURIComponent(mode) : ''}`;
+    return base + qs + '#tab-lab-files';
   }
 }
+
 
 function dicVisionShowOverlayIframe(url) {
   const overlay = document.getElementById('dicVisionOverlay');
