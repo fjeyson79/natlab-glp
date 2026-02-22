@@ -20,8 +20,7 @@
           body.embed-mode { background: #ffffff; }
           body.embed-mode .header,
           body.embed-mode .tab-nav { display: none !important; }
-          body.pi-impersonating .tab-nav { display: none !important; }
-
+          
 
           body.embed-mode .tab-content { max-width: none !important; margin: 0 !important; padding: 0 !important; }
           body.embed-mode .panel { border-radius: 0 !important; box-shadow: none !important; margin-bottom: 0 !important; }
@@ -3360,10 +3359,7 @@
                 loadDashboardData();
                 populateResearcherDropdown();
                 loadGroupDocuments();
-                loadAllUsers();
-
-                try { if (typeof dicInitPIImpersonationFromUrl === 'function') dicInitPIImpersonationFromUrl(); } catch(e) {}
-            } catch (err) {
+                loadAllUsers();} catch (err) {
                 window.location.href = 'access.html';
             }
         }
@@ -3411,27 +3407,6 @@
               if (tabId === 'glp-console') glpcInit();
               if (tabId === 'purchases-inventory') { loadAllPurchaseRequests(); loadAllInventoryV2(); loadPONumbers(); }
               if (tabId === 'training') { loadTrainingDocuments(); loadPendingTrainingPacks(); loadSealedTrainingPacks(); }
-          }
-
-          
-          function dicInitPIImpersonationFromUrl() {
-              try {
-                  const u = new URL(window.location.href);
-                  const impUser = (u.searchParams.get('user') || '').trim();
-                  const isEmbed = u.searchParams.get('embed') === '1';
-                  if (!impUser || isEmbed) return;
-
-                  document.body.classList.add('pi-impersonating');
-
-                  // If we have a hash like #tab-training, open that top tab
-                  const h = (window.location.hash || '').trim();
-                  if (h.startsWith('#tab-')) {
-                      const tabId = h.replace('#tab-', '');
-                      if (typeof dicOpenTopTab === 'function' && tabId) {
-                          dicOpenTopTab(tabId);
-                      }
-                  }
-              } catch (e) {}
           }
 
 function dicInitEmbedModeFromUrl() {
@@ -4442,24 +4417,6 @@ function dicInitEmbedModeFromUrl() {
             if (btn) btn.classList.add('active');
 
             const selectedUser = dicFilters.researcher || null;
-
-
-            // Clean PI impersonation navigation (no mirror / iframe / overlay recursion)
-            if ((mode === 'training' || mode === 'inventory') && selectedUser) {
-                try {
-                    const u = new URL(window.location.href);
-                    const isEmbed = u.searchParams.get('embed') === '1';
-                    if (!isEmbed) {
-                        u.searchParams.set('user', selectedUser);
-                        u.searchParams.delete('mode');   // legacy embed params
-                        u.searchParams.delete('embed');  // legacy embed params
-                        u.hash = (mode === 'training') ? '#tab-training' : '#tab-purchases-inventory';
-                        window.location.href = u.toString();
-                        return;
-                    }
-                } catch (e) {}
-            }
-
             // DIC chrome elements
             const searchArea = document.querySelector('.dic-finder .dic-search-area');
             const monthsLabel = document.getElementById('dicMonthsLabel');
