@@ -8274,8 +8274,18 @@ async function visionHasColumn(table, column) {
     return _visionColCache[cacheKey];
 }
 
+
+function requireApiKey(req, res, next) {
+  const apiKey = (req.headers['x-api-key'] || '').toString().trim();
+  const expected = ((process.env.API_SECRET_KEY || '').toString().trim());
+  if (!apiKey || !expected || apiKey !== expected) {
+    return res.status(401).json({ error: 'Invalid or missing API key' });
+  }
+  return next();
+}
+
 // GET /api/di/vision/training/:user_id
-app.get('/api/di/vision/training/:user_id', requirePI, async (req, res) => {
+app.get('/api/di/vision/training/:user_id', requireApiKey, async (req, res) => {
     const userId = req.params.user_id;
     const cacheKey = `vision-training-${userId}`;
     const cached = visionCacheGet(cacheKey);
@@ -8446,7 +8456,7 @@ app.get('/api/di/vision/training/:user_id', requirePI, async (req, res) => {
 });
 
 // GET /api/di/vision/inventory/:user_id
-app.get('/api/di/vision/inventory/:user_id', requirePI, async (req, res) => {
+app.get('/api/di/vision/inventory/:user_id', requireApiKey, async (req, res) => {
     const userId = req.params.user_id;
     const cacheKey = `vision-inventory-${userId}`;
     const cached = visionCacheGet(cacheKey);
