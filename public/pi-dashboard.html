@@ -4894,9 +4894,362 @@ function dicInitEmbedModeFromUrl() {
             }
         }
 
-        function glpVisionRenderOneToOne(selectedUser) {
+        // ===============================
+        // GLP Vision — 1-to-1 Mode
+        // ===============================
+        let _1to1SeqCounter = 0;
+
+        async function glpVisionRenderOneToOne(selectedUser) {
             const results = document.getElementById('dicResults');
+            if (!selectedUser) {
+                if (results) results.innerHTML = '<div class="dic-empty-state"><h3>Select a researcher to view 1-to-1 meetings</h3></div>';
+                dicRightPanelShow('<div class="dic-empty-state"><h3>Select a researcher to view 1-to-1 meetings</h3></div>');
+                return;
+            }
+            const modeAtStart = dicVisionMode;
+            const userAtStart = selectedUser;
+            const seq = ++_1to1SeqCounter;
+
             if (results) results.innerHTML = '<div class="dic-empty-state"><h3>1-to-1</h3><p style="color:#6b7280;margin-top:8px;">Loading\u2026</p></div>';
+            dicRightPanelShow('<div class="dic-empty-state"><h3>1-to-1</h3><p style="color:#6b7280;margin-top:8px;">Loading\u2026</p></div>');
+
+            try {
+                const resp = await fetch(`/api/di/1to1/listMeetings/${encodeURIComponent(selectedUser)}`, { credentials: 'include' });
+                if (dicVisionMode !== modeAtStart || dicFilters.researcher !== userAtStart || seq !== _1to1SeqCounter) return;
+                const data = await resp.json();
+                if (dicVisionMode !== modeAtStart || dicFilters.researcher !== userAtStart || seq !== _1to1SeqCounter) return;
+
+                if (!data.success) {
+                    if (results) results.innerHTML = '<div class="dic-empty-state"><h3>1-to-1 unavailable</h3><p style="color:#6b7280;font-size:13px;">' + escapeHtml(data.error || 'Tables not ready') + '</p></div>';
+                    dicRightPanelShow('<div class="dic-empty-state"><h3>1-to-1 unavailable</h3></div>');
+                    return;
+                }
+
+                const draft = data.draft;
+                const versions = data.versions || [];
+                const researcherName = (data.researcher && data.researcher.name) ? data.researcher.name : selectedUser;
+
+                // --- Middle panel ---
+                let mid = '';
+                // Sticky draft banner
+                if (draft) {
+                    const updatedStr = draft.updated_at ? new Date(draft.updated_at).toLocaleString() : '';
+                    mid += '<div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;padding:10px 14px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">'
+                        + '<div><strong style="font-size:13px;">Draft in progress</strong>'
+                        + (updatedStr ? '<span style="font-size:11px;color:#92400e;margin-left:8px;">Updated ' + escapeHtml(updatedStr) + '</span>' : '')
+                        + '</div><div style="display:flex;gap:6px;">'
+                        + '<button onclick="oneToOneDiscardDraft(\'' + escapeHtml(selectedUser) + '\')" style="font-size:12px;padding:4px 10px;border:1px solid #dc2626;background:#fff;color:#dc2626;border-radius:6px;cursor:pointer;">Discard draft</button>'
+                        + '<button onclick="oneToOneFinalize(\'' + escapeHtml(selectedUser) + '\')" style="font-size:12px;padding:4px 10px;border:none;background:#059669;color:#fff;border-radius:6px;cursor:pointer;font-weight:600;">Save 1-to-1 meeting</button>'
+                        + '</div></div>';
+                    mid += dicBuildOneToOneFormHtml(draft);
+                } else {
+                    mid += '<div style="text-align:center;padding:24px 0;">'
+                        + '<button onclick="oneToOneCreateDraft(\'' + escapeHtml(selectedUser) + '\')" style="font-size:14px;padding:8px 20px;border:none;background:#2563eb;color:#fff;border-radius:8px;cursor:pointer;font-weight:600;">New 1-to-1</button>'
+                        + '</div>';
+                }
+
+                // Past meetings list
+                if (versions.length > 0) {
+                    mid += '<h4 style="font-size:13px;font-weight:700;margin:16px 0 8px;border-top:1px solid #e5e7eb;padding-top:12px;">Past Meetings</h4>';
+                    // Group by meeting_id, show newest first
+                    const seen = new Set();
+                    versions.forEach(v => {
+                        if (seen.has(v.version_id)) return;
+                        seen.add(v.version_id);
+                        const dateStr = v.version_created_at ? new Date(v.version_created_at).toLocaleDateString() : '';
+                        const pillars = [];
+                        try { if (v.pillar_sop && v.pillar_sop.status) pillars.push('SOP: ' + v.pillar_sop.status); } catch(e){}
+                        try { if (v.pillar_data && v.pillar_data.status) pillars.push('DATA: ' + v.pillar_data.status); } catch(e){}
+                        try { if (v.pillar_training && v.pillar_training.status) pillars.push('Training: ' + v.pillar_training.status); } catch(e){}
+                        try { if (v.pillar_inventory && v.pillar_inventory.status) pillars.push('Inventory: ' + v.pillar_inventory.status); } catch(e){}
+                        mid += '<div style="border:1px solid #e0e0e0;border-radius:8px;padding:10px;margin-bottom:8px;">'
+                            + '<div style="display:flex;justify-content:space-between;align-items:center;">'
+                            + '<span style="font-size:12px;font-weight:600;">v' + v.version + ' — ' + escapeHtml(dateStr) + '</span>'
+                            + '<div style="display:flex;gap:4px;">'
+                            + '<button onclick="oneToOneViewVersion(' + v.version_id + ')" style="font-size:11px;padding:2px 8px;border:1px solid #2563eb;background:#fff;color:#2563eb;border-radius:4px;cursor:pointer;">View</button>'
+                            + '<button onclick="oneToOneEditFromLatest(\'' + escapeHtml(selectedUser) + '\')" style="font-size:11px;padding:2px 8px;border:1px solid #059669;background:#fff;color:#059669;border-radius:4px;cursor:pointer;">Edit</button>'
+                            + '</div></div>';
+                        if (pillars.length) mid += '<div style="font-size:11px;color:#6b7280;margin-top:4px;">' + escapeHtml(pillars.join(' | ')) + '</div>';
+                        mid += '</div>';
+                    });
+                }
+                if (results) results.innerHTML = mid || '<div class="dic-empty-state"><h3>No 1-to-1 records</h3></div>';
+
+                // --- Right panel: preview ---
+                if (draft) {
+                    dicRightPanelShow(dicBuildOneToOnePreviewHtml(draft, researcherName));
+                } else if (versions.length > 0) {
+                    // Show latest version preview
+                    const latest = versions[0];
+                    dicRightPanelShow(dicBuildOneToOnePreviewHtml(latest, researcherName));
+                } else {
+                    dicRightPanelShow('<div class="dic-empty-state"><h3>No 1-to-1 meetings yet</h3><p style="color:#6b7280;font-size:13px;">Click "New 1-to-1" to start</p></div>');
+                }
+            } catch (err) {
+                console.error('[Vision] 1-to-1 fetch error:', err);
+                if (dicVisionMode !== modeAtStart || seq !== _1to1SeqCounter) return;
+                if (results) results.innerHTML = '<div class="dic-empty-state"><h3>1-to-1 failed to load</h3></div>';
+                dicRightPanelShow('<div class="glpCard" style="border-color:#f8d7da;"><div class="glpMicroTitle">ERROR</div><p style="color:#721c24;font-size:13px;margin:0;">Failed to load 1-to-1 data</p></div>');
+            }
+        }
+
+        // --- Draft form builder (middle panel, editable) ---
+        function dicBuildOneToOneFormHtml(draft) {
+            const pillars = [
+                { key: 'sop', label: 'SOP', data: draft.pillar_sop || {} },
+                { key: 'data', label: 'DATA / ALCOA', data: draft.pillar_data || {} },
+                { key: 'training', label: 'Training', data: draft.pillar_training || {} },
+                { key: 'inventory', label: 'Inventory', data: draft.pillar_inventory || {} }
+            ];
+            const statusOpts = ['Not reviewed', 'OK', 'Needs action'];
+            const roleOpts = ['Researcher', 'Supervisor', 'PI'];
+            const actions = Array.isArray(draft.actions) ? draft.actions : [];
+
+            let html = '<div id="oneToOneFormArea" style="font-size:13px;">';
+            pillars.forEach(p => {
+                const st = p.data.status || 'Not reviewed';
+                const comment = p.data.comment || '';
+                html += '<div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;margin-bottom:10px;">'
+                    + '<div style="font-weight:700;margin-bottom:6px;">' + escapeHtml(p.label) + '</div>'
+                    + '<label style="font-size:11px;color:#6b7280;">Status</label>'
+                    + '<select data-pillar="' + p.key + '" data-field="status" onchange="oneToOneAutoSave()" style="display:block;width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;margin-bottom:6px;font-size:12px;">';
+                statusOpts.forEach(o => { html += '<option' + (st === o ? ' selected' : '') + '>' + escapeHtml(o) + '</option>'; });
+                html += '</select>'
+                    + '<label style="font-size:11px;color:#6b7280;">Comment</label>'
+                    + '<input type="text" data-pillar="' + p.key + '" data-field="comment" value="' + escapeHtml(comment).replace(/"/g, '&quot;') + '" onchange="oneToOneAutoSave()" style="display:block;width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;box-sizing:border-box;" />'
+                    + '</div>';
+            });
+
+            // Actions section
+            html += '<div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;margin-bottom:10px;">'
+                + '<div style="font-weight:700;margin-bottom:6px;">Action Items</div>'
+                + '<div id="oneToOneActionsContainer">';
+            for (let i = 0; i < Math.min(actions.length, 12); i++) {
+                const a = actions[i];
+                html += oneToOneActionRowHtml(i, a);
+            }
+            html += '</div>'
+                + '<button onclick="oneToOneAddAction()" style="font-size:11px;padding:3px 10px;border:1px solid #d1d5db;background:#f9fafb;border-radius:4px;cursor:pointer;margin-top:4px;">+ Add action</button>'
+                + '</div>';
+
+            // Private comment
+            html += '<div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;margin-bottom:10px;">'
+                + '<div style="font-weight:700;margin-bottom:6px;">PI Private Comment</div>'
+                + '<textarea id="oneToOnePrivateComment" onchange="oneToOneAutoSave()" style="width:100%;min-height:50px;padding:6px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;box-sizing:border-box;resize:vertical;">' + escapeHtml(draft.private_comment || '') + '</textarea>'
+                + '<div style="font-size:10px;color:#9ca3af;margin-top:2px;">This comment is never visible to researchers.</div>'
+                + '</div>';
+
+            html += '</div>';
+            return html;
+        }
+
+        function oneToOneActionRowHtml(idx, a) {
+            a = a || {};
+            const roleOpts = ['Researcher', 'Supervisor', 'PI'];
+            const pillOpts = ['sop', 'data', 'training', 'inventory'];
+            let html = '<div class="oto-action-row" data-action-idx="' + idx + '" style="display:grid;grid-template-columns:1fr 80px 80px 90px 28px;gap:4px;margin-bottom:4px;align-items:center;">'
+                + '<input type="text" data-action="text" value="' + escapeHtml(a.text || a.action_text || '').replace(/"/g, '&quot;') + '" onchange="oneToOneAutoSave()" placeholder="Action..." style="font-size:11px;padding:3px 4px;border:1px solid #d1d5db;border-radius:3px;" />'
+                + '<select data-action="pillar" onchange="oneToOneAutoSave()" style="font-size:11px;padding:3px;border:1px solid #d1d5db;border-radius:3px;">';
+            pillOpts.forEach(p => { html += '<option value="' + p + '"' + ((a.pillar||'sop') === p ? ' selected' : '') + '>' + p.toUpperCase().slice(0,5) + '</option>'; });
+            html += '</select>'
+                + '<select data-action="owner_role" onchange="oneToOneAutoSave()" style="font-size:11px;padding:3px;border:1px solid #d1d5db;border-radius:3px;">';
+            roleOpts.forEach(r => { html += '<option' + ((a.owner_role||'Researcher') === r ? ' selected' : '') + '>' + r + '</option>'; });
+            html += '</select>'
+                + '<input type="date" data-action="due_date" value="' + (a.due_date ? String(a.due_date).slice(0,10) : '') + '" onchange="oneToOneAutoSave()" style="font-size:10px;padding:2px;border:1px solid #d1d5db;border-radius:3px;" />'
+                + '<button onclick="this.closest(\'.oto-action-row\').remove();oneToOneAutoSave()" style="font-size:14px;border:none;background:none;color:#dc2626;cursor:pointer;padding:0;">&times;</button>'
+                + '</div>';
+            return html;
+        }
+
+        function oneToOneAddAction() {
+            const container = document.getElementById('oneToOneActionsContainer');
+            if (!container) return;
+            const rows = container.querySelectorAll('.oto-action-row');
+            if (rows.length >= 12) return; // reasonable max
+            const idx = rows.length;
+            container.insertAdjacentHTML('beforeend', oneToOneActionRowHtml(idx, {}));
+        }
+
+        // --- Preview builder (right panel, read-only) ---
+        function dicBuildOneToOnePreviewHtml(record, researcherName) {
+            const pillars = [
+                { key: 'sop', label: 'SOP', data: record.pillar_sop || {} },
+                { key: 'data', label: 'DATA / ALCOA', data: record.pillar_data || {} },
+                { key: 'training', label: 'Training', data: record.pillar_training || {} },
+                { key: 'inventory', label: 'Inventory', data: record.pillar_inventory || {} }
+            ];
+            const statusColors = { 'OK': '#059669', 'Needs action': '#dc2626', 'Not reviewed': '#6b7280' };
+            const dateStr = record.version_created_at ? new Date(record.version_created_at).toLocaleDateString() : (record.updated_at ? new Date(record.updated_at).toLocaleDateString() : 'Draft');
+            const isVersion = !!record.version;
+            const actions = record.actions || [];
+
+            let html = '<div style="padding:12px;font-size:13px;">';
+            html += '<h3 style="margin:0 0 4px;font-size:15px;">1-to-1 — ' + escapeHtml(researcherName) + '</h3>';
+            html += '<div style="font-size:11px;color:#6b7280;margin-bottom:12px;">' + (isVersion ? 'Version ' + record.version + ' — ' : 'Draft — ') + escapeHtml(dateStr) + '</div>';
+
+            pillars.forEach(p => {
+                const st = p.data.status || 'Not reviewed';
+                const color = statusColors[st] || '#6b7280';
+                html += '<div style="border-left:3px solid ' + color + ';padding:6px 10px;margin-bottom:8px;background:#f9fafb;border-radius:0 6px 6px 0;">'
+                    + '<div style="display:flex;justify-content:space-between;align-items:center;">'
+                    + '<span style="font-weight:700;">' + escapeHtml(p.label) + '</span>'
+                    + '<span style="font-size:11px;font-weight:600;color:' + color + ';">' + escapeHtml(st) + '</span></div>';
+                if (p.data.comment) html += '<div style="font-size:12px;color:#4b5563;margin-top:2px;">' + escapeHtml(p.data.comment) + '</div>';
+                // Show actions for this pillar
+                const pillarActions = actions.filter(a => a.pillar === p.key);
+                if (pillarActions.length) {
+                    html += '<div style="margin-top:4px;">';
+                    pillarActions.forEach(a => {
+                        const txt = a.action_text || a.text || '';
+                        const doneStyle = a.done ? 'text-decoration:line-through;color:#9ca3af;' : '';
+                        html += '<div style="font-size:11px;margin-left:6px;' + doneStyle + '">'
+                            + (a.done ? '\u2611' : '\u2610') + ' ' + escapeHtml(txt)
+                            + ' <span style="color:#9ca3af;">(' + escapeHtml(a.owner_role || '') + (a.due_date ? ' — ' + String(a.due_date).slice(0,10) : '') + ')</span></div>';
+                    });
+                    html += '</div>';
+                }
+                html += '</div>';
+            });
+
+            // Private comment (only in preview for PI)
+            if (record.private_comment) {
+                html += '<div style="border:1px dashed #d1d5db;border-radius:6px;padding:8px;margin-top:8px;background:#fef3c7;">'
+                    + '<div style="font-size:11px;font-weight:700;color:#92400e;margin-bottom:2px;">PI Private Note</div>'
+                    + '<div style="font-size:12px;color:#78350f;">' + escapeHtml(record.private_comment) + '</div></div>';
+            }
+            html += '</div>';
+            return html;
+        }
+
+        // --- Auto-save (debounced) ---
+        let _1to1SaveTimer = null;
+        function oneToOneAutoSave() {
+            clearTimeout(_1to1SaveTimer);
+            const capturedResearcherId = dicFilters.researcher;
+            _1to1SaveTimer = setTimeout(() => oneToOneDoSave(capturedResearcherId), 1200);
+            // Update right panel preview immediately
+            const draftData = oneToOneCollectFormData();
+            if (draftData) {
+                const name = dicFilters.researcher ? dicFormatResearcherName(
+                    (dicResearcherMetrics[dicFilters.researcher] || {}).researcher_name || dicFilters.researcher
+                ) : '';
+                dicRightPanelShow(dicBuildOneToOnePreviewHtml(draftData, name));
+            }
+        }
+
+        function oneToOneCollectFormData() {
+            const form = document.getElementById('oneToOneFormArea');
+            if (!form) return null;
+            const pillars = {};
+            form.querySelectorAll('[data-pillar]').forEach(el => {
+                const key = el.getAttribute('data-pillar');
+                const field = el.getAttribute('data-field');
+                if (!pillars[key]) pillars[key] = {};
+                pillars[key][field] = el.value;
+            });
+            const actions = [];
+            form.querySelectorAll('.oto-action-row').forEach(row => {
+                const a = {};
+                row.querySelectorAll('[data-action]').forEach(el => { a[el.getAttribute('data-action')] = el.value; });
+                if (a.text) actions.push(a);
+            });
+            const privateComment = (document.getElementById('oneToOnePrivateComment') || {}).value || '';
+            return {
+                pillar_sop: pillars.sop || {},
+                pillar_data: pillars.data || {},
+                pillar_training: pillars.training || {},
+                pillar_inventory: pillars.inventory || {},
+                actions,
+                private_comment: privateComment,
+                updated_at: new Date().toISOString()
+            };
+        }
+
+        async function oneToOneDoSave(researcherIdOverride) {
+            const researcherId = researcherIdOverride || dicFilters.researcher;
+            if (!researcherId || dicVisionMode !== 'onetoone') return;
+            const formData = oneToOneCollectFormData();
+            if (!formData) return;
+            try {
+                await fetch('/api/di/1to1/updateDraft', {
+                    method: 'PUT',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ researcher_id: researcherId, ...formData })
+                });
+            } catch (err) {
+                console.error('[1to1] auto-save error:', err);
+            }
+        }
+
+        // --- Actions: create, discard, finalize, view, edit ---
+        async function oneToOneCreateDraft(researcherId) {
+            try {
+                const resp = await fetch('/api/di/1to1/createDraft', {
+                    method: 'POST', credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ researcher_id: researcherId })
+                });
+                const data = await resp.json();
+                if (data.success) glpVisionRenderOneToOne(researcherId);
+                else alert(data.error || 'Failed to create draft');
+            } catch (err) { console.error('[1to1] createDraft error:', err); }
+        }
+
+        async function oneToOneDiscardDraft(researcherId) {
+            if (!confirm('Discard this draft? This cannot be undone.')) return;
+            try {
+                await fetch('/api/di/1to1/discardDraft', {
+                    method: 'DELETE', credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ researcher_id: researcherId })
+                });
+                glpVisionRenderOneToOne(researcherId);
+            } catch (err) { console.error('[1to1] discardDraft error:', err); }
+        }
+
+        async function oneToOneFinalize(researcherId) {
+            // Flush any pending auto-save first
+            clearTimeout(_1to1SaveTimer);
+            await oneToOneDoSave();
+            try {
+                const resp = await fetch('/api/di/1to1/finalizeDraftToVersion', {
+                    method: 'POST', credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ researcher_id: researcherId })
+                });
+                const data = await resp.json();
+                if (data.success) glpVisionRenderOneToOne(researcherId);
+                else alert(data.error || 'Failed to save meeting');
+            } catch (err) { console.error('[1to1] finalize error:', err); }
+        }
+
+        async function oneToOneViewVersion(versionId) {
+            try {
+                const resp = await fetch(`/api/di/1to1/getVersion/${versionId}`, { credentials: 'include' });
+                const data = await resp.json();
+                if (data.success) {
+                    const v = data.version;
+                    v.actions = data.actions || [];
+                    const name = dicFilters.researcher ? dicFormatResearcherName(
+                        (dicResearcherMetrics[dicFilters.researcher] || {}).researcher_name || dicFilters.researcher
+                    ) : '';
+                    dicRightPanelShow(dicBuildOneToOnePreviewHtml(v, name));
+                }
+            } catch (err) { console.error('[1to1] viewVersion error:', err); }
+        }
+
+        async function oneToOneEditFromLatest(researcherId) {
+            try {
+                const resp = await fetch('/api/di/1to1/startEditFromLatest', {
+                    method: 'POST', credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ researcher_id: researcherId })
+                });
+                const data = await resp.json();
+                if (data.success) glpVisionRenderOneToOne(researcherId);
+                else alert(data.error || 'Failed to start edit');
+            } catch (err) { console.error('[1to1] editFromLatest error:', err); }
         }
 
 // ===============================
@@ -5398,7 +5751,7 @@ function dicBuildPdfViewerSrc(fileUrl) {
 
         function dicSelectFile(fileId) {
             // Block right-panel changes when overlay modes are active
-            if (dicVisionMode === 'training' || dicVisionMode === 'inventory') return;
+            if (dicVisionMode === 'training' || dicVisionMode === 'inventory' || dicVisionMode === 'onetoone') return;
 
             dicSelectedFileId = fileId;
             const f = dicAllFiles.find(x => x.submission_id === fileId);

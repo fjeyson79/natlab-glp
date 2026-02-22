@@ -8751,6 +8751,349 @@ app.get('/api/di/inventory-v2/pi-researcher-view/:researcherId', requirePI, asyn
 
 
 // =====================================================
+// 1-to-1 Meeting Endpoints (PI only, GLP Vision)
+// =====================================================
+
+let _1to1TablesExist = null;
+let _1to1TablesLastCheck = 0;
+async function check1to1Tables() {
+    const now = Date.now();
+    if (_1to1TablesExist === null || _1to1TablesExist === false || (now - _1to1TablesLastCheck > 60000)) {
+        try {
+            const result = await pool.query(`SELECT table_name FROM information_schema.tables WHERE table_name = 'di_1to1_drafts'`);
+            _1to1TablesExist = result.rows.length > 0;
+            _1to1TablesLastCheck = now;
+        } catch (err) { _1to1TablesExist = false; }
+    }
+    return _1to1TablesExist;
+}
+
+// Validate researcher belongs to PI's cohort (same affiliation, active in allowlist)
+async function validate1to1Researcher(piUser, researcherId) {
+    const r = await pool.query(
+        `SELECT researcher_id, name, affiliation FROM di_allowlist WHERE researcher_id = $1 AND active = true LIMIT 1`,
+        [researcherId]
+    );
+    if (r.rows.length === 0) return null;
+    return r.rows[0];
+}
+
+// POST /api/di/1to1/createDraft
+app.post('/api/di/1to1/createDraft', requirePI, async (req, res) => {
+    try {
+        if (!(await check1to1Tables())) return res.status(501).json({ error: '1-to-1 tables not available' });
+        const piId = req.session.user.id;
+        const { researcher_id } = req.body;
+        if (!researcher_id) return res.status(400).json({ error: 'researcher_id required' });
+        const member = await validate1to1Researcher(req.session.user, researcher_id);
+        if (!member) return res.status(404).json({ error: 'Researcher not found or inactive' });
+
+        // Check existing draft
+        const existing = await pool.query(
+            `SELECT id FROM di_1to1_drafts WHERE researcher_id = $1 AND created_by = $2`,
+            [researcher_id, piId]
+        );
+        if (existing.rows.length > 0) return res.json({ success: true, draft: existing.rows[0], existed: true });
+
+        const ins = await pool.query(
+            `INSERT INTO di_1to1_drafts (researcher_id, affiliation, created_by, pillar_sop, pillar_data, pillar_training, pillar_inventory, actions, private_comment)
+             VALUES ($1, $2, $3, '{}', '{}', '{}', '{}', '[]', NULL)
+             RETURNING *`,
+            [researcher_id, member.affiliation, piId]
+        );
+        res.json({ success: true, draft: ins.rows[0] });
+    } catch (err) {
+        console.error('[1TO1] createDraft error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// PUT /api/di/1to1/updateDraft
+app.put('/api/di/1to1/updateDraft', requirePI, async (req, res) => {
+    try {
+        if (!(await check1to1Tables())) return res.status(501).json({ error: '1-to-1 tables not available' });
+        const piId = req.session.user.id;
+        const { researcher_id, pillar_sop, pillar_data, pillar_training, pillar_inventory, actions, private_comment } = req.body;
+        if (!researcher_id) return res.status(400).json({ error: 'researcher_id required' });
+        const member = await validate1to1Researcher(req.session.user, researcher_id);
+        if (!member) return res.status(403).json({ error: 'Access denied' });
+
+        const result = await pool.query(
+            `UPDATE di_1to1_drafts SET
+                pillar_sop = COALESCE($1, pillar_sop),
+                pillar_data = COALESCE($2, pillar_data),
+                pillar_training = COALESCE($3, pillar_training),
+                pillar_inventory = COALESCE($4, pillar_inventory),
+                actions = COALESCE($5, actions),
+                private_comment = $6,
+                updated_at = NOW()
+             WHERE researcher_id = $7 AND created_by = $8
+             RETURNING *`,
+            [
+                pillar_sop ? JSON.stringify(pillar_sop) : null,
+                pillar_data ? JSON.stringify(pillar_data) : null,
+                pillar_training ? JSON.stringify(pillar_training) : null,
+                pillar_inventory ? JSON.stringify(pillar_inventory) : null,
+                actions ? JSON.stringify(actions) : null,
+                private_comment !== undefined ? private_comment : null,
+                researcher_id, piId
+            ]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Draft not found' });
+        res.json({ success: true, draft: result.rows[0] });
+    } catch (err) {
+        console.error('[1TO1] updateDraft error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// DELETE /api/di/1to1/discardDraft
+app.delete('/api/di/1to1/discardDraft', requirePI, async (req, res) => {
+    try {
+        if (!(await check1to1Tables())) return res.status(501).json({ error: '1-to-1 tables not available' });
+        const piId = req.session.user.id;
+        const { researcher_id } = req.body;
+        if (!researcher_id) return res.status(400).json({ error: 'researcher_id required' });
+        const member = await validate1to1Researcher(req.session.user, researcher_id);
+        if (!member) return res.status(403).json({ error: 'Access denied' });
+        await pool.query(
+            `DELETE FROM di_1to1_drafts WHERE researcher_id = $1 AND created_by = $2`,
+            [researcher_id, piId]
+        );
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[1TO1] discardDraft error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/di/1to1/finalizeDraftToVersion
+app.post('/api/di/1to1/finalizeDraftToVersion', requirePI, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        if (!(await check1to1Tables())) { client.release(); return res.status(501).json({ error: '1-to-1 tables not available' }); }
+        const piId = req.session.user.id;
+        const { researcher_id } = req.body;
+        if (!researcher_id) { client.release(); return res.status(400).json({ error: 'researcher_id required' }); }
+        const member = await validate1to1Researcher(req.session.user, researcher_id);
+        if (!member) { client.release(); return res.status(403).json({ error: 'Access denied' }); }
+
+        await client.query('BEGIN');
+
+        // Get the draft
+        const draftRes = await client.query(
+            `SELECT * FROM di_1to1_drafts WHERE researcher_id = $1 AND created_by = $2`,
+            [researcher_id, piId]
+        );
+        if (draftRes.rows.length === 0) { await client.query('ROLLBACK'); client.release(); return res.status(404).json({ error: 'No draft found' }); }
+        const draft = draftRes.rows[0];
+
+        // Find or create meeting
+        let meetingId = draft.meeting_id;
+        if (!meetingId) {
+            const meetRes = await client.query(
+                `INSERT INTO di_1to1_meetings (researcher_id, affiliation, created_by) VALUES ($1, $2, $3) RETURNING id`,
+                [researcher_id, draft.affiliation, piId]
+            );
+            meetingId = meetRes.rows[0].id;
+        } else {
+            await client.query(`UPDATE di_1to1_meetings SET updated_at = NOW() WHERE id = $1`, [meetingId]);
+        }
+
+        // Compute next version number
+        const maxVer = await client.query(
+            `SELECT COALESCE(MAX(version), 0) AS max_ver FROM di_1to1_meeting_versions WHERE meeting_id = $1`,
+            [meetingId]
+        );
+        const nextVersion = maxVer.rows[0].max_ver + 1;
+
+        // Insert immutable version
+        const verRes = await client.query(
+            `INSERT INTO di_1to1_meeting_versions (meeting_id, version, pillar_sop, pillar_data, pillar_training, pillar_inventory, private_comment, created_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+            [meetingId, nextVersion, JSON.stringify(draft.pillar_sop), JSON.stringify(draft.pillar_data),
+             JSON.stringify(draft.pillar_training), JSON.stringify(draft.pillar_inventory),
+             draft.private_comment, piId]
+        );
+        const versionRow = verRes.rows[0];
+
+        // Insert actions
+        const actions = Array.isArray(draft.actions) ? draft.actions : [];
+        for (let i = 0; i < actions.length; i++) {
+            const a = actions[i];
+            if (!a.action_text && !a.text) continue;
+            await client.query(
+                `INSERT INTO di_1to1_actions (version_id, pillar, action_text, owner_role, due_date, done, sort_order)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                [versionRow.id, a.pillar || 'sop', a.action_text || a.text, a.owner_role || 'Researcher', a.due_date || null, a.done || false, i]
+            );
+        }
+
+        // Delete draft
+        await client.query(
+            `DELETE FROM di_1to1_drafts WHERE researcher_id = $1 AND created_by = $2`,
+            [researcher_id, piId]
+        );
+
+        await client.query('COMMIT');
+        client.release();
+        res.json({ success: true, version: versionRow, meeting_id: meetingId });
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        client.release();
+        console.error('[1TO1] finalizeDraftToVersion error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/di/1to1/listMeetings/:researcherId
+app.get('/api/di/1to1/listMeetings/:researcherId', requirePI, async (req, res) => {
+    try {
+        if (!(await check1to1Tables())) return res.status(501).json({ error: '1-to-1 tables not available' });
+        const piId = req.session.user.id;
+        const researcherId = req.params.researcherId;
+        const member = await validate1to1Researcher(req.session.user, researcherId);
+        if (!member) return res.status(404).json({ error: 'Researcher not found' });
+
+        // Get draft if exists
+        const draftRes = await pool.query(
+            `SELECT * FROM di_1to1_drafts WHERE researcher_id = $1 AND created_by = $2`,
+            [researcherId, piId]
+        );
+
+        // Get all meetings with latest version info
+        const meetingsRes = await pool.query(
+            `SELECT m.id AS meeting_id, m.created_at AS meeting_created_at,
+                    v.id AS version_id, v.version, v.created_at AS version_created_at,
+                    v.pillar_sop, v.pillar_data, v.pillar_training, v.pillar_inventory, v.private_comment,
+                    COALESCE(al.name, v.created_by) AS created_by_name
+             FROM di_1to1_meetings m
+             JOIN di_1to1_meeting_versions v ON v.meeting_id = m.id
+             LEFT JOIN di_allowlist al ON al.researcher_id = v.created_by
+             WHERE m.researcher_id = $1
+             ORDER BY v.created_at DESC`,
+            [researcherId]
+        );
+
+        // Attach actions to each version
+        const versionIds = meetingsRes.rows.map(r => r.version_id);
+        let actionsMap = {};
+        if (versionIds.length > 0) {
+            const actRes = await pool.query(
+                `SELECT * FROM di_1to1_actions WHERE version_id = ANY($1) ORDER BY sort_order`,
+                [versionIds]
+            );
+            actRes.rows.forEach(a => {
+                if (!actionsMap[a.version_id]) actionsMap[a.version_id] = [];
+                actionsMap[a.version_id].push(a);
+            });
+        }
+
+        const versions = meetingsRes.rows.map(r => ({
+            ...r,
+            actions: actionsMap[r.version_id] || []
+        }));
+
+        res.json({
+            success: true,
+            researcher: member,
+            draft: draftRes.rows.length > 0 ? draftRes.rows[0] : null,
+            versions
+        });
+    } catch (err) {
+        console.error('[1TO1] listMeetings error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/di/1to1/getVersion/:versionId
+app.get('/api/di/1to1/getVersion/:versionId', requirePI, async (req, res) => {
+    try {
+        if (!(await check1to1Tables())) return res.status(501).json({ error: '1-to-1 tables not available' });
+        const versionId = parseInt(req.params.versionId, 10);
+        if (isNaN(versionId)) return res.status(400).json({ error: 'Invalid version ID' });
+
+        const verRes = await pool.query(
+            `SELECT v.*, m.researcher_id, m.affiliation, COALESCE(al.name, v.created_by) AS created_by_name
+             FROM di_1to1_meeting_versions v
+             JOIN di_1to1_meetings m ON m.id = v.meeting_id
+             LEFT JOIN di_allowlist al ON al.researcher_id = v.created_by
+             WHERE v.id = $1`,
+            [versionId]
+        );
+        if (verRes.rows.length === 0) return res.status(404).json({ error: 'Version not found' });
+        const member = await validate1to1Researcher(req.session.user, verRes.rows[0].researcher_id);
+        if (!member) return res.status(403).json({ error: 'Access denied' });
+
+        const actRes = await pool.query(
+            `SELECT * FROM di_1to1_actions WHERE version_id = $1 ORDER BY sort_order`,
+            [versionId]
+        );
+
+        res.json({ success: true, version: verRes.rows[0], actions: actRes.rows });
+    } catch (err) {
+        console.error('[1TO1] getVersion error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/di/1to1/startEditFromLatest
+app.post('/api/di/1to1/startEditFromLatest', requirePI, async (req, res) => {
+    try {
+        if (!(await check1to1Tables())) return res.status(501).json({ error: '1-to-1 tables not available' });
+        const piId = req.session.user.id;
+        const { researcher_id } = req.body;
+        if (!researcher_id) return res.status(400).json({ error: 'researcher_id required' });
+        const member = await validate1to1Researcher(req.session.user, researcher_id);
+        if (!member) return res.status(404).json({ error: 'Researcher not found' });
+
+        // Check existing draft
+        const existingDraft = await pool.query(
+            `SELECT * FROM di_1to1_drafts WHERE researcher_id = $1 AND created_by = $2`,
+            [researcher_id, piId]
+        );
+        if (existingDraft.rows.length > 0) return res.json({ success: true, draft: existingDraft.rows[0], existed: true });
+
+        // Find latest version
+        const latestRes = await pool.query(
+            `SELECT v.*, m.id AS meeting_id FROM di_1to1_meeting_versions v
+             JOIN di_1to1_meetings m ON m.id = v.meeting_id
+             WHERE m.researcher_id = $1
+             ORDER BY v.created_at DESC LIMIT 1`,
+            [researcher_id]
+        );
+        if (latestRes.rows.length === 0) return res.status(404).json({ error: 'No previous meetings to edit from' });
+        const latest = latestRes.rows[0];
+
+        // Get actions for that version
+        const actRes = await pool.query(
+            `SELECT pillar, action_text, owner_role, due_date, done, sort_order FROM di_1to1_actions WHERE version_id = $1 ORDER BY sort_order`,
+            [latest.id]
+        );
+        const actionsJson = actRes.rows.map(a => ({
+            pillar: a.pillar, text: a.action_text, owner_role: a.owner_role,
+            due_date: a.due_date, done: a.done
+        }));
+
+        // Create draft from latest
+        const ins = await pool.query(
+            `INSERT INTO di_1to1_drafts (researcher_id, affiliation, created_by, meeting_id, pillar_sop, pillar_data, pillar_training, pillar_inventory, actions, private_comment)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+             RETURNING *`,
+            [researcher_id, member.affiliation, piId, latest.meeting_id,
+             JSON.stringify(latest.pillar_sop), JSON.stringify(latest.pillar_data),
+             JSON.stringify(latest.pillar_training), JSON.stringify(latest.pillar_inventory),
+             JSON.stringify(actionsJson), latest.private_comment]
+        );
+        res.json({ success: true, draft: ins.rows[0] });
+    } catch (err) {
+        console.error('[1TO1] startEditFromLatest error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+
+// =====================================================
 // GLP STATUS – Harmony Map Coherence Engine
 // =====================================================
 
