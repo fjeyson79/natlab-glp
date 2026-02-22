@@ -20,6 +20,8 @@
           body.embed-mode { background: #ffffff; }
           body.embed-mode .header,
           body.embed-mode .tab-nav { display: none !important; }
+          body.pi-impersonating .tab-nav { display: none !important; }
+
 
           body.embed-mode .tab-content { max-width: none !important; margin: 0 !important; padding: 0 !important; }
           body.embed-mode .panel { border-radius: 0 !important; box-shadow: none !important; margin-bottom: 0 !important; }
@@ -3360,6 +3362,7 @@
                 loadGroupDocuments();
                 loadAllUsers();
 
+                try { if (typeof dicInitPIImpersonationFromUrl === 'function') dicInitPIImpersonationFromUrl(); } catch(e) {}
             } catch (err) {
                 window.location.href = 'access.html';
             }
@@ -3410,7 +3413,28 @@
               if (tabId === 'training') { loadTrainingDocuments(); loadPendingTrainingPacks(); loadSealedTrainingPacks(); }
           }
 
-          function dicInitEmbedModeFromUrl() {
+          
+          function dicInitPIImpersonationFromUrl() {
+              try {
+                  const u = new URL(window.location.href);
+                  const impUser = (u.searchParams.get('user') || '').trim();
+                  const isEmbed = u.searchParams.get('embed') === '1';
+                  if (!impUser || isEmbed) return;
+
+                  document.body.classList.add('pi-impersonating');
+
+                  // If we have a hash like #tab-training, open that top tab
+                  const h = (window.location.hash || '').trim();
+                  if (h.startsWith('#tab-')) {
+                      const tabId = h.replace('#tab-', '');
+                      if (typeof dicOpenTopTab === 'function' && tabId) {
+                          dicOpenTopTab(tabId);
+                      }
+                  }
+              } catch (e) {}
+          }
+
+function dicInitEmbedModeFromUrl() {
   try {
     const u = new URL(window.location.href);
     const isEmbed = u.searchParams.get('embed') === '1';
@@ -4419,6 +4443,23 @@
 
             const selectedUser = dicFilters.researcher || null;
 
+
+            // Clean PI impersonation navigation (no mirror / iframe / overlay recursion)
+            if ((mode === 'training' || mode === 'inventory') && selectedUser) {
+                try {
+                    const u = new URL(window.location.href);
+                    const isEmbed = u.searchParams.get('embed') === '1';
+                    if (!isEmbed) {
+                        u.searchParams.set('user', selectedUser);
+                        u.searchParams.delete('mode');   // legacy embed params
+                        u.searchParams.delete('embed');  // legacy embed params
+                        u.hash = (mode === 'training') ? '#tab-training' : '#tab-purchases-inventory';
+                        window.location.href = u.toString();
+                        return;
+                    }
+                } catch (e) {}
+            }
+
             // DIC chrome elements
             const searchArea = document.querySelector('.dic-finder .dic-search-area');
             const monthsLabel = document.getElementById('dicMonthsLabel');
@@ -4432,7 +4473,6 @@
             if (!showChrome && quickMetrics) quickMetrics.style.display = 'none';
 
             if (mode === 'all') {
-                  dicVisionHideMirror();
                 dicVisionHideOverlay();
                 glpVisionRenderAll(selectedUser);
             } else if (mode === 'papers') {
@@ -4578,8 +4618,6 @@
                 html += `</div>`;
 
                 results.innerHTML = html;
-                  dicVisionShowMirror('training', selectedUser);
-                  dicVisionShowOverlay(html);
                   dicVisionShowOverlay(html);
 } catch (err) {
                 console.error('[Vision] training fetch error:', err);
@@ -4687,7 +4725,7 @@
                 html += `</div>`;
 
                 results.innerHTML = html;
-                  dicVisionShowMirror('inventory', selectedUser);
+                dicVisionShowOverlay(html);
 } catch (err) {
                 console.error('[Vision] inventory fetch error:', err);
                 results.innerHTML = '<div class="glpCard" style="border-color:#f8d7da;"><div class="glpMicroTitle">ERROR</div><p style="color:#721c24;font-size:13px;margin:0;">Failed to load inventory data</p></div>';
@@ -5146,74 +5184,6 @@ async function dicIntdocsFolderChanged(sel) {
         }
 
         
-
-
-function dicMakeEmbedUrl(userId, mode) {
-  try {
-    const u = new URL(window.location.origin + '/pi-dashboard.html');
-    u.searchParams.set('embed', '1');
-    if (userId) u.searchParams.set('user', userId);
-    if (mode) u.searchParams.set('mode', mode);
-    // Force the GLP Vision tab
-    u.hash = '#tab-lab-files';
-    return u.toString();
-  } catch (e) {
-    const base = '/pi-dashboard.html';
-    const qs = `?embed=1${userId ? '&user=' + encodeURIComponent(userId) : ''}${mode ? '&mode=' + encodeURIComponent(mode) : ''}`;
-    return base + qs + '#tab-lab-files';
-  }
-}
-
-
-function dicVisionShowOverlayIframe(url) {
-  const overlay = document.getElementById('dicVisionOverlay');
-  const empty = document.getElementById('dicViewerEmpty');
-  const pdfEl = document.getElementById('dicViewerPdf');
-  const toolbar = document.getElementById('dicToolbar');
-  if (!overlay) return;
-
-  overlay.innerHTML = '<iframe src="' + String(url || '').replace(/"/g,'&quot;') + '"></iframe>';
-  overlay.style.display = 'block';
-
-  if (empty) empty.style.display = 'none';
-  if (pdfEl) pdfEl.style.display = 'none';
-  if (toolbar) toolbar.style.display = 'none';
-}
-
-
-  // ===============================
-  // GLP Vision, Training and Inventory, Mirror iframe
-  // ===============================
-  function dicVisionMirrorUrl(userId, mode) {
-    var base = (mode === 'training') ? '/vision-training.html' : '/vision-inventory.html';
-    var qs = '?embed=1';
-    if (userId) qs += '&user=' + encodeURIComponent(userId);
-    return base + qs;
-  }
-
-  function dicVisionShowMirror(mode, userId) {
-    var mirror = document.getElementById('dicVisionMirrorFrame');
-    var overlay = document.getElementById('dicVisionOverlay');
-    var empty = document.getElementById('dicViewerEmpty');
-    var pdfEl = document.getElementById('dicViewerPdf');
-    var toolbar = document.getElementById('dicToolbar');
-
-    if (overlay) overlay.style.display = 'none';
-    if (pdfEl) pdfEl.style.display = 'none';
-    if (empty) empty.style.display = 'none';
-    if (toolbar) toolbar.style.display = 'none';
-
-    if (!mirror) return;
-    mirror.src = dicVisionMirrorUrl(userId, mode);
-    mirror.style.display = 'block';
-  }
-
-  function dicVisionHideMirror() {
-    var mirror = document.getElementById('dicVisionMirrorFrame');
-    if (!mirror) return;
-    mirror.style.display = 'none';
-    mirror.src = 'about:blank';
-  }
 
 
 function dicVisionShowOverlay(html) {

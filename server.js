@@ -567,6 +567,16 @@ function requireAuth(req, res, next) {
     if (!req.session.user) {
         return res.status(401).json({ error: 'Not authenticated' });
     }
+
+    // Attach user to request
+    req.user = req.session.user;
+
+    // PI-only impersonation via ?user=XXX (does NOT modify session)
+    const imp = req.query && req.query.user ? String(req.query.user).trim() : "";
+    if (imp && req.user.role === "pi") {
+        req.user = { ...req.user, id: imp, user_id: imp };
+    }
+
     next();
 }
 
