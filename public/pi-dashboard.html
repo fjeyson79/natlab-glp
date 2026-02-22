@@ -806,7 +806,16 @@
         .dic-empty-btn:hover { border-color: #2d5a87; color: #1a365d; }
 
         /* --- Viewer (Column B) --- */
-        .dic-viewer {
+        
+        /* GLP Vision overlay in right viewer (Training / Inventory / 1-to-1) */
+        .dic-vision-overlay{
+            width:100%;
+            height:100%;
+            overflow:auto;
+            background:#ffffff;
+            border-radius:12px;
+        }
+.dic-viewer {
             background: #fff;
             display: flex;
             flex-direction: column;
@@ -2130,6 +2139,7 @@
                 </div>
                 <div class="dic-viewer-empty" id="dicViewerEmpty">Select a file to preview</div>
                 <iframe class="dic-viewer-pdf" id="dicViewerPdf" style="display:none;"></iframe>
+                <div class="dic-vision-overlay" id="dicVisionOverlay" style="display:none;"></div>
                 <div class="dic-intel-panel" id="dicIntelPanel" style="display:none;">
                     <div class="dic-intel-strip">
                         <span class="dic-intel-strip-label" id="dicSopLabel">SOPs (0)</span>
@@ -4300,7 +4310,8 @@
             filterRows.forEach(r => r.style.display = showChrome ? '' : 'none');
             if (!showChrome && quickMetrics) quickMetrics.style.display = 'none';
 
-            if (mode === 'all') glpVisionRenderAll(selectedUser);
+            if (mode === 'all') dicVisionHideOverlay();
+                glpVisionRenderAll(selectedUser);
             else if (mode === 'papers') glpVisionRenderPapers(selectedUser);
             else if (mode === 'training') glpVisionRenderTraining(selectedUser);
             else if (mode === 'inventory') glpVisionRenderInventory(selectedUser);
@@ -4327,6 +4338,8 @@
             if (!results) return;
             if (!selectedUser) {
                 results.innerHTML = '<div class="dic-empty-state"><h3>Select a researcher to view training</h3></div>';
+            dicVisionShowOverlay(results.innerHTML);
+
                 return;
             }
             results.innerHTML = '<div class="dic-empty-state"><h3>Training</h3><p style="color:#6b7280;margin-top:8px;">Loading\u2026</p></div>';
@@ -4448,6 +4461,8 @@
             if (!results) return;
             if (!selectedUser) {
                 results.innerHTML = '<div class="dic-empty-state"><h3>Select a researcher to view inventory</h3></div>';
+            dicVisionShowOverlay(results.innerHTML);
+
                 return;
             }
             results.innerHTML = '<div class="dic-empty-state"><h3>Inventory</h3><p style="color:#6b7280;margin-top:8px;">Loading\u2026</p></div>';
@@ -4998,7 +5013,42 @@ async function dicIntdocsFolderChanged(sel) {
             }
         }
 
-        function dicBuildPdfViewerSrc(fileUrl) {
+        
+function dicVisionShowOverlay(html) {
+  const overlay = document.getElementById('dicVisionOverlay');
+  const empty = document.getElementById('dicViewerEmpty');
+  const pdfEl = document.getElementById('dicViewerPdf');
+  if (!overlay) return;
+
+  overlay.innerHTML = html || '';
+  overlay.style.display = 'block';
+
+  if (empty) empty.style.display = 'none';
+  if (pdfEl) pdfEl.style.display = 'none';
+}
+
+function dicVisionHideOverlay() {
+  const overlay = document.getElementById('dicVisionOverlay');
+  const empty = document.getElementById('dicViewerEmpty');
+  const pdfEl = document.getElementById('dicViewerPdf');
+
+  if (overlay) {
+    overlay.style.display = 'none';
+    overlay.innerHTML = '';
+  }
+
+  const hasPdf = pdfEl && pdfEl.src && pdfEl.src.trim() !== '';
+  if (hasPdf) {
+    if (pdfEl) pdfEl.style.display = 'block';
+    if (empty) empty.style.display = 'none';
+  } else {
+    if (pdfEl) pdfEl.style.display = 'none';
+    if (empty) empty.style.display = 'block';
+  }
+}
+
+
+function dicBuildPdfViewerSrc(fileUrl) {
               const pdfjs = '/pdfjs/web/viewer.html';
 
               // Normalize: avoid double-encoding when callers pass a pre-encoded URL
