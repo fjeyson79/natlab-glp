@@ -11,7 +11,30 @@
             background: #f0f2f5;
             min-height: 100vh;
         }
-        .header {
+        
+          /* =====================================================
+             EMBED MODE (iframe mirror for GLP Vision)
+             Only show requested module content
+             ===================================================== */
+          body.embed-mode {
+              background: #ffffff;
+          }
+          body.embed-mode .header,
+          body.embed-mode .tab-nav {
+              display: none !important;
+          }
+          body.embed-mode .tab-content {
+              max-width: none !important;
+              margin: 0 !important;
+              padding: 0 !important;
+          }
+          body.embed-mode .panel {
+              border-radius: 0 !important;
+              box-shadow: none !important;
+              margin-bottom: 0 !important;
+          }
+
+.header {
             background: linear-gradient(135deg, #1a365d 0%, #2d5a87 100%);
             color: white;
             padding: 15px 30px;
@@ -3317,35 +3340,74 @@
                 window.location.href = 'access.html';
             }
         }
-
-        checkAuth();
-
+          checkAuth();
         // =====================================================
-        // TAB NAVIGATION
-        // =====================================================
-        document.querySelectorAll('.tab-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                // Update active tab button
-                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
+          // TAB NAVIGATION
+          // =====================================================
+          document.querySelectorAll('.tab-btn').forEach(btn => {
+              btn.addEventListener('click', () => {
+                  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                  btn.classList.add('active');
 
-                // Update active tab content
-                const tabId = btn.dataset.tab;
+                  const tabId = btn.dataset.tab;
+
                   // Special handling: Group Docs has an INTERNAL sub-mode
                   if (tabId === 'group-docs' && typeof gdOpenMode === 'function') { gdOpenMode('docs'); return; }
                   if (tabId !== 'group-docs' && typeof _gdSetPill === 'function') { _gdSetPill('docs'); }
-                document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-                document.getElementById('tab-' + tabId).classList.add('active');
 
-                // Load tab-specific data
-                if (tabId === 'lab-files') dicInit();
-                if (tabId === 'glp-console') glpcInit();
-                if (tabId === 'purchases-inventory') { loadAllPurchaseRequests(); loadAllInventoryV2(); loadPONumbers(); }
-                if (tabId === 'training') { loadTrainingDocuments(); loadPendingTrainingPacks(); loadSealedTrainingPacks(); }
-            });
-        });
+                  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+                  const el = document.getElementById('tab-' + tabId);
+                  if (el) el.classList.add('active');
 
-        // =====================================================
+                  if (tabId === 'lab-files') dicInit();
+                  if (tabId === 'glp-console') glpcInit();
+                  if (tabId === 'purchases-inventory') { loadAllPurchaseRequests(); loadAllInventoryV2(); loadPONumbers(); }
+                  if (tabId === 'training') { loadTrainingDocuments(); loadPendingTrainingPacks(); loadSealedTrainingPacks(); }
+              });
+          });
+
+          function dicOpenTopTab(tabId) {
+              if (!tabId) return;
+
+              if (tabId === 'group-docs' && typeof gdOpenMode === 'function') { gdOpenMode('docs'); return; }
+              if (tabId !== 'group-docs' && typeof _gdSetPill === 'function') { _gdSetPill('docs'); }
+
+              const btn = document.querySelector('.tab-btn[data-tab="' + tabId + '"]');
+              document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+              if (btn) btn.classList.add('active');
+
+              document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+              const el = document.getElementById('tab-' + tabId);
+              if (el) el.classList.add('active');
+
+              if (tabId === 'lab-files') dicInit();
+              if (tabId === 'glp-console') glpcInit();
+              if (tabId === 'purchases-inventory') { loadAllPurchaseRequests(); loadAllInventoryV2(); loadPONumbers(); }
+              if (tabId === 'training') { loadTrainingDocuments(); loadPendingTrainingPacks(); loadSealedTrainingPacks(); }
+          }
+
+          function dicInitEmbedModeFromUrl() {
+              try {
+                  const u = new URL(window.location.href);
+                  const isEmbed = u.searchParams.get('embed') === '1';
+                  if (!isEmbed) return;
+
+                  window.dicEmbed = true;
+                  window.dicEmbedUserId = u.searchParams.get('user') || '';
+
+                  document.body.classList.add('embed-mode');
+
+                  const h = (u.hash || '').trim();
+                  let tabId = '';
+                  if (h.startsWith('#tab-')) tabId = h.replace('#tab-', '');
+
+                  if (tabId) dicOpenTopTab(tabId);
+              } catch (e) {}
+          }
+
+          dicInitEmbedModeFromUrl();
+
+// =====================================================
           // GROUP DOCS MODE TOGGLE (UPLOAD | INTERNAL)
           // =====================================================
           function _gdSetInternalToggle(on) {
@@ -4469,7 +4531,7 @@
                 html += `</div>`;
 
                 results.innerHTML = html;
-                dicVisionShowOverlayIframe(d.data.links.open_training_url);
+                dicVisionShowOverlayIframe(dicMakeEmbedUrl(d.data.links.open_training_url, 'training'));
 } catch (err) {
                 console.error('[Vision] training fetch error:', err);
                 results.innerHTML = '<div class="glpCard" style="border-color:#f8d7da;"><div class="glpMicroTitle">ERROR</div><p style="color:#721c24;font-size:13px;margin:0;">Failed to load training data</p></div>';
@@ -4576,7 +4638,7 @@
                 html += `</div>`;
 
                 results.innerHTML = html;
-                dicVisionShowOverlayIframe(data.links.open_inventory_url);
+                dicVisionShowOverlayIframe(dicMakeEmbedUrl(data.links.open_inventory_url, 'purchases-inventory'));
 } catch (err) {
                 console.error('[Vision] inventory fetch error:', err);
                 results.innerHTML = '<div class="glpCard" style="border-color:#f8d7da;"><div class="glpMicroTitle">ERROR</div><p style="color:#721c24;font-size:13px;margin:0;">Failed to load inventory data</p></div>';
@@ -5035,6 +5097,24 @@ async function dicIntdocsFolderChanged(sel) {
         }
 
         
+
+
+function dicMakeEmbedUrl(rawUrl, tabId) {
+  try {
+    const u = new URL(rawUrl, window.location.origin);
+    u.searchParams.set('embed', '1');
+    // Preserve existing user= if present; otherwise keep as-is
+    // Ensure hash points to the correct tab container
+    if (tabId) u.hash = '#tab-' + tabId;
+    return u.toString();
+  } catch (e) {
+    // Fallback: best-effort append
+    const base = String(rawUrl || '');
+    const join = base.includes('?') ? '&' : '?';
+    const h = tabId ? ('#tab-' + tabId) : '';
+    return base + join + 'embed=1' + h;
+  }
+}
 
 function dicVisionShowOverlayIframe(url) {
   const overlay = document.getElementById('dicVisionOverlay');
