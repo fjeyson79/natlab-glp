@@ -5,16 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>GLP Vision</title>
 <style>
-
-/* GLP_VISION_EMBED_IMPERSONATION
-   Embed-mode: hide chrome when in iframe (PI GLP Vision mirror)
-*/
-body.embed-mode .header,
-body.embed-mode .tab-nav { display: none !important; }
-body.embed-mode .tab-content { max-width: none !important; margin: 0 !important; padding: 0 !important; }
-body.embed-mode .panel { border-radius: 0 !important; box-shadow: none !important; margin-bottom: 0 !important; }
-
-
 /* =====================================================
    GLP VISION — Read-only console
    ===================================================== */
@@ -1092,37 +1082,6 @@ function gvEsc(str) {
 // =====================================================
 
 gvInit();
-</script>
-<script>
-
-// GLP_VISION_EMBED_IMPERSONATION
-(function(){
-  try {
-    var u = new URL(window.location.href);
-    var embed = u.searchParams.get('embed');
-    var user = u.searchParams.get('user');
-    if (embed === '1') document.body.classList.add('embed-mode');
-    if (!user) return;
-
-    // Monkey patch fetch to append ?user=... to same-origin API calls.
-    var _fetch = window.fetch.bind(window);
-    window.fetch = function(input, init){
-      try {
-        var url = (typeof input === 'string') ? input : (input && input.url ? input.url : '');
-        // Only rewrite same-origin relative API calls
-        if (url && url.startsWith('/api/')) {
-          var uu = new URL(url, window.location.origin);
-          if (!uu.searchParams.get('user')) uu.searchParams.set('user', user);
-          var out = uu.pathname + uu.search;
-          if (typeof input === 'string') input = out;
-          else input = new Request(out, input);
-        }
-      } catch (e) {}
-      return _fetch(input, init);
-    };
-  } catch (e) {}
-})();
-
 </script>
 </body>
 </html>

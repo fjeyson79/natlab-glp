@@ -18,6 +18,3 @@ local_notes/
 .claude/settings.local.json
 .claude/
 local-backups/
-
-# local
-/glp-weekly-snapshot-v3.json

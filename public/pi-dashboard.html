@@ -5191,39 +5191,29 @@ function dicVisionShowOverlayIframe(url) {
     return base + qs;
   }
 
-  
-function dicVisionShowMirror(mode, userId) {
-  var mirror = document.getElementById('dicVisionMirrorFrame');
-  var overlay = document.getElementById('dicVisionOverlay');
-  var empty = document.getElementById('dicViewerEmpty');
-  var pdfEl = document.getElementById('dicViewerPdf');
-  var toolbar = document.getElementById('dicToolbar');
-  if (!mirror) return;
+  function dicVisionShowMirror(mode, userId) {
+    var mirror = document.getElementById('dicVisionMirrorFrame');
+    var overlay = document.getElementById('dicVisionOverlay');
+    var empty = document.getElementById('dicViewerEmpty');
+    var pdfEl = document.getElementById('dicViewerPdf');
+    var toolbar = document.getElementById('dicToolbar');
 
-  var hash = (mode === 'training') ? '#tab-training' : '#tab-purchases-inventory';
-  var url = '/glp-vision.html?embed=1' + (userId ? '&user=' + encodeURIComponent(userId) : '') + hash;
+    if (overlay) overlay.style.display = 'none';
+    if (pdfEl) pdfEl.style.display = 'none';
+    if (empty) empty.style.display = 'none';
+    if (toolbar) toolbar.style.display = 'none';
 
-  if (overlay) overlay.style.display = 'none';
-  mirror.src = url;
-  mirror.style.display = 'block';
-  if (empty) empty.style.display = 'none';
-  if (pdfEl) pdfEl.style.display = 'none';
-  if (toolbar) toolbar.style.display = 'none';
-}
+    if (!mirror) return;
+    mirror.src = dicVisionMirrorUrl(userId, mode);
+    mirror.style.display = 'block';
+  }
 
-
-  
-function dicVisionHideMirror() {
-  var mirror = document.getElementById('dicVisionMirrorFrame');
-  var empty = document.getElementById('dicViewerEmpty');
-  var toolbar = document.getElementById('dicToolbar');
-  if (!mirror) return;
-  mirror.style.display = 'none';
-  try { mirror.src = 'about:blank'; } catch(e) {}
-  if (empty) empty.style.display = '';
-  if (toolbar) toolbar.style.display = '';
-}
-
+  function dicVisionHideMirror() {
+    var mirror = document.getElementById('dicVisionMirrorFrame');
+    if (!mirror) return;
+    mirror.style.display = 'none';
+    mirror.src = 'about:blank';
+  }
 
 
 function dicVisionShowOverlay(html) {
