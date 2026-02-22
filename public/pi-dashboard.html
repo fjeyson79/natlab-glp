@@ -4310,12 +4310,18 @@
             filterRows.forEach(r => r.style.display = showChrome ? '' : 'none');
             if (!showChrome && quickMetrics) quickMetrics.style.display = 'none';
 
-            if (mode === 'all') dicVisionHideOverlay();
+            if (mode === 'all') {
+                dicVisionHideOverlay();
                 glpVisionRenderAll(selectedUser);
-            else if (mode === 'papers') glpVisionRenderPapers(selectedUser);
-            else if (mode === 'training') glpVisionRenderTraining(selectedUser);
-            else if (mode === 'inventory') glpVisionRenderInventory(selectedUser);
-            else if (mode === 'onetoone') glpVisionRenderOneToOne(selectedUser);
+            } else if (mode === 'papers') {
+                glpVisionRenderPapers(selectedUser);
+            } else if (mode === 'training') {
+                glpVisionRenderTraining(selectedUser);
+            } else if (mode === 'inventory') {
+                glpVisionRenderInventory(selectedUser);
+            } else if (mode === 'onetoone') {
+                glpVisionRenderOneToOne(selectedUser);
+            }
         }
 
         function glpVisionRenderAll(selectedUser) {
