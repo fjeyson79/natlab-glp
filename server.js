@@ -8284,8 +8284,16 @@ function requireApiKey(req, res, next) {
   return next();
 }
 
+
+function requirePIOrApiKey(req, res, next) {
+  const apiKey = (req.headers['x-api-key'] || '').toString().trim();
+  const expected = ((process.env.API_SECRET_KEY || '').toString().trim());
+  if (apiKey && expected && apiKey === expected) return next();
+  return requirePI(req, res, next);
+}
+
 // GET /api/di/vision/training/:user_id
-app.get('/api/di/vision/training/:user_id', requireApiKey, async (req, res) => {
+app.get('/api/di/vision/training/:user_id', requirePIOrApiKey, async (req, res) => {
     const userId = req.params.user_id;
     const cacheKey = `vision-training-${userId}`;
     const cached = visionCacheGet(cacheKey);
@@ -8456,7 +8464,7 @@ app.get('/api/di/vision/training/:user_id', requireApiKey, async (req, res) => {
 });
 
 // GET /api/di/vision/inventory/:user_id
-app.get('/api/di/vision/inventory/:user_id', requireApiKey, async (req, res) => {
+app.get('/api/di/vision/inventory/:user_id', requirePIOrApiKey, async (req, res) => {
     const userId = req.params.user_id;
     const cacheKey = `vision-inventory-${userId}`;
     const cached = visionCacheGet(cacheKey);
