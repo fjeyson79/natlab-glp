@@ -50,7 +50,6 @@ app.use(session({
         sameSite: 'none'
     }
 }));
-
 // Multer configuration for file uploads (memory storage)
 const upload = multer({
     storage: multer.memoryStorage(),
@@ -565,8 +564,23 @@ app.get('/api/di/debug-members', async (req, res) => {
 // AUTH MIDDLEWARE
 function requireAuth(req, res, next) {
     if (!req.session.user) {
-        return res.status(401).json({ error: 'Not authenticated' });
+        return res.status(401).json({ error: 'Not authenticated' }
+
+      // Attach session user to req.user for downstream handlers
+      req.user = req.session.user;
+);
     }
+
+  // --- PI-only impersonation via ?user=... (runs after req.user is set) ---
+  try {
+    const qUser = String((req.query && req.query.user) || '').trim();
+    if (qUser && req.user && (req.user.role === 'PI' || req.user.role === 'pi')) {
+      req.user._impersonator_id = req.user.id;
+      req.user._impersonated_user = qUser;
+      req.user.id = qUser; // effective user for downstream handlers
+    }
+  } catch (e) {}
+
     next();
 }
 
