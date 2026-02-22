@@ -8246,6 +8246,340 @@ app.get('/api/di/training/sealed-overview', requireAuth, async (req, res) => {
 
 
 // =====================================================
+// GLP VISION – Training & Inventory read-only endpoints
+// =====================================================
+
+const _visionCache = new Map();
+function visionCacheGet(key) {
+    const entry = _visionCache.get(key);
+    if (entry && (Date.now() - entry.ts < 90000)) return entry.payload;
+    return null;
+}
+function visionCacheSet(key, payload) {
+    _visionCache.set(key, { ts: Date.now(), payload });
+}
+
+// Helper: detect column existence in a table (cached per-session)
+const _visionColCache = {};
+async function visionHasColumn(table, column) {
+    const cacheKey = `${table}.${column}`;
+    if (cacheKey in _visionColCache) return _visionColCache[cacheKey];
+    try {
+        const r = await pool.query(
+            `SELECT 1 FROM information_schema.columns WHERE table_name = $1 AND column_name = $2 LIMIT 1`,
+            [table, column]
+        );
+        _visionColCache[cacheKey] = r.rows.length > 0;
+    } catch { _visionColCache[cacheKey] = false; }
+    return _visionColCache[cacheKey];
+}
+
+// GET /api/di/vision/training/:user_id
+app.get('/api/di/vision/training/:user_id', requirePI, async (req, res) => {
+    const userId = req.params.user_id;
+    const cacheKey = `vision-training-${userId}`;
+    const cached = visionCacheGet(cacheKey);
+    if (cached) return res.json(cached);
+
+    try {
+        if (!(await checkTrainingTables())) {
+            return res.json({ success: false, error_code: 'TABLES_UNAVAILABLE', message: 'Training tables not available' });
+        }
+
+        // 1) Packs needing PI seal (SUBMITTED)
+        const sealPending = await pool.query(
+            `SELECT p.id AS pack_id, p.version, p.updated_at AS submitted_at,
+                    al.name AS researcher_name
+             FROM di_training_packs p
+             JOIN di_allowlist al ON al.researcher_id = p.researcher_id
+             WHERE p.researcher_id = $1 AND p.status = 'SUBMITTED'
+             ORDER BY p.updated_at DESC`,
+            [userId]
+        );
+        const sealTrainingPacks = sealPending.rows.map(r => ({
+            pack_id: r.pack_id,
+            title: `Training Pack v${r.version}`,
+            submitted_at: r.submitted_at ? new Date(r.submitted_at).toISOString() : null,
+            supervisor_certified_at: null,
+            pi_seal_status: 'pending'
+        }));
+
+        // 2) Entries pending certification (across all non-sealed packs for this user)
+        const hasCertifiedBy = await visionHasColumn('di_training_entries', 'certified_by');
+        const certPending = await pool.query(
+            `SELECT e.id AS cert_id, e.training_type, e.created_at AS requested_at,
+                    p.version AS pack_version,
+                    COALESCE(al_sup.name, ${hasCertifiedBy ? 'e.other_supervisor_name' : 'NULL'}) AS requested_by
+             FROM di_training_entries e
+             JOIN di_training_packs p ON p.id = e.pack_id
+             LEFT JOIN di_allowlist al_sup ON al_sup.researcher_id = e.supervisor_id
+             WHERE p.researcher_id = $1 AND e.status = 'PENDING'
+             ORDER BY e.created_at DESC`,
+            [userId]
+        );
+        const certificationsPending = certPending.rows.map(r => ({
+            cert_id: r.cert_id,
+            pack_title: `Training Pack v${r.pack_version}`,
+            requested_at: r.requested_at ? new Date(r.requested_at).toISOString() : null,
+            requested_by: r.requested_by || 'Unknown',
+            status: 'pending'
+        }));
+
+        // 3) Agreements: get required docs + confirmed for current pack
+        const currentPack = await pool.query(
+            `SELECT id FROM di_training_packs WHERE researcher_id = $1 ORDER BY version DESC LIMIT 1`,
+            [userId]
+        );
+        let agreementsMissing = [];
+        let agreementsSigned = [];
+        if (currentPack.rows.length > 0) {
+            const packId = currentPack.rows[0].id;
+            // Get researcher affiliation
+            const affRes = await pool.query(`SELECT affiliation FROM di_allowlist WHERE researcher_id = $1`, [userId]);
+            const aff = affRes.rows[0]?.affiliation || 'All';
+
+            const requiredDocs = await pool.query(
+                `SELECT id, title, requirement_rule FROM di_training_documents
+                 WHERE is_active = TRUE AND requirement_rule IN ('Always','Conditional')
+                   AND (affiliation = 'All' OR affiliation = $1)
+                 ORDER BY display_order, title`,
+                [aff]
+            );
+            const confirmed = await pool.query(
+                `SELECT a.document_id, a.confirmed_at, d.title, dv.version AS doc_version
+                 FROM di_training_agreements a
+                 JOIN di_training_documents d ON d.id = a.document_id
+                 JOIN di_training_document_versions dv ON dv.id = a.document_version_id
+                 WHERE a.pack_id = $1
+                 ORDER BY a.confirmed_at DESC`,
+                [packId]
+            );
+            const confirmedIds = new Set(confirmed.rows.map(r => r.document_id));
+            agreementsMissing = requiredDocs.rows
+                .filter(d => !confirmedIds.has(d.id))
+                .map(d => ({ agreement_type: d.title, status: 'missing', required: true }));
+            agreementsSigned = confirmed.rows.map(r => ({
+                agreement_type: r.title,
+                signed_at: r.confirmed_at ? new Date(r.confirmed_at).toISOString() : null,
+                version: `v${r.doc_version}`
+            }));
+        }
+
+        // 4) Sealed packs (record)
+        const sealed = await pool.query(
+            `SELECT p.id AS pack_id, p.version, p.sealed_at, p.sealed_by,
+                    al.name AS sealed_by_name
+             FROM di_training_packs p
+             LEFT JOIN di_allowlist al ON al.researcher_id = p.sealed_by
+             WHERE p.researcher_id = $1 AND p.status = 'SEALED'
+             ORDER BY p.sealed_at DESC`,
+            [userId]
+        );
+        const sealedPacks = sealed.rows.map(r => ({
+            pack_id: r.pack_id,
+            title: `Training Pack v${r.version}`,
+            sealed_at: r.sealed_at ? new Date(r.sealed_at).toISOString() : null,
+            sealed_by: r.sealed_by_name || r.sealed_by || 'Unknown'
+        }));
+
+        // 5) Approved certifications (record)
+        const certApproved = await pool.query(
+            `SELECT e.id AS cert_id, e.training_type, e.certified_at AS approved_at,
+                    p.version AS pack_version,
+                    ${hasCertifiedBy ? 'e.certified_by' : 'NULL'} AS approved_by_id,
+                    COALESCE(al_cb.name, ${hasCertifiedBy ? 'e.certified_by' : 'NULL'}) AS approved_by
+             FROM di_training_entries e
+             JOIN di_training_packs p ON p.id = e.pack_id
+             LEFT JOIN di_allowlist al_cb ON al_cb.researcher_id = ${hasCertifiedBy ? 'e.certified_by' : "'__none__'"}
+             WHERE p.researcher_id = $1 AND e.status = 'CERTIFIED'
+             ORDER BY e.certified_at DESC`,
+            [userId]
+        );
+        const certificationsApproved = certApproved.rows.map(r => ({
+            cert_id: r.cert_id,
+            pack_title: `Training Pack v${r.pack_version}`,
+            approved_at: r.approved_at ? new Date(r.approved_at).toISOString() : null,
+            approved_by: r.approved_by || 'Unknown'
+        }));
+
+        // Compute status
+        const counts = {
+            seal_pending: sealTrainingPacks.length,
+            cert_pending: certificationsPending.length,
+            cert_approved: certificationsApproved.length,
+            agreements_missing_or_expired: agreementsMissing.length,
+            agreements_signed: agreementsSigned.length
+        };
+        const reasons = [];
+        if (counts.seal_pending > 0) reasons.push(`${counts.seal_pending} training pack${counts.seal_pending > 1 ? 's' : ''} pending PI seal`);
+        if (counts.cert_pending > 0) reasons.push(`${counts.cert_pending} certification${counts.cert_pending > 1 ? 's' : ''} pending`);
+        if (counts.agreements_missing_or_expired > 0) reasons.push(`${counts.agreements_missing_or_expired} agreement${counts.agreements_missing_or_expired > 1 ? 's' : ''} missing or expired`);
+        const overall = reasons.length > 0 ? 'needs_attention' : 'ok';
+        const lastSealedAt = sealedPacks.length > 0 ? sealedPacks[0].sealed_at : null;
+
+        const payload = {
+            success: true,
+            schema_version: 1,
+            generated_at: new Date().toISOString(),
+            user_id: userId,
+            status: { overall, reasons, last_sealed_at: lastSealedAt, next_expiry_at: null, counts },
+            data: {
+                action_queue: {
+                    seal_training_packs: sealTrainingPacks,
+                    certifications_pending: certificationsPending,
+                    agreements_missing_or_expired: agreementsMissing
+                },
+                record: {
+                    sealed_training_packs: sealedPacks,
+                    certifications_approved: certificationsApproved,
+                    agreements_signed: agreementsSigned
+                },
+                links: { open_training_url: `/pi-dashboard.html#tab-training?user=${encodeURIComponent(userId)}` }
+            }
+        };
+        visionCacheSet(cacheKey, payload);
+        res.json(payload);
+    } catch (err) {
+        console.error('[VISION] training error:', err);
+        res.json({ success: false, error_code: 'INTERNAL_ERROR', message: 'Failed to load training data' });
+    }
+});
+
+// GET /api/di/vision/inventory/:user_id
+app.get('/api/di/vision/inventory/:user_id', requirePI, async (req, res) => {
+    const userId = req.params.user_id;
+    const cacheKey = `vision-inventory-${userId}`;
+    const cached = visionCacheGet(cacheKey);
+    if (cached) return res.json(cached);
+
+    try {
+        // Detect optional columns for exception checks
+        const hasLot = await visionHasColumn('di_inventory_items', 'lot_or_batch_number');
+        const hasLocation = await visionHasColumn('di_inventory_items', 'storage_location');
+        const hasExpiry = await visionHasColumn('di_inventory_items', 'expiry_date');
+
+        // 1) Assigned items (Approved, ApprovedLinked, Received — owned by user)
+        const assignedRes = await pool.query(
+            `SELECT id AS item_id, item_name AS name, item_type AS category,
+                    COALESCE(storage_location, '') AS location,
+                    ${hasLot ? 'lot_or_batch_number' : "''::text"} AS lot,
+                    ${hasExpiry ? "to_char(expiry_date, 'YYYY-MM-DD')" : 'NULL'} AS expiry,
+                    status, updated_at
+             FROM di_inventory_items
+             WHERE created_by = $1 AND status IN ('Approved','ApprovedLinked','Received')
+             ORDER BY updated_at DESC`,
+            [userId]
+        );
+        const assignedItems = assignedRes.rows.map(r => ({
+            item_id: r.item_id,
+            name: r.name || '',
+            category: r.category || 'product',
+            location: r.location || '',
+            lot: r.lot || '',
+            expiry: r.expiry || null,
+            status: 'assigned',
+            updated_at: r.updated_at ? new Date(r.updated_at).toISOString() : null
+        }));
+
+        // 2) Pending online items (ConsumePending, TransferPending, DeletePending)
+        const pendingOnlineRes = await pool.query(
+            `SELECT id AS item_id, item_name AS name, status,
+                    updated_at AS requested_at, notes AS note
+             FROM di_inventory_items
+             WHERE created_by = $1 AND status IN ('ConsumePending','TransferPending','DeletePending')
+             ORDER BY updated_at DESC`,
+            [userId]
+        );
+        const pendingOnlineItems = pendingOnlineRes.rows.map(r => ({
+            item_id: r.item_id,
+            name: r.name || '',
+            status: r.status,
+            requested_at: r.requested_at ? new Date(r.requested_at).toISOString() : null,
+            note: r.note || ''
+        }));
+
+        // 3) Pending offline items (Pending status, Offline source)
+        const pendingOfflineRes = await pool.query(
+            `SELECT ii.id AS offline_id, ii.item_name AS name, ii.status,
+                    ii.created_at AS submitted_at, COALESCE(al.name, ii.created_by) AS submitted_by
+             FROM di_inventory_items ii
+             LEFT JOIN di_allowlist al ON al.researcher_id = ii.created_by
+             WHERE ii.created_by = $1 AND ii.source = 'Offline' AND ii.status = 'Pending'
+             ORDER BY ii.created_at DESC`,
+            [userId]
+        );
+        const pendingOfflineItems = pendingOfflineRes.rows.map(r => ({
+            offline_id: r.offline_id,
+            name: r.name || '',
+            status: 'Pending',
+            submitted_at: r.submitted_at ? new Date(r.submitted_at).toISOString() : null,
+            submitted_by: r.submitted_by || ''
+        }));
+
+        // 4) Exceptions: assigned items missing critical fields
+        const exceptions = [];
+        for (const item of assignedItems) {
+            const missing = [];
+            if (hasLot && !item.lot) missing.push('lot');
+            if (hasLocation && !item.location) missing.push('location');
+            if (hasExpiry && !item.expiry) missing.push('expiry');
+            if (missing.length > 0) {
+                exceptions.push({
+                    ref_type: 'assigned_item',
+                    ref_id: item.item_id,
+                    name: item.name,
+                    missing
+                });
+            }
+        }
+
+        // Compute last_activity_at
+        const allDates = [
+            ...assignedItems.map(i => i.updated_at),
+            ...pendingOnlineItems.map(i => i.requested_at),
+            ...pendingOfflineItems.map(i => i.submitted_at)
+        ].filter(Boolean);
+        const lastActivityAt = allDates.length > 0
+            ? allDates.sort((a, b) => new Date(b) - new Date(a))[0]
+            : null;
+
+        // Status
+        const counts = {
+            assigned: assignedItems.length,
+            pending_online: pendingOnlineItems.length,
+            pending_offline: pendingOfflineItems.length,
+            exceptions: exceptions.length
+        };
+        const reasons = [];
+        if (counts.pending_online > 0) reasons.push(`${counts.pending_online} pending online inventory action${counts.pending_online > 1 ? 's' : ''}`);
+        if (counts.pending_offline > 0) reasons.push(`${counts.pending_offline} offline inventory entr${counts.pending_offline > 1 ? 'ies' : 'y'} pending PI approval`);
+        if (counts.exceptions > 0) reasons.push(`${counts.exceptions} inventory metadata exception${counts.exceptions > 1 ? 's' : ''}`);
+        const overall = reasons.length > 0 ? 'needs_attention' : 'ok';
+
+        const payload = {
+            success: true,
+            schema_version: 1,
+            generated_at: new Date().toISOString(),
+            user_id: userId,
+            status: { overall, reasons, last_activity_at: lastActivityAt, counts },
+            data: {
+                assigned_items: assignedItems,
+                pending_online_items: pendingOnlineItems,
+                pending_offline_items: pendingOfflineItems,
+                exceptions,
+                links: { open_inventory_url: `/pi-dashboard.html#tab-purchases-inventory?user=${encodeURIComponent(userId)}` }
+            }
+        };
+        visionCacheSet(cacheKey, payload);
+        res.json(payload);
+    } catch (err) {
+        console.error('[VISION] inventory error:', err);
+        res.json({ success: false, error_code: 'INTERNAL_ERROR', message: 'Failed to load inventory data' });
+    }
+});
+
+
+// =====================================================
 // GLP STATUS – Harmony Map Coherence Engine
 // =====================================================
 

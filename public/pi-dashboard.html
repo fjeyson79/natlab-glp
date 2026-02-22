@@ -558,6 +558,29 @@
             color: #fff;
             border-color: #1a365d;
         }
+        .dic-vision-bar {
+            display: flex;
+            gap: 4px;
+            padding: 10px 14px;
+            border-bottom: 1px solid #eee;
+        }
+        .dic-vision-btn {
+            padding: 5px 14px;
+            border-radius: 8px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            border: 1px solid #e4e7eb;
+            background: #fff;
+            color: #6b7280;
+            transition: all 0.15s;
+        }
+        .dic-vision-btn:hover { border-color: #9ca3af; }
+        .dic-vision-btn.active {
+            background: #1a365d;
+            color: #fff;
+            border-color: #1a365d;
+        }
         .dic-filter-row {
             display: flex;
             flex-wrap: wrap;
@@ -2051,6 +2074,13 @@
 
             <!-- Finder (Column A) -->
             <div class="dic-finder">
+                <div class="dic-vision-bar" id="dicVisionBar">
+                    <button class="dic-vision-btn active" onclick="dicSetVisionMode('all', this)">All</button>
+                    <button class="dic-vision-btn" onclick="dicSetVisionMode('training', this)">Training</button>
+                    <button class="dic-vision-btn" onclick="dicSetVisionMode('inventory', this)">Inventory</button>
+                    <button class="dic-vision-btn" onclick="dicSetVisionMode('onetoone', this)">1-to-1</button>
+                    <button class="dic-vision-btn" onclick="dicSetVisionMode('papers', this)">Papers</button>
+                </div>
                 <div class="dic-search-area">
                     <input type="text" class="dic-search-input" id="dicSearchInput" placeholder="Search files..." oninput="dicApplyFilters()">
                     <div class="dic-scope-pills">
@@ -4246,6 +4276,283 @@
             el.classList.add('active');
             dicApplyFilters();
         }
+
+        // ===============================
+        // GLP Vision Mode Toggle
+        // ===============================
+        let dicVisionMode = 'all';
+
+        function dicSetVisionMode(mode, btn) {
+            dicVisionMode = mode;
+            document.querySelectorAll('.dic-vision-btn').forEach(b => b.classList.remove('active'));
+            if (btn) btn.classList.add('active');
+
+            const selectedUser = dicFilters.researcher || null;
+
+            // DIC chrome elements
+            const searchArea = document.querySelector('.dic-finder .dic-search-area');
+            const monthsLabel = document.getElementById('dicMonthsLabel');
+            const filterRows = document.querySelectorAll('.dic-finder .dic-filter-row');
+            const quickMetrics = document.getElementById('dicQuickMetrics');
+            const showChrome = (mode === 'all' || mode === 'papers');
+
+            if (searchArea) searchArea.style.display = showChrome ? '' : 'none';
+            if (monthsLabel) monthsLabel.style.display = showChrome ? '' : 'none';
+            filterRows.forEach(r => r.style.display = showChrome ? '' : 'none');
+            if (!showChrome && quickMetrics) quickMetrics.style.display = 'none';
+
+            if (mode === 'all') glpVisionRenderAll(selectedUser);
+            else if (mode === 'papers') glpVisionRenderPapers(selectedUser);
+            else if (mode === 'training') glpVisionRenderTraining(selectedUser);
+            else if (mode === 'inventory') glpVisionRenderInventory(selectedUser);
+            else if (mode === 'onetoone') glpVisionRenderOneToOne(selectedUser);
+        }
+
+        function glpVisionRenderAll(selectedUser) {
+            dicInternalDocsMode = false;
+            dicSetScopePillsEnabled(true);
+            dicApplyFilters();
+            if (selectedUser) dicRenderQuickMetrics(selectedUser);
+        }
+
+        function glpVisionRenderPapers(selectedUser) {
+            const sel = document.getElementById('dicIntdocsSelect');
+            if (sel) {
+                sel.value = 'papers';
+                dicIntdocsChanged(sel);
+            }
+        }
+
+        async function glpVisionRenderTraining(selectedUser) {
+            const results = document.getElementById('dicResults');
+            if (!results) return;
+            if (!selectedUser) {
+                results.innerHTML = '<div class="dic-empty-state"><h3>Select a researcher to view training</h3></div>';
+                return;
+            }
+            results.innerHTML = '<div class="dic-empty-state"><h3>Training</h3><p style="color:#6b7280;margin-top:8px;">Loading\u2026</p></div>';
+            try {
+                const resp = await fetch(`/api/di/vision/training/${encodeURIComponent(selectedUser)}`, { credentials: 'include' });
+                const d = await resp.json();
+                if (!d.success) {
+                    results.innerHTML = `<div class="glpCard" style="border-color:#f8d7da;"><div class="glpMicroTitle">ERROR</div><p style="color:#721c24;font-size:13px;margin:0;">${escapeHtml(d.message || 'Unknown error')} <span class="dic-badge revision">${escapeHtml(d.error_code || '')}</span></p></div>`;
+                    return;
+                }
+                const s = d.status;
+                const aq = d.data.action_queue;
+                const rec = d.data.record;
+                const fmtDate = v => v ? new Date(v).toLocaleDateString('en-SE') : '\u2014';
+                const badgeClass = s.overall === 'ok' ? 'approved' : 'pending';
+                const badgeLabel = s.overall === 'ok' ? 'OK' : 'NEEDS ATTENTION';
+
+                let html = '';
+                // Header card
+                html += `<div class="glpCard" style="background:linear-gradient(180deg,#f2f4f8,#eceef3);border-color:#d4d9e2;">`;
+                html += `<div class="glpMicroTitle">TRAINING OVERVIEW</div>`;
+                html += `<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">`;
+                html += `<span class="dic-badge ${badgeClass}" style="font-size:10px;padding:2px 8px;">${badgeLabel}</span>`;
+                if (s.reasons.length) html += `<span style="font-size:11px;color:#6b7280;">${s.reasons.map(r => escapeHtml(r)).join(' &middot; ')}</span>`;
+                html += `</div>`;
+                html += `<div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:#4b5563;margin-bottom:8px;">`;
+                html += `<span>Last sealed: <b>${fmtDate(s.last_sealed_at)}</b></span>`;
+                html += `<span>Next expiry: <b>${fmtDate(s.next_expiry_at)}</b></span>`;
+                html += `</div>`;
+                html += `<div class="glpMiniCards" style="display:grid;grid-template-columns:repeat(3,1fr);gap:0;">`;
+                html += `<div class="glpMiniCard"><div class="glpMiniCard__title">Seal Pending</div><div class="glpMiniCard__big">${s.counts.seal_pending}</div></div>`;
+                html += `<div class="glpMiniCard"><div class="glpMiniCard__title">Cert Pending</div><div class="glpMiniCard__big">${s.counts.cert_pending}</div></div>`;
+                html += `<div class="glpMiniCard"><div class="glpMiniCard__title">Agreements Missing</div><div class="glpMiniCard__big">${s.counts.agreements_missing_or_expired}</div></div>`;
+                html += `</div></div>`;
+
+                // Action queue
+                html += `<div class="glpCard"><div class="glpMicroTitle">ACTION QUEUE</div>`;
+                if (aq.seal_training_packs.length) {
+                    html += `<div style="margin-bottom:12px;"><div style="font-size:11px;font-weight:700;color:#4b5563;margin-bottom:6px;">Packs Pending Seal</div>`;
+                    aq.seal_training_packs.forEach(p => {
+                        html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:12px;">`;
+                        html += `<span>${escapeHtml(p.title)}</span><span style="color:#6b7280;">${fmtDate(p.submitted_at)}</span>`;
+                        html += `</div>`;
+                    });
+                    html += `</div>`;
+                }
+                if (aq.certifications_pending.length) {
+                    html += `<div style="margin-bottom:12px;"><div style="font-size:11px;font-weight:700;color:#4b5563;margin-bottom:6px;">Certifications Pending</div>`;
+                    aq.certifications_pending.forEach(c => {
+                        html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:12px;">`;
+                        html += `<span>${escapeHtml(c.pack_title)}</span><span style="color:#6b7280;">by ${escapeHtml(c.requested_by)} &middot; ${fmtDate(c.requested_at)}</span>`;
+                        html += `</div>`;
+                    });
+                    html += `</div>`;
+                }
+                if (aq.agreements_missing_or_expired.length) {
+                    html += `<div style="margin-bottom:12px;"><div style="font-size:11px;font-weight:700;color:#4b5563;margin-bottom:6px;">Agreements Missing / Expired</div>`;
+                    aq.agreements_missing_or_expired.forEach(a => {
+                        html += `<div style="padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:12px;display:flex;align-items:center;gap:8px;">`;
+                        html += `<span>${escapeHtml(a.agreement_type)}</span><span class="dic-badge ${a.status === 'expired' ? 'revision' : 'pending'}">${a.status.toUpperCase()}</span>`;
+                        html += `</div>`;
+                    });
+                    html += `</div>`;
+                }
+                if (!aq.seal_training_packs.length && !aq.certifications_pending.length && !aq.agreements_missing_or_expired.length) {
+                    html += `<p style="font-size:12px;color:#9ca3af;margin:0;">No pending items</p>`;
+                }
+                html += `</div>`;
+
+                // Record
+                html += `<div class="glpCard"><div class="glpMicroTitle">RECORD</div>`;
+                if (rec.sealed_training_packs.length) {
+                    html += `<div style="margin-bottom:12px;"><div style="font-size:11px;font-weight:700;color:#4b5563;margin-bottom:6px;">Sealed Packs</div>`;
+                    rec.sealed_training_packs.forEach(p => {
+                        html += `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:12px;">`;
+                        html += `<span>${escapeHtml(p.title)}</span><span style="color:#6b7280;">${fmtDate(p.sealed_at)} by ${escapeHtml(p.sealed_by)}</span>`;
+                        html += `</div>`;
+                    });
+                    html += `</div>`;
+                }
+                if (rec.certifications_approved.length) {
+                    html += `<div style="margin-bottom:12px;"><div style="font-size:11px;font-weight:700;color:#4b5563;margin-bottom:6px;">Certifications Approved</div>`;
+                    rec.certifications_approved.forEach(c => {
+                        html += `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:12px;">`;
+                        html += `<span>${escapeHtml(c.pack_title)}</span><span style="color:#6b7280;">${fmtDate(c.approved_at)} by ${escapeHtml(c.approved_by)}</span>`;
+                        html += `</div>`;
+                    });
+                    html += `</div>`;
+                }
+                if (rec.agreements_signed.length) {
+                    html += `<div style="margin-bottom:12px;"><div style="font-size:11px;font-weight:700;color:#4b5563;margin-bottom:6px;">Agreements Signed</div>`;
+                    rec.agreements_signed.forEach(a => {
+                        html += `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:12px;">`;
+                        html += `<span>${escapeHtml(a.agreement_type)} <span style="color:#9ca3af;">${escapeHtml(a.version)}</span></span><span style="color:#6b7280;">${fmtDate(a.signed_at)}</span>`;
+                        html += `</div>`;
+                    });
+                    html += `</div>`;
+                }
+                if (!rec.sealed_training_packs.length && !rec.certifications_approved.length && !rec.agreements_signed.length) {
+                    html += `<p style="font-size:12px;color:#9ca3af;margin:0;">No records found</p>`;
+                }
+                html += `</div>`;
+
+                // Open Training button + footer
+                html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:0 4px;">`;
+                html += `<a href="${escapeHtml(d.data.links.open_training_url)}" style="font-size:12px;font-weight:600;color:#2d5a87;text-decoration:none;">Open Training \u2192</a>`;
+                html += `<span style="font-size:10px;color:#b0b8c4;">Generated ${fmtDate(d.generated_at)}</span>`;
+                html += `</div>`;
+
+                results.innerHTML = html;
+            } catch (err) {
+                console.error('[Vision] training fetch error:', err);
+                results.innerHTML = '<div class="glpCard" style="border-color:#f8d7da;"><div class="glpMicroTitle">ERROR</div><p style="color:#721c24;font-size:13px;margin:0;">Failed to load training data</p></div>';
+            }
+        }
+
+        async function glpVisionRenderInventory(selectedUser) {
+            const results = document.getElementById('dicResults');
+            if (!results) return;
+            if (!selectedUser) {
+                results.innerHTML = '<div class="dic-empty-state"><h3>Select a researcher to view inventory</h3></div>';
+                return;
+            }
+            results.innerHTML = '<div class="dic-empty-state"><h3>Inventory</h3><p style="color:#6b7280;margin-top:8px;">Loading\u2026</p></div>';
+            try {
+                const resp = await fetch(`/api/di/vision/inventory/${encodeURIComponent(selectedUser)}`, { credentials: 'include' });
+                const d = await resp.json();
+                if (!d.success) {
+                    results.innerHTML = `<div class="glpCard" style="border-color:#f8d7da;"><div class="glpMicroTitle">ERROR</div><p style="color:#721c24;font-size:13px;margin:0;">${escapeHtml(d.message || 'Unknown error')} <span class="dic-badge revision">${escapeHtml(d.error_code || '')}</span></p></div>`;
+                    return;
+                }
+                const s = d.status;
+                const data = d.data;
+                const fmtDate = v => v ? new Date(v).toLocaleDateString('en-SE') : '\u2014';
+                const badgeClass = s.overall === 'ok' ? 'approved' : 'pending';
+                const badgeLabel = s.overall === 'ok' ? 'OK' : 'NEEDS ATTENTION';
+
+                let html = '';
+                // Header card
+                html += `<div class="glpCard" style="background:linear-gradient(180deg,#f2f4f8,#eceef3);border-color:#d4d9e2;">`;
+                html += `<div class="glpMicroTitle">INVENTORY OVERVIEW</div>`;
+                html += `<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">`;
+                html += `<span class="dic-badge ${badgeClass}" style="font-size:10px;padding:2px 8px;">${badgeLabel}</span>`;
+                if (s.reasons.length) html += `<span style="font-size:11px;color:#6b7280;">${s.reasons.map(r => escapeHtml(r)).join(' &middot; ')}</span>`;
+                html += `</div>`;
+                html += `<div style="font-size:12px;color:#4b5563;margin-bottom:8px;">Last activity: <b>${fmtDate(s.last_activity_at)}</b></div>`;
+                html += `<div class="glpMiniCards" style="display:grid;grid-template-columns:repeat(4,1fr);gap:0;">`;
+                html += `<div class="glpMiniCard"><div class="glpMiniCard__title">Assigned</div><div class="glpMiniCard__big">${s.counts.assigned}</div></div>`;
+                html += `<div class="glpMiniCard"><div class="glpMiniCard__title">Pending Online</div><div class="glpMiniCard__big">${s.counts.pending_online}</div></div>`;
+                html += `<div class="glpMiniCard"><div class="glpMiniCard__title">Pending Offline</div><div class="glpMiniCard__big">${s.counts.pending_offline}</div></div>`;
+                html += `<div class="glpMiniCard"><div class="glpMiniCard__title">Exceptions</div><div class="glpMiniCard__big">${s.counts.exceptions}</div></div>`;
+                html += `</div></div>`;
+
+                // Assigned items
+                html += `<div class="glpCard"><div class="glpMicroTitle">ASSIGNED ITEMS</div>`;
+                if (data.assigned_items.length) {
+                    data.assigned_items.forEach(item => {
+                        html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:12px;">`;
+                        html += `<div><span style="font-weight:600;">${escapeHtml(item.name)}</span> <span class="dic-badge submitted">${escapeHtml(item.category)}</span></div>`;
+                        html += `<div style="color:#6b7280;text-align:right;font-size:11px;">${escapeHtml(item.location)}${item.lot ? ' &middot; Lot: ' + escapeHtml(item.lot) : ''}${item.expiry ? ' &middot; Exp: ' + escapeHtml(item.expiry) : ''}</div>`;
+                        html += `</div>`;
+                    });
+                } else {
+                    html += `<p style="font-size:12px;color:#9ca3af;margin:0;">No assigned items</p>`;
+                }
+                html += `</div>`;
+
+                // Pending online
+                html += `<div class="glpCard"><div class="glpMicroTitle">PENDING ONLINE</div>`;
+                if (data.pending_online_items.length) {
+                    data.pending_online_items.forEach(item => {
+                        html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:12px;">`;
+                        html += `<div><span>${escapeHtml(item.name)}</span> <span class="dic-badge pending">${escapeHtml(item.status)}</span></div>`;
+                        html += `<span style="color:#6b7280;">${fmtDate(item.requested_at)}</span>`;
+                        html += `</div>`;
+                    });
+                } else {
+                    html += `<p style="font-size:12px;color:#9ca3af;margin:0;">No pending items</p>`;
+                }
+                html += `</div>`;
+
+                // Pending offline
+                html += `<div class="glpCard"><div class="glpMicroTitle">PENDING OFFLINE</div>`;
+                if (data.pending_offline_items.length) {
+                    data.pending_offline_items.forEach(item => {
+                        html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:12px;">`;
+                        html += `<div><span>${escapeHtml(item.name)}</span> <span class="dic-badge pending">PENDING</span></div>`;
+                        html += `<span style="color:#6b7280;">${fmtDate(item.submitted_at)} by ${escapeHtml(item.submitted_by)}</span>`;
+                        html += `</div>`;
+                    });
+                } else {
+                    html += `<p style="font-size:12px;color:#9ca3af;margin:0;">No pending items</p>`;
+                }
+                html += `</div>`;
+
+                // Exceptions
+                if (data.exceptions.length) {
+                    html += `<div class="glpCard" style="border-color:#fcd34d;"><div class="glpMicroTitle">EXCEPTIONS</div>`;
+                    data.exceptions.forEach(ex => {
+                        html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:12px;">`;
+                        html += `<span>${escapeHtml(ex.name)}</span>`;
+                        html += `<div style="display:flex;gap:4px;">${ex.missing.map(m => `<span class="dic-badge revision">${escapeHtml(m)}</span>`).join('')}</div>`;
+                        html += `</div>`;
+                    });
+                    html += `</div>`;
+                }
+
+                // Open Inventory button + footer
+                html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:0 4px;">`;
+                html += `<a href="${escapeHtml(data.links.open_inventory_url)}" style="font-size:12px;font-weight:600;color:#2d5a87;text-decoration:none;">Open Inventory \u2192</a>`;
+                html += `<span style="font-size:10px;color:#b0b8c4;">Generated ${fmtDate(d.generated_at)}</span>`;
+                html += `</div>`;
+
+                results.innerHTML = html;
+            } catch (err) {
+                console.error('[Vision] inventory fetch error:', err);
+                results.innerHTML = '<div class="glpCard" style="border-color:#f8d7da;"><div class="glpMicroTitle">ERROR</div><p style="color:#721c24;font-size:13px;margin:0;">Failed to load inventory data</p></div>';
+            }
+        }
+
+        function glpVisionRenderOneToOne(selectedUser) {
+            const results = document.getElementById('dicResults');
+            if (results) results.innerHTML = '<div class="dic-empty-state"><h3>1-to-1</h3><p style="color:#6b7280;margin-top:8px;">Loading\u2026</p></div>';
+        }
+
 // ===============================
 // InternalDocs, PI-only, DIC integration (pi-dashboard)
 // ===============================
