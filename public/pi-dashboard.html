@@ -827,6 +827,8 @@
         }
 
 .dic-viewer {
+              position: relative;
+
             background: #fff;
             display: flex;
             flex-direction: column;
@@ -2150,7 +2152,7 @@
                 </div>
                 <div class="dic-viewer-empty" id="dicViewerEmpty">Select a file to preview</div>
                 <iframe class="dic-viewer-pdf" id="dicViewerPdf" style="display:none;"></iframe>
-                <div class="dic-vision-overlay" id="dicVisionOverlay" style="display:none;"></div>
+                <div class="dic-vision-overlay" id="dicVisionOverlay" style="display:none;" onclick="try{dicSetVisionMode(\'all\');}catch(e){}"></div>
                 <div class="dic-intel-panel" id="dicIntelPanel" style="display:none;">
                     <div class="dic-intel-strip">
                         <span class="dic-intel-strip-label" id="dicSopLabel">SOPs (0)</span>
