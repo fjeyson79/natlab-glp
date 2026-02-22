@@ -8606,6 +8606,149 @@ app.get('/api/di/vision/inventory/:user_id', requirePIOrApiKey, async (req, res)
     }
 });
 
+// --- PI read-only view of a researcher's Training tab data ---
+app.get('/api/di/training/pi-researcher-view/:researcherId', requirePI, async (req, res) => {
+    try {
+        if (!(await checkTrainingTables())) return res.status(501).json({ error: 'Training tables not available' });
+        const userId = req.params.researcherId;
+
+        // Get latest pack (read-only — do NOT create a new one)
+        const packRes = await pool.query(
+            'SELECT * FROM di_training_packs WHERE researcher_id = $1 ORDER BY version DESC LIMIT 1', [userId]
+        );
+        const currentPack = packRes.rows.length > 0 ? packRes.rows[0] : null;
+
+        let agreements = [];
+        let entries = [];
+        if (currentPack) {
+            const [agreementsRes, entriesRes] = await Promise.all([
+                pool.query(
+                    `SELECT a.*, d.title as document_title, d.category, dv.version as doc_version, dv.original_filename,
+                            COALESCE(al.name, a.confirmed_by) as confirmed_name
+                     FROM di_training_agreements a
+                     JOIN di_training_documents d ON d.id = a.document_id
+                     JOIN di_training_document_versions dv ON dv.id = a.document_version_id
+                     LEFT JOIN di_allowlist al ON al.researcher_id = a.confirmed_by
+                     WHERE a.pack_id = $1 ORDER BY a.confirmed_at`,
+                    [currentPack.id]
+                ),
+                pool.query(
+                    `SELECT e.*, COALESCE(al.name, e.other_supervisor_name) as supervisor_name
+                     FROM di_training_entries e
+                     LEFT JOIN di_allowlist al ON al.researcher_id = e.supervisor_id
+                     WHERE e.pack_id = $1 ORDER BY e.created_at`,
+                    [currentPack.id]
+                )
+            ]);
+            agreements = agreementsRes.rows;
+            entries = entriesRes.rows;
+        }
+
+        // Sealed packs + training documents (parallel)
+        const userAffRes = await pool.query('SELECT affiliation FROM di_allowlist WHERE researcher_id = $1', [userId]);
+        const userAff = userAffRes.rows.length > 0 ? userAffRes.rows[0].affiliation : '';
+
+        const [sealedRes, docsRes] = await Promise.all([
+            pool.query(
+                `SELECT id, version, sealed_at, verification_code FROM di_training_packs
+                 WHERE researcher_id = $1 AND status = 'SEALED' ORDER BY version DESC`,
+                [userId]
+            ),
+            pool.query(
+                `SELECT d.id, d.title, d.category, d.affiliation, d.requirement_rule, d.condition_key, d.condition_note, d.display_order,
+                        v.id as version_id, v.version, v.original_filename as version_filename
+                 FROM di_training_documents d
+                 JOIN di_training_document_versions v ON v.document_id = d.id AND v.is_current = TRUE
+                 WHERE d.is_active = TRUE
+                   AND (d.affiliation = 'All' OR d.affiliation = $1)
+                 ORDER BY d.display_order, d.created_at`,
+                [userAff]
+            )
+        ]);
+
+        res.json({
+            success: true,
+            pack: currentPack,
+            agreements,
+            entries,
+            sealed_packs: sealedRes.rows,
+            documents: docsRes.rows
+        });
+    } catch (err) {
+        console.error('[TRAINING] pi-researcher-view error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// --- PI read-only view of a researcher's Inventory tab data ---
+app.get('/api/di/inventory-v2/pi-researcher-view/:researcherId', requirePI, async (req, res) => {
+    try {
+        const userId = req.params.researcherId;
+
+        const [productsRes, samplesRes, purchasesRes, toReceiveRes] = await Promise.all([
+            // My items — products
+            pool.query(
+                `SELECT ii.*, a.name AS created_by_name FROM di_inventory_items ii
+                 LEFT JOIN di_allowlist a ON a.researcher_id = ii.created_by
+                 WHERE ii.created_by = $1 AND ii.status NOT IN ('Consumed','Deleted') AND ii.transferred_at IS NULL AND ii.item_type = 'product'
+                 ORDER BY ii.updated_at DESC`,
+                [userId]
+            ),
+            // My items — samples
+            pool.query(
+                `SELECT ii.*, a.name AS created_by_name FROM di_inventory_items ii
+                 LEFT JOIN di_allowlist a ON a.researcher_id = ii.created_by
+                 WHERE ii.created_by = $1 AND ii.status NOT IN ('Consumed','Deleted') AND ii.transferred_at IS NULL AND ii.item_type = 'sample'
+                 ORDER BY ii.updated_at DESC`,
+                [userId]
+            ),
+            // Purchase requests
+            pool.query(
+                `SELECT r.id, r.affiliation, r.justification, r.status, r.request_total, r.currency,
+                        r.pi_comment, r.created_at, r.updated_at,
+                        json_agg(json_build_object(
+                            'id', i.id, 'vendor_company', i.vendor_company, 'product_name', i.product_name,
+                            'catalog_id', i.catalog_id, 'product_link', i.product_link,
+                            'quantity', i.quantity, 'unit_price', i.unit_price, 'item_total', i.item_total,
+                            'currency', i.currency, 'ordered_at', i.ordered_at, 'received_at', i.received_at,
+                            'inventory_id', i.inventory_id,
+                            'item_status', COALESCE(i.item_status, 'Active'),
+                            'internal_order_number', i.internal_order_number
+                        ) ORDER BY i.created_at) AS items
+                 FROM di_purchase_requests r
+                 JOIN di_purchase_items i ON i.request_id = r.id
+                 WHERE r.requester_id = $1
+                 GROUP BY r.id
+                 ORDER BY r.created_at DESC`,
+                [userId]
+            ),
+            // Approved items to receive
+            pool.query(
+                `SELECT i.id, i.vendor_company, i.product_name, i.catalog_id, i.product_link,
+                        i.quantity, i.unit_price, i.item_total, i.currency, i.ordered_at,
+                        r.id AS request_id, r.affiliation, r.justification, r.created_at AS request_date
+                 FROM di_purchase_items i
+                 JOIN di_purchase_requests r ON r.id = i.request_id
+                 WHERE r.requester_id = $1 AND r.status = 'APPROVED' AND i.received_at IS NULL
+                   AND (i.item_status = 'Active' OR i.item_status IS NULL)
+                 ORDER BY r.created_at DESC, i.created_at`,
+                [userId]
+            )
+        ]);
+
+        res.json({
+            success: true,
+            my_products: productsRes.rows,
+            my_samples: samplesRes.rows,
+            purchase_requests: purchasesRes.rows,
+            approved_to_receive: toReceiveRes.rows
+        });
+    } catch (err) {
+        console.error('[INV-V2] pi-researcher-view error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
 
 // =====================================================
 // GLP STATUS – Harmony Map Coherence Engine

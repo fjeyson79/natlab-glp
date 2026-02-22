@@ -4452,227 +4452,444 @@ function dicInitEmbedModeFromUrl() {
             }
         }
 
+        // ── Vision summary builders (middle panel #dicResults) ──
+        function dicBuildTrainingSummaryHtml(d) {
+            const s = d.status;
+            const aq = d.data.action_queue;
+            const rec = d.data.record;
+            const fmtDate = v => v ? new Date(v).toLocaleDateString('en-SE') : '\u2014';
+            const badgeClass = s.overall === 'ok' ? 'approved' : 'pending';
+            const badgeLabel = s.overall === 'ok' ? 'OK' : 'NEEDS ATTENTION';
+            let html = '';
+            html += `<div class="glpCard" style="background:linear-gradient(180deg,#f2f4f8,#eceef3);border-color:#d4d9e2;">`;
+            html += `<div class="glpMicroTitle">TRAINING OVERVIEW</div>`;
+            html += `<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">`;
+            html += `<span class="dic-badge ${badgeClass}" style="font-size:10px;padding:2px 8px;">${badgeLabel}</span>`;
+            if (s.reasons.length) html += `<span style="font-size:11px;color:#6b7280;">${s.reasons.map(r => escapeHtml(r)).join(' &middot; ')}</span>`;
+            html += `</div>`;
+            html += `<div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:#4b5563;margin-bottom:8px;">`;
+            html += `<span>Last sealed: <b>${fmtDate(s.last_sealed_at)}</b></span>`;
+            html += `<span>Next expiry: <b>${fmtDate(s.next_expiry_at)}</b></span>`;
+            html += `</div>`;
+            html += `<div class="glpMiniCards" style="display:grid;grid-template-columns:repeat(3,1fr);gap:0;">`;
+            html += `<div class="glpMiniCard"><div class="glpMiniCard__title">Seal Pending</div><div class="glpMiniCard__big">${s.counts.seal_pending}</div></div>`;
+            html += `<div class="glpMiniCard"><div class="glpMiniCard__title">Cert Pending</div><div class="glpMiniCard__big">${s.counts.cert_pending}</div></div>`;
+            html += `<div class="glpMiniCard"><div class="glpMiniCard__title">Agreements Missing</div><div class="glpMiniCard__big">${s.counts.agreements_missing_or_expired}</div></div>`;
+            html += `</div></div>`;
+            html += `<div class="glpCard"><div class="glpMicroTitle">ACTION QUEUE</div>`;
+            if (aq.seal_training_packs.length) {
+                html += `<div style="margin-bottom:12px;"><div style="font-size:11px;font-weight:700;color:#4b5563;margin-bottom:6px;">Packs Pending Seal</div>`;
+                aq.seal_training_packs.forEach(p => {
+                    html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:12px;">`;
+                    html += `<span>${escapeHtml(p.title)}</span><span style="color:#6b7280;">${fmtDate(p.submitted_at)}</span></div>`;
+                });
+                html += `</div>`;
+            }
+            if (aq.certifications_pending.length) {
+                html += `<div style="margin-bottom:12px;"><div style="font-size:11px;font-weight:700;color:#4b5563;margin-bottom:6px;">Certifications Pending</div>`;
+                aq.certifications_pending.forEach(c => {
+                    html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:12px;">`;
+                    html += `<span>${escapeHtml(c.pack_title)}</span><span style="color:#6b7280;">by ${escapeHtml(c.requested_by)} &middot; ${fmtDate(c.requested_at)}</span></div>`;
+                });
+                html += `</div>`;
+            }
+            if (aq.agreements_missing_or_expired.length) {
+                html += `<div style="margin-bottom:12px;"><div style="font-size:11px;font-weight:700;color:#4b5563;margin-bottom:6px;">Agreements Missing / Expired</div>`;
+                aq.agreements_missing_or_expired.forEach(a => {
+                    html += `<div style="padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:12px;display:flex;align-items:center;gap:8px;">`;
+                    html += `<span>${escapeHtml(a.agreement_type)}</span><span class="dic-badge ${a.status === 'expired' ? 'revision' : 'pending'}">${a.status.toUpperCase()}</span></div>`;
+                });
+                html += `</div>`;
+            }
+            if (!aq.seal_training_packs.length && !aq.certifications_pending.length && !aq.agreements_missing_or_expired.length) {
+                html += `<p style="font-size:12px;color:#9ca3af;margin:0;">No pending items</p>`;
+            }
+            html += `</div>`;
+            html += `<div class="glpCard"><div class="glpMicroTitle">RECORD</div>`;
+            if (rec.sealed_training_packs.length) {
+                html += `<div style="margin-bottom:12px;"><div style="font-size:11px;font-weight:700;color:#4b5563;margin-bottom:6px;">Sealed Packs</div>`;
+                rec.sealed_training_packs.forEach(p => {
+                    html += `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:12px;">`;
+                    html += `<span>${escapeHtml(p.title)}</span><span style="color:#6b7280;">${fmtDate(p.sealed_at)} by ${escapeHtml(p.sealed_by)}</span></div>`;
+                });
+                html += `</div>`;
+            }
+            if (rec.certifications_approved.length) {
+                html += `<div style="margin-bottom:12px;"><div style="font-size:11px;font-weight:700;color:#4b5563;margin-bottom:6px;">Certifications Approved</div>`;
+                rec.certifications_approved.forEach(c => {
+                    html += `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:12px;">`;
+                    html += `<span>${escapeHtml(c.pack_title)}</span><span style="color:#6b7280;">${fmtDate(c.approved_at)} by ${escapeHtml(c.approved_by)}</span></div>`;
+                });
+                html += `</div>`;
+            }
+            if (rec.agreements_signed.length) {
+                html += `<div style="margin-bottom:12px;"><div style="font-size:11px;font-weight:700;color:#4b5563;margin-bottom:6px;">Agreements Signed</div>`;
+                rec.agreements_signed.forEach(a => {
+                    html += `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:12px;">`;
+                    html += `<span>${escapeHtml(a.agreement_type)} <span style="color:#9ca3af;">${escapeHtml(a.version)}</span></span><span style="color:#6b7280;">${fmtDate(a.signed_at)}</span></div>`;
+                });
+                html += `</div>`;
+            }
+            if (!rec.sealed_training_packs.length && !rec.certifications_approved.length && !rec.agreements_signed.length) {
+                html += `<p style="font-size:12px;color:#9ca3af;margin:0;">No records found</p>`;
+            }
+            html += `</div>`;
+            html += `<div style="text-align:right;padding:4px;"><span style="font-size:10px;color:#b0b8c4;">Generated ${fmtDate(d.generated_at)}</span></div>`;
+            return html;
+        }
+
+        function dicBuildInventorySummaryHtml(d) {
+            const s = d.status;
+            const data = d.data;
+            const fmtDate = v => v ? new Date(v).toLocaleDateString('en-SE') : '\u2014';
+            const badgeClass = s.overall === 'ok' ? 'approved' : 'pending';
+            const badgeLabel = s.overall === 'ok' ? 'OK' : 'NEEDS ATTENTION';
+            let html = '';
+            html += `<div class="glpCard" style="background:linear-gradient(180deg,#f2f4f8,#eceef3);border-color:#d4d9e2;">`;
+            html += `<div class="glpMicroTitle">INVENTORY OVERVIEW</div>`;
+            html += `<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">`;
+            html += `<span class="dic-badge ${badgeClass}" style="font-size:10px;padding:2px 8px;">${badgeLabel}</span>`;
+            if (s.reasons.length) html += `<span style="font-size:11px;color:#6b7280;">${s.reasons.map(r => escapeHtml(r)).join(' &middot; ')}</span>`;
+            html += `</div>`;
+            html += `<div style="font-size:12px;color:#4b5563;margin-bottom:8px;">Last activity: <b>${fmtDate(s.last_activity_at)}</b></div>`;
+            html += `<div class="glpMiniCards" style="display:grid;grid-template-columns:repeat(4,1fr);gap:0;">`;
+            html += `<div class="glpMiniCard"><div class="glpMiniCard__title">Assigned</div><div class="glpMiniCard__big">${s.counts.assigned}</div></div>`;
+            html += `<div class="glpMiniCard"><div class="glpMiniCard__title">Pending Online</div><div class="glpMiniCard__big">${s.counts.pending_online}</div></div>`;
+            html += `<div class="glpMiniCard"><div class="glpMiniCard__title">Pending Offline</div><div class="glpMiniCard__big">${s.counts.pending_offline}</div></div>`;
+            html += `<div class="glpMiniCard"><div class="glpMiniCard__title">Exceptions</div><div class="glpMiniCard__big">${s.counts.exceptions}</div></div>`;
+            html += `</div></div>`;
+            html += `<div class="glpCard"><div class="glpMicroTitle">ASSIGNED ITEMS</div>`;
+            if (data.assigned_items.length) {
+                data.assigned_items.forEach(item => {
+                    html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:12px;">`;
+                    html += `<div><span style="font-weight:600;">${escapeHtml(item.name)}</span> <span class="dic-badge submitted">${escapeHtml(item.category)}</span></div>`;
+                    html += `<div style="color:#6b7280;text-align:right;font-size:11px;">${escapeHtml(item.location)}${item.lot ? ' &middot; Lot: ' + escapeHtml(item.lot) : ''}${item.expiry ? ' &middot; Exp: ' + escapeHtml(item.expiry) : ''}</div></div>`;
+                });
+            } else { html += `<p style="font-size:12px;color:#9ca3af;margin:0;">No assigned items</p>`; }
+            html += `</div>`;
+            html += `<div class="glpCard"><div class="glpMicroTitle">PENDING ONLINE</div>`;
+            if (data.pending_online_items.length) {
+                data.pending_online_items.forEach(item => {
+                    html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:12px;">`;
+                    html += `<div><span>${escapeHtml(item.name)}</span> <span class="dic-badge pending">${escapeHtml(item.status)}</span></div>`;
+                    html += `<span style="color:#6b7280;">${fmtDate(item.requested_at)}</span></div>`;
+                });
+            } else { html += `<p style="font-size:12px;color:#9ca3af;margin:0;">No pending items</p>`; }
+            html += `</div>`;
+            html += `<div class="glpCard"><div class="glpMicroTitle">PENDING OFFLINE</div>`;
+            if (data.pending_offline_items.length) {
+                data.pending_offline_items.forEach(item => {
+                    html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:12px;">`;
+                    html += `<div><span>${escapeHtml(item.name)}</span> <span class="dic-badge pending">PENDING</span></div>`;
+                    html += `<span style="color:#6b7280;">${fmtDate(item.submitted_at)} by ${escapeHtml(item.submitted_by)}</span></div>`;
+                });
+            } else { html += `<p style="font-size:12px;color:#9ca3af;margin:0;">No pending items</p>`; }
+            html += `</div>`;
+            if (data.exceptions.length) {
+                html += `<div class="glpCard" style="border-color:#fcd34d;"><div class="glpMicroTitle">EXCEPTIONS</div>`;
+                data.exceptions.forEach(ex => {
+                    html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:12px;">`;
+                    html += `<span>${escapeHtml(ex.name)}</span>`;
+                    html += `<div style="display:flex;gap:4px;">${ex.missing.map(m => `<span class="dic-badge revision">${escapeHtml(m)}</span>`).join('')}</div></div>`;
+                });
+                html += `</div>`;
+            }
+            html += `<div style="text-align:right;padding:4px;"><span style="font-size:10px;color:#b0b8c4;">Generated ${fmtDate(d.generated_at)}</span></div>`;
+            return html;
+        }
+
+        // ── Researcher-tab renderers (right panel #dicVisionOverlay) ──
+        // These replicate the exact UI from upload.html Training/Inventory tabs (read-only).
+
+        function dicRenderResearcherTrainingTab(data) {
+            const pack = data.pack;
+            const agreements = data.agreements || [];
+            const entries = data.entries || [];
+            const sealedPacks = data.sealed_packs || [];
+            const documents = data.documents || [];
+            const fmtDate = v => v ? new Date(v).toLocaleDateString() : '\u2014';
+
+            let html = '<div style="padding:12px;">';
+
+            // Pack status banner (same as upload.html renderTrainingPackUI)
+            if (pack) {
+                const statusLabels = { DRAFT: 'Draft', SUBMITTED: 'Submitted \u2014 Awaiting PI Review', REVISION_NEEDED: 'Revision Needed', SEALED: 'Sealed' };
+                const statusColors = { DRAFT: '#ffc107', SUBMITTED: '#17a2b8', REVISION_NEEDED: '#dc3545', SEALED: '#28a745' };
+                html += `<div style="margin-bottom:16px;">
+                    <span style="display:inline-block;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:bold;background:${statusColors[pack.status]};color:${pack.status==='DRAFT'?'#333':'#fff'};">${statusLabels[pack.status] || pack.status}</span>
+                    <span style="font-size:12px;color:#666;margin-left:8px;">Pack v${pack.version}</span>
+                </div>`;
+                if (pack.status === 'REVISION_NEEDED' && pack.revision_comments) {
+                    html += `<div style="color:#dc3545;font-size:12px;margin-bottom:12px;">PI comment: ${escapeHtml(pack.revision_comments)}</div>`;
+                }
+            } else {
+                html += '<p style="color:#999;font-size:13px;">No training pack found for this researcher.</p>';
+            }
+
+            // Agreements section (same as upload.html renderAgreements — read-only)
+            html += '<h4 style="font-size:13px;font-weight:700;margin:16px 0 8px;">Training Documents &amp; Agreements</h4>';
+            if (documents.length === 0) {
+                html += '<p style="color:#999;font-size:13px;">No training documents available.</p>';
+            } else {
+                const confirmedDocIds = new Set(agreements.map(a => a.document_id));
+                documents.forEach(doc => {
+                    const isConfirmed = confirmedDocIds.has(doc.id);
+                    const agreement = agreements.find(a => a.document_id === doc.id);
+                    const ruleColor = doc.requirement_rule === 'Always' ? '#dc3545' : doc.requirement_rule === 'Conditional' ? '#fd7e14' : '#6c757d';
+                    const versionId = doc.version_id;
+                    html += `<div style="border:1px solid #e0e0e0;border-radius:8px;padding:12px;margin-bottom:8px;${isConfirmed ? 'background:#f0fff0;' : ''}">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                            <div>
+                                <strong style="font-size:13px;">${escapeHtml(doc.title)}</strong>
+                                <span style="font-size:11px;color:#666;margin-left:6px;">${escapeHtml(doc.category)}</span>
+                                <span style="font-size:10px;color:${ruleColor};margin-left:6px;font-weight:600;">${escapeHtml(doc.requirement_rule)}</span>
+                                ${doc.condition_note ? `<span style="font-size:10px;color:#999;margin-left:4px;">(${escapeHtml(doc.condition_note)})</span>` : ''}
+                            </div>
+                            <a href="/api/di/training/document-versions/${versionId}/view" target="_blank" style="font-size:11px;color:#2d5a87;text-decoration:none;font-weight:600;">View PDF</a>
+                        </div>`;
+                    if (isConfirmed) {
+                        html += `<div style="color:#28a745;font-size:12px;">\u2705 Confirmed by ${escapeHtml((agreement && agreement.confirmed_name) || '')} on ${fmtDate(agreement && agreement.confirmed_at)}</div>`;
+                    } else {
+                        html += `<span style="color:#dc3545;font-size:12px;">Not confirmed</span>`;
+                    }
+                    html += '</div>';
+                });
+            }
+
+            // Entries table (same as upload.html renderTrainingEntries — read-only)
+            html += '<h4 style="font-size:13px;font-weight:700;margin:16px 0 8px;">Training Entries</h4>';
+            if (entries.length === 0) {
+                html += '<p style="color:#999;font-size:13px;text-align:center;">No entries yet</p>';
+            } else {
+                html += '<table style="width:100%;border-collapse:collapse;font-size:12px;">';
+                html += '<thead><tr style="border-bottom:2px solid #e0e0e0;"><th style="text-align:left;padding:6px;">Type</th><th style="text-align:left;padding:6px;">Date</th><th style="text-align:left;padding:6px;">Supervisor</th><th style="text-align:left;padding:6px;">Status</th></tr></thead>';
+                html += '<tbody>';
+                entries.forEach(e => {
+                    const badgeColors = { PENDING: '#ffc107', CERTIFIED: '#28a745', REJECTED: '#dc3545' };
+                    const textColor = e.status === 'PENDING' ? '#333' : '#fff';
+                    const supLabel = e.certification_route === 'PI'
+                        ? `${escapeHtml(e.supervisor_name || '')} <span style="font-size:10px;color:#856404;">(PI oversight)</span>`
+                        : escapeHtml(e.supervisor_name || '');
+                    html += `<tr style="border-bottom:1px solid #f0f0f0;">
+                        <td style="padding:6px;">${escapeHtml(e.training_type)}</td>
+                        <td style="padding:6px;">${fmtDate(e.training_date)}</td>
+                        <td style="padding:6px;">${supLabel}</td>
+                        <td style="padding:6px;">
+                            <span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;background:${badgeColors[e.status] || '#999'};color:${textColor};">${e.status}</span>
+                            ${e.status === 'REJECTED' && e.rejection_comment ? `<span style="font-size:11px;color:#dc3545;margin-left:5px;">\u2014 ${escapeHtml(e.rejection_comment)}</span>` : ''}
+                        </td>
+                    </tr>`;
+                });
+                html += '</tbody></table>';
+            }
+
+            // Certificates (same as upload.html renderTrainingCertificates — read-only)
+            if (sealedPacks.length > 0) {
+                html += '<h4 style="font-size:13px;font-weight:700;margin:16px 0 8px;">Sealed Certificates</h4>';
+                sealedPacks.forEach(sp => {
+                    html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #eee;">
+                        <div>
+                            <span style="display:inline-block;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:bold;background:#28a745;color:#fff;">SEALED</span>
+                            <span style="font-size:13px;margin-left:10px;">v${sp.version} \u2014 ${fmtDate(sp.sealed_at)}</span>
+                            <span style="font-size:11px;color:#666;margin-left:10px;">${escapeHtml(sp.verification_code)}</span>
+                        </div>
+                        <a href="/api/di/training/certificate/${sp.id}" target="_blank" style="font-size:11px;color:#2d5a87;text-decoration:none;font-weight:600;">Download Certificate</a>
+                    </div>`;
+                });
+            }
+            html += '</div>';
+            return html;
+        }
+
+        function dicRenderResearcherInventoryTab(data) {
+            const purchases = data.purchase_requests || [];
+            const toReceive = data.approved_to_receive || [];
+            const myProducts = data.my_products || [];
+            const mySamples = data.my_samples || [];
+            const fmtDate = v => v ? new Date(v).toLocaleDateString() : '\u2014';
+
+            let html = '<div style="padding:12px;">';
+
+            // Purchase Requests (read-only — same layout as upload.html loadMyPurchaseRequests)
+            html += '<h4 style="font-size:13px;font-weight:700;margin:0 0 8px;">Purchase Requests</h4>';
+            if (purchases.length === 0) {
+                html += '<p style="color:#999;font-size:13px;">No purchase requests yet</p>';
+            } else {
+                const statusColors = { SUBMITTED: '#007bff', APPROVED: '#28a745', DECLINED: '#fd7e14' };
+                purchases.forEach(r => {
+                    const items = r.items || [];
+                    const itemSummary = items.map(i => i.product_name).join(', ');
+                    html += `<div style="border:1px solid #e0e0e0;border-radius:8px;padding:10px;margin-bottom:8px;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                            <span style="font-size:12px;">${fmtDate(r.created_at)} \u2014 ${items.length} item${items.length > 1 ? 's' : ''}</span>
+                            <span style="padding:2px 8px;border-radius:10px;font-size:11px;color:#fff;background:${statusColors[r.status] || '#666'};">${r.status}</span>
+                        </div>
+                        <div style="font-size:12px;color:#4b5563;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(itemSummary)}">${escapeHtml(itemSummary)}</div>
+                        <div style="font-size:12px;font-weight:600;margin-top:4px;">${Number(r.request_total).toFixed(2)} ${escapeHtml(r.currency)}</div>
+                        ${r.pi_comment ? `<div style="font-size:11px;color:#856404;margin-top:4px;">PI: ${escapeHtml(r.pi_comment)}</div>` : ''}`;
+                    if (items.length > 0) {
+                        html += '<div style="margin-top:6px;">';
+                        items.forEach(i => {
+                            const ordered = i.ordered_at ? '<span style="color:#28a745;font-size:11px;">Ordered ' + fmtDate(i.ordered_at) + '</span>' : '<span style="color:#999;font-size:11px;">Not ordered</span>';
+                            const received = i.received_at ? ' \u00b7 <span style="color:#28a745;font-size:11px;">Received ' + fmtDate(i.received_at) + '</span>' : '';
+                            const po = i.internal_order_number ? '<span style="font-size:10px;color:#0c5460;margin-left:4px;">PO: ' + escapeHtml(i.internal_order_number) + '</span>' : '';
+                            html += `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #f3f4f6;font-size:12px;">
+                                <span>${escapeHtml(i.product_name)}${po}</span>
+                                <span style="white-space:nowrap;">${i.quantity} \u00d7 ${Number(i.unit_price).toFixed(2)} \u00b7 ${ordered}${received}</span>
+                            </div>`;
+                        });
+                        html += '</div>';
+                    }
+                    html += '</div>';
+                });
+            }
+
+            // Approved Items to Receive (read-only — same as upload.html loadApprovedToReceive)
+            if (toReceive.length > 0) {
+                html += '<h4 style="font-size:13px;font-weight:700;margin:16px 0 8px;">Approved Items Awaiting Receipt</h4>';
+                html += '<table style="width:100%;border-collapse:collapse;font-size:12px;">';
+                html += '<thead><tr style="border-bottom:2px solid #e0e0e0;"><th style="text-align:left;padding:4px;">Product</th><th style="text-align:left;padding:4px;">Vendor</th><th style="text-align:left;padding:4px;">Cat. ID</th><th style="text-align:right;padding:4px;">Qty</th></tr></thead>';
+                html += '<tbody>';
+                toReceive.forEach(i => {
+                    html += `<tr style="border-bottom:1px solid #f0f0f0;">
+                        <td style="padding:4px;">${i.product_link ? '<a href="' + escapeHtml(i.product_link) + '" target="_blank" style="color:#2d5a87;">' + escapeHtml(i.product_name) + '</a>' : escapeHtml(i.product_name)}</td>
+                        <td style="padding:4px;">${escapeHtml(i.vendor_company)}</td>
+                        <td style="padding:4px;">${escapeHtml(i.catalog_id)}</td>
+                        <td style="padding:4px;text-align:right;">${i.quantity}</td>
+                    </tr>`;
+                });
+                html += '</tbody></table>';
+            }
+
+            // My Inventory — Products (read-only — same as upload.html loadMyInventoryV2('product'))
+            html += '<h4 style="font-size:13px;font-weight:700;margin:16px 0 8px;">My Inventory \u2014 Products</h4>';
+            if (myProducts.length === 0) {
+                html += '<p style="color:#999;font-size:13px;">No products in inventory</p>';
+            } else {
+                html += '<table style="width:100%;border-collapse:collapse;font-size:12px;">';
+                html += '<thead><tr style="border-bottom:2px solid #e0e0e0;"><th style="text-align:left;padding:4px;">Name</th><th style="text-align:left;padding:4px;">Vendor</th><th style="text-align:left;padding:4px;">Cat. ID</th><th style="text-align:right;padding:4px;">Qty</th><th style="padding:4px;">Unit</th><th style="padding:4px;">Temp</th><th style="padding:4px;">Location</th><th style="padding:4px;">Status</th></tr></thead>';
+                html += '<tbody>';
+                myProducts.forEach(i => {
+                    const po = (i.source === 'Online' && i.internal_order_number) ? '<br><small style="color:#0c5460;">PO: ' + escapeHtml(i.internal_order_number) + '</small>' : '';
+                    html += `<tr style="border-bottom:1px solid #f0f0f0;">
+                        <td style="padding:4px;">${i.product_link ? '<a href="' + escapeHtml(i.product_link) + '" target="_blank" style="color:#2d5a87;">' + escapeHtml(i.item_name) + '</a>' : escapeHtml(i.item_name)}${po}</td>
+                        <td style="padding:4px;">${escapeHtml(i.vendor_company || '')}</td>
+                        <td style="padding:4px;">${escapeHtml(i.item_identifier || '')}</td>
+                        <td style="padding:4px;text-align:right;">${i.quantity}</td>
+                        <td style="padding:4px;">${escapeHtml(i.quantity_unit || '')}</td>
+                        <td style="padding:4px;">${escapeHtml(i.storage_temperature || '')}</td>
+                        <td style="padding:4px;">${escapeHtml(i.storage_location || '')}</td>
+                        <td style="padding:4px;"><span class="dic-badge ${(i.status || '').toLowerCase().replace('_','')}">${escapeHtml(i.status || '')}</span>${i.status_comment ? '<br><small style="color:#856404;">' + escapeHtml(i.status_comment) + '</small>' : ''}</td>
+                    </tr>`;
+                });
+                html += '</tbody></table>';
+            }
+
+            // My Inventory — Samples (read-only — same as upload.html loadMyInventoryV2('sample'))
+            html += '<h4 style="font-size:13px;font-weight:700;margin:16px 0 8px;">My Inventory \u2014 Samples</h4>';
+            if (mySamples.length === 0) {
+                html += '<p style="color:#999;font-size:13px;">No samples in inventory</p>';
+            } else {
+                html += '<table style="width:100%;border-collapse:collapse;font-size:12px;">';
+                html += '<thead><tr style="border-bottom:2px solid #e0e0e0;"><th style="text-align:left;padding:4px;">Name</th><th style="text-align:left;padding:4px;">ID</th><th style="text-align:left;padding:4px;">Origin</th><th style="text-align:left;padding:4px;">Provider</th><th style="text-align:right;padding:4px;">Qty</th><th style="padding:4px;">Unit</th><th style="padding:4px;">Temp</th><th style="padding:4px;">Location</th><th style="padding:4px;">Status</th></tr></thead>';
+                html += '<tbody>';
+                mySamples.forEach(i => {
+                    html += `<tr style="border-bottom:1px solid #f0f0f0;">
+                        <td style="padding:4px;">${escapeHtml(i.item_name || '')}</td>
+                        <td style="padding:4px;">${escapeHtml(i.item_identifier || '')}</td>
+                        <td style="padding:4px;">${escapeHtml(i.sample_origin || '')}</td>
+                        <td style="padding:4px;">${escapeHtml(i.provider_or_collaborator || '')}</td>
+                        <td style="padding:4px;text-align:right;">${i.quantity}</td>
+                        <td style="padding:4px;">${escapeHtml(i.quantity_unit || '')}</td>
+                        <td style="padding:4px;">${escapeHtml(i.storage_temperature || '')}</td>
+                        <td style="padding:4px;">${escapeHtml(i.storage_location || '')}</td>
+                        <td style="padding:4px;"><span class="dic-badge ${(i.status || '').toLowerCase().replace('_','')}">${escapeHtml(i.status || '')}</span>${i.status_comment ? '<br><small style="color:#856404;">' + escapeHtml(i.status_comment) + '</small>' : ''}</td>
+                    </tr>`;
+                });
+                html += '</tbody></table>';
+            }
+            html += '</div>';
+            return html;
+        }
+
+        // ── Main Training/Inventory render functions ──
+        // Middle panel = vision summary (#dicResults)
+        // Right panel  = researcher tab UI (#dicVisionOverlay via dicRightPanelShow)
+
         async function glpVisionRenderTraining(selectedUser) {
+            const results = document.getElementById('dicResults');
             if (!selectedUser) {
+                if (results) results.innerHTML = '<div class="dic-empty-state"><h3>Select a researcher to view training</h3></div>';
                 dicRightPanelShow('<div class="dic-empty-state"><h3>Select a researcher to view training</h3></div>');
                 return;
             }
-            const modeAtStart = dicVisionMode; // stale-guard for async
+            const modeAtStart = dicVisionMode;
+            const userAtStart = selectedUser;
+            if (results) results.innerHTML = '<div class="dic-empty-state"><h3>Training</h3><p style="color:#6b7280;margin-top:8px;">Loading\u2026</p></div>';
             dicRightPanelShow('<div class="dic-empty-state"><h3>Training</h3><p style="color:#6b7280;margin-top:8px;">Loading\u2026</p></div>');
             try {
-                const resp = await fetch(`/api/di/vision/training/${encodeURIComponent(selectedUser)}`, { credentials: 'include' });
-                if (dicVisionMode !== modeAtStart) return; // stale – user switched mode
-                const d = await resp.json();
-                if (!d.success) {
-                    dicRightPanelShow(`<div class="glpCard" style="border-color:#f8d7da;"><div class="glpMicroTitle">ERROR</div><p style="color:#721c24;font-size:13px;margin:0;">${escapeHtml(d.message || 'Unknown error')} <span class="dic-badge revision">${escapeHtml(d.error_code || '')}</span></p></div>`);
-                    return;
+                const [summaryResp, tabResp] = await Promise.all([
+                    fetch(`/api/di/vision/training/${encodeURIComponent(selectedUser)}`, { credentials: 'include' }),
+                    fetch(`/api/di/training/pi-researcher-view/${encodeURIComponent(selectedUser)}`, { credentials: 'include' })
+                ]);
+                if (dicVisionMode !== modeAtStart || dicFilters.researcher !== userAtStart) return;
+                const [summaryData, tabData] = await Promise.all([summaryResp.json(), tabResp.json()]);
+                if (dicVisionMode !== modeAtStart || dicFilters.researcher !== userAtStart) return;
+                // Middle panel: vision summary
+                if (results) {
+                    results.innerHTML = summaryData.success
+                        ? dicBuildTrainingSummaryHtml(summaryData)
+                        : '<div class="dic-empty-state"><h3>Training summary unavailable</h3></div>';
                 }
-                const s = d.status;
-                const aq = d.data.action_queue;
-                const rec = d.data.record;
-                const fmtDate = v => v ? new Date(v).toLocaleDateString('en-SE') : '\u2014';
-                const badgeClass = s.overall === 'ok' ? 'approved' : 'pending';
-                const badgeLabel = s.overall === 'ok' ? 'OK' : 'NEEDS ATTENTION';
-
-                let html = '';
-                // Header card
-                html += `<div class="glpCard" style="background:linear-gradient(180deg,#f2f4f8,#eceef3);border-color:#d4d9e2;">`;
-                html += `<div class="glpMicroTitle">TRAINING OVERVIEW</div>`;
-                html += `<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">`;
-                html += `<span class="dic-badge ${badgeClass}" style="font-size:10px;padding:2px 8px;">${badgeLabel}</span>`;
-                if (s.reasons.length) html += `<span style="font-size:11px;color:#6b7280;">${s.reasons.map(r => escapeHtml(r)).join(' &middot; ')}</span>`;
-                html += `</div>`;
-                html += `<div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:#4b5563;margin-bottom:8px;">`;
-                html += `<span>Last sealed: <b>${fmtDate(s.last_sealed_at)}</b></span>`;
-                html += `<span>Next expiry: <b>${fmtDate(s.next_expiry_at)}</b></span>`;
-                html += `</div>`;
-                html += `<div class="glpMiniCards" style="display:grid;grid-template-columns:repeat(3,1fr);gap:0;">`;
-                html += `<div class="glpMiniCard"><div class="glpMiniCard__title">Seal Pending</div><div class="glpMiniCard__big">${s.counts.seal_pending}</div></div>`;
-                html += `<div class="glpMiniCard"><div class="glpMiniCard__title">Cert Pending</div><div class="glpMiniCard__big">${s.counts.cert_pending}</div></div>`;
-                html += `<div class="glpMiniCard"><div class="glpMiniCard__title">Agreements Missing</div><div class="glpMiniCard__big">${s.counts.agreements_missing_or_expired}</div></div>`;
-                html += `</div></div>`;
-
-                // Action queue
-                html += `<div class="glpCard"><div class="glpMicroTitle">ACTION QUEUE</div>`;
-                if (aq.seal_training_packs.length) {
-                    html += `<div style="margin-bottom:12px;"><div style="font-size:11px;font-weight:700;color:#4b5563;margin-bottom:6px;">Packs Pending Seal</div>`;
-                    aq.seal_training_packs.forEach(p => {
-                        html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:12px;">`;
-                        html += `<span>${escapeHtml(p.title)}</span><span style="color:#6b7280;">${fmtDate(p.submitted_at)}</span>`;
-                        html += `</div>`;
-                    });
-                    html += `</div>`;
+                // Right panel: researcher Training tab UI
+                if (tabData.success) {
+                    dicRightPanelShow(dicRenderResearcherTrainingTab(tabData));
+                } else {
+                    dicRightPanelShow('<div class="glpCard" style="border-color:#f8d7da;"><div class="glpMicroTitle">ERROR</div><p style="color:#721c24;font-size:13px;margin:0;">' + escapeHtml(tabData.error || 'Failed to load') + '</p></div>');
                 }
-                if (aq.certifications_pending.length) {
-                    html += `<div style="margin-bottom:12px;"><div style="font-size:11px;font-weight:700;color:#4b5563;margin-bottom:6px;">Certifications Pending</div>`;
-                    aq.certifications_pending.forEach(c => {
-                        html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:12px;">`;
-                        html += `<span>${escapeHtml(c.pack_title)}</span><span style="color:#6b7280;">by ${escapeHtml(c.requested_by)} &middot; ${fmtDate(c.requested_at)}</span>`;
-                        html += `</div>`;
-                    });
-                    html += `</div>`;
-                }
-                if (aq.agreements_missing_or_expired.length) {
-                    html += `<div style="margin-bottom:12px;"><div style="font-size:11px;font-weight:700;color:#4b5563;margin-bottom:6px;">Agreements Missing / Expired</div>`;
-                    aq.agreements_missing_or_expired.forEach(a => {
-                        html += `<div style="padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:12px;display:flex;align-items:center;gap:8px;">`;
-                        html += `<span>${escapeHtml(a.agreement_type)}</span><span class="dic-badge ${a.status === 'expired' ? 'revision' : 'pending'}">${a.status.toUpperCase()}</span>`;
-                        html += `</div>`;
-                    });
-                    html += `</div>`;
-                }
-                if (!aq.seal_training_packs.length && !aq.certifications_pending.length && !aq.agreements_missing_or_expired.length) {
-                    html += `<p style="font-size:12px;color:#9ca3af;margin:0;">No pending items</p>`;
-                }
-                html += `</div>`;
-
-                // Record
-                html += `<div class="glpCard"><div class="glpMicroTitle">RECORD</div>`;
-                if (rec.sealed_training_packs.length) {
-                    html += `<div style="margin-bottom:12px;"><div style="font-size:11px;font-weight:700;color:#4b5563;margin-bottom:6px;">Sealed Packs</div>`;
-                    rec.sealed_training_packs.forEach(p => {
-                        html += `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:12px;">`;
-                        html += `<span>${escapeHtml(p.title)}</span><span style="color:#6b7280;">${fmtDate(p.sealed_at)} by ${escapeHtml(p.sealed_by)}</span>`;
-                        html += `</div>`;
-                    });
-                    html += `</div>`;
-                }
-                if (rec.certifications_approved.length) {
-                    html += `<div style="margin-bottom:12px;"><div style="font-size:11px;font-weight:700;color:#4b5563;margin-bottom:6px;">Certifications Approved</div>`;
-                    rec.certifications_approved.forEach(c => {
-                        html += `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:12px;">`;
-                        html += `<span>${escapeHtml(c.pack_title)}</span><span style="color:#6b7280;">${fmtDate(c.approved_at)} by ${escapeHtml(c.approved_by)}</span>`;
-                        html += `</div>`;
-                    });
-                    html += `</div>`;
-                }
-                if (rec.agreements_signed.length) {
-                    html += `<div style="margin-bottom:12px;"><div style="font-size:11px;font-weight:700;color:#4b5563;margin-bottom:6px;">Agreements Signed</div>`;
-                    rec.agreements_signed.forEach(a => {
-                        html += `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:12px;">`;
-                        html += `<span>${escapeHtml(a.agreement_type)} <span style="color:#9ca3af;">${escapeHtml(a.version)}</span></span><span style="color:#6b7280;">${fmtDate(a.signed_at)}</span>`;
-                        html += `</div>`;
-                    });
-                    html += `</div>`;
-                }
-                if (!rec.sealed_training_packs.length && !rec.certifications_approved.length && !rec.agreements_signed.length) {
-                    html += `<p style="font-size:12px;color:#9ca3af;margin:0;">No records found</p>`;
-                }
-                html += `</div>`;
-
-                // Open Training button + footer
-                html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:0 4px;">`;
-                html += `<a href="${escapeHtml(d.data.links.open_training_url)}" style="font-size:12px;font-weight:600;color:#2d5a87;text-decoration:none;">Open Training \u2192</a>`;
-                html += `<span style="font-size:10px;color:#b0b8c4;">Generated ${fmtDate(d.generated_at)}</span>`;
-                html += `</div>`;
-
-                dicRightPanelShow(html);
             } catch (err) {
                 console.error('[Vision] training fetch error:', err);
+                if (dicVisionMode !== modeAtStart) return;
+                if (results) results.innerHTML = '<div class="dic-empty-state"><h3>Training summary failed</h3></div>';
                 dicRightPanelShow('<div class="glpCard" style="border-color:#f8d7da;"><div class="glpMicroTitle">ERROR</div><p style="color:#721c24;font-size:13px;margin:0;">Failed to load training data</p></div>');
             }
         }
 
         async function glpVisionRenderInventory(selectedUser) {
+            const results = document.getElementById('dicResults');
             if (!selectedUser) {
+                if (results) results.innerHTML = '<div class="dic-empty-state"><h3>Select a researcher to view inventory</h3></div>';
                 dicRightPanelShow('<div class="dic-empty-state"><h3>Select a researcher to view inventory</h3></div>');
                 return;
             }
-            const modeAtStart = dicVisionMode; // stale-guard for async
+            const modeAtStart = dicVisionMode;
+            const userAtStart = selectedUser;
+            if (results) results.innerHTML = '<div class="dic-empty-state"><h3>Inventory</h3><p style="color:#6b7280;margin-top:8px;">Loading\u2026</p></div>';
             dicRightPanelShow('<div class="dic-empty-state"><h3>Inventory</h3><p style="color:#6b7280;margin-top:8px;">Loading\u2026</p></div>');
             try {
-                const resp = await fetch(`/api/di/vision/inventory/${encodeURIComponent(selectedUser)}`, { credentials: 'include' });
-                if (dicVisionMode !== modeAtStart) return; // stale – user switched mode
-                const d = await resp.json();
-                if (!d.success) {
-                    dicRightPanelShow(`<div class="glpCard" style="border-color:#f8d7da;"><div class="glpMicroTitle">ERROR</div><p style="color:#721c24;font-size:13px;margin:0;">${escapeHtml(d.message || 'Unknown error')} <span class="dic-badge revision">${escapeHtml(d.error_code || '')}</span></p></div>`);
-                    return;
+                const [summaryResp, tabResp] = await Promise.all([
+                    fetch(`/api/di/vision/inventory/${encodeURIComponent(selectedUser)}`, { credentials: 'include' }),
+                    fetch(`/api/di/inventory-v2/pi-researcher-view/${encodeURIComponent(selectedUser)}`, { credentials: 'include' })
+                ]);
+                if (dicVisionMode !== modeAtStart || dicFilters.researcher !== userAtStart) return;
+                const [summaryData, tabData] = await Promise.all([summaryResp.json(), tabResp.json()]);
+                if (dicVisionMode !== modeAtStart || dicFilters.researcher !== userAtStart) return;
+                // Middle panel: vision summary
+                if (results) {
+                    results.innerHTML = summaryData.success
+                        ? dicBuildInventorySummaryHtml(summaryData)
+                        : '<div class="dic-empty-state"><h3>Inventory summary unavailable</h3></div>';
                 }
-                const s = d.status;
-                const data = d.data;
-                const fmtDate = v => v ? new Date(v).toLocaleDateString('en-SE') : '\u2014';
-                const badgeClass = s.overall === 'ok' ? 'approved' : 'pending';
-                const badgeLabel = s.overall === 'ok' ? 'OK' : 'NEEDS ATTENTION';
-
-                let html = '';
-                // Header card
-                html += `<div class="glpCard" style="background:linear-gradient(180deg,#f2f4f8,#eceef3);border-color:#d4d9e2;">`;
-                html += `<div class="glpMicroTitle">INVENTORY OVERVIEW</div>`;
-                html += `<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">`;
-                html += `<span class="dic-badge ${badgeClass}" style="font-size:10px;padding:2px 8px;">${badgeLabel}</span>`;
-                if (s.reasons.length) html += `<span style="font-size:11px;color:#6b7280;">${s.reasons.map(r => escapeHtml(r)).join(' &middot; ')}</span>`;
-                html += `</div>`;
-                html += `<div style="font-size:12px;color:#4b5563;margin-bottom:8px;">Last activity: <b>${fmtDate(s.last_activity_at)}</b></div>`;
-                html += `<div class="glpMiniCards" style="display:grid;grid-template-columns:repeat(4,1fr);gap:0;">`;
-                html += `<div class="glpMiniCard"><div class="glpMiniCard__title">Assigned</div><div class="glpMiniCard__big">${s.counts.assigned}</div></div>`;
-                html += `<div class="glpMiniCard"><div class="glpMiniCard__title">Pending Online</div><div class="glpMiniCard__big">${s.counts.pending_online}</div></div>`;
-                html += `<div class="glpMiniCard"><div class="glpMiniCard__title">Pending Offline</div><div class="glpMiniCard__big">${s.counts.pending_offline}</div></div>`;
-                html += `<div class="glpMiniCard"><div class="glpMiniCard__title">Exceptions</div><div class="glpMiniCard__big">${s.counts.exceptions}</div></div>`;
-                html += `</div></div>`;
-
-                // Assigned items
-                html += `<div class="glpCard"><div class="glpMicroTitle">ASSIGNED ITEMS</div>`;
-                if (data.assigned_items.length) {
-                    data.assigned_items.forEach(item => {
-                        html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:12px;">`;
-                        html += `<div><span style="font-weight:600;">${escapeHtml(item.name)}</span> <span class="dic-badge submitted">${escapeHtml(item.category)}</span></div>`;
-                        html += `<div style="color:#6b7280;text-align:right;font-size:11px;">${escapeHtml(item.location)}${item.lot ? ' &middot; Lot: ' + escapeHtml(item.lot) : ''}${item.expiry ? ' &middot; Exp: ' + escapeHtml(item.expiry) : ''}</div>`;
-                        html += `</div>`;
-                    });
+                // Right panel: researcher Inventory tab UI
+                if (tabData.success) {
+                    dicRightPanelShow(dicRenderResearcherInventoryTab(tabData));
                 } else {
-                    html += `<p style="font-size:12px;color:#9ca3af;margin:0;">No assigned items</p>`;
+                    dicRightPanelShow('<div class="glpCard" style="border-color:#f8d7da;"><div class="glpMicroTitle">ERROR</div><p style="color:#721c24;font-size:13px;margin:0;">' + escapeHtml(tabData.error || 'Failed to load') + '</p></div>');
                 }
-                html += `</div>`;
-
-                // Pending online
-                html += `<div class="glpCard"><div class="glpMicroTitle">PENDING ONLINE</div>`;
-                if (data.pending_online_items.length) {
-                    data.pending_online_items.forEach(item => {
-                        html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:12px;">`;
-                        html += `<div><span>${escapeHtml(item.name)}</span> <span class="dic-badge pending">${escapeHtml(item.status)}</span></div>`;
-                        html += `<span style="color:#6b7280;">${fmtDate(item.requested_at)}</span>`;
-                        html += `</div>`;
-                    });
-                } else {
-                    html += `<p style="font-size:12px;color:#9ca3af;margin:0;">No pending items</p>`;
-                }
-                html += `</div>`;
-
-                // Pending offline
-                html += `<div class="glpCard"><div class="glpMicroTitle">PENDING OFFLINE</div>`;
-                if (data.pending_offline_items.length) {
-                    data.pending_offline_items.forEach(item => {
-                        html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:12px;">`;
-                        html += `<div><span>${escapeHtml(item.name)}</span> <span class="dic-badge pending">PENDING</span></div>`;
-                        html += `<span style="color:#6b7280;">${fmtDate(item.submitted_at)} by ${escapeHtml(item.submitted_by)}</span>`;
-                        html += `</div>`;
-                    });
-                } else {
-                    html += `<p style="font-size:12px;color:#9ca3af;margin:0;">No pending items</p>`;
-                }
-                html += `</div>`;
-
-                // Exceptions
-                if (data.exceptions.length) {
-                    html += `<div class="glpCard" style="border-color:#fcd34d;"><div class="glpMicroTitle">EXCEPTIONS</div>`;
-                    data.exceptions.forEach(ex => {
-                        html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f3f4f6;font-size:12px;">`;
-                        html += `<span>${escapeHtml(ex.name)}</span>`;
-                        html += `<div style="display:flex;gap:4px;">${ex.missing.map(m => `<span class="dic-badge revision">${escapeHtml(m)}</span>`).join('')}</div>`;
-                        html += `</div>`;
-                    });
-                    html += `</div>`;
-                }
-
-                // Open Inventory button + footer
-                html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:0 4px;">`;
-                html += `<a href="${escapeHtml(data.links.open_inventory_url)}" style="font-size:12px;font-weight:600;color:#2d5a87;text-decoration:none;">Open Inventory \u2192</a>`;
-                html += `<span style="font-size:10px;color:#b0b8c4;">Generated ${fmtDate(d.generated_at)}</span>`;
-                html += `</div>`;
-
-                dicRightPanelShow(html);
             } catch (err) {
                 console.error('[Vision] inventory fetch error:', err);
+                if (dicVisionMode !== modeAtStart) return;
+                if (results) results.innerHTML = '<div class="dic-empty-state"><h3>Inventory summary failed</h3></div>';
                 dicRightPanelShow('<div class="glpCard" style="border-color:#f8d7da;"><div class="glpMicroTitle">ERROR</div><p style="color:#721c24;font-size:13px;margin:0;">Failed to load inventory data</p></div>');
             }
         }
