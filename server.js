@@ -8782,7 +8782,7 @@ async function validate1to1Researcher(piUser, researcherId) {
 app.post('/api/di/1to1/createDraft', requirePI, async (req, res) => {
     try {
         if (!(await check1to1Tables())) return res.status(501).json({ error: '1-to-1 tables not available' });
-        const piId = req.session.user.id;
+        const piId = req.session.user.researcher_id;
         const { researcher_id } = req.body;
         if (!researcher_id) return res.status(400).json({ error: 'researcher_id required' });
         const member = await validate1to1Researcher(req.session.user, researcher_id);
@@ -8812,7 +8812,7 @@ app.post('/api/di/1to1/createDraft', requirePI, async (req, res) => {
 app.put('/api/di/1to1/updateDraft', requirePI, async (req, res) => {
     try {
         if (!(await check1to1Tables())) return res.status(501).json({ error: '1-to-1 tables not available' });
-        const piId = req.session.user.id;
+        const piId = req.session.user.researcher_id;
         const { researcher_id, pillar_sop, pillar_data, pillar_training, pillar_inventory, actions, private_comment } = req.body;
         if (!researcher_id) return res.status(400).json({ error: 'researcher_id required' });
         const member = await validate1to1Researcher(req.session.user, researcher_id);
@@ -8851,7 +8851,7 @@ app.put('/api/di/1to1/updateDraft', requirePI, async (req, res) => {
 app.delete('/api/di/1to1/discardDraft', requirePI, async (req, res) => {
     try {
         if (!(await check1to1Tables())) return res.status(501).json({ error: '1-to-1 tables not available' });
-        const piId = req.session.user.id;
+        const piId = req.session.user.researcher_id;
         const { researcher_id } = req.body;
         if (!researcher_id) return res.status(400).json({ error: 'researcher_id required' });
         const member = await validate1to1Researcher(req.session.user, researcher_id);
@@ -8872,7 +8872,7 @@ app.post('/api/di/1to1/finalizeDraftToVersion', requirePI, async (req, res) => {
     const client = await pool.connect();
     try {
         if (!(await check1to1Tables())) { client.release(); return res.status(501).json({ error: '1-to-1 tables not available' }); }
-        const piId = req.session.user.id;
+        const piId = req.session.user.researcher_id;
         const { researcher_id } = req.body;
         if (!researcher_id) { client.release(); return res.status(400).json({ error: 'researcher_id required' }); }
         const member = await validate1to1Researcher(req.session.user, researcher_id);
@@ -8950,7 +8950,7 @@ app.post('/api/di/1to1/finalizeDraftToVersion', requirePI, async (req, res) => {
 app.get('/api/di/1to1/listMeetings/:researcherId', requirePI, async (req, res) => {
     try {
         if (!(await check1to1Tables())) return res.status(501).json({ error: '1-to-1 tables not available' });
-        const piId = req.session.user.id;
+        const piId = req.session.user.researcher_id;
         const researcherId = req.params.researcherId;
         const member = await validate1to1Researcher(req.session.user, researcherId);
         if (!member) return res.status(404).json({ error: 'Researcher not found' });
@@ -9041,7 +9041,7 @@ app.get('/api/di/1to1/getVersion/:versionId', requirePI, async (req, res) => {
 app.post('/api/di/1to1/startEditFromLatest', requirePI, async (req, res) => {
     try {
         if (!(await check1to1Tables())) return res.status(501).json({ error: '1-to-1 tables not available' });
-        const piId = req.session.user.id;
+        const piId = req.session.user.researcher_id;
         const { researcher_id } = req.body;
         if (!researcher_id) return res.status(400).json({ error: 'researcher_id required' });
         const member = await validate1to1Researcher(req.session.user, researcher_id);
