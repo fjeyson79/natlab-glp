@@ -4456,6 +4456,7 @@
                 html += `</div>`;
 
                 results.innerHTML = html;
+                dicVisionShowOverlay(html);
             } catch (err) {
                 console.error('[Vision] training fetch error:', err);
                 results.innerHTML = '<div class="glpCard" style="border-color:#f8d7da;"><div class="glpMicroTitle">ERROR</div><p style="color:#721c24;font-size:13px;margin:0;">Failed to load training data</p></div>';
@@ -4562,6 +4563,7 @@
                 html += `</div>`;
 
                 results.innerHTML = html;
+                dicVisionShowOverlay(html);
             } catch (err) {
                 console.error('[Vision] inventory fetch error:', err);
                 results.innerHTML = '<div class="glpCard" style="border-color:#f8d7da;"><div class="glpMicroTitle">ERROR</div><p style="color:#721c24;font-size:13px;margin:0;">Failed to load inventory data</p></div>';
