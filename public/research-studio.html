@@ -3235,80 +3235,6 @@
     // ── Start ──
     rsInit();
     </script>
-<script>
-(function(){
-  const dlBtn = document.getElementById("rsDownloadBtn");
-  const menu = document.getElementById("rsDownloadMenu");
-
-  function hideMenu(){
-    if (menu) menu.style.display = "none";
-  }
-
-  function toggleMenu(){
-    if (!menu) return;
-    menu.style.display = (menu.style.display === "block") ? "none" : "block";
-  }
-
-  if (dlBtn && menu){
-    dlBtn.addEventListener("click", function(e){
-      e.preventDefault();
-      e.stopPropagation();
-      toggleMenu();
-    });
-
-    menu.addEventListener("click", function(e){
-      const item = e.target.closest(".rs-download-item");
-      if (!item) return;
-
-      const format = item.getAttribute("data-format");
-      hideMenu();
-
-      function rsGetProjectId(){
-  try{
-    // Most likely locations in Research Studio
-    if (window.RS){
-      if (RS.currentProjectId) return RS.currentProjectId;
-      if (RS.currentProject && RS.currentProject.id) return RS.currentProject.id;
-      if (RS.currentProject && RS.currentProject.project_id) return RS.currentProject.project_id;
-      if (RS.selectedProjectId) return RS.selectedProjectId;
-      if (RS.projectId) return RS.projectId;
-      if (RS.activeProjectId) return RS.activeProjectId;
-    }
-
-    // Dataset fallback
-    const ds = document.body && document.body.dataset ? document.body.dataset : {};
-    if (ds.projectId) return ds.projectId;
-    if (ds.projectid) return ds.projectid;
-
-    // URL fallbacks
-    const u = new URL(window.location.href);
-    const q = u.searchParams;
-    if (q.get("projectId")) return q.get("projectId");
-    if (q.get("project_id")) return q.get("project_id");
-    if (q.get("project")) return q.get("project");
-
-    // Path fallback: /.../projects/<uuid>/...
-    const m = u.pathname.match(/\/projects\/([0-9a-fA-F-]{16,})/);
-    if (m && m[1]) return m[1];
-
-    return null;
-  } catch (e){
-    return null;
-  }
-}
-
-const pid = rsGetProjectId();
-window.open(url, "_blank");
-    });
-
-    document.addEventListener("click", hideMenu);
-    document.addEventListener("keydown", function(e){
-      if (e.key === "Escape") hideMenu();
-    });
-  }
-})();
-</script>
-
 <!-- RS_EXPORT_LIBS_V1 -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/docx/8.5.0/docx.umd.min.js"></script>
@@ -3317,19 +3243,6 @@ window.open(url, "_blank");
 <script>
 /* RS_DOWNLOAD_GENERATE_V1 */
 (function(){
-  function getPid(){
-    try{
-      if (typeof window.rsGetProjectId === "function"){
-        const pid = window.rsGetProjectId();
-        if (pid) return pid;
-      }
-      if (window.RS && RS.currentProjectId) return RS.currentProjectId;
-      return null;
-    } catch(e){
-      return null;
-    }
-  }
-
   function safeName(s){
     return String(s || "project")
       .replace(/[^\w\(\)\[\]\.\s-]+/g, "")
@@ -3338,8 +3251,8 @@ window.open(url, "_blank");
       .slice(0, 80) || "project";
   }
 
-  async function fetchExportJson(pid){
-    const resp = await fetch(`/api/di/studio/projects/${encodeURIComponent(pid)}/export?format=json`, { credentials: "include" });
+  async function fetchExportJson(){
+    const resp = await fetch(`/api/di/studio/projects/${RS.currentProjectId}/export?format=json`, { credentials: "include" });
     if (!resp.ok){
       const t = await resp.text().catch(()=> "");
       throw new Error(`Export JSON failed (${resp.status}): ${t.slice(0,200)}`);
@@ -3379,12 +3292,12 @@ window.open(url, "_blank");
     return { title: String(title), sections: norm };
   }
 
-  async function downloadDocx(pid){
+  async function downloadDocx(){
     if (!window.docx || !window.saveAs){
       alert("DOCX export library missing.");
       return;
     }
-    const j = await fetchExportJson(pid);
+    const j = await fetchExportJson();
     const { title, sections } = extractTextParts(j);
 
     const { Document, Packer, Paragraph, HeadingLevel, TextRun } = window.docx;
@@ -3407,12 +3320,12 @@ window.open(url, "_blank");
     window.saveAs(blob, safeName(title) + ".docx");
   }
 
-  async function downloadPdf(pid){
+  async function downloadPdf(){
     if (!window.jspdf || !window.saveAs){
       alert("PDF export library missing.");
       return;
     }
-    const j = await fetchExportJson(pid);
+    const j = await fetchExportJson();
     const { title, sections } = extractTextParts(j);
 
     const { jsPDF } = window.jspdf;
@@ -3483,15 +3396,14 @@ window.open(url, "_blank");
       const format = (item.getAttribute("data-format") || "pdf").toLowerCase();
       hide();
 
-      const pid = getPid();
-      if (!pid){
+      if (!RS.currentProjectId){
         alert("No project selected.");
         return;
       }
 
       try{
-        if (format === "docx") await downloadDocx(pid);
-        else await downloadPdf(pid);
+        if (format === "docx") await downloadDocx();
+        else await downloadPdf();
       } catch(err){
         console.error(err);
         alert("Download failed. Check console.");
