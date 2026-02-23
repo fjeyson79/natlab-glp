@@ -2719,8 +2719,8 @@ app.get('/api/di/directory', requirePI, async (req, res) => {
 
         // Get all submissions
         const submissionsResult = await pool.query(
-            `SELECT s.submission_id, s.researcher_id, s.affiliation, s.file_type,
-                    s.original_filename, s.status, s.created_at, s.drive_file_id,
+            `SELECT s.submission_id, s.researcher_id, s.affiliation, s.file_type AS context_type,
+                    s.original_filename AS filename, s.status, s.created_at, s.drive_file_id,
                     EXTRACT(YEAR FROM s.created_at) as year
              FROM di_submissions s
              WHERE s.status != 'DISCARDED'
@@ -3183,7 +3183,7 @@ app.get('/api/di/pending-approvals', requirePI, async (req, res) => {
             ? ', s.record_origin, s.original_created_at'
             : ', NULL as record_origin, NULL as original_created_at';
         const result = await pool.query(
-            `SELECT s.submission_id, s.researcher_id, s.original_filename, s.file_type,
+            `SELECT s.submission_id, s.researcher_id, s.original_filename AS filename, s.file_type AS context_type,
                     s.status, s.created_at, s.ai_review,
                     a.name as researcher_name
                     ${legacyCols}
@@ -3210,7 +3210,7 @@ app.get('/api/di/pending-approvals', requirePI, async (req, res) => {
 app.get('/api/di/lab-files', requirePI, async (req, res) => {
     try {
         const result = await pool.query(
-            `SELECT s.submission_id, s.researcher_id, s.original_filename, s.file_type,
+            `SELECT s.submission_id, s.researcher_id, s.original_filename AS filename, s.file_type AS context_type,
                     s.status, s.created_at, s.signed_at, s.drive_file_id,
                     COALESCE(s.drive_file_id, s.signed_pdf_path) as r2_object_key,
                     a.name as researcher_name
@@ -3258,7 +3258,7 @@ app.get('/api/di/lab-files-enriched', requirePI, async (req, res) => {
         const whereClause = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
 
         const query = hasAssoc
-            ? `SELECT s.submission_id, s.researcher_id, s.original_filename, s.file_type,
+            ? `SELECT s.submission_id, s.researcher_id, s.original_filename AS filename, s.file_type AS context_type,
                       s.status, s.created_at, s.signed_at, s.ai_review,
                       s.pi_dragon_seal,
                       COALESCE(s.drive_file_id, s.signed_pdf_path) as r2_object_key,
@@ -3276,7 +3276,7 @@ app.get('/api/di/lab-files-enriched', requirePI, async (req, res) => {
                           ON s.submission_id = pres_c.source_id
                ${whereClause}
                ORDER BY s.created_at DESC`
-            : `SELECT s.submission_id, s.researcher_id, s.original_filename, s.file_type,
+            : `SELECT s.submission_id, s.researcher_id, s.original_filename AS filename, s.file_type AS context_type,
                       s.status, s.created_at, s.signed_at, s.ai_review,
                       s.pi_dragon_seal,
                       COALESCE(s.drive_file_id, s.signed_pdf_path) as r2_object_key,
@@ -3339,7 +3339,7 @@ app.get('/api/di/file-associations/:id', requirePI, async (req, res) => {
             const delFilter = hasVC ? ' AND fa.deleted_at IS NULL' : '';
             const manualResult = await pool.query(`
                 SELECT fa.id, fa.target_id, fa.link_type, fa.created_at,
-                       s.original_filename, s.status, s.created_at as file_created_at,
+                       s.original_filename AS filename, s.status, s.created_at as file_created_at,
                        a.name as researcher_name
                 FROM di_file_associations fa
                 JOIN di_submissions s ON fa.target_id = s.submission_id
@@ -3398,7 +3398,7 @@ app.get('/api/di/file-associations/:id', requirePI, async (req, res) => {
             ? `AND NOT EXISTS (SELECT 1 FROM di_file_associations fa WHERE fa.source_id = $2 AND fa.target_id = s.submission_id AND fa.link_type = 'SOP'${delExcl})`
             : '';
         const sopResult = await pool.query(`
-            SELECT s.submission_id, s.researcher_id, s.original_filename, s.status, s.created_at
+            SELECT s.submission_id, s.researcher_id, s.original_filename AS filename, s.status, s.created_at
             FROM di_submissions s
             WHERE s.file_type = 'SOP' AND s.researcher_id = $1 AND s.submission_id != $2 AND s.status != 'DISCARDED'
             ${sopExclusion}
@@ -3412,7 +3412,7 @@ app.get('/api/di/file-associations/:id', requirePI, async (req, res) => {
             ? `AND NOT EXISTS (SELECT 1 FROM di_file_associations fa WHERE fa.source_id = $2 AND fa.target_id = s.submission_id AND fa.link_type = 'PRESENTATION'${delExcl})`
             : '';
         const presResult = await pool.query(`
-            SELECT s.submission_id, s.researcher_id, s.original_filename, s.status, s.created_at
+            SELECT s.submission_id, s.researcher_id, s.original_filename AS filename, s.status, s.created_at
             FROM di_submissions s
             WHERE s.file_type = 'PRESENTATION' AND s.researcher_id = $1 AND s.submission_id != $2 AND s.status != 'DISCARDED'
             ${presExclusion}
@@ -3531,7 +3531,7 @@ app.get('/api/di/vision/files', requireAuth, async (req, res) => {
         const presCountCol = hasAssoc ? ', COALESCE(pres_c.cnt, 0)::int as linked_pres_count' : ', 0 as linked_pres_count';
 
         const result = await pool.query(`
-            SELECT s.submission_id, s.researcher_id, s.original_filename, s.file_type,
+            SELECT s.submission_id, s.researcher_id, s.original_filename AS filename, s.file_type AS context_type,
                    s.status, s.created_at, s.signed_at,
                    COALESCE(s.drive_file_id, s.signed_pdf_path) as r2_object_key,
                    a.name as researcher_name, a.affiliation
@@ -3583,7 +3583,7 @@ app.get('/api/di/vision/associations/:fileId', requireAuth, async (req, res) => 
             const manualResult = await pool.query(`
                 SELECT fa.id, fa.target_id, fa.link_type, fa.created_at, fa.created_by
                        ${roleCol},
-                       s.original_filename, s.status, s.created_at as file_created_at,
+                       s.original_filename AS filename, s.status, s.created_at as file_created_at,
                        al.name as researcher_name
                 FROM di_file_associations fa
                 JOIN di_submissions s ON fa.target_id = s.submission_id
@@ -3631,7 +3631,7 @@ app.get('/api/di/vision/associations/:fileId', requireAuth, async (req, res) => 
         let heuristic_sops = [];
         const sopExcl = deletedExclusion.replace(/%%TYPE%%/g, 'SOP');
         const sopResult = await pool.query(`
-            SELECT s.submission_id, s.researcher_id, s.original_filename, s.status, s.created_at
+            SELECT s.submission_id, s.researcher_id, s.original_filename AS filename, s.status, s.created_at
             FROM di_submissions s
             WHERE s.file_type = 'SOP' AND s.researcher_id = $1 AND s.submission_id != $2 AND s.status != 'DISCARDED'
             ${sopExcl}
@@ -3642,7 +3642,7 @@ app.get('/api/di/vision/associations/:fileId', requireAuth, async (req, res) => 
         let heuristic_presentations = [];
         const presExcl = deletedExclusion.replace(/%%TYPE%%/g, 'PRESENTATION');
         const presResult = await pool.query(`
-            SELECT s.submission_id, s.researcher_id, s.original_filename, s.status, s.created_at
+            SELECT s.submission_id, s.researcher_id, s.original_filename AS filename, s.status, s.created_at
             FROM di_submissions s
             WHERE s.file_type = 'PRESENTATION' AND s.researcher_id = $1 AND s.submission_id != $2 AND s.status != 'DISCARDED'
             ${presExcl}
@@ -4178,7 +4178,7 @@ app.get('/api/di/reports/export', requirePI, async (req, res) => {
         const { from, to, status, format } = req.query;
 
         let query = `
-            SELECT s.submission_id, s.researcher_id, s.original_filename, s.file_type,
+            SELECT s.submission_id, s.researcher_id, s.original_filename AS filename, s.file_type AS context_type,
                    s.status, s.created_at, s.signed_at, s.signer_name,
                    s.verification_code, s.revision_comments,
                    a.name as researcher_name, a.affiliation
@@ -5348,7 +5348,7 @@ app.post('/api/di/inventory/upload', requireAuth, requireInternal, inventoryUplo
 app.get('/api/di/inventory/import/pending', requirePI, async (req, res) => {
     try {
         const result = await pool.query(
-            `SELECT s.submission_id, s.researcher_id, s.original_filename, s.affiliation,
+            `SELECT s.submission_id, s.researcher_id, s.original_filename AS filename, s.affiliation,
                     s.status, s.created_at, s.revision_comments,
                     a.name as researcher_name
              FROM di_submissions s
@@ -9605,13 +9605,13 @@ app.get('/api/di/glp-status/coherence', requireAuth, async (req, res) => {
         const qSubs = pool.query(`
             WITH b AS (SELECT ${boundsCTE})
             SELECT
-                s.file_type,
+                s.file_type AS context_type,
                 COUNT(*) FILTER (WHERE s.created_at >= b.tw_start)::int AS this_week,
                 COUNT(*) FILTER (WHERE s.created_at >= b.pw_start AND s.created_at < b.tw_start)::int AS prev_week,
                 COUNT(*) FILTER (WHERE s.status = 'APPROVED')::int AS approved_total
             FROM di_submissions s, b
             WHERE s.researcher_id = $1 AND s.status != 'DISCARDED'
-            GROUP BY s.file_type, b.tw_start, b.pw_start
+            GROUP BY s.file_type AS context_type, b.tw_start, b.pw_start
         `, [rid]);
 
         // B: Inventory activity (items created + log actions)
@@ -12371,40 +12371,40 @@ app.get('/api/di/studio/projects/:id/evidence/search', requireAuth, async (req, 
         let query, params;
         if (type && q) {
             query = `
-                SELECT s.submission_id AS id, s.filename, s.context_type, s.status, s.created_at,
+                SELECT s.submission_id AS id, s.original_filename AS filename, s.file_type AS context_type, s.status, s.created_at,
                        a.name AS researcher_name
                 FROM di_submissions s
                 LEFT JOIN di_allowlist a ON a.researcher_id = s.researcher_id
                 WHERE s.affiliation = $1
                   AND s.status IN ('APPROVED', 'PENDING')
-                  AND s.context_type = $2
-                  AND s.filename ILIKE '%' || $3 || '%'
+                  AND s.file_type = $2
+                  AND s.original_filename ILIKE '%' || $3 || '%'
                 ORDER BY s.created_at DESC
                 LIMIT 25
             `;
             params = [access.project.affiliation, type, q];
         } else if (type) {
             query = `
-                SELECT s.submission_id AS id, s.filename, s.context_type, s.status, s.created_at,
+                SELECT s.submission_id AS id, s.original_filename AS filename, s.file_type AS context_type, s.status, s.created_at,
                        a.name AS researcher_name
                 FROM di_submissions s
                 LEFT JOIN di_allowlist a ON a.researcher_id = s.researcher_id
                 WHERE s.affiliation = $1
                   AND s.status IN ('APPROVED', 'PENDING')
-                  AND s.context_type = $2
+                  AND s.file_type = $2
                 ORDER BY s.created_at DESC
                 LIMIT 25
             `;
             params = [access.project.affiliation, type];
         } else {
             query = `
-                SELECT s.submission_id AS id, s.filename, s.context_type, s.status, s.created_at,
+                SELECT s.submission_id AS id, s.original_filename AS filename, s.file_type AS context_type, s.status, s.created_at,
                        a.name AS researcher_name
                 FROM di_submissions s
                 LEFT JOIN di_allowlist a ON a.researcher_id = s.researcher_id
                 WHERE s.affiliation = $1
                   AND s.status IN ('APPROVED', 'PENDING')
-                  AND s.filename ILIKE '%' || $2 || '%'
+                  AND s.original_filename ILIKE '%' || $2 || '%'
                 ORDER BY s.created_at DESC
                 LIMIT 25
             `;
