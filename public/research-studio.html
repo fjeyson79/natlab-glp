@@ -1703,6 +1703,7 @@
                 RS.editing = true;
                 rsRenderLockBar();
                 rsRenderSections();
+                rsRenderFiguresShelf();
                 // Start silent lock renew (every 10 min for 15 min lock) and expiry watch
                 RS.lockRenewInterval = setInterval(rsRenewLock, 10 * 60 * 1000);
                 rsStartExpiryWatch();
@@ -1736,6 +1737,7 @@
         }
         RS.lock = null;
         RS.editing = false;
+        rsRenderFiguresShelf();
         // Reload to get fresh data
         await rsOpenProject(RS.currentProjectId);
     }
