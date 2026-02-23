@@ -2015,6 +2015,32 @@
         }
         .gd-label{ line-height: 1.2; }
 
+        /* 1-to-1 Scientific Progress */
+        .oto-section-title { font-size:14px; font-weight:600; margin:0 0 2px; color:#111827; letter-spacing:-0.01em; }
+        .oto-section-subtitle { font-size:11px; color:#9ca3af; margin:0 0 10px; font-weight:400; }
+        .oto-profile-pill { display:inline-block; font-size:10px; font-weight:600; padding:2px 8px; border-radius:10px; letter-spacing:0.02em; }
+        .oto-profile-pill.junior { background:#dbeafe; color:#1e40af; }
+        .oto-profile-pill.senior { background:#fce7f3; color:#9d174d; }
+        .oto-sci-card { border:1px solid #e5e7eb; border-radius:8px; padding:10px; margin-bottom:8px; }
+        .oto-sci-card-title { font-size:12px; font-weight:700; color:#374151; margin-bottom:6px; }
+        .oto-sci-field { margin-bottom:6px; }
+        .oto-sci-field label { display:block; font-size:11px; color:#6b7280; margin-bottom:2px; }
+        .oto-sci-field select, .oto-sci-field input[type="text"] { display:block; width:100%; padding:4px 6px; border:1px solid #d1d5db; border-radius:4px; font-size:12px; box-sizing:border-box; }
+        .oto-sci-field textarea { display:block; width:100%; padding:4px 6px; border:1px solid #d1d5db; border-radius:4px; font-size:12px; box-sizing:border-box; min-height:36px; resize:vertical; }
+        .oto-sci-row { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+        .oto-sci-row3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; }
+        .oto-history-icon { cursor:pointer; font-size:14px; margin-left:6px; opacity:0.45; transition:opacity 0.15s; vertical-align:middle; }
+        .oto-history-icon:hover { opacity:1; }
+        .oto-history-overlay { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.3); z-index:9998; display:flex; align-items:center; justify-content:center; }
+        .oto-history-modal { background:#fff; border-radius:12px; box-shadow:0 8px 30px rgba(0,0,0,0.18); max-width:440px; width:90%; max-height:70vh; overflow-y:auto; padding:20px; position:relative; }
+        .oto-history-modal-close { position:absolute; top:10px; right:14px; border:none; background:none; font-size:18px; cursor:pointer; color:#6b7280; }
+        .oto-history-modal h4 { font-size:14px; font-weight:600; margin:0 0 12px; }
+        .oto-preview-section { margin-bottom:14px; }
+        .oto-preview-section-title { font-size:13px; font-weight:600; color:#111827; margin-bottom:6px; display:flex; align-items:center; }
+        .oto-preview-kv { font-size:12px; color:#4b5563; margin:2px 0; }
+        .oto-preview-kv strong { color:#374151; }
+        .oto-senior-project { border:1px solid #e5e7eb; border-radius:6px; padding:6px 8px; margin-bottom:4px; background:#fafbfc; }
+
 </style>
 </head>
 <body>
@@ -4929,6 +4955,12 @@ function dicInitEmbedModeFromUrl() {
                 const versions = data.versions || [];
                 const researcherName = (data.researcher && data.researcher.name) ? data.researcher.name : selectedUser;
 
+                // Store role info for scientific profile default
+                if (data.researcher && data.researcher.role) {
+                    if (!dicResearcherMetrics[selectedUser]) dicResearcherMetrics[selectedUser] = {};
+                    dicResearcherMetrics[selectedUser].role = data.researcher.role;
+                }
+
                 // --- Middle panel ---
                 let mid = '';
                 // Sticky draft banner
@@ -5039,6 +5071,9 @@ function dicInitEmbedModeFromUrl() {
                 + '<div style="font-size:10px;color:#9ca3af;margin-top:2px;">This comment is never visible to researchers.</div>'
                 + '</div>';
 
+            // Scientific Progress section
+            html += dicBuildScientificFormHtml(draft);
+
             html += '</div>';
             return html;
         }
@@ -5070,6 +5105,255 @@ function dicInitEmbedModeFromUrl() {
             container.insertAdjacentHTML('beforeend', oneToOneActionRowHtml(idx, {}));
         }
 
+        // --- Scientific Progress form builder ---
+        function _sciSelect(name, opts, selected, extra) {
+            let h = '<select data-sci="' + name + '" onchange="oneToOneAutoSave()" style="display:block;width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;box-sizing:border-box;"' + (extra || '') + '>';
+            opts.forEach(o => { h += '<option value="' + escapeHtml(o) + '"' + (selected === o ? ' selected' : '') + '>' + escapeHtml(o) + '</option>'; });
+            h += '</select>';
+            return h;
+        }
+        function _sciText(name, val, placeholder) {
+            return '<input type="text" data-sci="' + name + '" value="' + escapeHtml(val || '').replace(/"/g, '&quot;') + '" onchange="oneToOneAutoSave()" placeholder="' + escapeHtml(placeholder || '') + '" style="display:block;width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;box-sizing:border-box;" />';
+        }
+
+        function dicBuildScientificFormHtml(draft) {
+            const sci = draft.scientific_json || {};
+            const researcherId = dicFilters.researcher || '';
+            const member = dicResearcherMetrics[researcherId] || {};
+            const defaultProfile = (member.role === 'supervisor' || (draft.scientific_json && draft.scientific_json.profile === 'senior')) ? 'senior' : 'junior';
+            const profile = sci.profile || defaultProfile;
+            const jr = sci.junior || {};
+            const sr = sci.senior || {};
+
+            let h = '<div id="oneToOneSciArea" style="border-top:2px solid #e5e7eb;padding-top:12px;margin-top:4px;">';
+            h += '<div class="oto-section-title">Scientific Progress</div>';
+            h += '<div class="oto-section-subtitle">Trajectory and development</div>';
+
+            // Profile selector
+            h += '<div class="oto-sci-card">';
+            h += '<div class="oto-sci-card-title">Scientific Profile</div>';
+            h += '<div class="oto-sci-field"><label>Profile</label>';
+            h += '<select data-sci="profile" onchange="oneToOneSciProfileChanged()" style="display:block;width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;box-sizing:border-box;">';
+            h += '<option value="junior"' + (profile === 'junior' ? ' selected' : '') + '>Junior</option>';
+            h += '<option value="senior"' + (profile === 'senior' ? ' selected' : '') + '>Senior</option>';
+            h += '</select></div>';
+            h += '<div class="oto-sci-field"><label>Biggest current bottleneck</label>';
+            h += _sciText('bottleneck', sci.bottleneck, 'Main obstacle or blocker');
+            h += '</div></div>';
+
+            // Junior fields
+            h += '<div id="otoSciJunior" style="' + (profile === 'junior' ? '' : 'display:none;') + '">';
+            h += _buildJuniorFormHtml(jr);
+            h += '</div>';
+
+            // Senior fields
+            h += '<div id="otoSciSenior" style="' + (profile === 'senior' ? '' : 'display:none;') + '">';
+            h += _buildSeniorFormHtml(sr);
+            h += '</div>';
+
+            h += '</div>';
+            return h;
+        }
+
+        function oneToOneSciProfileChanged() {
+            const sel = document.querySelector('[data-sci="profile"]');
+            if (!sel) return;
+            const p = sel.value;
+            const jDiv = document.getElementById('otoSciJunior');
+            const sDiv = document.getElementById('otoSciSenior');
+            if (jDiv) jDiv.style.display = (p === 'junior') ? '' : 'none';
+            if (sDiv) sDiv.style.display = (p === 'senior') ? '' : 'none';
+            oneToOneAutoSave();
+        }
+
+        function _buildJuniorFormHtml(jr) {
+            const indLevels = ['Dependent execution','Assisted design','Semi independent','Independent design','Fully independent project owner'];
+            const progOpts = ['Improving','Stable','Regressing'];
+            const stageOpts = ['Idea','Setup','Data generation','Analysis','Writing','Too early to define'];
+            const pubOpts = ['Independent paper','Part of larger manuscript','Too early to identify','Exploratory'];
+            const qualOpts = ['Strong','Adequate','Needs focus'];
+            const devOpts = ['Improving','Stable','Needs focus'];
+            const motOpts = ['High','Stable','Fluctuating','Low'];
+            const stressOpts = ['Manageable','Elevated','Concerning'];
+            let h = '';
+
+            // 1. Project Independence
+            h += '<div class="oto-sci-card"><div class="oto-sci-card-title">1. Project Independence</div>';
+            h += '<div class="oto-sci-row"><div class="oto-sci-field"><label>Level</label>' + _sciSelect('jr_ind_level', indLevels, jr.ind_level || '') + '</div>';
+            h += '<div class="oto-sci-field"><label>Progression</label>' + _sciSelect('jr_ind_prog', progOpts, jr.ind_prog || '') + '</div></div>';
+            h += '<div class="oto-sci-field"><label>Comment</label>' + _sciText('jr_ind_comment', jr.ind_comment, '') + '</div></div>';
+
+            // 2. Project Stage
+            h += '<div class="oto-sci-card"><div class="oto-sci-card-title">2. Project Stage</div>';
+            h += '<div class="oto-sci-row"><div class="oto-sci-field"><label>Stage</label>' + _sciSelect('jr_stage', stageOpts, jr.stage || '') + '</div>';
+            h += '<div class="oto-sci-field"><label>Publication perspective</label>' + _sciSelect('jr_pub', pubOpts, jr.pub || '') + '</div></div>';
+            h += '<div class="oto-sci-field"><label>Milestone since last meeting</label>' + _sciText('jr_milestone', jr.milestone, '') + '</div></div>';
+
+            // 3. Experimental Quality
+            h += '<div class="oto-sci-card"><div class="oto-sci-card-title">3. Experimental Quality</div>';
+            ['exp_design','data_quality','interp_depth'].forEach((k, i) => {
+                const labels = ['Experimental design','Data quality','Interpretation depth'];
+                h += '<div class="oto-sci-row" style="margin-bottom:4px;"><div class="oto-sci-field"><label>' + labels[i] + '</label>' + _sciSelect('jr_' + k, qualOpts, jr[k] || '') + '</div>';
+                h += '<div class="oto-sci-field"><label>Comment</label>' + _sciText('jr_' + k + '_c', jr[k + '_c'], '') + '</div></div>';
+            });
+            h += '</div>';
+
+            // 4. Educational Development
+            h += '<div class="oto-sci-card"><div class="oto-sci-card-title">4. Educational Development</div>';
+            h += '<div class="oto-sci-row3">';
+            h += '<div class="oto-sci-field"><label>Literature integration</label>' + _sciSelect('jr_lit', devOpts, jr.lit || '') + '</div>';
+            h += '<div class="oto-sci-field"><label>Methodological skill</label>' + _sciSelect('jr_method', devOpts, jr.method || '') + '</div>';
+            h += '<div class="oto-sci-field"><label>Scientific independence</label>' + _sciSelect('jr_sci_ind', devOpts, jr.sci_ind || '') + '</div>';
+            h += '</div></div>';
+
+            // 5. Emotional and Motivation Snapshot
+            h += '<div class="oto-sci-card"><div class="oto-sci-card-title">5. Emotional and Motivation Snapshot</div>';
+            h += '<div class="oto-sci-row"><div class="oto-sci-field"><label>Motivation</label>' + _sciSelect('jr_motivation', motOpts, jr.motivation || '') + '</div>';
+            h += '<div class="oto-sci-field"><label>Stress</label>' + _sciSelect('jr_stress', stressOpts, jr.stress || '') + '</div></div>';
+            h += '<div class="oto-sci-field"><label>Comment (optional)</label>' + _sciText('jr_emo_comment', jr.emo_comment, '') + '</div></div>';
+
+            // 6. 4 Week Scientific Objective
+            h += '<div class="oto-sci-card"><div class="oto-sci-card-title">6. Four Week Scientific Objective</div>';
+            h += '<div class="oto-sci-field"><label>Main risk</label>' + _sciText('jr_risk', jr.risk, '') + '</div>';
+            h += '<div class="oto-sci-field"><label>Next key experiment</label>' + _sciText('jr_next_exp', jr.next_exp, '') + '</div>';
+            h += '<div class="oto-sci-field"><label>Four week milestone</label>' + _sciText('jr_4w_milestone', jr.four_w_milestone, '') + '</div></div>';
+
+            return h;
+        }
+
+        function _buildSeniorFormHtml(sr) {
+            const stageOpts = ['Idea','Setup','Data generation','Analysis','Writing','Too early to define'];
+            const qualOpts = ['Strong','Adequate','Needs focus'];
+            const innovOpts = ['Incremental','Competitive','High novelty'];
+            const compOpts = ['Behind field','Aligned','Leading'];
+            const msOpts = ['Not started','Figures in progress','Draft in preparation','Submitted','Revision'];
+            const tierOpts = ['Field specific','Strong mid tier','High impact','Undecided'];
+            const riskOpts = ['Low','Moderate','High'];
+            const fundOpts = ['Fully covered','Partially covered','Risk of gap'];
+            const grantOpts = ['Preparing','Submitted','Revision','None'];
+            const alignOpts = ['Strongly aligned','Partially aligned','Weak alignment'];
+            const supOpts = ['Strong','Adequate','Needs improvement'];
+            const delOpts = ['Effective','Improving','Weak'];
+            const cultureOpts = ['Positive','Neutral','Disruptive'];
+            let h = '';
+
+            // A. Multi Project Overview
+            h += '<div class="oto-sci-card"><div class="oto-sci-card-title">A. Multi Project Overview</div>';
+            const mode = sr.project_mode || 'single';
+            h += '<div class="oto-sci-field"><label>Mode</label>';
+            h += '<select data-sci="sr_project_mode" onchange="otoSeniorProjectModeChanged();oneToOneAutoSave()" style="display:block;width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;box-sizing:border-box;">';
+            h += '<option value="single"' + (mode === 'single' ? ' selected' : '') + '>Single project focus</option>';
+            h += '<option value="multiple"' + (mode === 'multiple' ? ' selected' : '') + '>Multiple project mode</option>';
+            h += '</select></div>';
+            const projects = sr.projects || [{ name: '', stage: '' }];
+            h += '<div id="otoSeniorProjects" style="' + (mode === 'multiple' ? '' : 'display:none;') + '">';
+            for (let i = 0; i < 3; i++) {
+                const p = projects[i] || {};
+                h += '<div class="oto-sci-row" style="margin-bottom:4px;">';
+                h += '<div class="oto-sci-field"><label>Project ' + String.fromCharCode(65 + i) + '</label>' + _sciText('sr_proj_' + i + '_name', p.name, 'Name') + '</div>';
+                h += '<div class="oto-sci-field"><label>Stage</label>' + _sciSelect('sr_proj_' + i + '_stage', [''].concat(stageOpts), p.stage || '') + '</div></div>';
+            }
+            h += '<div class="oto-sci-field"><label>Deep dive project</label>';
+            h += '<select data-sci="sr_deep_dive" onchange="oneToOneAutoSave()" style="display:block;width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;box-sizing:border-box;">';
+            h += '<option value="">None</option><option value="A"' + (sr.deep_dive === 'A' ? ' selected' : '') + '>A</option><option value="B"' + (sr.deep_dive === 'B' ? ' selected' : '') + '>B</option><option value="C"' + (sr.deep_dive === 'C' ? ' selected' : '') + '>C</option></select></div>';
+            h += '</div></div>';
+
+            // B. Scientific Quality and Innovation
+            h += '<div class="oto-sci-card"><div class="oto-sci-card-title">B. Scientific Quality and Innovation</div>';
+            ['exp_design','data_quality','interp_depth'].forEach((k, i) => {
+                const labels = ['Experimental design','Data quality','Interpretation depth'];
+                h += '<div class="oto-sci-row" style="margin-bottom:4px;"><div class="oto-sci-field"><label>' + labels[i] + '</label>' + _sciSelect('sr_' + k, qualOpts, sr[k] || '') + '</div>';
+                h += '<div class="oto-sci-field"><label>Comment</label>' + _sciText('sr_' + k + '_c', sr[k + '_c'], '') + '</div></div>';
+            });
+            h += '<div class="oto-sci-row"><div class="oto-sci-field"><label>Innovation level</label>' + _sciSelect('sr_innovation', innovOpts, sr.innovation || '') + '</div>';
+            h += '<div class="oto-sci-field"><label>Competitive positioning</label>' + _sciSelect('sr_competitive', compOpts, sr.competitive || '') + '</div></div></div>';
+
+            // C. Publication Trajectory
+            h += '<div class="oto-sci-card"><div class="oto-sci-card-title">C. Publication Trajectory</div>';
+            h += '<div class="oto-sci-row3">';
+            h += '<div class="oto-sci-field"><label>Manuscript status</label>' + _sciSelect('sr_manuscript', msOpts, sr.manuscript || '') + '</div>';
+            h += '<div class="oto-sci-field"><label>Target journal tier</label>' + _sciSelect('sr_journal_tier', tierOpts, sr.journal_tier || '') + '</div>';
+            h += '<div class="oto-sci-field"><label>Risk of delay</label>' + _sciSelect('sr_delay_risk', riskOpts, sr.delay_risk || '') + '</div>';
+            h += '</div></div>';
+
+            // D. Funding and Strategic Alignment
+            h += '<div class="oto-sci-card"><div class="oto-sci-card-title">D. Funding and Strategic Alignment</div>';
+            h += '<div class="oto-sci-row3">';
+            h += '<div class="oto-sci-field"><label>Funding coverage</label>' + _sciSelect('sr_funding', fundOpts, sr.funding || '') + '</div>';
+            h += '<div class="oto-sci-field"><label>Grant activity</label>' + _sciSelect('sr_grant', grantOpts, sr.grant || '') + '</div>';
+            h += '<div class="oto-sci-field"><label>Strategic alignment</label>' + _sciSelect('sr_alignment', alignOpts, sr.alignment || '') + '</div>';
+            h += '</div></div>';
+
+            // E. Leadership and Mentorship
+            h += '<div class="oto-sci-card"><div class="oto-sci-card-title">E. Leadership and Mentorship</div>';
+            h += '<div class="oto-sci-row3">';
+            h += '<div class="oto-sci-field"><label>Supervision quality</label>' + _sciSelect('sr_supervision', supOpts, sr.supervision || '') + '</div>';
+            h += '<div class="oto-sci-field"><label>Delegation</label>' + _sciSelect('sr_delegation', delOpts, sr.delegation || '') + '</div>';
+            h += '<div class="oto-sci-field"><label>Lab culture contribution</label>' + _sciSelect('sr_culture', cultureOpts, sr.culture || '') + '</div>';
+            h += '</div>';
+            h += '<div class="oto-sci-field"><label>Comment</label>' + _sciText('sr_leadership_comment', sr.leadership_comment, '') + '</div></div>';
+
+            // F. Strategic Next Steps
+            h += '<div class="oto-sci-card"><div class="oto-sci-card-title">F. Strategic Next Steps</div>';
+            h += '<div class="oto-sci-field"><label>Major scientific risk</label>' + _sciText('sr_risk', sr.risk, '') + '</div>';
+            h += '<div class="oto-sci-field"><label>Strategic opportunity</label>' + _sciText('sr_opportunity', sr.opportunity, '') + '</div>';
+            h += '<div class="oto-sci-field"><label>Four to eight week milestone</label>' + _sciText('sr_milestone', sr.milestone, '') + '</div>';
+            h += '<div class="oto-sci-field"><label>Six month target</label>' + _sciText('sr_6m_target', sr.six_m_target, '') + '</div></div>';
+
+            return h;
+        }
+
+        function otoSeniorProjectModeChanged() {
+            const sel = document.querySelector('[data-sci="sr_project_mode"]');
+            const div = document.getElementById('otoSeniorProjects');
+            if (sel && div) div.style.display = (sel.value === 'multiple') ? '' : 'none';
+        }
+
+        // Collect scientific_json from form
+        function oneToOneCollectScientificJson() {
+            const area = document.getElementById('oneToOneSciArea');
+            if (!area) return null;
+            const vals = {};
+            area.querySelectorAll('[data-sci]').forEach(el => { vals[el.getAttribute('data-sci')] = el.value; });
+            if (!vals.profile) return null;
+
+            const obj = { version: 1, profile: vals.profile, bottleneck: vals.bottleneck || '', updated_at: new Date().toISOString() };
+
+            // Junior
+            obj.junior = {
+                ind_level: vals.jr_ind_level || '', ind_prog: vals.jr_ind_prog || '', ind_comment: vals.jr_ind_comment || '',
+                stage: vals.jr_stage || '', pub: vals.jr_pub || '', milestone: vals.jr_milestone || '',
+                exp_design: vals.jr_exp_design || '', exp_design_c: vals.jr_exp_design_c || '',
+                data_quality: vals.jr_data_quality || '', data_quality_c: vals.jr_data_quality_c || '',
+                interp_depth: vals.jr_interp_depth || '', interp_depth_c: vals.jr_interp_depth_c || '',
+                lit: vals.jr_lit || '', method: vals.jr_method || '', sci_ind: vals.jr_sci_ind || '',
+                motivation: vals.jr_motivation || '', stress: vals.jr_stress || '', emo_comment: vals.jr_emo_comment || '',
+                risk: vals.jr_risk || '', next_exp: vals.jr_next_exp || '', four_w_milestone: vals.jr_4w_milestone || ''
+            };
+
+            // Senior
+            const projects = [];
+            for (let i = 0; i < 3; i++) {
+                const n = vals['sr_proj_' + i + '_name'] || '';
+                const s = vals['sr_proj_' + i + '_stage'] || '';
+                if (n || s) projects.push({ name: n, stage: s });
+            }
+            obj.senior = {
+                project_mode: vals.sr_project_mode || 'single', projects: projects, deep_dive: vals.sr_deep_dive || '',
+                exp_design: vals.sr_exp_design || '', exp_design_c: vals.sr_exp_design_c || '',
+                data_quality: vals.sr_data_quality || '', data_quality_c: vals.sr_data_quality_c || '',
+                interp_depth: vals.sr_interp_depth || '', interp_depth_c: vals.sr_interp_depth_c || '',
+                innovation: vals.sr_innovation || '', competitive: vals.sr_competitive || '',
+                manuscript: vals.sr_manuscript || '', journal_tier: vals.sr_journal_tier || '', delay_risk: vals.sr_delay_risk || '',
+                funding: vals.sr_funding || '', grant: vals.sr_grant || '', alignment: vals.sr_alignment || '',
+                supervision: vals.sr_supervision || '', delegation: vals.sr_delegation || '', culture: vals.sr_culture || '',
+                leadership_comment: vals.sr_leadership_comment || '',
+                risk: vals.sr_risk || '', opportunity: vals.sr_opportunity || '', milestone: vals.sr_milestone || '', six_m_target: vals.sr_6m_target || ''
+            };
+
+            return obj;
+        }
+
         // --- Preview builder (right panel, read-only) ---
         function dicBuildOneToOnePreviewHtml(record, researcherName) {
             const pillars = [
@@ -5082,11 +5366,19 @@ function dicInitEmbedModeFromUrl() {
             const dateStr = record.version_created_at ? new Date(record.version_created_at).toLocaleDateString() : (record.updated_at ? new Date(record.updated_at).toLocaleDateString() : 'Draft');
             const isVersion = !!record.version;
             const actions = record.actions || [];
+            const sci = record.scientific_json || null;
+            const userId = dicFilters.researcher || '';
+            const beforeDate = record.version_created_at || record.updated_at || new Date().toISOString();
 
             let html = '<div style="padding:12px;font-size:13px;">';
             html += '<h3 style="margin:0 0 4px;font-size:15px;">1-to-1 — ' + escapeHtml(researcherName) + '</h3>';
             html += '<div style="font-size:11px;color:#6b7280;margin-bottom:12px;">' + (isVersion ? 'Version ' + record.version + ' — ' : 'Draft — ') + escapeHtml(dateStr) + '</div>';
 
+            // --- GLP Integration section ---
+            html += '<div class="oto-preview-section">';
+            html += '<div class="oto-preview-section-title">GLP Integration';
+            html += '<span class="oto-history-icon" onclick="otoShowHistory(\'' + escapeHtml(userId) + '\',\'' + escapeHtml(beforeDate) + '\',\'glp\')" title="Previous meeting">&#9201;</span>';
+            html += '</div>';
             pillars.forEach(p => {
                 const st = p.data.status || 'Not reviewed';
                 const color = statusColors[st] || '#6b7280';
@@ -5095,7 +5387,6 @@ function dicInitEmbedModeFromUrl() {
                     + '<span style="font-weight:700;">' + escapeHtml(p.label) + '</span>'
                     + '<span style="font-size:11px;font-weight:600;color:' + color + ';">' + escapeHtml(st) + '</span></div>';
                 if (p.data.comment) html += '<div style="font-size:12px;color:#4b5563;margin-top:2px;">' + escapeHtml(p.data.comment) + '</div>';
-                // Show actions for this pillar
                 const pillarActions = actions.filter(a => a.pillar === p.key);
                 if (pillarActions.length) {
                     html += '<div style="margin-top:4px;">';
@@ -5110,6 +5401,21 @@ function dicInitEmbedModeFromUrl() {
                 }
                 html += '</div>';
             });
+            html += '</div>';
+
+            // --- Scientific Progress section ---
+            html += '<div class="oto-preview-section" style="border-top:1px solid #e5e7eb;padding-top:10px;">';
+            html += '<div class="oto-preview-section-title">Scientific Progress';
+            html += '<span class="oto-history-icon" onclick="otoShowHistory(\'' + escapeHtml(userId) + '\',\'' + escapeHtml(beforeDate) + '\',\'science\')" title="Previous meeting">&#9201;</span>';
+            html += '</div>';
+            if (sci && sci.profile) {
+                html += '<div style="margin-bottom:6px;"><span class="oto-profile-pill ' + (sci.profile === 'senior' ? 'senior' : 'junior') + '">' + (sci.profile === 'senior' ? 'Senior' : 'Junior') + ' profile</span></div>';
+                if (sci.bottleneck) html += '<div class="oto-preview-kv"><strong>Bottleneck:</strong> ' + escapeHtml(sci.bottleneck) + '</div>';
+                html += _buildSciPreviewSummary(sci);
+            } else {
+                html += '<div style="font-size:12px;color:#9ca3af;">Not yet assessed</div>';
+            }
+            html += '</div>';
 
             // Private comment (only in preview for PI)
             if (record.private_comment) {
@@ -5119,6 +5425,78 @@ function dicInitEmbedModeFromUrl() {
             }
             html += '</div>';
             return html;
+        }
+
+        function _buildSciPreviewSummary(sci) {
+            let h = '';
+            if (sci.profile === 'junior') {
+                const jr = sci.junior || {};
+                if (jr.ind_level) h += '<div class="oto-preview-kv"><strong>Independence:</strong> ' + escapeHtml(jr.ind_level) + (jr.ind_prog ? ' (' + escapeHtml(jr.ind_prog) + ')' : '') + '</div>';
+                if (jr.stage) h += '<div class="oto-preview-kv"><strong>Stage:</strong> ' + escapeHtml(jr.stage) + '</div>';
+                if (jr.motivation || jr.stress) h += '<div class="oto-preview-kv"><strong>Wellbeing:</strong> ' + (jr.motivation ? 'Motivation ' + escapeHtml(jr.motivation) : '') + (jr.stress ? ', Stress ' + escapeHtml(jr.stress) : '') + '</div>';
+                if (jr.four_w_milestone) h += '<div class="oto-preview-kv"><strong>4w milestone:</strong> ' + escapeHtml(jr.four_w_milestone) + '</div>';
+            } else {
+                const sr = sci.senior || {};
+                if (sr.project_mode) h += '<div class="oto-preview-kv"><strong>Mode:</strong> ' + escapeHtml(sr.project_mode === 'multiple' ? 'Multiple projects' : 'Single project focus') + '</div>';
+                if (sr.manuscript) h += '<div class="oto-preview-kv"><strong>Manuscript:</strong> ' + escapeHtml(sr.manuscript) + (sr.journal_tier ? ' (' + escapeHtml(sr.journal_tier) + ')' : '') + '</div>';
+                if (sr.funding) h += '<div class="oto-preview-kv"><strong>Funding:</strong> ' + escapeHtml(sr.funding) + '</div>';
+                if (sr.milestone) h += '<div class="oto-preview-kv"><strong>4-8w milestone:</strong> ' + escapeHtml(sr.milestone) + '</div>';
+            }
+            return h;
+        }
+
+        // --- History modal ---
+        async function otoShowHistory(userId, beforeDate, section) {
+            if (!userId || !beforeDate) return;
+            try {
+                const resp = await fetch(`/api/di/1to1/previous?user_id=${encodeURIComponent(userId)}&before=${encodeURIComponent(beforeDate)}&section=${encodeURIComponent(section)}`, { credentials: 'include' });
+                const data = await resp.json();
+                if (!data.success) { alert(data.error || 'Failed to load'); return; }
+                if (!data.previous) { alert('No previous meeting found.'); return; }
+                const prev = data.previous;
+                const dateStr = prev.date ? new Date(prev.date).toLocaleDateString() : '';
+
+                let body = '';
+                if (section === 'glp') {
+                    const pillars = [
+                        { label: 'SOP', data: prev.pillar_sop || {} },
+                        { label: 'DATA / ALCOA', data: prev.pillar_data || {} },
+                        { label: 'Training', data: prev.pillar_training || {} },
+                        { label: 'Inventory', data: prev.pillar_inventory || {} }
+                    ];
+                    const sc = { 'OK': '#059669', 'Needs action': '#dc2626', 'Not reviewed': '#6b7280' };
+                    pillars.forEach(p => {
+                        const st = p.data.status || 'Not reviewed';
+                        const c = sc[st] || '#6b7280';
+                        body += '<div style="border-left:3px solid ' + c + ';padding:4px 8px;margin-bottom:6px;background:#f9fafb;border-radius:0 4px 4px 0;">'
+                            + '<div style="display:flex;justify-content:space-between;"><span style="font-weight:600;font-size:12px;">' + escapeHtml(p.label) + '</span>'
+                            + '<span style="font-size:11px;font-weight:600;color:' + c + ';">' + escapeHtml(st) + '</span></div>';
+                        if (p.data.comment) body += '<div style="font-size:11px;color:#4b5563;margin-top:1px;">' + escapeHtml(p.data.comment) + '</div>';
+                        body += '</div>';
+                    });
+                } else {
+                    const sci = prev.scientific_json;
+                    if (sci && sci.profile) {
+                        body += '<div style="margin-bottom:6px;"><span class="oto-profile-pill ' + (sci.profile === 'senior' ? 'senior' : 'junior') + '">' + (sci.profile === 'senior' ? 'Senior' : 'Junior') + ' profile</span></div>';
+                        if (sci.bottleneck) body += '<div class="oto-preview-kv"><strong>Bottleneck:</strong> ' + escapeHtml(sci.bottleneck) + '</div>';
+                        body += _buildSciPreviewSummary(sci);
+                    } else {
+                        body += '<div style="font-size:12px;color:#9ca3af;">No scientific data recorded.</div>';
+                    }
+                }
+
+                const overlay = document.createElement('div');
+                overlay.className = 'oto-history-overlay';
+                overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
+                overlay.innerHTML = '<div class="oto-history-modal">'
+                    + '<button class="oto-history-modal-close" onclick="this.closest(\'.oto-history-overlay\').remove()">&times;</button>'
+                    + '<h4>Previous meeting' + (dateStr ? ', ' + escapeHtml(dateStr) : '') + '</h4>'
+                    + body
+                    + '</div>';
+                document.body.appendChild(overlay);
+            } catch (err) {
+                console.error('[1to1] history fetch error:', err);
+            }
         }
 
         // --- Auto-save (debounced) ---
@@ -5161,6 +5539,7 @@ function dicInitEmbedModeFromUrl() {
                 pillar_inventory: pillars.inventory || {},
                 actions,
                 private_comment: privateComment,
+                scientific_json: oneToOneCollectScientificJson(),
                 updated_at: new Date().toISOString()
             };
         }

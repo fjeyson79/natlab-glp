@@ -8770,12 +8770,38 @@ async function check1to1Tables() {
 
 // Validate researcher belongs to PI's cohort (same affiliation, active in allowlist)
 async function validate1to1Researcher(piUser, researcherId) {
+    const hasRole = await checkRoleColumn();
     const r = await pool.query(
-        `SELECT researcher_id, name, affiliation FROM di_allowlist WHERE researcher_id = $1 AND active = true LIMIT 1`,
+        `SELECT researcher_id, name, affiliation${hasRole ? ', role' : ''} FROM di_allowlist WHERE researcher_id = $1 AND active = true LIMIT 1`,
         [researcherId]
     );
     if (r.rows.length === 0) return null;
     return r.rows[0];
+}
+
+// Check if scientific_json column exists on di_1to1_drafts
+let _1to1SciColExists = null;
+let _1to1SciColLastCheck = 0;
+async function check1to1SciColumn() {
+    const now = Date.now();
+    if (_1to1SciColExists !== null && _1to1SciColExists !== false && (now - _1to1SciColLastCheck < 60000)) return _1to1SciColExists;
+    try {
+        const r = await pool.query(`SELECT column_name FROM information_schema.columns WHERE table_name = 'di_1to1_drafts' AND column_name = 'scientific_json'`);
+        _1to1SciColExists = r.rows.length > 0;
+        _1to1SciColLastCheck = now;
+    } catch (e) { _1to1SciColExists = false; }
+    return _1to1SciColExists;
+}
+
+// Validate scientific_json payload
+function validateScientificJson(obj) {
+    if (obj === null || obj === undefined) return { valid: true, value: null };
+    if (typeof obj !== 'object' || Array.isArray(obj)) return { valid: false, reason: 'Must be an object or null' };
+    const str = JSON.stringify(obj);
+    if (str.length > 102400) return { valid: false, reason: 'Exceeds 100 KB limit' };
+    if (obj.version !== undefined && obj.version !== 1) return { valid: false, reason: 'version must be 1' };
+    if (obj.profile !== undefined && obj.profile !== 'junior' && obj.profile !== 'senior') return { valid: false, reason: 'profile must be junior or senior' };
+    return { valid: true, value: obj };
 }
 
 // POST /api/di/1to1/createDraft
@@ -8813,10 +8839,28 @@ app.put('/api/di/1to1/updateDraft', requirePI, async (req, res) => {
     try {
         if (!(await check1to1Tables())) return res.status(501).json({ error: '1-to-1 tables not available' });
         const piId = req.session.user.researcher_id;
-        const { researcher_id, pillar_sop, pillar_data, pillar_training, pillar_inventory, actions, private_comment } = req.body;
+        const { researcher_id, pillar_sop, pillar_data, pillar_training, pillar_inventory, actions, private_comment, scientific_json } = req.body;
         if (!researcher_id) return res.status(400).json({ error: 'researcher_id required' });
         const member = await validate1to1Researcher(req.session.user, researcher_id);
         if (!member) return res.status(403).json({ error: 'Access denied' });
+
+        const hasSciCol = await check1to1SciColumn();
+        if (scientific_json !== undefined && hasSciCol) {
+            const v = validateScientificJson(scientific_json);
+            if (!v.valid) return res.status(400).json({ error: 'Invalid scientific_json: ' + v.reason });
+        }
+
+        const sciSetClause = hasSciCol ? ', scientific_json = COALESCE($9, scientific_json)' : '';
+        const baseCols = [
+            pillar_sop ? JSON.stringify(pillar_sop) : null,
+            pillar_data ? JSON.stringify(pillar_data) : null,
+            pillar_training ? JSON.stringify(pillar_training) : null,
+            pillar_inventory ? JSON.stringify(pillar_inventory) : null,
+            actions ? JSON.stringify(actions) : null,
+            private_comment !== undefined ? private_comment : null,
+            researcher_id, piId
+        ];
+        if (hasSciCol) baseCols.push(scientific_json ? JSON.stringify(scientific_json) : null);
 
         const result = await pool.query(
             `UPDATE di_1to1_drafts SET
@@ -8827,17 +8871,10 @@ app.put('/api/di/1to1/updateDraft', requirePI, async (req, res) => {
                 actions = COALESCE($5, actions),
                 private_comment = $6,
                 updated_at = NOW()
+                ${sciSetClause}
              WHERE researcher_id = $7 AND created_by = $8
              RETURNING *`,
-            [
-                pillar_sop ? JSON.stringify(pillar_sop) : null,
-                pillar_data ? JSON.stringify(pillar_data) : null,
-                pillar_training ? JSON.stringify(pillar_training) : null,
-                pillar_inventory ? JSON.stringify(pillar_inventory) : null,
-                actions ? JSON.stringify(actions) : null,
-                private_comment !== undefined ? private_comment : null,
-                researcher_id, piId
-            ]
+            baseCols
         );
         if (result.rows.length === 0) return res.status(404).json({ error: 'Draft not found' });
         res.json({ success: true, draft: result.rows[0] });
@@ -8908,12 +8945,16 @@ app.post('/api/di/1to1/finalizeDraftToVersion', requirePI, async (req, res) => {
         const nextVersion = maxVer.rows[0].max_ver + 1;
 
         // Insert immutable version
-        const verRes = await client.query(
-            `INSERT INTO di_1to1_meeting_versions (meeting_id, version, pillar_sop, pillar_data, pillar_training, pillar_inventory, private_comment, created_by)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-            [meetingId, nextVersion, JSON.stringify(draft.pillar_sop), JSON.stringify(draft.pillar_data),
+        const hasSciCol = await check1to1SciColumn();
+        const verCols = 'meeting_id, version, pillar_sop, pillar_data, pillar_training, pillar_inventory, private_comment, created_by' + (hasSciCol ? ', scientific_json' : '');
+        const verPlaceholders = '$1, $2, $3, $4, $5, $6, $7, $8' + (hasSciCol ? ', $9' : '');
+        const verParams = [meetingId, nextVersion, JSON.stringify(draft.pillar_sop), JSON.stringify(draft.pillar_data),
              JSON.stringify(draft.pillar_training), JSON.stringify(draft.pillar_inventory),
-             draft.private_comment, piId]
+             draft.private_comment, piId];
+        if (hasSciCol) verParams.push(draft.scientific_json ? JSON.stringify(draft.scientific_json) : null);
+        const verRes = await client.query(
+            `INSERT INTO di_1to1_meeting_versions (${verCols}) VALUES (${verPlaceholders}) RETURNING *`,
+            verParams
         );
         const versionRow = verRes.rows[0];
 
@@ -8962,11 +9003,13 @@ app.get('/api/di/1to1/listMeetings/:researcherId', requirePI, async (req, res) =
         );
 
         // Get all meetings with latest version info
+        const hasSciCol = await check1to1SciColumn();
+        const sciSelect = hasSciCol ? ', v.scientific_json' : '';
         const meetingsRes = await pool.query(
             `SELECT m.id AS meeting_id, m.created_at AS meeting_created_at,
                     v.id AS version_id, v.version, v.created_at AS version_created_at,
                     v.pillar_sop, v.pillar_data, v.pillar_training, v.pillar_inventory, v.private_comment,
-                    COALESCE(al.name, v.created_by) AS created_by_name
+                    COALESCE(al.name, v.created_by) AS created_by_name${sciSelect}
              FROM di_1to1_meetings m
              JOIN di_1to1_meeting_versions v ON v.meeting_id = m.id
              LEFT JOIN di_allowlist al ON al.researcher_id = v.created_by
@@ -9076,14 +9119,17 @@ app.post('/api/di/1to1/startEditFromLatest', requirePI, async (req, res) => {
         }));
 
         // Create draft from latest
-        const ins = await pool.query(
-            `INSERT INTO di_1to1_drafts (researcher_id, affiliation, created_by, meeting_id, pillar_sop, pillar_data, pillar_training, pillar_inventory, actions, private_comment)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-             RETURNING *`,
-            [researcher_id, member.affiliation, piId, latest.meeting_id,
+        const hasSciCol = await check1to1SciColumn();
+        const draftCols = 'researcher_id, affiliation, created_by, meeting_id, pillar_sop, pillar_data, pillar_training, pillar_inventory, actions, private_comment' + (hasSciCol ? ', scientific_json' : '');
+        const draftPh = '$1, $2, $3, $4, $5, $6, $7, $8, $9, $10' + (hasSciCol ? ', $11' : '');
+        const draftParams = [researcher_id, member.affiliation, piId, latest.meeting_id,
              JSON.stringify(latest.pillar_sop), JSON.stringify(latest.pillar_data),
              JSON.stringify(latest.pillar_training), JSON.stringify(latest.pillar_inventory),
-             JSON.stringify(actionsJson), latest.private_comment]
+             JSON.stringify(actionsJson), latest.private_comment];
+        if (hasSciCol) draftParams.push(latest.scientific_json ? JSON.stringify(latest.scientific_json) : null);
+        const ins = await pool.query(
+            `INSERT INTO di_1to1_drafts (${draftCols}) VALUES (${draftPh}) RETURNING *`,
+            draftParams
         );
         res.json({ success: true, draft: ins.rows[0] });
     } catch (err) {
@@ -9092,6 +9138,48 @@ app.post('/api/di/1to1/startEditFromLatest', requirePI, async (req, res) => {
     }
 });
 
+
+// GET /api/di/1to1/previous — Fetch previous meeting snapshot, section scoped (PI only)
+app.get('/api/di/1to1/previous', requirePI, async (req, res) => {
+    try {
+        if (!(await check1to1Tables())) return res.status(501).json({ error: '1-to-1 tables not available' });
+        const { user_id, before, section } = req.query;
+        if (!user_id || !before) return res.status(400).json({ error: 'user_id and before are required' });
+        if (section !== 'glp' && section !== 'science') return res.status(400).json({ error: 'section must be glp or science' });
+        const member = await validate1to1Researcher(req.session.user, user_id);
+        if (!member) return res.status(403).json({ error: 'Access denied' });
+
+        const hasSciCol = await check1to1SciColumn();
+        const sciSelect = hasSciCol ? ', v.scientific_json' : '';
+        const prevRes = await pool.query(
+            `SELECT v.id AS version_id, v.version, v.created_at AS version_created_at,
+                    v.pillar_sop, v.pillar_data, v.pillar_training, v.pillar_inventory${sciSelect}
+             FROM di_1to1_meeting_versions v
+             JOIN di_1to1_meetings m ON m.id = v.meeting_id
+             WHERE m.researcher_id = $1 AND v.created_at < $2
+             ORDER BY v.created_at DESC LIMIT 1`,
+            [user_id, before]
+        );
+        if (prevRes.rows.length === 0) return res.json({ success: true, previous: null });
+
+        const row = prevRes.rows[0];
+        let summary = { version: row.version, date: row.version_created_at };
+
+        if (section === 'glp') {
+            summary.pillar_sop = row.pillar_sop || {};
+            summary.pillar_data = row.pillar_data || {};
+            summary.pillar_training = row.pillar_training || {};
+            summary.pillar_inventory = row.pillar_inventory || {};
+        } else {
+            summary.scientific_json = (hasSciCol ? row.scientific_json : null) || null;
+        }
+
+        res.json({ success: true, previous: summary });
+    } catch (err) {
+        console.error('[1TO1] previous meeting error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
 
 // =====================================================
 // GLP STATUS – Harmony Map Coherence Engine
