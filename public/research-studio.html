@@ -1173,6 +1173,73 @@
   background:#f5f7fa;
 }
 
+/\* ===== Research Studio Toolbar Scaling Fix ===== \*/
+/* Strong overrides to defeat any later/inline transparency */
+.rs-actions .gv-toolbar-icon{
+  width:48px !important;
+  height:48px !important;
+}
+
+.rs-actions .gv-emoji-icon{
+  font-size:22px !important;
+}
+
+.rs-actions .gv-toolbar-icon svg{
+  width:22px !important;
+  height:22px !important;
+}
+
+/* Make dropdown always visible (no transparency) */
+#rsDownloadMenu.rs-download-menu{
+  display:none;
+  background:#ffffff !important;
+  opacity:1 !important;
+  visibility:visible !important;
+  border:1px solid #e5e7eb !important;
+  border-radius:12px !important;
+  box-shadow:0 12px 24px rgba(0,0,0,0.15) !important;
+  min-width:170px !important;
+}
+
+/* Items larger */
+#rsDownloadMenu .rs-download-item{
+  font-size:15px !important;
+  padding:12px 14px !important;
+}
+
+/* Enlarge GLP Vision style buttons inside Research Studio */
+.rs-actions .gv-toolbar-icon{
+  width:44px !important;
+  height:44px !important;
+}
+
+/* Enlarge emoji */
+.rs-actions .gv-emoji-icon{
+  font-size:20px !important;
+}
+
+/* Enlarge SVG download icon */
+.rs-actions .gv-toolbar-icon svg{
+  width:20px !important;
+  height:20px !important;
+}
+
+/* Fix dropdown visibility */
+.rs-download-menu{
+  background:#ffffff !important;
+  opacity:1 !important;
+  border:1px solid #e5e7eb !important;
+  border-radius:12px;
+  box-shadow:0 12px 24px rgba(0,0,0,0.15);
+  min-width:160px;
+}
+
+/* Increase dropdown item size */
+.rs-download-item{
+  font-size:14px;
+  padding:12px 14px;
+}
+
 </style>
 </head>
 <body>
