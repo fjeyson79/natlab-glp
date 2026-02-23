@@ -67,42 +67,18 @@
         }
 
         /* ── Left: Studio Wall ── */
-        .rs-wall {
-            width: 280px;
-            min-width: 240px;
-            background:
-                repeating-linear-gradient(
-                    180deg,
-                    transparent,
-                    transparent 27px,
-                    rgba(180, 160, 130, 0.07) 27px,
-                    rgba(180, 160, 130, 0.07) 28px
-                ),
-                repeating-linear-gradient(
-                    45deg,
-                    transparent,
-                    transparent 1px,
-                    rgba(160, 140, 110, 0.025) 1px,
-                    rgba(160, 140, 110, 0.025) 2px
-                ),
-                repeating-linear-gradient(
-                    -45deg,
-                    transparent,
-                    transparent 1px,
-                    rgba(140, 120, 95, 0.02) 1px,
-                    rgba(140, 120, 95, 0.02) 2px
-                ),
-                linear-gradient(
-                    180deg,
-                    #f7f2ea 0%,
-                    #f3ede3 40%,
-                    #efe8dc 100%
-                );
-            background-color: #f3ede3;
-            border-right: 1px solid var(--border);
-            overflow-y: auto;
-            flex-shrink: 0;
-        }
+        .rs-wall{
+  width: 280px;
+  min-width: 240px;
+  background: #fbf7f1;
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+
+
+
 
         .rs-wall-section {
             border-bottom: 1px solid var(--border);
@@ -797,7 +773,18 @@
         <div class="rs-atelier" id="rsAtelier">
             <!-- Empty state -->
             <div id="rsEmptyState" class="rs-empty">
-                <div class="rs-empty-mark"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M24 4c-7.2 0-13 4.8-13 12 0 3.8 1.8 7 4.5 9.2 1.6 1.3 2.5 3.2 2.5 5.3V33h12v-2.5c0-2.1.9-4 2.5-5.3C35.2 23 37 19.8 37 16c0-7.2-5.8-12-13-12z"/><path d="M18 33c0 3.3 2.7 6 6 6s6-2.7 6-6"/><path d="M24 4v3"/><path d="M24 16c-2.2 0-4 1.8-4 4"/></svg></div>
+                <div class="rs-empty-mark">
+<svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+  <circle cx="18" cy="22" r="4.2"/>
+  <circle cx="42" cy="18" r="3.6"/>
+  <circle cx="46" cy="40" r="4.6"/>
+  <circle cx="22" cy="44" r="3.2"/>
+  <path d="M21.6 25.2 L38.8 19.8"/>
+  <path d="M44.4 21.6 L45.2 35.4"/>
+  <path d="M42.6 40.8 L25.4 43.0"/>
+  <path d="M20.4 40.2 L18.8 26.4"/>
+</svg>
+</div>
                 <h2>Welcome to the NAT-Lab Research Studio</h2>
                 <p>Where hypotheses are sharpened, evidence is interpreted, and precision medicine takes form.</p>
             </div>
