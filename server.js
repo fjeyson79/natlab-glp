@@ -12371,7 +12371,7 @@ app.get('/api/di/studio/projects/:id/evidence/search', requireAuth, async (req, 
         let query, params;
         if (type && q) {
             query = `
-                SELECT s.id, s.filename, s.context_type, s.status, s.created_at,
+                SELECT s.submission_id AS id, s.filename, s.context_type, s.status, s.created_at,
                        a.name AS researcher_name
                 FROM di_submissions s
                 LEFT JOIN di_allowlist a ON a.researcher_id = s.researcher_id
@@ -12385,7 +12385,7 @@ app.get('/api/di/studio/projects/:id/evidence/search', requireAuth, async (req, 
             params = [access.project.affiliation, type, q];
         } else if (type) {
             query = `
-                SELECT s.id, s.filename, s.context_type, s.status, s.created_at,
+                SELECT s.submission_id AS id, s.filename, s.context_type, s.status, s.created_at,
                        a.name AS researcher_name
                 FROM di_submissions s
                 LEFT JOIN di_allowlist a ON a.researcher_id = s.researcher_id
@@ -12398,7 +12398,7 @@ app.get('/api/di/studio/projects/:id/evidence/search', requireAuth, async (req, 
             params = [access.project.affiliation, type];
         } else {
             query = `
-                SELECT s.id, s.filename, s.context_type, s.status, s.created_at,
+                SELECT s.submission_id AS id, s.filename, s.context_type, s.status, s.created_at,
                        a.name AS researcher_name
                 FROM di_submissions s
                 LEFT JOIN di_allowlist a ON a.researcher_id = s.researcher_id
