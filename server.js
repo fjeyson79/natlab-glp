@@ -744,6 +744,27 @@ async function checkVisionColumns() {
     return visionColsExist;
 }
 
+// Helper function to check if Research Studio tables exist (migration 024)
+let studioTablesExist = null;
+let studioTablesLastCheck = 0;
+
+async function checkStudioTables() {
+    const now = Date.now();
+    if (studioTablesExist === null || studioTablesExist === false || (now - studioTablesLastCheck > ROLE_COLUMN_CHECK_INTERVAL)) {
+        try {
+            const result = await pool.query(`
+                SELECT table_name FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'di_studio_projects'
+            `);
+            studioTablesExist = result.rows.length > 0;
+            studioTablesLastCheck = now;
+        } catch (err) {
+            studioTablesExist = false;
+        }
+    }
+    return studioTablesExist;
+}
+
 // Helper to get allowlist query based on role column existence
 function getAllowlistQuery(hasRole) {
     if (hasRole) {
@@ -11408,6 +11429,196 @@ app.get('/api/debug/has-route', (req, res) => {
 });
 
 
+// =====================================================
+// RESEARCH STUDIO ENDPOINTS (Phase 1: read only shell)
+// =====================================================
+
+const STUDIO_SECTION_KEYS = [
+    'aims', 'abstract', 'introduction', 'methodology',
+    'results', 'discussion', 'conclusion'
+];
+
+// GET /api/di/studio/projects
+// List projects visible to the current user.
+// Owner sees own projects. PI sees all in affiliation.
+// TODO Phase 2: Supervisor sees supervised researchers via di_supervisor_researchers.
+// For Phase 1, supervisor falls back to own projects only.
+app.get('/api/di/studio/projects', requireAuth, async (req, res) => {
+    if (!(await checkStudioTables())) return res.json({ projects: [] });
+    const user = req.session.user;
+    try {
+        let query, params;
+        if (user.role === 'pi') {
+            // PI sees all projects in their affiliation
+            query = `
+                SELECT p.id, p.title, p.owner_id, p.affiliation, p.status,
+                       p.phase, p.hypothesis, p.created_at, p.updated_at,
+                       a.name AS owner_name
+                FROM di_studio_projects p
+                LEFT JOIN di_allowlist a ON a.researcher_id = p.owner_id
+                WHERE p.affiliation = $1
+                ORDER BY p.updated_at DESC
+            `;
+            params = [user.affiliation];
+        } else {
+            // Researcher and supervisor: own projects only in Phase 1
+            query = `
+                SELECT p.id, p.title, p.owner_id, p.affiliation, p.status,
+                       p.phase, p.hypothesis, p.created_at, p.updated_at,
+                       a.name AS owner_name
+                FROM di_studio_projects p
+                LEFT JOIN di_allowlist a ON a.researcher_id = p.owner_id
+                WHERE p.owner_id = $1
+                ORDER BY p.updated_at DESC
+            `;
+            params = [user.researcher_id];
+        }
+        const result = await pool.query(query, params);
+        res.json({
+            projects: result.rows.map(r => ({
+                id: r.id,
+                title: r.title,
+                owner_id: r.owner_id,
+                owner_name: r.owner_name,
+                affiliation: r.affiliation,
+                status: r.status,
+                phase: r.phase,
+                hypothesis: r.hypothesis,
+                created_at: r.created_at,
+                updated_at: r.updated_at
+            }))
+        });
+    } catch (err) {
+        console.error('Studio list projects error:', err);
+        res.status(500).json({ error: 'Failed to list projects' });
+    }
+});
+
+// POST /api/di/studio/projects
+// Create a new project with 7 standard manuscript section stubs.
+app.post('/api/di/studio/projects', requireAuth, async (req, res) => {
+    if (!(await checkStudioTables())) return res.status(503).json({ error: 'Research Studio tables not available yet' });
+    const user = req.session.user;
+    const { title } = req.body;
+    if (!title || !title.trim()) {
+        return res.status(400).json({ error: 'Title is required' });
+    }
+    if (title.trim().length > 500) {
+        return res.status(400).json({ error: 'Title must be 500 characters or fewer' });
+    }
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        const projResult = await client.query(`
+            INSERT INTO di_studio_projects (owner_id, affiliation, title)
+            VALUES ($1, $2, $3)
+            RETURNING *
+        `, [user.researcher_id, user.affiliation, title.trim()]);
+        const project = projResult.rows[0];
+
+        // Create 7 standard manuscript section rows
+        for (let i = 0; i < STUDIO_SECTION_KEYS.length; i++) {
+            await client.query(`
+                INSERT INTO di_studio_sections (project_id, section_key, sort_order)
+                VALUES ($1, $2, $3)
+            `, [project.id, STUDIO_SECTION_KEYS[i], i]);
+        }
+
+        await client.query('COMMIT');
+        res.json({ success: true, project });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('Studio create project error:', err);
+        res.status(500).json({ error: 'Failed to create project' });
+    } finally {
+        client.release();
+    }
+});
+
+// GET /api/di/studio/projects/:id
+// Return full project detail including sections and links.
+app.get('/api/di/studio/projects/:id', requireAuth, async (req, res) => {
+    if (!(await checkStudioTables())) return res.status(503).json({ error: 'Research Studio tables not available yet' });
+    const user = req.session.user;
+    const projectId = req.params.id;
+
+    try {
+        // Load project
+        const projResult = await pool.query(`
+            SELECT p.*, a.name AS owner_name
+            FROM di_studio_projects p
+            LEFT JOIN di_allowlist a ON a.researcher_id = p.owner_id
+            WHERE p.id = $1
+        `, [projectId]);
+
+        if (projResult.rows.length === 0) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+        const project = projResult.rows[0];
+
+        // Access check: owner, PI in same affiliation, or (Phase 2) supervised
+        const isOwner = project.owner_id === user.researcher_id;
+        const isPIWithAccess = user.role === 'pi' && project.affiliation === user.affiliation;
+        if (!isOwner && !isPIWithAccess) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+
+        // Load sections
+        const sectionsResult = await pool.query(`
+            SELECT id, project_id, section_key, content_html, sort_order, updated_at
+            FROM di_studio_sections
+            WHERE project_id = $1
+            ORDER BY sort_order ASC
+        `, [projectId]);
+
+        // Load links
+        const linksResult = await pool.query(`
+            SELECT id, project_id, evidence_type, evidence_id, label,
+                   section_key, footnote_index, created_by, created_at
+            FROM di_studio_links
+            WHERE project_id = $1
+            ORDER BY section_key, footnote_index
+        `, [projectId]);
+
+        // Build reflection completeness flag (for future gating)
+        const reflectionComplete = !!(
+            project.hypothesis && project.hypothesis.trim() &&
+            project.intention && project.intention.trim() &&
+            project.phase &&
+            project.tension && project.tension.trim() &&
+            project.next_milestone && project.next_milestone.trim()
+        );
+
+        res.json({
+            project: {
+                id: project.id,
+                title: project.title,
+                owner_id: project.owner_id,
+                owner_name: project.owner_name,
+                affiliation: project.affiliation,
+                status: project.status,
+                hypothesis: project.hypothesis,
+                intention: project.intention,
+                phase: project.phase,
+                tension: project.tension,
+                next_milestone: project.next_milestone,
+                milestone_date: project.milestone_date,
+                target_journal: project.target_journal,
+                notes_json: project.notes_json,
+                reflection_complete: reflectionComplete,
+                created_at: project.created_at,
+                updated_at: project.updated_at
+            },
+            sections: sectionsResult.rows,
+            links: linksResult.rows
+        });
+    } catch (err) {
+        console.error('Studio get project error:', err);
+        res.status(500).json({ error: 'Failed to load project' });
+    }
+});
 
 
 

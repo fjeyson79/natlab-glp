@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Research Studio | NAT Lab</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --ivory: #faf8f4;
+            --clay: #c9a96e;
+            --clay-light: #f0e6d3;
+            --ink: #2c2c2c;
+            --ink-soft: #6b6b6b;
+            --border: #e8e4de;
+            --white: #ffffff;
+            --accent: #1a365d;
+            --shadow: rgba(44, 44, 44, 0.06);
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--ivory);
+            color: var(--ink);
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+
+        /* ── Header ── */
+        .rs-header {
+            background: linear-gradient(135deg, #1a365d 0%, #2d5a87 100%);
+            color: white;
+            padding: 0 28px;
+            display: flex;
+            align-items: center;
+            height: 54px;
+            gap: 18px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+        }
+        .rs-header-back {
+            color: rgba(255,255,255,0.75);
+            text-decoration: none;
+            font-size: 0.84rem;
+            transition: color 0.15s;
+        }
+        .rs-header-back:hover { color: #fff; }
+        .rs-header-title {
+            font-family: Georgia, 'Times New Roman', serif;
+            font-size: 1.05rem;
+            font-weight: 400;
+            letter-spacing: 0.02em;
+        }
+        .rs-header-user {
+            margin-left: auto;
+            font-size: 0.8rem;
+            opacity: 0.75;
+        }
+
+        /* ── Shell: two panel layout ── */
+        .rs-shell {
+            display: flex;
+            height: calc(100vh - 54px);
+        }
+
+        /* ── Left: Studio Wall ── */
+        .rs-wall {
+            width: 280px;
+            min-width: 240px;
+            background: var(--white);
+            border-right: 1px solid var(--border);
+            overflow-y: auto;
+            flex-shrink: 0;
+        }
+
+        .rs-wall-section {
+            border-bottom: 1px solid var(--border);
+        }
+        .rs-wall-section-header {
+            padding: 14px 18px 6px;
+            font-size: 0.68rem;
+            text-transform: uppercase;
+            letter-spacing: 0.09em;
+            color: var(--ink-soft);
+            font-weight: 600;
+        }
+        .rs-wall-section-body {
+            padding: 4px 18px 16px;
+        }
+
+        /* ── Project cards ── */
+        .rs-proj-card {
+            padding: 10px 12px;
+            border-radius: 7px;
+            cursor: pointer;
+            border: 1px solid var(--border);
+            margin-bottom: 6px;
+            transition: border-color 0.15s, background 0.15s;
+        }
+        .rs-proj-card:hover {
+            border-color: var(--clay);
+            background: #fdfcfa;
+        }
+        .rs-proj-card.active {
+            border-color: var(--accent);
+            background: #f0f4fa;
+        }
+        .rs-proj-card-title {
+            font-size: 0.86rem;
+            font-weight: 500;
+            line-height: 1.3;
+        }
+        .rs-proj-card-meta {
+            font-size: 0.7rem;
+            color: var(--ink-soft);
+            margin-top: 3px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .rs-phase-badge {
+            display: inline-block;
+            font-size: 0.6rem;
+            padding: 1px 7px;
+            border-radius: 8px;
+            background: var(--clay-light);
+            color: #7c6330;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+        .rs-status-dot {
+            width: 6px; height: 6px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .rs-status-dot.active   { background: #2e7d32; }
+        .rs-status-dot.onhold   { background: #e65100; }
+        .rs-status-dot.completed{ background: #1565c0; }
+        .rs-status-dot.archived { background: #9e9e9e; }
+
+        /* ── Create button ── */
+        .rs-create-btn {
+            width: 100%;
+            padding: 9px;
+            border: 1px dashed var(--border);
+            border-radius: 7px;
+            background: none;
+            cursor: pointer;
+            font-size: 0.82rem;
+            color: var(--ink-soft);
+            transition: border-color 0.15s, color 0.15s, background 0.15s;
+            margin-top: 2px;
+        }
+        .rs-create-btn:hover {
+            border-color: var(--clay);
+            color: var(--ink);
+            background: #fdfcfa;
+        }
+
+        /* ── Right: Writing Atelier ── */
+        .rs-atelier {
+            flex: 1;
+            overflow-y: auto;
+            padding: 36px 52px 60px;
+        }
+
+        /* ── Empty state ── */
+        .rs-empty {
+            text-align: center;
+            padding: 100px 40px;
+        }
+        .rs-empty-mark {
+            font-size: 2.8rem;
+            margin-bottom: 18px;
+            opacity: 0.3;
+        }
+        .rs-empty h2 {
+            font-family: Georgia, serif;
+            font-weight: 400;
+            font-size: 1.35rem;
+            margin-bottom: 8px;
+            color: var(--ink);
+        }
+        .rs-empty p {
+            font-size: 0.9rem;
+            color: var(--ink-soft);
+            max-width: 380px;
+            margin: 0 auto;
+            line-height: 1.6;
+        }
+
+        /* ── Project detail view ── */
+        .rs-detail { display: none; }
+        .rs-detail.visible { display: block; }
+
+        .rs-detail-title {
+            font-family: Georgia, serif;
+            font-size: 1.65rem;
+            font-weight: 400;
+            color: var(--ink);
+            margin-bottom: 4px;
+            letter-spacing: -0.01em;
+        }
+        .rs-detail-subtitle {
+            font-size: 0.82rem;
+            color: var(--ink-soft);
+            margin-bottom: 28px;
+        }
+
+        /* ── Reflection summary (read only in Phase 1) ── */
+        .rs-reflection-card {
+            background: linear-gradient(135deg, #faf8f4 0%, #f5f0e8 100%);
+            border: 1px solid var(--clay-light);
+            border-radius: 10px;
+            padding: 24px 28px;
+            margin-bottom: 32px;
+        }
+        .rs-reflection-heading {
+            font-family: Georgia, serif;
+            font-size: 1rem;
+            font-weight: 400;
+            color: var(--ink);
+            margin-bottom: 16px;
+        }
+        .rs-reflection-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 14px 24px;
+        }
+        .rs-reflection-field {}
+        .rs-reflection-field.full { grid-column: 1 / -1; }
+        .rs-reflection-label {
+            font-size: 0.68rem;
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
+            color: var(--ink-soft);
+            margin-bottom: 3px;
+            font-weight: 600;
+        }
+        .rs-reflection-value {
+            font-size: 0.88rem;
+            color: var(--ink);
+            min-height: 20px;
+        }
+        .rs-reflection-empty {
+            font-size: 0.85rem;
+            color: #bbb;
+            font-style: italic;
+        }
+
+        /* ── Sections (read only in Phase 1) ── */
+        .rs-sections-heading {
+            font-family: Georgia, serif;
+            font-size: 1.1rem;
+            font-weight: 400;
+            color: var(--ink);
+            margin-bottom: 20px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid var(--border);
+        }
+        .rs-section-block {
+            margin-bottom: 28px;
+        }
+        .rs-section-title {
+            font-family: Georgia, serif;
+            font-size: 1.05rem;
+            font-weight: 400;
+            color: var(--ink);
+            margin-bottom: 8px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid var(--border);
+        }
+        .rs-section-content {
+            font-size: 0.9rem;
+            line-height: 1.7;
+            min-height: 48px;
+            padding: 12px 16px;
+            background: var(--white);
+            border: 1px solid var(--border);
+            border-radius: 7px;
+            color: var(--ink);
+        }
+        .rs-section-placeholder {
+            color: #c0bbb2;
+            font-style: italic;
+            font-size: 0.86rem;
+        }
+
+        /* ── Info bar at bottom of detail ── */
+        .rs-info-bar {
+            margin-top: 36px;
+            padding-top: 16px;
+            border-top: 1px solid var(--border);
+            font-size: 0.75rem;
+            color: var(--ink-soft);
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        /* ── Utility ── */
+        .hidden { display: none !important; }
+
+        /* ── Create modal ── */
+        .rs-modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.3);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .rs-modal-overlay.active { display: flex; }
+        .rs-modal {
+            background: var(--white);
+            border-radius: 12px;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.14);
+            width: 90%;
+            max-width: 440px;
+            padding: 28px;
+        }
+        .rs-modal h3 {
+            font-family: Georgia, serif;
+            font-weight: 400;
+            font-size: 1.15rem;
+            margin-bottom: 16px;
+        }
+        .rs-modal-input {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1px solid var(--border);
+            border-radius: 7px;
+            font-size: 0.92rem;
+            font-family: inherit;
+            color: var(--ink);
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .rs-modal-input:focus { border-color: var(--clay); }
+        .rs-modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 18px;
+        }
+        .rs-btn {
+            padding: 7px 16px;
+            border-radius: 7px;
+            border: 1px solid var(--border);
+            background: var(--white);
+            cursor: pointer;
+            font-size: 0.82rem;
+            font-family: inherit;
+            color: var(--ink);
+            transition: all 0.15s;
+        }
+        .rs-btn:hover { border-color: var(--clay); background: #fdfcfa; }
+        .rs-btn-primary {
+            background: var(--accent);
+            color: white;
+            border-color: var(--accent);
+        }
+        .rs-btn-primary:hover { background: #142c4d; }
+
+        /* ── Responsive ── */
+        @media (max-width: 768px) {
+            .rs-shell { flex-direction: column; }
+            .rs-wall { width: 100%; height: auto; max-height: 40vh; border-right: none; border-bottom: 1px solid var(--border); }
+            .rs-atelier { padding: 24px 20px; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <div class="rs-header">
+        <a href="/upload.html" class="rs-header-back">&larr; Back to Portal</a>
+        <span class="rs-header-title">Research Studio</span>
+        <span class="rs-header-user" id="rsUserName"></span>
+    </div>
+
+    <!-- Shell -->
+    <div class="rs-shell">
+        <!-- Left: Studio Wall -->
+        <div class="rs-wall">
+            <div class="rs-wall-section">
+                <div class="rs-wall-section-header">Projects</div>
+                <div class="rs-wall-section-body">
+                    <div id="rsProjectList"></div>
+                    <button class="rs-create-btn" id="rsCreateBtn" onclick="rsOpenCreateModal()">+ New Project</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right: Writing Atelier -->
+        <div class="rs-atelier" id="rsAtelier">
+            <!-- Empty state -->
+            <div id="rsEmptyState" class="rs-empty">
+                <div class="rs-empty-mark">&#9998;</div>
+                <h2>Welcome to Research Studio</h2>
+                <p>Select a project from the left panel or create a new one to begin.</p>
+            </div>
+
+            <!-- Project detail (read only in Phase 1) -->
+            <div id="rsDetail" class="rs-detail">
+                <div class="rs-detail-title" id="rsDetailTitle"></div>
+                <div class="rs-detail-subtitle" id="rsDetailSubtitle"></div>
+
+                <!-- Reflection summary -->
+                <div class="rs-reflection-card">
+                    <div class="rs-reflection-heading">Reflection Layer</div>
+                    <div class="rs-reflection-grid">
+                        <div class="rs-reflection-field full">
+                            <div class="rs-reflection-label">Core Hypothesis</div>
+                            <div class="rs-reflection-value" id="rsValHypothesis"></div>
+                        </div>
+                        <div class="rs-reflection-field">
+                            <div class="rs-reflection-label">Scientific Intention</div>
+                            <div class="rs-reflection-value" id="rsValIntention"></div>
+                        </div>
+                        <div class="rs-reflection-field">
+                            <div class="rs-reflection-label">Current Phase</div>
+                            <div class="rs-reflection-value" id="rsValPhase"></div>
+                        </div>
+                        <div class="rs-reflection-field full">
+                            <div class="rs-reflection-label">Intellectual Tension</div>
+                            <div class="rs-reflection-value" id="rsValTension"></div>
+                        </div>
+                        <div class="rs-reflection-field">
+                            <div class="rs-reflection-label">Next Milestone</div>
+                            <div class="rs-reflection-value" id="rsValMilestone"></div>
+                        </div>
+                        <div class="rs-reflection-field">
+                            <div class="rs-reflection-label">Milestone Date</div>
+                            <div class="rs-reflection-value" id="rsValMilestoneDate"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Manuscript sections -->
+                <div class="rs-sections-heading">Manuscript Sections</div>
+                <div id="rsSections"></div>
+
+                <!-- Info bar -->
+                <div class="rs-info-bar" id="rsInfoBar"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create project modal -->
+    <div class="rs-modal-overlay" id="rsCreateModal">
+        <div class="rs-modal">
+            <h3>New Research Project</h3>
+            <input type="text" class="rs-modal-input" id="rsNewTitle"
+                   placeholder="Project title" maxlength="500"
+                   onkeydown="if(event.key==='Enter') rsCreateProject()">
+            <div class="rs-modal-actions">
+                <button class="rs-btn" onclick="rsCloseCreateModal()">Cancel</button>
+                <button class="rs-btn rs-btn-primary" onclick="rsCreateProject()">Create</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // ══════════════════════════════════════════════════════════
+    // Research Studio: Phase 1 (read only shell)
+    // ══════════════════════════════════════════════════════════
+
+    const RS = {
+        user: null,
+        projects: [],
+        currentProjectId: null
+    };
+
+    const SECTION_LABELS = {
+        aims: 'Aims',
+        abstract: 'Abstract',
+        introduction: 'Introduction',
+        methodology: 'Methodology',
+        results: 'Results',
+        discussion: 'Discussion',
+        conclusion: 'Conclusion'
+    };
+
+    // ── Helpers ──
+    function esc(str) {
+        const d = document.createElement('div');
+        d.textContent = str || '';
+        return d.innerHTML;
+    }
+
+    function fmtDate(iso) {
+        if (!iso) return '';
+        const d = new Date(iso);
+        return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    }
+
+    function statusDotClass(status) {
+        if (!status) return 'active';
+        const s = status.toLowerCase().replace(/\s/g, '');
+        if (s === 'onhold') return 'onhold';
+        if (s === 'completed') return 'completed';
+        if (s === 'archived') return 'archived';
+        return 'active';
+    }
+
+    // ── Init ──
+    async function rsInit() {
+        try {
+            const resp = await fetch('/api/di/me');
+            if (!resp.ok) {
+                window.location.href = '/login.html';
+                return;
+            }
+            RS.user = await resp.json();
+            document.getElementById('rsUserName').textContent = RS.user.name || '';
+            await rsLoadProjects();
+        } catch (err) {
+            console.error('Research Studio init error:', err);
+        }
+    }
+
+    // ── Load project list ──
+    async function rsLoadProjects() {
+        try {
+            const resp = await fetch('/api/di/studio/projects');
+            const data = await resp.json();
+            RS.projects = data.projects || [];
+            rsRenderProjectList();
+        } catch (err) {
+            console.error('Load projects error:', err);
+        }
+    }
+
+    function rsRenderProjectList() {
+        const list = document.getElementById('rsProjectList');
+        list.innerHTML = '';
+
+        if (RS.projects.length === 0) {
+            list.innerHTML = '<div style="font-size:0.82rem; color:var(--ink-soft); padding:6px 0;">No projects yet. Create one to get started.</div>';
+            return;
+        }
+
+        RS.projects.forEach(p => {
+            const card = document.createElement('div');
+            card.className = 'rs-proj-card' + (RS.currentProjectId === p.id ? ' active' : '');
+            card.onclick = () => rsOpenProject(p.id);
+
+            const dotClass = statusDotClass(p.status);
+            card.innerHTML =
+                '<div class="rs-proj-card-title">' + esc(p.title) + '</div>' +
+                '<div class="rs-proj-card-meta">' +
+                    '<span class="rs-status-dot ' + dotClass + '"></span>' +
+                    esc(p.status || 'Active') +
+                    (p.phase ? ' <span class="rs-phase-badge">' + esc(p.phase) + '</span>' : '') +
+                    (p.owner_name && p.owner_id !== (RS.user && RS.user.researcher_id)
+                        ? ' <span style="opacity:0.7;">' + esc(p.owner_name) + '</span>' : '') +
+                '</div>';
+
+            list.appendChild(card);
+        });
+    }
+
+    // ── Open project detail ──
+    async function rsOpenProject(projectId) {
+        RS.currentProjectId = projectId;
+        rsRenderProjectList(); // update active state
+
+        try {
+            const resp = await fetch('/api/di/studio/projects/' + projectId);
+            if (!resp.ok) {
+                const err = await resp.json();
+                alert(err.error || 'Failed to load project');
+                return;
+            }
+            const data = await resp.json();
+            rsRenderDetail(data);
+        } catch (err) {
+            console.error('Open project error:', err);
+        }
+    }
+
+    function rsRenderDetail(data) {
+        const p = data.project;
+        const sections = data.sections || [];
+
+        // Hide empty state, show detail
+        document.getElementById('rsEmptyState').classList.add('hidden');
+        const detail = document.getElementById('rsDetail');
+        detail.classList.add('visible');
+
+        // Title and subtitle
+        document.getElementById('rsDetailTitle').textContent = p.title;
+        document.getElementById('rsDetailSubtitle').textContent =
+            (p.owner_name || '') + ' \u00B7 ' + (p.affiliation || '') + ' \u00B7 ' + (p.status || 'Active');
+
+        // Reflection fields
+        rsSetReflectionValue('rsValHypothesis', p.hypothesis);
+        rsSetReflectionValue('rsValIntention', p.intention);
+        rsSetReflectionValue('rsValPhase', p.phase);
+        rsSetReflectionValue('rsValTension', p.tension);
+        rsSetReflectionValue('rsValMilestone', p.next_milestone);
+        rsSetReflectionValue('rsValMilestoneDate', p.milestone_date ? fmtDate(p.milestone_date) : null);
+
+        // Sections
+        const container = document.getElementById('rsSections');
+        container.innerHTML = '';
+        sections.forEach(sec => {
+            const block = document.createElement('div');
+            block.className = 'rs-section-block';
+
+            const label = SECTION_LABELS[sec.section_key] || sec.section_key;
+            const hasContent = sec.content_html && sec.content_html.trim();
+
+            block.innerHTML =
+                '<div class="rs-section-title">' + esc(label) + '</div>' +
+                '<div class="rs-section-content">' +
+                    (hasContent
+                        ? sec.content_html
+                        : '<span class="rs-section-placeholder">Empty section. Editing available in a future update.</span>') +
+                '</div>';
+
+            container.appendChild(block);
+        });
+
+        // Info bar
+        document.getElementById('rsInfoBar').innerHTML =
+            '<span>Created: ' + fmtDate(p.created_at) + '</span>' +
+            '<span>Updated: ' + fmtDate(p.updated_at) + '</span>' +
+            (p.target_journal ? '<span>Target journal: ' + esc(p.target_journal) + '</span>' : '') +
+            '<span>Evidence links: ' + (data.links ? data.links.length : 0) + '</span>';
+    }
+
+    function rsSetReflectionValue(elementId, value) {
+        const el = document.getElementById(elementId);
+        if (value && String(value).trim()) {
+            el.textContent = value;
+            el.className = 'rs-reflection-value';
+        } else {
+            el.textContent = 'Not set';
+            el.className = 'rs-reflection-value rs-reflection-empty';
+        }
+    }
+
+    // ── Create project modal ──
+    function rsOpenCreateModal() {
+        document.getElementById('rsNewTitle').value = '';
+        document.getElementById('rsCreateModal').classList.add('active');
+        setTimeout(() => document.getElementById('rsNewTitle').focus(), 100);
+    }
+
+    function rsCloseCreateModal() {
+        document.getElementById('rsCreateModal').classList.remove('active');
+    }
+
+    async function rsCreateProject() {
+        const title = document.getElementById('rsNewTitle').value.trim();
+        if (!title) {
+            document.getElementById('rsNewTitle').focus();
+            return;
+        }
+
+        try {
+            const resp = await fetch('/api/di/studio/projects', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title: title })
+            });
+            const data = await resp.json();
+            if (data.success) {
+                rsCloseCreateModal();
+                await rsLoadProjects();
+                rsOpenProject(data.project.id);
+            } else {
+                alert(data.error || 'Failed to create project');
+            }
+        } catch (err) {
+            console.error('Create project error:', err);
+            alert('Network error, please try again.');
+        }
+    }
+
+    // Close modal on overlay click
+    document.getElementById('rsCreateModal').addEventListener('click', function(e) {
+        if (e.target === this) rsCloseCreateModal();
+    });
+
+    // Close modal on Escape
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') rsCloseCreateModal();
+    });
+
+    // ── Start ──
+    rsInit();
+    </script>
+</body>
+</html>
