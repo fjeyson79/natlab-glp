@@ -11619,6 +11619,29 @@ app.get('/api/di/studio/projects/:id', requireAuth, async (req, res) => {
             unresolvedCommentCount = parseInt(ccResult.rows[0].cnt, 10);
         }
 
+        // Phase 3: load figures with assets and figure links
+        let figures = [];
+        if (await checkStudioFiguresTable()) {
+            const figResult = await pool.query(`
+                SELECT * FROM di_studio_figures WHERE project_id = $1 ORDER BY figure_number ASC
+            `, [projectId]);
+            figures = figResult.rows;
+            if (figures.length > 0) {
+                const figIds = figures.map(f => f.id);
+                const assetResult = await pool.query(`
+                    SELECT * FROM di_studio_assets WHERE figure_id = ANY($1::uuid[])
+                `, [figIds]);
+                const flResult = await pool.query(`
+                    SELECT * FROM di_studio_figure_links WHERE figure_id = ANY($1::uuid[])
+                `, [figIds]);
+                figures = figures.map(f => ({
+                    ...f,
+                    assets: assetResult.rows.filter(a => a.figure_id === f.id),
+                    evidence_links: flResult.rows.filter(fl => fl.figure_id === f.id)
+                }));
+            }
+        }
+
         res.json({
             project: {
                 id: project.id,
@@ -11641,6 +11664,7 @@ app.get('/api/di/studio/projects/:id', requireAuth, async (req, res) => {
             },
             sections: sectionsResult.rows,
             links: linksResult.rows,
+            figures: figures,
             lock: lockInfo,
             unresolved_comment_count: unresolvedCommentCount
         });
@@ -11695,6 +11719,27 @@ async function checkStudioCommentsTable() {
     return studioCommentsTableExists;
 }
 
+// Phase 3 table existence check (migration 026)
+let studioFiguresTableExists = null;
+let studioFiguresTableLastCheck = 0;
+
+async function checkStudioFiguresTable() {
+    const now = Date.now();
+    if (studioFiguresTableExists === null || studioFiguresTableExists === false || (now - studioFiguresTableLastCheck > ROLE_COLUMN_CHECK_INTERVAL)) {
+        try {
+            const result = await pool.query(`
+                SELECT table_name FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'di_studio_figures'
+            `);
+            studioFiguresTableExists = result.rows.length > 0;
+            studioFiguresTableLastCheck = now;
+        } catch (err) {
+            studioFiguresTableExists = false;
+        }
+    }
+    return studioFiguresTableExists;
+}
+
 // Shared access check helper for studio projects
 async function studioAccessCheck(projectId, user) {
     const projResult = await pool.query(`
@@ -11743,6 +11788,110 @@ function escapeToSafeHtml(plainText) {
     const paragraphs = escaped.split(/\n\n+/).filter(p => p.trim());
     if (paragraphs.length === 0) return '';
     return paragraphs.map(p => '<p>' + p.replace(/\n/g, '<br>') + '</p>').join('\n');
+}
+
+// Phase 3: Allowlist HTML sanitizer for rich text section content
+// Allowed tags: b, strong, i, em, u, sup, sub, h2, ul, ol, li, blockquote, table, tr, td, th, a, p, br
+// Special elements: div.rs-figure-block[data-figure-id], sup.rs-footnote[data-link-id]
+// Allowed attributes: a[href, target, rel] only; strips style, event handlers, script, iframe
+function sanitizeStudioHtml(html) {
+    if (!html) return '';
+
+    const ALLOWED_TAGS = new Set([
+        'b', 'strong', 'i', 'em', 'u', 'sup', 'sub', 'h2',
+        'ul', 'ol', 'li', 'blockquote', 'table', 'tr', 'td', 'th',
+        'a', 'p', 'br'
+    ]);
+
+    const TAG_CONVERSIONS = {
+        'div': 'p', 'span': '', 'section': 'p', 'article': 'p',
+        'header': 'p', 'footer': 'p', 'main': 'p', 'aside': 'p',
+        'h1': 'h2', 'h3': 'h2', 'h4': 'h2', 'h5': 'h2', 'h6': 'h2'
+    };
+
+    // Remove dangerous tags and their content
+    let clean = html
+        .replace(/<(script|style|iframe|embed|object|applet|form|input|button|select|textarea)[\s\S]*?<\/\1>/gi, '')
+        .replace(/<(script|style|iframe|embed|object|applet|form|input|button|select|textarea)[^>]*\/?>/gi, '');
+
+    // Process each tag
+    clean = clean.replace(/<\/?([a-zA-Z][a-zA-Z0-9]*)((?:\s+[^>]*)?)\s*\/?>/g, function(match, tagName, attrs) {
+        const tag = tagName.toLowerCase();
+        const isClosing = match.startsWith('</');
+        const isSelfClosing = match.endsWith('/>') || tag === 'br';
+        attrs = attrs || '';
+
+        // Special: div with rs-figure-block class (preserved with data-figure-id)
+        if (tag === 'div') {
+            if (!isClosing) {
+                const classMatch = attrs.match(/\bclass\s*=\s*"([^"]*)"/i);
+                const figIdMatch = attrs.match(/\bdata-figure-id\s*=\s*"([^"]*)"/i);
+                if (classMatch && classMatch[1] === 'rs-figure-block' && figIdMatch) {
+                    const safeId = figIdMatch[1].replace(/[^a-f0-9-]/gi, '');
+                    return '<div class="rs-figure-block" data-figure-id="' + safeId + '">';
+                }
+            } else {
+                return '</p>';
+            }
+            return '<p>';
+        }
+
+        if (ALLOWED_TAGS.has(tag)) {
+            // <a> tag: allow href, target, rel
+            if (tag === 'a' && !isClosing) {
+                const hrefMatch = attrs.match(/\bhref\s*=\s*"([^"]*)"/i);
+                const targetMatch = attrs.match(/\btarget\s*=\s*"([^"]*)"/i);
+                const relMatch = attrs.match(/\brel\s*=\s*"([^"]*)"/i);
+                let safeAttrs = '';
+                if (hrefMatch) {
+                    let href = hrefMatch[1];
+                    if (/^\s*javascript\s*:/i.test(href)) href = '#';
+                    safeAttrs += ' href="' + href.replace(/"/g, '&quot;') + '"';
+                }
+                if (targetMatch) {
+                    safeAttrs += ' target="' + targetMatch[1].replace(/"/g, '&quot;') + '"';
+                }
+                if (relMatch) {
+                    safeAttrs += ' rel="' + relMatch[1].replace(/"/g, '&quot;') + '"';
+                } else if (safeAttrs.includes('target=')) {
+                    safeAttrs += ' rel="noopener noreferrer"';
+                }
+                return '<a' + safeAttrs + '>';
+            }
+
+            // <sup> with footnote class: preserve data-link-id
+            if (tag === 'sup' && !isClosing) {
+                const classMatch = attrs.match(/\bclass\s*=\s*"([^"]*)"/i);
+                const linkIdMatch = attrs.match(/\bdata-link-id\s*=\s*"([^"]*)"/i);
+                if (classMatch && classMatch[1] === 'rs-footnote' && linkIdMatch) {
+                    const safeId = linkIdMatch[1].replace(/[^a-f0-9-]/gi, '');
+                    return '<sup class="rs-footnote" data-link-id="' + safeId + '">';
+                }
+            }
+
+            // All other allowed tags: strip all attributes
+            if (isClosing) return '</' + tag + '>';
+            if (isSelfClosing || tag === 'br') return '<' + tag + '>';
+            return '<' + tag + '>';
+        }
+
+        // Tag conversions (div already handled above)
+        if (TAG_CONVERSIONS.hasOwnProperty(tag)) {
+            const newTag = TAG_CONVERSIONS[tag];
+            if (!newTag) return '';
+            if (isClosing) return '</' + newTag + '>';
+            return '<' + newTag + '>';
+        }
+
+        // Unknown tag: strip
+        return '';
+    });
+
+    // Remove remaining event handlers and javascript: protocol
+    clean = clean.replace(/\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|\S+)/gi, '');
+    clean = clean.replace(/javascript\s*:/gi, '');
+
+    return clean.trim();
 }
 
 const STUDIO_VALID_PHASES = ['Planning', 'Data generation', 'Analysis', 'Writing', 'Submission', 'Revision'];
@@ -12000,13 +12149,19 @@ app.put('/api/di/studio/projects/:id/sections/:sectionKey', requireAuth, async (
         return res.status(409).json({ error: 'You must hold the editing lock to save section content' });
     }
 
-    const { content } = req.body;
-    if (content === undefined || content === null) {
+    const { content, content_html } = req.body;
+    if ((content === undefined || content === null) && (content_html === undefined || content_html === null)) {
         return res.status(400).json({ error: 'Content is required' });
     }
 
-    // For Phase 2, treat input as plain text and convert to safe HTML
-    const contentHtml = escapeToSafeHtml(content);
+    // Phase 3: accept rich HTML from contenteditable editor, sanitize with allowlist
+    // Falls back to Phase 2 plain text conversion for backward compatibility
+    let contentHtml;
+    if (content_html !== undefined && content_html !== null) {
+        contentHtml = sanitizeStudioHtml(content_html);
+    } else {
+        contentHtml = escapeToSafeHtml(content);
+    }
 
     try {
         const result = await pool.query(`
@@ -12152,6 +12307,618 @@ app.post('/api/di/studio/comments/:commentId/resolve', requireAuth, async (req, 
     }
 });
 
+
+// =====================================================
+// RESEARCH STUDIO ENDPOINTS (Phase 3: figures, assets, evidence, links, export)
+// =====================================================
+
+const STUDIO_ALLOWED_IMAGE_MIMES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+
+// Helper: check lock is held by this user for a project
+async function studioRequireLock(projectId, user) {
+    if (!(await checkStudioLocksTable())) return { error: 'Lock tables not available yet', status: 503 };
+    const lockResult = await pool.query(`
+        SELECT * FROM di_studio_locks WHERE project_id = $1 AND expires_at >= NOW()
+    `, [projectId]);
+    if (lockResult.rows.length === 0 || lockResult.rows[0].locked_by_researcher_id !== user.researcher_id) {
+        return { error: 'You must hold the editing lock to perform this action', status: 409 };
+    }
+    return { ok: true };
+}
+
+// Helper: check reflection is complete for a project
+function studioReflectionComplete(project) {
+    return !!(
+        project.hypothesis && project.hypothesis.trim() &&
+        project.intention && project.intention.trim() &&
+        project.phase &&
+        project.tension && project.tension.trim() &&
+        project.next_milestone && project.next_milestone.trim()
+    );
+}
+
+// ── GET /api/di/studio/projects/:id/evidence/search ──
+// Search existing GLP records for evidence linking.
+// Phase 3: searches di_submissions only. TODO: add other sources.
+app.get('/api/di/studio/projects/:id/evidence/search', requireAuth, async (req, res) => {
+    if (!(await checkStudioTables())) return res.status(503).json({ error: 'Research Studio tables not available yet' });
+    const user = req.session.user;
+    const projectId = req.params.id;
+
+    const access = await studioAccessCheck(projectId, user);
+    if (access.error) return res.status(access.status).json({ error: access.error });
+
+    const q = (req.query.q || '').trim();
+    const type = (req.query.type || '').trim().toUpperCase();
+
+    if (!q && !type) return res.json({ results: [] });
+
+    try {
+        let query, params;
+        if (type && q) {
+            query = `
+                SELECT s.id, s.filename, s.context_type, s.status, s.created_at,
+                       a.name AS researcher_name
+                FROM di_submissions s
+                LEFT JOIN di_allowlist a ON a.researcher_id = s.researcher_id
+                WHERE s.affiliation = $1
+                  AND s.status IN ('APPROVED', 'PENDING')
+                  AND s.context_type = $2
+                  AND s.filename ILIKE '%' || $3 || '%'
+                ORDER BY s.created_at DESC
+                LIMIT 25
+            `;
+            params = [access.project.affiliation, type, q];
+        } else if (type) {
+            query = `
+                SELECT s.id, s.filename, s.context_type, s.status, s.created_at,
+                       a.name AS researcher_name
+                FROM di_submissions s
+                LEFT JOIN di_allowlist a ON a.researcher_id = s.researcher_id
+                WHERE s.affiliation = $1
+                  AND s.status IN ('APPROVED', 'PENDING')
+                  AND s.context_type = $2
+                ORDER BY s.created_at DESC
+                LIMIT 25
+            `;
+            params = [access.project.affiliation, type];
+        } else {
+            query = `
+                SELECT s.id, s.filename, s.context_type, s.status, s.created_at,
+                       a.name AS researcher_name
+                FROM di_submissions s
+                LEFT JOIN di_allowlist a ON a.researcher_id = s.researcher_id
+                WHERE s.affiliation = $1
+                  AND s.status IN ('APPROVED', 'PENDING')
+                  AND s.filename ILIKE '%' || $2 || '%'
+                ORDER BY s.created_at DESC
+                LIMIT 25
+            `;
+            params = [access.project.affiliation, q];
+        }
+
+        const result = await pool.query(query, params);
+        res.json({
+            results: result.rows.map(r => ({
+                id: String(r.id),
+                filename: r.filename,
+                evidence_type: r.context_type || 'SUBMISSION',
+                status: r.status,
+                researcher_name: r.researcher_name,
+                created_at: r.created_at
+            }))
+        });
+    } catch (err) {
+        console.error('Studio evidence search error:', err);
+        res.status(500).json({ error: 'Evidence search failed' });
+    }
+});
+
+// ── POST /api/di/studio/projects/:id/links ──
+// Create an evidence link. Requires owner + lock + reflection complete.
+app.post('/api/di/studio/projects/:id/links', requireAuth, async (req, res) => {
+    if (!(await checkStudioTables())) return res.status(503).json({ error: 'Research Studio tables not available yet' });
+    const user = req.session.user;
+    const projectId = req.params.id;
+
+    const access = await studioAccessCheck(projectId, user);
+    if (access.error) return res.status(access.status).json({ error: access.error });
+    if (!access.isOwner) return res.status(403).json({ error: 'Only the project owner can create evidence links' });
+    if (!studioReflectionComplete(access.project)) return res.status(400).json({ error: 'Complete the reflection layer before linking evidence' });
+
+    const lockCheck = await studioRequireLock(projectId, user);
+    if (lockCheck.error) return res.status(lockCheck.status).json({ error: lockCheck.error });
+
+    const { evidence_type, evidence_id, label, section_key, footnote_index } = req.body;
+
+    if (!evidence_type || !evidence_id) {
+        return res.status(400).json({ error: 'evidence_type and evidence_id are required' });
+    }
+
+    try {
+        const result = await pool.query(`
+            INSERT INTO di_studio_links (project_id, evidence_type, evidence_id, label, section_key, footnote_index, created_by)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING *
+        `, [projectId, evidence_type, String(evidence_id).substring(0, 100),
+            (label || '').substring(0, 500) || null,
+            section_key || null,
+            footnote_index != null ? parseInt(footnote_index, 10) : null,
+            user.researcher_id]);
+
+        await pool.query(`UPDATE di_studio_projects SET updated_at = NOW() WHERE id = $1`, [projectId]);
+        res.json({ success: true, link: result.rows[0] });
+    } catch (err) {
+        if (err.code === '23505') {
+            return res.status(409).json({ error: 'This evidence link already exists for this section' });
+        }
+        console.error('Studio create link error:', err);
+        res.status(500).json({ error: 'Failed to create evidence link' });
+    }
+});
+
+// ── DELETE /api/di/studio/projects/:id/links/:linkId ──
+// Delete an evidence link. Requires owner + lock.
+app.delete('/api/di/studio/projects/:id/links/:linkId', requireAuth, async (req, res) => {
+    if (!(await checkStudioTables())) return res.status(503).json({ error: 'Research Studio tables not available yet' });
+    const user = req.session.user;
+    const projectId = req.params.id;
+    const linkId = req.params.linkId;
+
+    const access = await studioAccessCheck(projectId, user);
+    if (access.error) return res.status(access.status).json({ error: access.error });
+    if (!access.isOwner) return res.status(403).json({ error: 'Only the project owner can delete evidence links' });
+
+    const lockCheck = await studioRequireLock(projectId, user);
+    if (lockCheck.error) return res.status(lockCheck.status).json({ error: lockCheck.error });
+
+    try {
+        const result = await pool.query(`
+            DELETE FROM di_studio_links WHERE id = $1 AND project_id = $2 RETURNING *
+        `, [linkId, projectId]);
+
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Link not found' });
+
+        await pool.query(`UPDATE di_studio_projects SET updated_at = NOW() WHERE id = $1`, [projectId]);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Studio delete link error:', err);
+        res.status(500).json({ error: 'Failed to delete evidence link' });
+    }
+});
+
+// ── POST /api/di/studio/projects/:id/figures ──
+// Create a figure. Requires owner + lock + reflection complete.
+app.post('/api/di/studio/projects/:id/figures', requireAuth, async (req, res) => {
+    if (!(await checkStudioTables())) return res.status(503).json({ error: 'Research Studio tables not available yet' });
+    if (!(await checkStudioFiguresTable())) return res.status(503).json({ error: 'Figures tables not available yet' });
+    const user = req.session.user;
+    const projectId = req.params.id;
+
+    const access = await studioAccessCheck(projectId, user);
+    if (access.error) return res.status(access.status).json({ error: access.error });
+    if (!access.isOwner) return res.status(403).json({ error: 'Only the project owner can create figures' });
+    if (!studioReflectionComplete(access.project)) return res.status(400).json({ error: 'Complete the reflection layer before creating figures' });
+
+    const lockCheck = await studioRequireLock(projectId, user);
+    if (lockCheck.error) return res.status(lockCheck.status).json({ error: lockCheck.error });
+
+    const { title, legend } = req.body;
+
+    try {
+        // Determine next figure number
+        const countResult = await pool.query(`
+            SELECT COALESCE(MAX(figure_number), 0) + 1 AS next_num FROM di_studio_figures WHERE project_id = $1
+        `, [projectId]);
+        const nextNum = countResult.rows[0].next_num;
+
+        const result = await pool.query(`
+            INSERT INTO di_studio_figures (project_id, figure_number, title, legend)
+            VALUES ($1, $2, $3, $4)
+            RETURNING *
+        `, [projectId, nextNum,
+            sanitizeStudioText((title || '').substring(0, 500)),
+            sanitizeStudioText((legend || '').substring(0, 5000))]);
+
+        await pool.query(`UPDATE di_studio_projects SET updated_at = NOW() WHERE id = $1`, [projectId]);
+        res.json({ success: true, figure: { ...result.rows[0], assets: [], evidence_links: [] } });
+    } catch (err) {
+        console.error('Studio create figure error:', err);
+        res.status(500).json({ error: 'Failed to create figure' });
+    }
+});
+
+// ── PUT /api/di/studio/projects/:id/figures/:figureId ──
+// Update figure title and legend. Requires owner + lock.
+app.put('/api/di/studio/projects/:id/figures/:figureId', requireAuth, async (req, res) => {
+    if (!(await checkStudioTables())) return res.status(503).json({ error: 'Research Studio tables not available yet' });
+    if (!(await checkStudioFiguresTable())) return res.status(503).json({ error: 'Figures tables not available yet' });
+    const user = req.session.user;
+    const projectId = req.params.id;
+    const figureId = req.params.figureId;
+
+    const access = await studioAccessCheck(projectId, user);
+    if (access.error) return res.status(access.status).json({ error: access.error });
+    if (!access.isOwner) return res.status(403).json({ error: 'Only the project owner can edit figures' });
+
+    const lockCheck = await studioRequireLock(projectId, user);
+    if (lockCheck.error) return res.status(lockCheck.status).json({ error: lockCheck.error });
+
+    const { title, legend } = req.body;
+
+    try {
+        const result = await pool.query(`
+            UPDATE di_studio_figures
+            SET title = $1, legend = $2, updated_at = NOW()
+            WHERE id = $3 AND project_id = $4
+            RETURNING *
+        `, [sanitizeStudioText((title || '').substring(0, 500)),
+            sanitizeStudioText((legend || '').substring(0, 5000)),
+            figureId, projectId]);
+
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Figure not found' });
+
+        await pool.query(`UPDATE di_studio_projects SET updated_at = NOW() WHERE id = $1`, [projectId]);
+        res.json({ success: true, figure: result.rows[0] });
+    } catch (err) {
+        console.error('Studio update figure error:', err);
+        res.status(500).json({ error: 'Failed to update figure' });
+    }
+});
+
+// ── DELETE /api/di/studio/projects/:id/figures/:figureId ──
+// Delete a figure and its assets. Requires owner + lock.
+app.delete('/api/di/studio/projects/:id/figures/:figureId', requireAuth, async (req, res) => {
+    if (!(await checkStudioTables())) return res.status(503).json({ error: 'Research Studio tables not available yet' });
+    if (!(await checkStudioFiguresTable())) return res.status(503).json({ error: 'Figures tables not available yet' });
+    const user = req.session.user;
+    const projectId = req.params.id;
+    const figureId = req.params.figureId;
+
+    const access = await studioAccessCheck(projectId, user);
+    if (access.error) return res.status(access.status).json({ error: access.error });
+    if (!access.isOwner) return res.status(403).json({ error: 'Only the project owner can delete figures' });
+
+    const lockCheck = await studioRequireLock(projectId, user);
+    if (lockCheck.error) return res.status(lockCheck.status).json({ error: lockCheck.error });
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        // Delete R2 objects for assets
+        const assets = await client.query(`SELECT r2_key FROM di_studio_assets WHERE figure_id = $1`, [figureId]);
+        for (const a of assets.rows) {
+            try { await deleteFromR2(a.r2_key); } catch (e) { console.error('R2 delete error:', e); }
+        }
+
+        // Delete figure (cascades to figure_links and nullifies asset figure_id)
+        const result = await client.query(`
+            DELETE FROM di_studio_figures WHERE id = $1 AND project_id = $2 RETURNING *
+        `, [figureId, projectId]);
+
+        if (result.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Figure not found' });
+        }
+
+        // Delete orphaned assets (figure_id now null)
+        await client.query(`DELETE FROM di_studio_assets WHERE project_id = $1 AND figure_id IS NULL`, [projectId]);
+
+        await client.query(`UPDATE di_studio_projects SET updated_at = NOW() WHERE id = $1`, [projectId]);
+        await client.query('COMMIT');
+
+        res.json({ success: true });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('Studio delete figure error:', err);
+        res.status(500).json({ error: 'Failed to delete figure' });
+    } finally {
+        client.release();
+    }
+});
+
+// ── POST /api/di/studio/projects/:id/figures/:figureId/image ──
+// Upload a representative image for a figure. 10 MB max, image types only.
+app.post('/api/di/studio/projects/:id/figures/:figureId/image', requireAuth, upload.single('file'), async (req, res) => {
+    if (!(await checkStudioTables())) return res.status(503).json({ error: 'Research Studio tables not available yet' });
+    if (!(await checkStudioFiguresTable())) return res.status(503).json({ error: 'Figures tables not available yet' });
+    const user = req.session.user;
+    const projectId = req.params.id;
+    const figureId = req.params.figureId;
+
+    const access = await studioAccessCheck(projectId, user);
+    if (access.error) return res.status(access.status).json({ error: access.error });
+    if (!access.isOwner) return res.status(403).json({ error: 'Only the project owner can upload figure images' });
+
+    const lockCheck = await studioRequireLock(projectId, user);
+    if (lockCheck.error) return res.status(lockCheck.status).json({ error: lockCheck.error });
+
+    if (!req.file) return res.status(400).json({ error: 'Image file is required' });
+    if (req.file.size > 10 * 1024 * 1024) return res.status(400).json({ error: 'Image must be 10 MB or smaller' });
+    if (!STUDIO_ALLOWED_IMAGE_MIMES.includes(req.file.mimetype)) {
+        return res.status(400).json({ error: 'Only JPEG, PNG, GIF, and WebP images are allowed' });
+    }
+
+    try {
+        // Verify figure belongs to project
+        const figCheck = await pool.query(`
+            SELECT id FROM di_studio_figures WHERE id = $1 AND project_id = $2
+        `, [figureId, projectId]);
+        if (figCheck.rows.length === 0) return res.status(404).json({ error: 'Figure not found' });
+
+        // Delete previous representative image if exists
+        const prevAssets = await pool.query(`
+            SELECT id, r2_key FROM di_studio_assets WHERE figure_id = $1 AND kind = 'representative_image'
+        `, [figureId]);
+        for (const pa of prevAssets.rows) {
+            try { await deleteFromR2(pa.r2_key); } catch (e) { console.error('R2 cleanup error:', e); }
+            await pool.query(`DELETE FROM di_studio_assets WHERE id = $1`, [pa.id]);
+        }
+
+        // Generate asset ID first, then construct R2 key
+        const assetIdResult = await pool.query(`SELECT gen_random_uuid() AS id`);
+        const assetId = assetIdResult.rows[0].id;
+        const ext = req.file.originalname.split('.').pop() || 'bin';
+        const r2Key = 'di/' + access.project.affiliation + '/Studio/figures/' + projectId + '/' + figureId + '/' + assetId + '.' + ext.replace(/[^a-zA-Z0-9]/g, '');
+
+        await uploadToR2(req.file.buffer, r2Key, req.file.mimetype);
+
+        const result = await pool.query(`
+            INSERT INTO di_studio_assets (id, project_id, figure_id, kind, r2_key, mime, bytes)
+            VALUES ($1, $2, $3, 'representative_image', $4, $5, $6)
+            RETURNING *
+        `, [assetId, projectId, figureId, r2Key, req.file.mimetype, req.file.size]);
+
+        await pool.query(`UPDATE di_studio_projects SET updated_at = NOW() WHERE id = $1`, [projectId]);
+        res.json({ success: true, asset: result.rows[0] });
+    } catch (err) {
+        console.error('Studio upload figure image error:', err);
+        res.status(500).json({ error: 'Failed to upload figure image' });
+    }
+});
+
+// ── GET /api/di/studio/assets/:assetId/view ──
+// Serve an asset image from R2.
+app.get('/api/di/studio/assets/:assetId/view', requireAuth, async (req, res) => {
+    if (!(await checkStudioFiguresTable())) return res.status(503).json({ error: 'Asset tables not available yet' });
+    const user = req.session.user;
+    const assetId = req.params.assetId;
+
+    try {
+        const assetResult = await pool.query(`
+            SELECT a.*, p.owner_id, p.affiliation
+            FROM di_studio_assets a
+            JOIN di_studio_projects p ON p.id = a.project_id
+            WHERE a.id = $1
+        `, [assetId]);
+
+        if (assetResult.rows.length === 0) return res.status(404).json({ error: 'Asset not found' });
+        const asset = assetResult.rows[0];
+
+        // Access check
+        const isOwner = asset.owner_id === user.researcher_id;
+        const isPIAccess = user.role === 'pi' && asset.affiliation === user.affiliation;
+        if (!isOwner && !isPIAccess) return res.status(403).json({ error: 'Access denied' });
+
+        const data = await downloadFromR2(asset.r2_key);
+        res.set('Content-Type', asset.mime);
+        res.set('Cache-Control', 'private, max-age=3600');
+        res.send(Buffer.from(await data.Body.transformToByteArray()));
+    } catch (err) {
+        console.error('Studio serve asset error:', err);
+        res.status(500).json({ error: 'Failed to serve asset' });
+    }
+});
+
+// ── POST /api/di/studio/projects/:id/figures/:figureId/links ──
+// Link evidence to a figure. Requires owner + lock.
+app.post('/api/di/studio/projects/:id/figures/:figureId/links', requireAuth, async (req, res) => {
+    if (!(await checkStudioFiguresTable())) return res.status(503).json({ error: 'Figures tables not available yet' });
+    const user = req.session.user;
+    const projectId = req.params.id;
+    const figureId = req.params.figureId;
+
+    const access = await studioAccessCheck(projectId, user);
+    if (access.error) return res.status(access.status).json({ error: access.error });
+    if (!access.isOwner) return res.status(403).json({ error: 'Only the project owner can link evidence to figures' });
+
+    const lockCheck = await studioRequireLock(projectId, user);
+    if (lockCheck.error) return res.status(lockCheck.status).json({ error: lockCheck.error });
+
+    const { evidence_type, evidence_id, label } = req.body;
+    if (!evidence_type || !evidence_id) return res.status(400).json({ error: 'evidence_type and evidence_id are required' });
+
+    try {
+        // Verify figure belongs to project
+        const figCheck = await pool.query(`
+            SELECT id FROM di_studio_figures WHERE id = $1 AND project_id = $2
+        `, [figureId, projectId]);
+        if (figCheck.rows.length === 0) return res.status(404).json({ error: 'Figure not found' });
+
+        const result = await pool.query(`
+            INSERT INTO di_studio_figure_links (figure_id, evidence_type, evidence_id, label)
+            VALUES ($1, $2, $3, $4)
+            RETURNING *
+        `, [figureId, evidence_type, String(evidence_id).substring(0, 100),
+            (label || '').substring(0, 500) || null]);
+
+        res.json({ success: true, figure_link: result.rows[0] });
+    } catch (err) {
+        console.error('Studio create figure link error:', err);
+        res.status(500).json({ error: 'Failed to link evidence to figure' });
+    }
+});
+
+// ── DELETE /api/di/studio/projects/:id/figure-links/:figureLinkId ──
+// Remove a figure evidence link. Requires owner + lock.
+app.delete('/api/di/studio/projects/:id/figure-links/:figureLinkId', requireAuth, async (req, res) => {
+    if (!(await checkStudioFiguresTable())) return res.status(503).json({ error: 'Figures tables not available yet' });
+    const user = req.session.user;
+    const projectId = req.params.id;
+    const figureLinkId = req.params.figureLinkId;
+
+    const access = await studioAccessCheck(projectId, user);
+    if (access.error) return res.status(access.status).json({ error: access.error });
+    if (!access.isOwner) return res.status(403).json({ error: 'Only the project owner can remove figure evidence links' });
+
+    const lockCheck = await studioRequireLock(projectId, user);
+    if (lockCheck.error) return res.status(lockCheck.status).json({ error: lockCheck.error });
+
+    try {
+        // Verify figure link belongs to a figure in this project
+        const result = await pool.query(`
+            DELETE FROM di_studio_figure_links
+            WHERE id = $1 AND figure_id IN (SELECT id FROM di_studio_figures WHERE project_id = $2)
+            RETURNING *
+        `, [figureLinkId, projectId]);
+
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Figure link not found' });
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Studio delete figure link error:', err);
+        res.status(500).json({ error: 'Failed to remove figure evidence link' });
+    }
+});
+
+// ── GET /api/di/studio/projects/:id/export ──
+// Export project data. format=json for bundle, format=html for printable page.
+app.get('/api/di/studio/projects/:id/export', requireAuth, async (req, res) => {
+    if (!(await checkStudioTables())) return res.status(503).json({ error: 'Research Studio tables not available yet' });
+    const user = req.session.user;
+    const projectId = req.params.id;
+
+    const access = await studioAccessCheck(projectId, user);
+    if (access.error) return res.status(access.status).json({ error: access.error });
+
+    const format = req.query.format || 'json';
+
+    try {
+        const project = access.project;
+
+        const sectionsResult = await pool.query(`
+            SELECT * FROM di_studio_sections WHERE project_id = $1 ORDER BY sort_order ASC
+        `, [projectId]);
+
+        const linksResult = await pool.query(`
+            SELECT * FROM di_studio_links WHERE project_id = $1 ORDER BY section_key, footnote_index
+        `, [projectId]);
+
+        let figures = [];
+        if (await checkStudioFiguresTable()) {
+            const figResult = await pool.query(`SELECT * FROM di_studio_figures WHERE project_id = $1 ORDER BY figure_number`, [projectId]);
+            figures = figResult.rows;
+            if (figures.length > 0) {
+                const figIds = figures.map(f => f.id);
+                const assetResult = await pool.query(`SELECT id, figure_id, kind, mime, bytes, created_at FROM di_studio_assets WHERE figure_id = ANY($1::uuid[])`, [figIds]);
+                const flResult = await pool.query(`SELECT * FROM di_studio_figure_links WHERE figure_id = ANY($1::uuid[])`, [figIds]);
+                figures = figures.map(f => ({
+                    ...f,
+                    assets: assetResult.rows.filter(a => a.figure_id === f.id),
+                    evidence_links: flResult.rows.filter(fl => fl.figure_id === f.id)
+                }));
+            }
+        }
+
+        let unresolvedCommentCount = 0;
+        if (await checkStudioCommentsTable()) {
+            const ccResult = await pool.query(`SELECT COUNT(*) AS cnt FROM di_studio_comments WHERE project_id = $1 AND resolved = FALSE`, [projectId]);
+            unresolvedCommentCount = parseInt(ccResult.rows[0].cnt, 10);
+        }
+
+        if (format === 'html') {
+            // Printable HTML view
+            const sectionLabels = { aims: 'Aims', abstract: 'Abstract', introduction: 'Introduction', methodology: 'Methodology', results: 'Results', discussion: 'Discussion', conclusion: 'Conclusion' };
+            const sections = sectionsResult.rows;
+            const links = linksResult.rows;
+
+            let sectionsHtml = '';
+            sections.forEach(sec => {
+                const label = sectionLabels[sec.section_key] || sec.section_key;
+                const sectionLinks = links.filter(l => l.section_key === sec.section_key);
+                let footnotesHtml = '';
+                if (sectionLinks.length > 0) {
+                    footnotesHtml = '<div style="margin-top:12px; padding-top:8px; border-top:1px solid #ddd; font-size:0.8rem; color:#666;">';
+                    sectionLinks.forEach((l, i) => {
+                        footnotesHtml += '<div>[' + (i + 1) + '] ' + (l.label || l.evidence_type + ' ' + l.evidence_id) + '</div>';
+                    });
+                    footnotesHtml += '</div>';
+                }
+
+                sectionsHtml += '<div style="margin-bottom:32px;">' +
+                    '<h2 style="font-family:Georgia,serif; font-size:1.3rem; font-weight:400; border-bottom:1px solid #ddd; padding-bottom:6px;">' + label + '</h2>' +
+                    '<div style="line-height:1.7; font-size:0.95rem;">' + (sec.content_html || '<em style="color:#999;">Empty section.</em>') + '</div>' +
+                    footnotesHtml + '</div>';
+            });
+
+            let figuresHtml = '';
+            if (figures.length > 0) {
+                figuresHtml = '<div style="margin-top:40px; border-top:2px solid #ddd; padding-top:20px;"><h2 style="font-family:Georgia,serif; font-size:1.3rem; font-weight:400;">Figures</h2>';
+                figures.forEach(f => {
+                    figuresHtml += '<div style="margin-bottom:20px; padding:12px; border:1px solid #eee; border-radius:8px;">' +
+                        '<strong>Figure ' + f.figure_number + '.</strong> ' + (f.title || 'Untitled') +
+                        (f.legend ? '<div style="margin-top:6px; font-size:0.88rem; color:#555;">' + f.legend + '</div>' : '') +
+                        '</div>';
+                });
+                figuresHtml += '</div>';
+            }
+
+            const reflectionHtml = '<div style="margin-bottom:32px; padding:20px; background:#faf8f4; border:1px solid #e8e4de; border-radius:8px;">' +
+                '<h2 style="font-family:Georgia,serif; font-size:1.1rem; font-weight:400; margin-bottom:12px;">Reflection Layer</h2>' +
+                '<div style="display:grid; grid-template-columns:1fr 1fr; gap:10px 20px; font-size:0.88rem;">' +
+                '<div style="grid-column:1/-1;"><strong>Hypothesis:</strong> ' + (project.hypothesis || '<em>Not set</em>') + '</div>' +
+                '<div><strong>Intention:</strong> ' + (project.intention || '<em>Not set</em>') + '</div>' +
+                '<div><strong>Phase:</strong> ' + (project.phase || '<em>Not set</em>') + '</div>' +
+                '<div style="grid-column:1/-1;"><strong>Tension:</strong> ' + (project.tension || '<em>Not set</em>') + '</div>' +
+                '<div><strong>Next milestone:</strong> ' + (project.next_milestone || '<em>Not set</em>') + '</div>' +
+                '</div></div>';
+
+            const html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">' +
+                '<title>' + (project.title || 'Research Studio Export') + '</title>' +
+                '<style>body{font-family:Inter,-apple-system,BlinkMacSystemFont,sans-serif;max-width:800px;margin:40px auto;padding:0 20px;color:#2c2c2c;line-height:1.6;}' +
+                'h1{font-family:Georgia,serif;font-weight:400;font-size:1.8rem;margin-bottom:4px;}' +
+                '.subtitle{font-size:0.85rem;color:#6b6b6b;margin-bottom:24px;}' +
+                '@media print{body{margin:20px;}}</style></head><body>' +
+                '<h1>' + (project.title || 'Untitled Project') + '</h1>' +
+                '<div class="subtitle">' + (project.owner_name || '') + ' &middot; ' + (project.affiliation || '') + '</div>' +
+                reflectionHtml + sectionsHtml + figuresHtml +
+                '<div style="margin-top:40px; padding-top:12px; border-top:1px solid #ddd; font-size:0.75rem; color:#999;">Exported from NAT Lab Research Studio</div>' +
+                '</body></html>';
+
+            res.set('Content-Type', 'text/html; charset=utf-8');
+            return res.send(html);
+        }
+
+        // Default: JSON export
+        res.json({
+            export_version: 1,
+            exported_at: new Date().toISOString(),
+            project: {
+                id: project.id,
+                title: project.title,
+                owner_id: project.owner_id,
+                affiliation: project.affiliation,
+                status: project.status,
+                hypothesis: project.hypothesis,
+                intention: project.intention,
+                phase: project.phase,
+                tension: project.tension,
+                next_milestone: project.next_milestone,
+                milestone_date: project.milestone_date,
+                target_journal: project.target_journal,
+                created_at: project.created_at,
+                updated_at: project.updated_at
+            },
+            sections: sectionsResult.rows,
+            links: linksResult.rows,
+            figures: figures,
+            unresolved_comment_count: unresolvedCommentCount
+        });
+    } catch (err) {
+        console.error('Studio export error:', err);
+        res.status(500).json({ error: 'Export failed' });
+    }
+});
 
 app.listen(PORT, "0.0.0.0", () => console.log("[STARTUP] Server listening on port " + PORT));
 
