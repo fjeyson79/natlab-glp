@@ -11814,6 +11814,16 @@ function sanitizeStudioHtml(html) {
         .replace(/<(script|style|iframe|embed|object|applet|form|input|button|select|textarea)[\s\S]*?<\/\1>/gi, '')
         .replace(/<(script|style|iframe|embed|object|applet|form|input|button|select|textarea)[^>]*\/?>/gi, '');
 
+    // Pre-process: protect complete figure block divs before main tag processing
+    const figBlockMarkers = [];
+    clean = clean.replace(/<div\s+class="rs-figure-block"\s+data-figure-id="([^"]*)"[^>]*>([\s\S]*?)<\/div>/gi, function(m, id, inner) {
+        const safeId = id.replace(/[^a-f0-9-]/gi, '');
+        const safeInner = inner.replace(/<[^>]*>/g, '').substring(0, 200);
+        const idx = figBlockMarkers.length;
+        figBlockMarkers.push('<div class="rs-figure-block" data-figure-id="' + safeId + '">' + safeInner + '</div>');
+        return '\x00FIGBLOCK_' + idx + '\x00';
+    });
+
     // Process each tag
     clean = clean.replace(/<\/?([a-zA-Z][a-zA-Z0-9]*)((?:\s+[^>]*)?)\s*\/?>/g, function(match, tagName, attrs) {
         const tag = tagName.toLowerCase();
@@ -11821,40 +11831,39 @@ function sanitizeStudioHtml(html) {
         const isSelfClosing = match.endsWith('/>') || tag === 'br';
         attrs = attrs || '';
 
-        // Special: div with rs-figure-block class (preserved with data-figure-id)
+        // All divs at this point are non-figure-block, convert to p
         if (tag === 'div') {
-            if (!isClosing) {
-                const classMatch = attrs.match(/\bclass\s*=\s*"([^"]*)"/i);
-                const figIdMatch = attrs.match(/\bdata-figure-id\s*=\s*"([^"]*)"/i);
-                if (classMatch && classMatch[1] === 'rs-figure-block' && figIdMatch) {
-                    const safeId = figIdMatch[1].replace(/[^a-f0-9-]/gi, '');
-                    return '<div class="rs-figure-block" data-figure-id="' + safeId + '">';
-                }
-            } else {
-                return '</p>';
-            }
+            if (isClosing) return '</p>';
             return '<p>';
         }
 
         if (ALLOWED_TAGS.has(tag)) {
-            // <a> tag: allow href, target, rel
+            // <a> tag: allow href, target, rel; block unsafe protocols
             if (tag === 'a' && !isClosing) {
                 const hrefMatch = attrs.match(/\bhref\s*=\s*"([^"]*)"/i);
                 const targetMatch = attrs.match(/\btarget\s*=\s*"([^"]*)"/i);
                 const relMatch = attrs.match(/\brel\s*=\s*"([^"]*)"/i);
                 let safeAttrs = '';
+                let hasTarget = false;
                 if (hrefMatch) {
                     let href = hrefMatch[1];
-                    if (/^\s*javascript\s*:/i.test(href)) href = '#';
-                    safeAttrs += ' href="' + href.replace(/"/g, '&quot;') + '"';
+                    // Block javascript:, vbscript:, data: protocols
+                    if (/^\s*(javascript|vbscript|data)\s*:/i.test(href)) {
+                        // Omit href entirely for unsafe protocols
+                    } else {
+                        safeAttrs += ' href="' + href.replace(/"/g, '&quot;') + '"';
+                    }
                 }
                 if (targetMatch) {
-                    safeAttrs += ' target="' + targetMatch[1].replace(/"/g, '&quot;') + '"';
+                    const tv = targetMatch[1].replace(/"/g, '&quot;');
+                    safeAttrs += ' target="' + tv + '"';
+                    hasTarget = tv === '_blank';
                 }
-                if (relMatch) {
-                    safeAttrs += ' rel="' + relMatch[1].replace(/"/g, '&quot;') + '"';
-                } else if (safeAttrs.includes('target=')) {
+                // Force rel="noopener noreferrer" when target="_blank"
+                if (hasTarget) {
                     safeAttrs += ' rel="noopener noreferrer"';
+                } else if (relMatch) {
+                    safeAttrs += ' rel="' + relMatch[1].replace(/"/g, '&quot;') + '"';
                 }
                 return '<a' + safeAttrs + '>';
             }
@@ -11887,9 +11896,14 @@ function sanitizeStudioHtml(html) {
         return '';
     });
 
-    // Remove remaining event handlers and javascript: protocol
+    // Remove remaining event handlers and unsafe protocols
     clean = clean.replace(/\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|\S+)/gi, '');
-    clean = clean.replace(/javascript\s*:/gi, '');
+    clean = clean.replace(/(javascript|vbscript|data)\s*:/gi, '');
+
+    // Restore protected figure block divs
+    figBlockMarkers.forEach(function(fb, i) {
+        clean = clean.replace('\x00FIGBLOCK_' + i + '\x00', fb);
+    });
 
     return clean.trim();
 }
@@ -12458,7 +12472,7 @@ app.post('/api/di/studio/projects/:id/links', requireAuth, async (req, res) => {
 });
 
 // ── DELETE /api/di/studio/projects/:id/links/:linkId ──
-// Delete an evidence link. Requires owner + lock.
+// Delete an evidence link. Requires owner + lock + reflection complete.
 app.delete('/api/di/studio/projects/:id/links/:linkId', requireAuth, async (req, res) => {
     if (!(await checkStudioTables())) return res.status(503).json({ error: 'Research Studio tables not available yet' });
     const user = req.session.user;
@@ -12468,6 +12482,7 @@ app.delete('/api/di/studio/projects/:id/links/:linkId', requireAuth, async (req,
     const access = await studioAccessCheck(projectId, user);
     if (access.error) return res.status(access.status).json({ error: access.error });
     if (!access.isOwner) return res.status(403).json({ error: 'Only the project owner can delete evidence links' });
+    if (!studioReflectionComplete(access.project)) return res.status(400).json({ error: 'Complete the reflection layer before modifying evidence links' });
 
     const lockCheck = await studioRequireLock(projectId, user);
     if (lockCheck.error) return res.status(lockCheck.status).json({ error: lockCheck.error });
@@ -12529,7 +12544,7 @@ app.post('/api/di/studio/projects/:id/figures', requireAuth, async (req, res) =>
 });
 
 // ── PUT /api/di/studio/projects/:id/figures/:figureId ──
-// Update figure title and legend. Requires owner + lock.
+// Update figure title and legend. Requires owner + lock + reflection complete.
 app.put('/api/di/studio/projects/:id/figures/:figureId', requireAuth, async (req, res) => {
     if (!(await checkStudioTables())) return res.status(503).json({ error: 'Research Studio tables not available yet' });
     if (!(await checkStudioFiguresTable())) return res.status(503).json({ error: 'Figures tables not available yet' });
@@ -12540,6 +12555,7 @@ app.put('/api/di/studio/projects/:id/figures/:figureId', requireAuth, async (req
     const access = await studioAccessCheck(projectId, user);
     if (access.error) return res.status(access.status).json({ error: access.error });
     if (!access.isOwner) return res.status(403).json({ error: 'Only the project owner can edit figures' });
+    if (!studioReflectionComplete(access.project)) return res.status(400).json({ error: 'Complete the reflection layer before editing figures' });
 
     const lockCheck = await studioRequireLock(projectId, user);
     if (lockCheck.error) return res.status(lockCheck.status).json({ error: lockCheck.error });
@@ -12567,7 +12583,7 @@ app.put('/api/di/studio/projects/:id/figures/:figureId', requireAuth, async (req
 });
 
 // ── DELETE /api/di/studio/projects/:id/figures/:figureId ──
-// Delete a figure and its assets. Requires owner + lock.
+// Delete a figure and its assets. Requires owner + lock + reflection complete.
 app.delete('/api/di/studio/projects/:id/figures/:figureId', requireAuth, async (req, res) => {
     if (!(await checkStudioTables())) return res.status(503).json({ error: 'Research Studio tables not available yet' });
     if (!(await checkStudioFiguresTable())) return res.status(503).json({ error: 'Figures tables not available yet' });
@@ -12578,6 +12594,7 @@ app.delete('/api/di/studio/projects/:id/figures/:figureId', requireAuth, async (
     const access = await studioAccessCheck(projectId, user);
     if (access.error) return res.status(access.status).json({ error: access.error });
     if (!access.isOwner) return res.status(403).json({ error: 'Only the project owner can delete figures' });
+    if (!studioReflectionComplete(access.project)) return res.status(400).json({ error: 'Complete the reflection layer before modifying figures' });
 
     const lockCheck = await studioRequireLock(projectId, user);
     if (lockCheck.error) return res.status(lockCheck.status).json({ error: lockCheck.error });
@@ -12620,6 +12637,7 @@ app.delete('/api/di/studio/projects/:id/figures/:figureId', requireAuth, async (
 
 // ── POST /api/di/studio/projects/:id/figures/:figureId/image ──
 // Upload a representative image for a figure. 10 MB max, image types only.
+// Requires owner + lock + reflection complete. Memory only storage via multer.
 app.post('/api/di/studio/projects/:id/figures/:figureId/image', requireAuth, upload.single('file'), async (req, res) => {
     if (!(await checkStudioTables())) return res.status(503).json({ error: 'Research Studio tables not available yet' });
     if (!(await checkStudioFiguresTable())) return res.status(503).json({ error: 'Figures tables not available yet' });
@@ -12630,6 +12648,7 @@ app.post('/api/di/studio/projects/:id/figures/:figureId/image', requireAuth, upl
     const access = await studioAccessCheck(projectId, user);
     if (access.error) return res.status(access.status).json({ error: access.error });
     if (!access.isOwner) return res.status(403).json({ error: 'Only the project owner can upload figure images' });
+    if (!studioReflectionComplete(access.project)) return res.status(400).json({ error: 'Complete the reflection layer before uploading figure images' });
 
     const lockCheck = await studioRequireLock(projectId, user);
     if (lockCheck.error) return res.status(lockCheck.status).json({ error: lockCheck.error });
@@ -12703,7 +12722,9 @@ app.get('/api/di/studio/assets/:assetId/view', requireAuth, async (req, res) => 
 
         const data = await downloadFromR2(asset.r2_key);
         res.set('Content-Type', asset.mime);
+        res.set('Content-Disposition', 'inline');
         res.set('Cache-Control', 'private, max-age=3600');
+        res.set('X-Content-Type-Options', 'nosniff');
         res.send(Buffer.from(await data.Body.transformToByteArray()));
     } catch (err) {
         console.error('Studio serve asset error:', err);
@@ -12712,7 +12733,7 @@ app.get('/api/di/studio/assets/:assetId/view', requireAuth, async (req, res) => 
 });
 
 // ── POST /api/di/studio/projects/:id/figures/:figureId/links ──
-// Link evidence to a figure. Requires owner + lock.
+// Link evidence to a figure. Requires owner + lock + reflection complete.
 app.post('/api/di/studio/projects/:id/figures/:figureId/links', requireAuth, async (req, res) => {
     if (!(await checkStudioFiguresTable())) return res.status(503).json({ error: 'Figures tables not available yet' });
     const user = req.session.user;
@@ -12722,6 +12743,7 @@ app.post('/api/di/studio/projects/:id/figures/:figureId/links', requireAuth, asy
     const access = await studioAccessCheck(projectId, user);
     if (access.error) return res.status(access.status).json({ error: access.error });
     if (!access.isOwner) return res.status(403).json({ error: 'Only the project owner can link evidence to figures' });
+    if (!studioReflectionComplete(access.project)) return res.status(400).json({ error: 'Complete the reflection layer before linking evidence' });
 
     const lockCheck = await studioRequireLock(projectId, user);
     if (lockCheck.error) return res.status(lockCheck.status).json({ error: lockCheck.error });
@@ -12751,7 +12773,7 @@ app.post('/api/di/studio/projects/:id/figures/:figureId/links', requireAuth, asy
 });
 
 // ── DELETE /api/di/studio/projects/:id/figure-links/:figureLinkId ──
-// Remove a figure evidence link. Requires owner + lock.
+// Remove a figure evidence link. Requires owner + lock + reflection complete.
 app.delete('/api/di/studio/projects/:id/figure-links/:figureLinkId', requireAuth, async (req, res) => {
     if (!(await checkStudioFiguresTable())) return res.status(503).json({ error: 'Figures tables not available yet' });
     const user = req.session.user;
@@ -12761,6 +12783,7 @@ app.delete('/api/di/studio/projects/:id/figure-links/:figureLinkId', requireAuth
     const access = await studioAccessCheck(projectId, user);
     if (access.error) return res.status(access.status).json({ error: access.error });
     if (!access.isOwner) return res.status(403).json({ error: 'Only the project owner can remove figure evidence links' });
+    if (!studioReflectionComplete(access.project)) return res.status(400).json({ error: 'Complete the reflection layer before modifying evidence links' });
 
     const lockCheck = await studioRequireLock(projectId, user);
     if (lockCheck.error) return res.status(lockCheck.status).json({ error: lockCheck.error });

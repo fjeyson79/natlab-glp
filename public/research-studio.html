@@ -1933,40 +1933,83 @@
     // ══════════════════════════════════════════════════════════
 
     // Client side HTML sanitizer for paste events
+    // Client HTML sanitizer: must match server sanitizeStudioHtml policy exactly.
+    // Allowed tags: b, strong, i, em, u, sup, sub, h2, ul, ol, li, blockquote, table, tr, td, th, a, p, br
+    // Special: div only if class=rs-figure-block + data-figure-id; sup allows class=rs-footnote + data-link-id
+    // All other tags unwrapped. All other attributes stripped.
     function rsClientSanitize(html) {
         const ALLOWED = /^(b|strong|i|em|u|sup|sub|h2|ul|ol|li|blockquote|table|tr|td|th|a|p|br)$/i;
         const tmp = document.createElement('div');
         tmp.innerHTML = html;
-        // Remove script, style, iframe, embed, object
-        tmp.querySelectorAll('script,style,iframe,embed,object,form,input,button,select,textarea,applet').forEach(el => el.remove());
-        // Strip disallowed tags but keep content
+        // Remove dangerous elements entirely
+        tmp.querySelectorAll('script,style,iframe,embed,object,form,input,button,select,textarea,applet').forEach(function(el) { el.remove(); });
+        // Walk and enforce policy
         function walk(node) {
-            if (node.nodeType === 1) {
-                // Remove event handlers and style
-                Array.from(node.attributes).forEach(attr => {
-                    if (attr.name.startsWith('on') || attr.name === 'style') node.removeAttribute(attr.name);
-                });
-                const tag = node.tagName.toLowerCase();
-                if (!ALLOWED.test(tag) && tag !== 'div') {
-                    // Replace with span content
-                    const frag = document.createDocumentFragment();
-                    while (node.firstChild) frag.appendChild(node.firstChild);
-                    node.parentNode.replaceChild(frag, node);
+            if (node.nodeType !== 1) return;
+            // Strip event handlers and style from all elements first
+            Array.from(node.attributes).forEach(function(attr) {
+                if (attr.name.startsWith('on') || attr.name === 'style') node.removeAttribute(attr.name);
+            });
+            var tag = node.tagName.toLowerCase();
+            // Special: div with exactly rs-figure-block class
+            if (tag === 'div') {
+                var cls = node.getAttribute('class');
+                var figId = node.getAttribute('data-figure-id');
+                if (cls === 'rs-figure-block' && figId) {
+                    // Keep only class and data-figure-id, strip everything else
+                    Array.from(node.attributes).forEach(function(attr) {
+                        if (attr.name !== 'class' && attr.name !== 'data-figure-id') node.removeAttribute(attr.name);
+                    });
+                    Array.from(node.childNodes).forEach(function(child) { walk(child); });
                     return;
                 }
-                if (tag === 'a') {
-                    const href = node.getAttribute('href') || '';
-                    if (/^\s*javascript\s*:/i.test(href)) node.setAttribute('href', '#');
-                    // Strip all attributes except href, target, rel
-                    Array.from(node.attributes).forEach(attr => {
-                        if (!['href','target','rel'].includes(attr.name)) node.removeAttribute(attr.name);
-                    });
-                } else if (tag !== 'sup' && tag !== 'div') {
-                    // Strip all attributes from non-special tags
-                    Array.from(node.attributes).forEach(attr => node.removeAttribute(attr.name));
-                }
-                Array.from(node.childNodes).forEach(child => walk(child));
+                // All other divs: convert to p (unwrap and re-wrap in p)
+                var p = document.createElement('p');
+                while (node.firstChild) p.appendChild(node.firstChild);
+                node.parentNode.replaceChild(p, node);
+                Array.from(p.childNodes).forEach(function(child) { walk(child); });
+                return;
             }
+            if (!ALLOWED.test(tag)) {
+                // Unwrap: replace with content
+                var frag = document.createDocumentFragment();
+                while (node.firstChild) frag.appendChild(node.firstChild);
+                node.parentNode.replaceChild(frag, node);
+                return;
+            }
+            // Allowed tag: enforce attribute policy per tag
+            if (tag === 'a') {
+                var href = node.getAttribute('href') || '';
+                // Block javascript:, vbscript:, data: protocols
+                if (/^\s*(javascript|vbscript|data)\s*:/i.test(href)) {
+                    node.removeAttribute('href');
+                }
+                var target = node.getAttribute('target');
+                // Strip all attributes except href, target, rel
+                Array.from(node.attributes).forEach(function(attr) {
+                    if (!['href','target','rel'].includes(attr.name)) node.removeAttribute(attr.name);
+                });
+                // Force rel when target="_blank"
+                if (target === '_blank') {
+                    node.setAttribute('rel', 'noopener noreferrer');
+                }
+            } else if (tag === 'sup') {
+                var supCls = node.getAttribute('class');
+                var linkId = node.getAttribute('data-link-id');
+                if (supCls === 'rs-footnote' && linkId) {
+                    // Keep only class and data-link-id
+                    Array.from(node.attributes).forEach(function(attr) {
+                        if (attr.name !== 'class' && attr.name !== 'data-link-id') node.removeAttribute(attr.name);
+                    });
+                } else {
+                    // Regular sup: strip all attributes
+                    Array.from(node.attributes).forEach(function(attr) { node.removeAttribute(attr.name); });
+                }
+            } else {
+                // All other allowed tags: strip all attributes
+                Array.from(node.attributes).forEach(function(attr) { node.removeAttribute(attr.name); });
+            }
+            Array.from(node.childNodes).forEach(function(child) { walk(child); });
         }
         walk(tmp);
         return tmp.innerHTML;
@@ -2077,8 +2120,8 @@
     function rsInsertLinkConfirm() {
         let url = document.getElementById('rsLinkUrl').value.trim();
         if (!url) { rsCloseLinkPrompt(); return; }
-        // Sanitize: block javascript:
-        if (/^\s*javascript\s*:/i.test(url)) { alert('Invalid URL.'); return; }
+        // Block javascript:, vbscript:, data: protocols
+        if (/^\s*(javascript|vbscript|data)\s*:/i.test(url)) { alert('Invalid URL.'); return; }
         if (!/^https?:\/\//i.test(url) && !url.startsWith('/')) url = 'https://' + url;
         rsCloseLinkPrompt();
         const editor = document.querySelector('.rs-ce-editor[data-section-key="' + RS._linkSectionKey + '"]');
