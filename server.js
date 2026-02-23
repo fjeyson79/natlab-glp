@@ -12958,6 +12958,72 @@ app.get('/api/di/studio/projects/:id/export', requireAuth, async (req, res) => {
     }
 });
 
+/* RS_MANUSCRIPT_EXPORT_ENDPOINT */
+app.get("/api/di/studio/projects/:projectId/manuscript/export", requireAuth, async (req, res) => {
+  try{
+    const { projectId } = req.params;
+    const formatRaw = String(req.query.format || "pdf").toLowerCase();
+    const format = (formatRaw === "docx") ? "docx" : "pdf";
+
+    // TODO: wire this to your existing Research Studio manuscript source (same data used for JSON export today)
+    // Must return: { title: string, sections: [{ title: string, content: string }] }
+    const manuscript = await dbGetStudioManuscript(projectId);
+
+    const safeTitle = String(manuscript?.title || "manuscript")
+      .replace(/[^\w\s\(\)\[\]\.\-]+/g, "")
+      .trim()
+      .slice(0, 80) || "manuscript";
+
+    const sections = Array.isArray(manuscript?.sections) ? manuscript.sections : [];
+
+    if (format === "pdf"){
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${safeTitle}.pdf"`);
+
+      const PDFDocument = require("pdfkit");
+      const doc = new PDFDocument({ size: "A4", margin: 54 });
+      doc.pipe(res);
+
+      doc.fontSize(18).text(manuscript?.title || "Manuscript", { align: "left" });
+      doc.moveDown(0.6);
+
+      for (const sec of sections){
+        doc.fontSize(13).text(sec?.title || "", {});
+        doc.moveDown(0.3);
+        doc.fontSize(11).text(sec?.content || "", { align: "left" });
+        doc.moveDown(0.8);
+      }
+
+      doc.end();
+      return;
+    }
+
+    const { Document, Packer, Paragraph, HeadingLevel, TextRun } = require("docx");
+
+    const children = [];
+    children.push(new Paragraph({ text: manuscript?.title || "Manuscript", heading: HeadingLevel.TITLE }));
+
+    for (const sec of sections){
+      children.push(new Paragraph({ text: sec?.title || "", heading: HeadingLevel.HEADING_1 }));
+      const lines = String(sec?.content || "").split(/\r?\n/);
+      for (const line of lines){
+        children.push(new Paragraph({ children: [ new TextRun(line) ] }));
+      }
+      children.push(new Paragraph({ text: "" }));
+    }
+
+    const docx = new Document({ sections: [{ children }] });
+    const buf = await Packer.toBuffer(docx);
+
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    res.setHeader("Content-Disposition", `attachment; filename="${safeTitle}.docx"`);
+    res.send(buf);
+  } catch (err){
+    console.error("manuscript export error:", err);
+    res.status(500).json({ error: "export_failed" });
+  }
+});
+
 app.listen(PORT, "0.0.0.0", () => console.log("[STARTUP] Server listening on port " + PORT));
 
 

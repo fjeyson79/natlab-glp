@@ -1144,7 +1144,36 @@
             .rs-pres-nav { width: 180px; }
             .rs-pres-content { padding: 24px 20px; }
         }
-    </style>
+    /* Research Studio: download format menu (matches GLP Vision toolbar aesthetics) */
+.rs-download-menu{
+  position:absolute;
+  top:44px;
+  right:0;
+  min-width:140px;
+  background:#ffffff;
+  border:1px solid #e5e7eb;
+  border-radius:12px;
+  box-shadow:0 10px 22px rgba(0,0,0,0.10);
+  padding:6px;
+  z-index:100;
+}
+
+.rs-download-item{
+  width:100%;
+  text-align:left;
+  border:0;
+  background:transparent;
+  padding:10px 10px;
+  border-radius:10px;
+  cursor:pointer;
+  font-weight:600;
+}
+
+.rs-download-item:hover{
+  background:#f5f7fa;
+}
+
+</style>
 </head>
 <body>
     <!-- Header -->
@@ -1293,9 +1322,36 @@
 
                 <!-- Action bar (Phase 3: export, presentation) -->
                 <div class="rs-action-bar" id="rsActionBar" style="display:none;">
-                    <button class="rs-btn rs-btn-sm" onclick="rsExportJson()">Export JSON</button>
-                    <button class="rs-btn rs-btn-sm" onclick="rsExportHtml()">Print View</button>
-                    <button class="rs-btn rs-btn-sm" onclick="rsOpenPresentation()">Presentation</button>
+                    <div class="rs-actions" style="display:flex; gap:10px; align-items:center;">
+
+  <!-- SAME AS GLP VISION -->
+  <button class="gv-toolbar-icon gv-toolbar-presentation"
+          onclick="rsOpenPresentation()"
+          title="Presentation Mode"
+          aria-label="Presentation Mode">
+    <span class="gv-emoji-icon" aria-hidden="true">🎬</span>
+  </button>
+
+  <!-- SAME AS GLP VISION DOWNLOAD ICON, but as a button opening format menu -->
+  <div style="position:relative;">
+    <button id="rsDownloadBtn"
+            class="gv-toolbar-icon"
+            style="background:#ffffff;border:1px solid #e5e7eb;"
+            title="Download"
+            aria-label="Download">
+      <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+        <path d="M10 3v10M10 13l-3.5-3.5M10 13l3.5-3.5M4 16h12"
+              stroke="#111827" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+
+    <div id="rsDownloadMenu" class="rs-download-menu" style="display:none;">
+      <button class="rs-download-item" data-format="pdf">PDF</button>
+      <button class="rs-download-item" data-format="docx">DOCX</button>
+    </div>
+  </div>
+
+</div>
                 </div>
 
                 <!-- Manuscript sections -->
@@ -3082,5 +3138,50 @@
     // ── Start ──
     rsInit();
     </script>
+<script>
+(function(){
+  const dlBtn = document.getElementById("rsDownloadBtn");
+  const menu = document.getElementById("rsDownloadMenu");
+
+  function hideMenu(){
+    if (menu) menu.style.display = "none";
+  }
+
+  function toggleMenu(){
+    if (!menu) return;
+    menu.style.display = (menu.style.display === "block") ? "none" : "block";
+  }
+
+  if (dlBtn && menu){
+    dlBtn.addEventListener("click", function(e){
+      e.preventDefault();
+      e.stopPropagation();
+      toggleMenu();
+    });
+
+    menu.addEventListener("click", function(e){
+      const item = e.target.closest(".rs-download-item");
+      if (!item) return;
+
+      const format = item.getAttribute("data-format");
+      hideMenu();
+
+      if (!window.RS || !RS.currentProjectId){
+        alert("No project selected.");
+        return;
+      }
+
+      const url = `/api/di/studio/projects/${encodeURIComponent(RS.currentProjectId)}/manuscript/export?format=${encodeURIComponent(format)}`;
+      window.open(url, "_blank");
+    });
+
+    document.addEventListener("click", hideMenu);
+    document.addEventListener("keydown", function(e){
+      if (e.key === "Escape") hideMenu();
+    });
+  }
+})();
+</script>
+
 </body>
 </html>
