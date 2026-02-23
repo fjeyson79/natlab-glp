@@ -11582,7 +11582,7 @@ app.get('/api/di/studio/projects/:id', requireAuth, async (req, res) => {
             ORDER BY section_key, footnote_index
         `, [projectId]);
 
-        // Build reflection completeness flag (for future gating)
+        // Build reflection completeness flag
         const reflectionComplete = !!(
             project.hypothesis && project.hypothesis.trim() &&
             project.intention && project.intention.trim() &&
@@ -11590,6 +11590,34 @@ app.get('/api/di/studio/projects/:id', requireAuth, async (req, res) => {
             project.tension && project.tension.trim() &&
             project.next_milestone && project.next_milestone.trim()
         );
+
+        // Phase 2: include lock status if table exists
+        let lockInfo = null;
+        if (await checkStudioLocksTable()) {
+            const lockResult = await pool.query(`
+                SELECT * FROM di_studio_locks WHERE project_id = $1 AND expires_at >= NOW()
+            `, [projectId]);
+            if (lockResult.rows.length > 0) {
+                const lock = lockResult.rows[0];
+                lockInfo = {
+                    locked_by_researcher_id: lock.locked_by_researcher_id,
+                    locked_by_name: lock.locked_by_name,
+                    locked_by_role: lock.locked_by_role,
+                    locked_at: lock.locked_at,
+                    expires_at: lock.expires_at
+                };
+            }
+        }
+
+        // Phase 2: include unresolved comment count if table exists
+        let unresolvedCommentCount = 0;
+        if (await checkStudioCommentsTable()) {
+            const ccResult = await pool.query(`
+                SELECT COUNT(*) AS cnt FROM di_studio_comments
+                WHERE project_id = $1 AND resolved = FALSE
+            `, [projectId]);
+            unresolvedCommentCount = parseInt(ccResult.rows[0].cnt, 10);
+        }
 
         res.json({
             project: {
@@ -11612,7 +11640,9 @@ app.get('/api/di/studio/projects/:id', requireAuth, async (req, res) => {
                 updated_at: project.updated_at
             },
             sections: sectionsResult.rows,
-            links: linksResult.rows
+            links: linksResult.rows,
+            lock: lockInfo,
+            unresolved_comment_count: unresolvedCommentCount
         });
     } catch (err) {
         console.error('Studio get project error:', err);
@@ -11620,6 +11650,507 @@ app.get('/api/di/studio/projects/:id', requireAuth, async (req, res) => {
     }
 });
 
+
+// =====================================================
+// RESEARCH STUDIO ENDPOINTS (Phase 2: reflection, locks, comments, section editing)
+// =====================================================
+
+// Table existence checks for Phase 2 tables (migration 025)
+let studioLocksTableExists = null;
+let studioLocksTableLastCheck = 0;
+let studioCommentsTableExists = null;
+let studioCommentsTableLastCheck = 0;
+
+async function checkStudioLocksTable() {
+    const now = Date.now();
+    if (studioLocksTableExists === null || studioLocksTableExists === false || (now - studioLocksTableLastCheck > ROLE_COLUMN_CHECK_INTERVAL)) {
+        try {
+            const result = await pool.query(`
+                SELECT table_name FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'di_studio_locks'
+            `);
+            studioLocksTableExists = result.rows.length > 0;
+            studioLocksTableLastCheck = now;
+        } catch (err) {
+            studioLocksTableExists = false;
+        }
+    }
+    return studioLocksTableExists;
+}
+
+async function checkStudioCommentsTable() {
+    const now = Date.now();
+    if (studioCommentsTableExists === null || studioCommentsTableExists === false || (now - studioCommentsTableLastCheck > ROLE_COLUMN_CHECK_INTERVAL)) {
+        try {
+            const result = await pool.query(`
+                SELECT table_name FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'di_studio_comments'
+            `);
+            studioCommentsTableExists = result.rows.length > 0;
+            studioCommentsTableLastCheck = now;
+        } catch (err) {
+            studioCommentsTableExists = false;
+        }
+    }
+    return studioCommentsTableExists;
+}
+
+// Shared access check helper for studio projects
+async function studioAccessCheck(projectId, user) {
+    const projResult = await pool.query(`
+        SELECT p.*, a.name AS owner_name
+        FROM di_studio_projects p
+        LEFT JOIN di_allowlist a ON a.researcher_id = p.owner_id
+        WHERE p.id = $1
+    `, [projectId]);
+    if (projResult.rows.length === 0) return { error: 'Project not found', status: 404 };
+    const project = projResult.rows[0];
+
+    const isOwner = project.owner_id === user.researcher_id;
+    const isPIWithAccess = user.role === 'pi' && project.affiliation === user.affiliation;
+    // TODO Phase 2: supervisor sees supervised researchers via di_supervisor_researchers
+    // For now, supervisor falls back to own projects only
+    if (!isOwner && !isPIWithAccess) return { error: 'Access denied', status: 403 };
+
+    return { project, isOwner, isPIWithAccess };
+}
+
+// Simple HTML sanitizer: strip script tags, event handlers, iframe, embed, object
+function sanitizeStudioText(text) {
+    if (!text) return '';
+    // Remove script tags and their content
+    let clean = text.replace(/<script[\s\S]*?<\/script>/gi, '');
+    // Remove event handler attributes
+    clean = clean.replace(/\s+on\w+\s*=\s*["'][^"']*["']/gi, '');
+    clean = clean.replace(/\s+on\w+\s*=\s*\S+/gi, '');
+    // Remove dangerous tags
+    clean = clean.replace(/<\/?(?:script|iframe|embed|object|applet|form|input|button|select|textarea)[^>]*>/gi, '');
+    // Remove javascript: protocol
+    clean = clean.replace(/javascript\s*:/gi, '');
+    return clean;
+}
+
+// Escape plain text to safe HTML (for plain text section editing)
+function escapeToSafeHtml(plainText) {
+    if (!plainText) return '';
+    const escaped = plainText
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#x27;');
+    // Convert line breaks to paragraphs
+    const paragraphs = escaped.split(/\n\n+/).filter(p => p.trim());
+    if (paragraphs.length === 0) return '';
+    return paragraphs.map(p => '<p>' + p.replace(/\n/g, '<br>') + '</p>').join('\n');
+}
+
+const STUDIO_VALID_PHASES = ['Planning', 'Data generation', 'Analysis', 'Writing', 'Submission', 'Revision'];
+const STUDIO_VALID_COMMENT_TYPES = ['Strategic', 'Methodological', 'Interpretative', 'Risk warning', 'Encouragement'];
+const STUDIO_VALID_TARGET_TYPES = ['reflection', 'section', 'figure'];
+
+// ── PUT /api/di/studio/projects/:id/reflection ──
+// Update reflection layer fields. Owner, PI, and supervisor can edit.
+app.put('/api/di/studio/projects/:id/reflection', requireAuth, async (req, res) => {
+    if (!(await checkStudioTables())) return res.status(503).json({ error: 'Research Studio tables not available yet' });
+    const user = req.session.user;
+    const projectId = req.params.id;
+
+    const access = await studioAccessCheck(projectId, user);
+    if (access.error) return res.status(access.status).json({ error: access.error });
+
+    const { hypothesis, intention, phase, tension, next_milestone, milestone_date } = req.body;
+
+    // Validate required fields
+    const errors = [];
+    if (!hypothesis || !hypothesis.trim()) errors.push('Core hypothesis is required');
+    if (!intention || !intention.trim()) errors.push('Scientific intention is required');
+    if (!phase || !STUDIO_VALID_PHASES.includes(phase)) errors.push('Current phase must be one of: ' + STUDIO_VALID_PHASES.join(', '));
+    if (!tension || !tension.trim()) errors.push('Intellectual tension is required');
+    if (!next_milestone || !next_milestone.trim()) errors.push('Next milestone is required');
+
+    if (milestone_date) {
+        const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+        if (!dateRegex.test(milestone_date)) errors.push('Milestone date must be YYYY-MM-DD format');
+    }
+
+    if (errors.length > 0) return res.status(400).json({ error: errors.join('; ') });
+
+    // Sanitize text fields
+    const cleanHypothesis = sanitizeStudioText(hypothesis.trim());
+    const cleanIntention = sanitizeStudioText(intention.trim());
+    const cleanTension = sanitizeStudioText(tension.trim());
+    const cleanMilestone = sanitizeStudioText(next_milestone.trim());
+
+    try {
+        const result = await pool.query(`
+            UPDATE di_studio_projects
+            SET hypothesis = $1, intention = $2, phase = $3, tension = $4,
+                next_milestone = $5, milestone_date = $6, updated_at = NOW()
+            WHERE id = $7
+            RETURNING *
+        `, [cleanHypothesis, cleanIntention, phase, cleanTension, cleanMilestone,
+            milestone_date || null, projectId]);
+
+        const updated = result.rows[0];
+        const reflectionComplete = !!(
+            updated.hypothesis && updated.hypothesis.trim() &&
+            updated.intention && updated.intention.trim() &&
+            updated.phase &&
+            updated.tension && updated.tension.trim() &&
+            updated.next_milestone && updated.next_milestone.trim()
+        );
+
+        res.json({ success: true, reflection_complete: reflectionComplete, project: updated });
+    } catch (err) {
+        console.error('Studio update reflection error:', err);
+        res.status(500).json({ error: 'Failed to update reflection' });
+    }
+});
+
+// ── POST /api/di/studio/projects/:id/lock ──
+// Acquire editing lock. Only owner can acquire lock for manuscript editing.
+// PI and supervisor do not need locks (they edit reflection and comments only).
+app.post('/api/di/studio/projects/:id/lock', requireAuth, async (req, res) => {
+    if (!(await checkStudioTables())) return res.status(503).json({ error: 'Research Studio tables not available yet' });
+    if (!(await checkStudioLocksTable())) return res.status(503).json({ error: 'Lock tables not available yet' });
+    const user = req.session.user;
+    const projectId = req.params.id;
+
+    const access = await studioAccessCheck(projectId, user);
+    if (access.error) return res.status(access.status).json({ error: access.error });
+
+    try {
+        // Atomic: delete expired locks, then try to insert
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+
+            // Delete expired lock for this project
+            await client.query(`
+                DELETE FROM di_studio_locks WHERE project_id = $1 AND expires_at < NOW()
+            `, [projectId]);
+
+            // Check if lock exists (not expired, already cleaned)
+            const existing = await client.query(`
+                SELECT * FROM di_studio_locks WHERE project_id = $1
+            `, [projectId]);
+
+            if (existing.rows.length > 0) {
+                const lock = existing.rows[0];
+                if (lock.locked_by_researcher_id === user.researcher_id) {
+                    // Same user, renew
+                    const renewed = await client.query(`
+                        UPDATE di_studio_locks
+                        SET expires_at = NOW() + INTERVAL '8 minutes', locked_at = NOW()
+                        WHERE project_id = $1
+                        RETURNING *
+                    `, [projectId]);
+                    await client.query('COMMIT');
+                    return res.json({ success: true, lock: renewed.rows[0] });
+                } else {
+                    await client.query('ROLLBACK');
+                    return res.status(409).json({
+                        error: 'Project is currently being edited by ' + lock.locked_by_name,
+                        locked_by_name: lock.locked_by_name,
+                        locked_by_role: lock.locked_by_role,
+                        expires_at: lock.expires_at
+                    });
+                }
+            }
+
+            // Insert new lock
+            const inserted = await client.query(`
+                INSERT INTO di_studio_locks (project_id, locked_by_researcher_id, locked_by_name, locked_by_role, locked_at, expires_at)
+                VALUES ($1, $2, $3, $4, NOW(), NOW() + INTERVAL '8 minutes')
+                RETURNING *
+            `, [projectId, user.researcher_id, user.name || 'Unknown', user.role || 'researcher']);
+
+            await client.query('COMMIT');
+            res.json({ success: true, lock: inserted.rows[0] });
+        } catch (innerErr) {
+            await client.query('ROLLBACK');
+            throw innerErr;
+        } finally {
+            client.release();
+        }
+    } catch (err) {
+        console.error('Studio acquire lock error:', err);
+        res.status(500).json({ error: 'Failed to acquire lock' });
+    }
+});
+
+// ── POST /api/di/studio/projects/:id/lock/renew ──
+// Renew editing lock. Only the lock holder can renew.
+app.post('/api/di/studio/projects/:id/lock/renew', requireAuth, async (req, res) => {
+    if (!(await checkStudioTables())) return res.status(503).json({ error: 'Research Studio tables not available yet' });
+    if (!(await checkStudioLocksTable())) return res.status(503).json({ error: 'Lock tables not available yet' });
+    const user = req.session.user;
+    const projectId = req.params.id;
+
+    try {
+        const result = await pool.query(`
+            UPDATE di_studio_locks
+            SET expires_at = NOW() + INTERVAL '8 minutes', locked_at = NOW()
+            WHERE project_id = $1 AND locked_by_researcher_id = $2 AND expires_at >= NOW()
+            RETURNING *
+        `, [projectId, user.researcher_id]);
+
+        if (result.rows.length === 0) {
+            return res.status(409).json({ error: 'Lock not held or expired' });
+        }
+        res.json({ success: true, lock: result.rows[0] });
+    } catch (err) {
+        console.error('Studio renew lock error:', err);
+        res.status(500).json({ error: 'Failed to renew lock' });
+    }
+});
+
+// ── POST /api/di/studio/projects/:id/lock/release ──
+// Release editing lock. Only the lock holder can release.
+app.post('/api/di/studio/projects/:id/lock/release', requireAuth, async (req, res) => {
+    if (!(await checkStudioTables())) return res.status(503).json({ error: 'Research Studio tables not available yet' });
+    if (!(await checkStudioLocksTable())) return res.status(503).json({ error: 'Lock tables not available yet' });
+    const user = req.session.user;
+    const projectId = req.params.id;
+
+    try {
+        const result = await pool.query(`
+            DELETE FROM di_studio_locks
+            WHERE project_id = $1 AND locked_by_researcher_id = $2
+            RETURNING *
+        `, [projectId, user.researcher_id]);
+
+        res.json({ success: true, released: result.rows.length > 0 });
+    } catch (err) {
+        console.error('Studio release lock error:', err);
+        res.status(500).json({ error: 'Failed to release lock' });
+    }
+});
+
+// ── GET /api/di/studio/projects/:id/lock ──
+// Check current lock status.
+app.get('/api/di/studio/projects/:id/lock', requireAuth, async (req, res) => {
+    if (!(await checkStudioTables())) return res.json({ locked: false });
+    if (!(await checkStudioLocksTable())) return res.json({ locked: false });
+    const projectId = req.params.id;
+
+    try {
+        const result = await pool.query(`
+            SELECT * FROM di_studio_locks WHERE project_id = $1 AND expires_at >= NOW()
+        `, [projectId]);
+
+        if (result.rows.length === 0) {
+            return res.json({ locked: false });
+        }
+        const lock = result.rows[0];
+        res.json({
+            locked: true,
+            locked_by_researcher_id: lock.locked_by_researcher_id,
+            locked_by_name: lock.locked_by_name,
+            locked_by_role: lock.locked_by_role,
+            locked_at: lock.locked_at,
+            expires_at: lock.expires_at
+        });
+    } catch (err) {
+        console.error('Studio check lock error:', err);
+        res.json({ locked: false });
+    }
+});
+
+// ── PUT /api/di/studio/projects/:id/sections/:sectionKey ──
+// Update a manuscript section. Requires: owner + lock held + reflection complete.
+app.put('/api/di/studio/projects/:id/sections/:sectionKey', requireAuth, async (req, res) => {
+    if (!(await checkStudioTables())) return res.status(503).json({ error: 'Research Studio tables not available yet' });
+    if (!(await checkStudioLocksTable())) return res.status(503).json({ error: 'Lock tables not available yet' });
+    const user = req.session.user;
+    const projectId = req.params.id;
+    const sectionKey = req.params.sectionKey;
+
+    if (!STUDIO_SECTION_KEYS.includes(sectionKey)) {
+        return res.status(400).json({ error: 'Invalid section key' });
+    }
+
+    const access = await studioAccessCheck(projectId, user);
+    if (access.error) return res.status(access.status).json({ error: access.error });
+
+    // Only owner can edit sections
+    if (!access.isOwner) {
+        return res.status(403).json({ error: 'Only the project owner can edit manuscript sections' });
+    }
+
+    // Check reflection complete
+    const p = access.project;
+    const reflectionComplete = !!(
+        p.hypothesis && p.hypothesis.trim() &&
+        p.intention && p.intention.trim() &&
+        p.phase &&
+        p.tension && p.tension.trim() &&
+        p.next_milestone && p.next_milestone.trim()
+    );
+    if (!reflectionComplete) {
+        return res.status(400).json({ error: 'Complete the reflection layer before editing sections' });
+    }
+
+    // Check lock
+    const lockResult = await pool.query(`
+        SELECT * FROM di_studio_locks WHERE project_id = $1 AND expires_at >= NOW()
+    `, [projectId]);
+    if (lockResult.rows.length === 0 || lockResult.rows[0].locked_by_researcher_id !== user.researcher_id) {
+        return res.status(409).json({ error: 'You must hold the editing lock to save section content' });
+    }
+
+    const { content } = req.body;
+    if (content === undefined || content === null) {
+        return res.status(400).json({ error: 'Content is required' });
+    }
+
+    // For Phase 2, treat input as plain text and convert to safe HTML
+    const contentHtml = escapeToSafeHtml(content);
+
+    try {
+        const result = await pool.query(`
+            UPDATE di_studio_sections
+            SET content_html = $1, updated_at = NOW()
+            WHERE project_id = $2 AND section_key = $3
+            RETURNING *
+        `, [contentHtml, projectId, sectionKey]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Section not found' });
+        }
+
+        // Also update project updated_at
+        await pool.query(`UPDATE di_studio_projects SET updated_at = NOW() WHERE id = $1`, [projectId]);
+
+        res.json({ success: true, section: result.rows[0] });
+    } catch (err) {
+        console.error('Studio update section error:', err);
+        res.status(500).json({ error: 'Failed to update section' });
+    }
+});
+
+// ── GET /api/di/studio/projects/:id/comments ──
+// List comments for a project.
+app.get('/api/di/studio/projects/:id/comments', requireAuth, async (req, res) => {
+    if (!(await checkStudioTables())) return res.json({ comments: [] });
+    if (!(await checkStudioCommentsTable())) return res.json({ comments: [] });
+    const user = req.session.user;
+    const projectId = req.params.id;
+
+    const access = await studioAccessCheck(projectId, user);
+    if (access.error) return res.status(access.status).json({ error: access.error });
+
+    try {
+        const result = await pool.query(`
+            SELECT * FROM di_studio_comments
+            WHERE project_id = $1
+            ORDER BY created_at ASC
+        `, [projectId]);
+        res.json({ comments: result.rows });
+    } catch (err) {
+        console.error('Studio list comments error:', err);
+        res.status(500).json({ error: 'Failed to list comments' });
+    }
+});
+
+// ── POST /api/di/studio/projects/:id/comments ──
+// Create a structured comment. Owner, PI, supervisor can create.
+app.post('/api/di/studio/projects/:id/comments', requireAuth, async (req, res) => {
+    if (!(await checkStudioTables())) return res.status(503).json({ error: 'Research Studio tables not available yet' });
+    if (!(await checkStudioCommentsTable())) return res.status(503).json({ error: 'Comments tables not available yet' });
+    const user = req.session.user;
+    const projectId = req.params.id;
+
+    const access = await studioAccessCheck(projectId, user);
+    if (access.error) return res.status(access.status).json({ error: access.error });
+
+    const { target_type, target_key, comment_type, body } = req.body;
+
+    const errors = [];
+    if (!target_type || !STUDIO_VALID_TARGET_TYPES.includes(target_type)) {
+        errors.push('target_type must be one of: ' + STUDIO_VALID_TARGET_TYPES.join(', '));
+    }
+    if (!target_key || !target_key.trim()) errors.push('target_key is required');
+    if (!comment_type || !STUDIO_VALID_COMMENT_TYPES.includes(comment_type)) {
+        errors.push('comment_type must be one of: ' + STUDIO_VALID_COMMENT_TYPES.join(', '));
+    }
+    if (!body || !body.trim()) errors.push('Comment body is required');
+    if (body && body.trim().length > 5000) errors.push('Comment body must be 5000 characters or fewer');
+
+    if (errors.length > 0) return res.status(400).json({ error: errors.join('; ') });
+
+    const cleanBody = sanitizeStudioText(body.trim());
+
+    try {
+        const result = await pool.query(`
+            INSERT INTO di_studio_comments
+                (project_id, target_type, target_key, comment_type, body,
+                 author_id, author_name, author_role)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            RETURNING *
+        `, [projectId, target_type, target_key.trim(), comment_type, cleanBody,
+            user.researcher_id, user.name || 'Unknown', user.role || 'researcher']);
+
+        res.json({ success: true, comment: result.rows[0] });
+    } catch (err) {
+        console.error('Studio create comment error:', err);
+        res.status(500).json({ error: 'Failed to create comment' });
+    }
+});
+
+// ── POST /api/di/studio/comments/:commentId/resolve ──
+// Resolve a comment. Owner can resolve any. PI/supervisor can resolve their own.
+app.post('/api/di/studio/comments/:commentId/resolve', requireAuth, async (req, res) => {
+    if (!(await checkStudioTables())) return res.status(503).json({ error: 'Research Studio tables not available yet' });
+    if (!(await checkStudioCommentsTable())) return res.status(503).json({ error: 'Comments tables not available yet' });
+    const user = req.session.user;
+    const commentId = req.params.commentId;
+
+    try {
+        // Load the comment
+        const commentResult = await pool.query(`
+            SELECT c.*, p.owner_id, p.affiliation
+            FROM di_studio_comments c
+            JOIN di_studio_projects p ON p.id = c.project_id
+            WHERE c.id = $1
+        `, [commentId]);
+
+        if (commentResult.rows.length === 0) {
+            return res.status(404).json({ error: 'Comment not found' });
+        }
+        const comment = commentResult.rows[0];
+
+        // Access check
+        const isOwner = comment.owner_id === user.researcher_id;
+        const isPIWithAccess = user.role === 'pi' && comment.affiliation === user.affiliation;
+        if (!isOwner && !isPIWithAccess) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+
+        // Permission: owner can resolve any. PI/supervisor can resolve their own.
+        const isCommentAuthor = comment.author_id === user.researcher_id;
+        if (!isOwner && !isCommentAuthor) {
+            return res.status(403).json({ error: 'Only the project owner or the comment author can resolve this comment' });
+        }
+
+        if (comment.resolved) {
+            return res.json({ success: true, comment, already_resolved: true });
+        }
+
+        const result = await pool.query(`
+            UPDATE di_studio_comments
+            SET resolved = TRUE, resolved_by_id = $1, resolved_by_name = $2, resolved_at = NOW()
+            WHERE id = $3
+            RETURNING *
+        `, [user.researcher_id, user.name || 'Unknown', commentId]);
+
+        res.json({ success: true, comment: result.rows[0] });
+    } catch (err) {
+        console.error('Studio resolve comment error:', err);
+        res.status(500).json({ error: 'Failed to resolve comment' });
+    }
+});
 
 
 app.listen(PORT, "0.0.0.0", () => console.log("[STARTUP] Server listening on port " + PORT));
