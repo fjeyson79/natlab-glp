@@ -3246,12 +3246,47 @@
       const format = item.getAttribute("data-format");
       hideMenu();
 
-      if (!window.RS || !RS.currentProjectId){
-        alert("No project selected.");
-        return;
-      }
+      function rsGetProjectId(){
+  try{
+    // Most likely locations in Research Studio
+    if (window.RS){
+      if (RS.currentProjectId) return RS.currentProjectId;
+      if (RS.currentProject && RS.currentProject.id) return RS.currentProject.id;
+      if (RS.currentProject && RS.currentProject.project_id) return RS.currentProject.project_id;
+      if (RS.selectedProjectId) return RS.selectedProjectId;
+      if (RS.projectId) return RS.projectId;
+      if (RS.activeProjectId) return RS.activeProjectId;
+    }
 
-      const url = `/api/di/studio/projects/${encodeURIComponent(RS.currentProjectId)}/manuscript/export?format=${encodeURIComponent(format)}`;
+    // Dataset fallback
+    const ds = document.body && document.body.dataset ? document.body.dataset : {};
+    if (ds.projectId) return ds.projectId;
+    if (ds.projectid) return ds.projectid;
+
+    // URL fallbacks
+    const u = new URL(window.location.href);
+    const q = u.searchParams;
+    if (q.get("projectId")) return q.get("projectId");
+    if (q.get("project_id")) return q.get("project_id");
+    if (q.get("project")) return q.get("project");
+
+    // Path fallback: /.../projects/<uuid>/...
+    const m = u.pathname.match(/\/projects\/([0-9a-fA-F-]{16,})/);
+    if (m && m[1]) return m[1];
+
+    return null;
+  } catch (e){
+    return null;
+  }
+}
+
+const pid = rsGetProjectId();
+if (!pid){
+  alert("No project selected.");
+  return;
+}
+
+const url = `/api/di/studio/projects/${encodeURIComponent(pid)}/manuscript/export?format=${encodeURIComponent(format)}`;
       window.open(url, "_blank");
     });
 
