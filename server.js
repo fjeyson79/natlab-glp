@@ -11842,7 +11842,7 @@ app.post('/api/di/studio/projects/:id/lock', requireAuth, async (req, res) => {
                     // Same user, renew
                     const renewed = await client.query(`
                         UPDATE di_studio_locks
-                        SET expires_at = NOW() + INTERVAL '8 minutes', locked_at = NOW()
+                        SET expires_at = NOW() + INTERVAL '15 minutes', locked_at = NOW()
                         WHERE project_id = $1
                         RETURNING *
                     `, [projectId]);
@@ -11851,7 +11851,7 @@ app.post('/api/di/studio/projects/:id/lock', requireAuth, async (req, res) => {
                 } else {
                     await client.query('ROLLBACK');
                     return res.status(409).json({
-                        error: 'Project is currently being edited by ' + lock.locked_by_name,
+                        error: 'Intellectual work in progress by ' + lock.locked_by_name + ', view only mode enabled',
                         locked_by_name: lock.locked_by_name,
                         locked_by_role: lock.locked_by_role,
                         expires_at: lock.expires_at
@@ -11862,7 +11862,7 @@ app.post('/api/di/studio/projects/:id/lock', requireAuth, async (req, res) => {
             // Insert new lock
             const inserted = await client.query(`
                 INSERT INTO di_studio_locks (project_id, locked_by_researcher_id, locked_by_name, locked_by_role, locked_at, expires_at)
-                VALUES ($1, $2, $3, $4, NOW(), NOW() + INTERVAL '8 minutes')
+                VALUES ($1, $2, $3, $4, NOW(), NOW() + INTERVAL '15 minutes')
                 RETURNING *
             `, [projectId, user.researcher_id, user.name || 'Unknown', user.role || 'researcher']);
 
@@ -11891,7 +11891,7 @@ app.post('/api/di/studio/projects/:id/lock/renew', requireAuth, async (req, res)
     try {
         const result = await pool.query(`
             UPDATE di_studio_locks
-            SET expires_at = NOW() + INTERVAL '8 minutes', locked_at = NOW()
+            SET expires_at = NOW() + INTERVAL '15 minutes', locked_at = NOW()
             WHERE project_id = $1 AND locked_by_researcher_id = $2 AND expires_at >= NOW()
             RETURNING *
         `, [projectId, user.researcher_id]);

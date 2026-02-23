@@ -232,26 +232,42 @@
         }
         .rs-lock-banner {
             font-size: 0.8rem;
-            padding: 6px 14px;
-            border-radius: 7px;
-            background: #fff8ee;
-            border: 1px solid #f0d9a8;
-            color: var(--warn);
-        }
-        .rs-editing-indicator {
-            font-size: 0.78rem;
-            padding: 5px 12px;
-            border-radius: 7px;
-            background: #e8f5e9;
-            border: 1px solid #c8e6c9;
-            color: var(--success);
+            color: var(--ink-soft);
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 8px;
         }
-        .rs-editing-indicator .rs-timer {
-            font-variant-numeric: tabular-nums;
-            font-weight: 600;
+        .rs-lock-dot-other {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: #9e9e9e;
+            flex-shrink: 0;
+        }
+        .rs-edit-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.8rem;
+            color: var(--ink-soft);
+        }
+        .rs-edit-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #3f7d4e;
+            flex-shrink: 0;
+            animation: rsEditPulse 3s infinite ease-in-out;
+        }
+        @keyframes rsEditPulse {
+            0% { opacity: 0.6; }
+            50% { opacity: 1; }
+            100% { opacity: 0.6; }
+        }
+        .rs-paused-text {
+            font-size: 0.78rem;
+            color: #aaa;
+            font-style: italic;
         }
 
         /* ── Reflection card (Phase 2: editable) ── */
@@ -1190,10 +1206,10 @@
         const reflComplete = isReflectionComplete();
 
         if (RS.editing) {
-            // Currently editing: show indicator + Save + Stop editing
+            // Currently editing: pulsing dot indicator + Save + Stop editing
             const indicator = document.createElement('span');
-            indicator.className = 'rs-editing-indicator';
-            indicator.innerHTML = 'Editing <span class="rs-timer" id="rsLockTimer"></span>';
+            indicator.className = 'rs-edit-indicator';
+            indicator.innerHTML = '<span class="rs-edit-dot"></span> Intellectual work in progress';
             bar.appendChild(indicator);
 
             const saveBtn = document.createElement('button');
@@ -1207,13 +1223,11 @@
             stopBtn.textContent = 'Stop editing';
             stopBtn.onclick = rsStopEditing;
             bar.appendChild(stopBtn);
-
-            rsStartLockTimer();
         } else if (RS.lock && RS.user && RS.lock.locked_by_researcher_id !== RS.user.researcher_id) {
             // Locked by someone else
             const banner = document.createElement('span');
             banner.className = 'rs-lock-banner';
-            banner.textContent = 'This project is currently being edited by ' + (RS.lock.locked_by_name || 'another user') + ', view only mode enabled.';
+            banner.innerHTML = '<span class="rs-lock-dot-other"></span> Intellectual work in progress by ' + esc(RS.lock.locked_by_name || 'another user') + ', view only mode enabled';
             bar.appendChild(banner);
         } else if (isOwner() && reflComplete) {
             // Owner can start editing
@@ -1237,8 +1251,9 @@
                 RS.editing = true;
                 rsRenderLockBar();
                 rsRenderSections();
-                // Start lock renew interval
-                RS.lockRenewInterval = setInterval(rsRenewLock, 5 * 60 * 1000); // every 5 min
+                // Start silent lock renew (every 10 min for 15 min lock) and expiry watch
+                RS.lockRenewInterval = setInterval(rsRenewLock, 10 * 60 * 1000);
+                rsStartExpiryWatch();
             } else {
                 alert(data.error || 'Could not acquire lock');
                 // Refresh to see who holds it
@@ -1254,6 +1269,10 @@
         if (RS.lockRenewInterval) {
             clearInterval(RS.lockRenewInterval);
             RS.lockRenewInterval = null;
+        }
+        if (RS._expiryCheckInterval) {
+            clearInterval(RS._expiryCheckInterval);
+            RS._expiryCheckInterval = null;
         }
         try {
             await fetch('/api/di/studio/projects/' + RS.currentProjectId + '/lock/release', {
@@ -1280,41 +1299,39 @@
             if (data.success) {
                 RS.lock = data.lock;
             } else {
-                // Lock lost
-                RS.editing = false;
-                if (RS.lockRenewInterval) clearInterval(RS.lockRenewInterval);
-                alert('Editing lock expired. Your session has ended.');
-                rsOpenProject(RS.currentProjectId);
+                // Lock lost: switch to read only silently
+                rsHandleLockExpired();
             }
         } catch (err) {
             console.error('Renew lock error:', err);
         }
     }
 
-    function rsStartLockTimer() {
-        const timerEl = document.getElementById('rsLockTimer');
-        if (!timerEl || !RS.lock) return;
-
-        function updateTimer() {
-            if (!RS.lock || !RS.lock.expires_at) return;
-            const now = Date.now();
-            const expires = new Date(RS.lock.expires_at).getTime();
-            const remaining = Math.max(0, expires - now);
-            const mins = Math.floor(remaining / 60000);
-            const secs = Math.floor((remaining % 60000) / 1000);
-            const t = document.getElementById('rsLockTimer');
-            if (t) t.textContent = mins + ':' + String(secs).padStart(2, '0');
-            if (remaining <= 0 && RS.editing) {
-                RS.editing = false;
-                if (RS.lockRenewInterval) clearInterval(RS.lockRenewInterval);
-                alert('Editing lock expired.');
-                rsOpenProject(RS.currentProjectId);
-            }
+    function rsHandleLockExpired() {
+        RS.editing = false;
+        if (RS.lockRenewInterval) { clearInterval(RS.lockRenewInterval); RS.lockRenewInterval = null; }
+        if (RS._expiryCheckInterval) { clearInterval(RS._expiryCheckInterval); RS._expiryCheckInterval = null; }
+        RS.lock = null;
+        // Show subtle paused text, then reload to read only
+        const bar = document.getElementById('rsLockBar');
+        if (bar) {
+            bar.innerHTML = '<span class="rs-paused-text">Intellectual work paused</span>';
+            setTimeout(function() { rsOpenProject(RS.currentProjectId); }, 2500);
+        } else {
+            rsOpenProject(RS.currentProjectId);
         }
-        updateTimer();
-        // Clear any previous timer
-        if (RS._timerInterval) clearInterval(RS._timerInterval);
-        RS._timerInterval = setInterval(updateTimer, 1000);
+    }
+
+    // Silent expiry check (no visible countdown, just guards against stale lock)
+    function rsStartExpiryWatch() {
+        if (RS._expiryCheckInterval) clearInterval(RS._expiryCheckInterval);
+        RS._expiryCheckInterval = setInterval(function() {
+            if (!RS.editing || !RS.lock || !RS.lock.expires_at) return;
+            const remaining = new Date(RS.lock.expires_at).getTime() - Date.now();
+            if (remaining <= 0) {
+                rsHandleLockExpired();
+            }
+        }, 10000); // check every 10 seconds
     }
 
     // Release lock on page unload (best effort)
