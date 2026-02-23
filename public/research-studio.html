@@ -3281,17 +3281,7 @@
 }
 
 const pid = rsGetProjectId();
-const pid = (typeof window.rsGetProjectId === "function")
-  ? window.rsGetProjectId()
-  : (window.RS && RS.currentProjectId ? RS.currentProjectId : null);
-
-if (!pid){
-  alert("No project selected.");
-  return;
-}
-
-const url = `/api/di/studio/projects/${encodeURIComponent(pid)}/manuscript/export?format=${encodeURIComponent(format)}`;
-      window.open(url, "_blank");
+window.open(url, "_blank");
     });
 
     document.addEventListener("click", hideMenu);
@@ -3299,6 +3289,207 @@ const url = `/api/di/studio/projects/${encodeURIComponent(pid)}/manuscript/expor
       if (e.key === "Escape") hideMenu();
     });
   }
+})();
+</script>
+
+<!-- RS_EXPORT_LIBS_V1 -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/docx/8.5.0/docx.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<script>
+/* RS_DOWNLOAD_GENERATE_V1 */
+(function(){
+  function getPid(){
+    try{
+      if (typeof window.rsGetProjectId === "function"){
+        const pid = window.rsGetProjectId();
+        if (pid) return pid;
+      }
+      if (window.RS && RS.currentProjectId) return RS.currentProjectId;
+      return null;
+    } catch(e){
+      return null;
+    }
+  }
+
+  function safeName(s){
+    return String(s || "project")
+      .replace(/[^\w\(\)\[\]\.\s-]+/g, "")
+      .trim()
+      .replace(/\s+/g, "_")
+      .slice(0, 80) || "project";
+  }
+
+  async function fetchExportJson(pid){
+    const resp = await fetch(`/api/di/studio/projects/${encodeURIComponent(pid)}/export?format=json`, { credentials: "include" });
+    if (!resp.ok){
+      const t = await resp.text().catch(()=> "");
+      throw new Error(`Export JSON failed (${resp.status}): ${t.slice(0,200)}`);
+    }
+    return await resp.json();
+  }
+
+  function extractTextParts(j){
+    const title =
+      (j && (j.title || (j.project && j.project.title) || (j.project && j.project.name))) || "Manuscript";
+
+    const sections =
+      (j && j.sections) ||
+      (j && j.manuscript && j.manuscript.sections) ||
+      (j && j.export && j.export.sections) ||
+      [];
+
+    const norm = [];
+    if (Array.isArray(sections)){
+      for (const s of sections){
+        const st = (s && (s.title || s.heading || s.name)) || "";
+        const sc = (s && (s.content || s.text || s.body || "")) || "";
+        norm.push({ title: String(st), content: String(sc) });
+      }
+    } else if (typeof sections === "object" && sections){
+      for (const k of Object.keys(sections)){
+        const v = sections[k];
+        const sc = (v && (v.content || v.text || v.body)) || v || "";
+        norm.push({ title: String(k), content: String(sc) });
+      }
+    }
+
+    if (norm.length === 0){
+      norm.push({ title: "Export", content: JSON.stringify(j, null, 2) });
+    }
+
+    return { title: String(title), sections: norm };
+  }
+
+  async function downloadDocx(pid){
+    if (!window.docx || !window.saveAs){
+      alert("DOCX export library missing.");
+      return;
+    }
+    const j = await fetchExportJson(pid);
+    const { title, sections } = extractTextParts(j);
+
+    const { Document, Packer, Paragraph, HeadingLevel, TextRun } = window.docx;
+
+    const children = [];
+    children.push(new Paragraph({ text: title, heading: HeadingLevel.TITLE }));
+
+    for (const sec of sections){
+      if (sec.title) children.push(new Paragraph({ text: sec.title, heading: HeadingLevel.HEADING_1 }));
+      const lines = String(sec.content || "").split(/\r?\n/);
+      for (const line of lines){
+        children.push(new Paragraph({ children: [ new TextRun(line) ] }));
+      }
+      children.push(new Paragraph({ text: "" }));
+    }
+
+    const doc = new Document({ sections: [{ children }] });
+    const blob = await Packer.toBlob(doc);
+
+    window.saveAs(blob, safeName(title) + ".docx");
+  }
+
+  async function downloadPdf(pid){
+    if (!window.jspdf || !window.saveAs){
+      alert("PDF export library missing.");
+      return;
+    }
+    const j = await fetchExportJson(pid);
+    const { title, sections } = extractTextParts(j);
+
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ unit: "pt", format: "a4" });
+
+    const pageW = pdf.internal.pageSize.getWidth();
+    const pageH = pdf.internal.pageSize.getHeight();
+    const margin = 54;
+    const maxW = pageW - margin * 2;
+
+    let y = margin;
+
+    function addWrapped(text, size, bold){
+      pdf.setFont("helvetica", bold ? "bold" : "normal");
+      pdf.setFontSize(size);
+      const lines = pdf.splitTextToSize(String(text || ""), maxW);
+      for (const line of lines){
+        if (y > pageH - margin){
+          pdf.addPage();
+          y = margin;
+        }
+        pdf.text(line, margin, y);
+        y += size + 4;
+      }
+    }
+
+    addWrapped(title, 18, true);
+    y += 10;
+
+    for (const sec of sections){
+      if (sec.title){
+        addWrapped(sec.title, 13, true);
+        y += 4;
+      }
+      addWrapped(sec.content || "", 11, false);
+      y += 12;
+    }
+
+    const blob = pdf.output("blob");
+    window.saveAs(blob, safeName(title) + ".pdf");
+  }
+
+  function onReady(fn){
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", fn);
+    else fn();
+  }
+
+  onReady(function(){
+    const dlBtn = document.getElementById("rsDownloadBtn");
+    const menu = document.getElementById("rsDownloadMenu");
+    if (!dlBtn || !menu) return;
+
+    try{ dlBtn.type = "button"; } catch(e){}
+
+    function hide(){ menu.style.display = "none"; }
+    function toggle(){ menu.style.display = (menu.style.display === "block") ? "none" : "block"; }
+
+    dlBtn.addEventListener("click", function(e){
+      e.preventDefault();
+      e.stopPropagation();
+      toggle();
+    });
+
+    menu.addEventListener("click", async function(e){
+      const item = e.target.closest(".rs-download-item");
+      if (!item) return;
+
+      const format = (item.getAttribute("data-format") || "pdf").toLowerCase();
+      hide();
+
+      const pid = getPid();
+      if (!pid){
+        alert("No project selected.");
+        return;
+      }
+
+      try{
+        if (format === "docx") await downloadDocx(pid);
+        else await downloadPdf(pid);
+      } catch(err){
+        console.error(err);
+        alert("Download failed. Check console.");
+      }
+    });
+
+    document.addEventListener("click", hide);
+    document.addEventListener("keydown", function(e){ if (e.key === "Escape") hide(); });
+
+    // Ensure menu is visible above panels
+    menu.style.background = "#ffffff";
+    menu.style.opacity = "1";
+    menu.style.visibility = "visible";
+    menu.style.zIndex = "9999";
+  });
 })();
 </script>
 
