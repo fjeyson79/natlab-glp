@@ -12376,13 +12376,14 @@ app.get('/api/di/studio/projects/:id/evidence/search', requireAuth, async (req, 
                 FROM di_submissions s
                 LEFT JOIN di_allowlist a ON a.researcher_id = s.researcher_id
                 WHERE s.affiliation = $1
+                  AND s.researcher_id = $2
                   AND s.status IN ('APPROVED', 'PENDING')
-                  AND s.file_type = $2
-                  AND s.original_filename ILIKE '%' || $3 || '%'
+                  AND s.file_type = $3
+                  AND s.original_filename ILIKE '%' || $4 || '%'
                 ORDER BY s.created_at DESC
                 LIMIT 25
             `;
-            params = [access.project.affiliation, type, q];
+            params = [access.project.affiliation, user.researcher_id, type, q];
         } else if (type) {
             query = `
                 SELECT s.submission_id AS id, s.original_filename AS filename, s.file_type AS context_type, s.status, s.created_at,
@@ -12390,12 +12391,13 @@ app.get('/api/di/studio/projects/:id/evidence/search', requireAuth, async (req, 
                 FROM di_submissions s
                 LEFT JOIN di_allowlist a ON a.researcher_id = s.researcher_id
                 WHERE s.affiliation = $1
+                  AND s.researcher_id = $2
                   AND s.status IN ('APPROVED', 'PENDING')
-                  AND s.file_type = $2
+                  AND s.file_type = $3
                 ORDER BY s.created_at DESC
                 LIMIT 25
             `;
-            params = [access.project.affiliation, type];
+            params = [access.project.affiliation, user.researcher_id, type];
         } else {
             query = `
                 SELECT s.submission_id AS id, s.original_filename AS filename, s.file_type AS context_type, s.status, s.created_at,
@@ -12403,12 +12405,13 @@ app.get('/api/di/studio/projects/:id/evidence/search', requireAuth, async (req, 
                 FROM di_submissions s
                 LEFT JOIN di_allowlist a ON a.researcher_id = s.researcher_id
                 WHERE s.affiliation = $1
+                  AND s.researcher_id = $2
                   AND s.status IN ('APPROVED', 'PENDING')
-                  AND s.original_filename ILIKE '%' || $2 || '%'
+                  AND s.original_filename ILIKE '%' || $3 || '%'
                 ORDER BY s.created_at DESC
                 LIMIT 25
             `;
-            params = [access.project.affiliation, q];
+            params = [access.project.affiliation, user.researcher_id, q];
         }
 
         const result = await pool.query(query, params);
