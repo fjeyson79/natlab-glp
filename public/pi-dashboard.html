@@ -5141,6 +5141,16 @@ function dicInitEmbedModeFromUrl() {
             h += _sciText('bottleneck', sci.bottleneck, 'Main obstacle or blocker');
             h += '</div></div>';
 
+            // Project Identity (shared across profiles)
+            const pref = sci.project_ref || {};
+            h += '<div class="oto-sci-card">';
+            h += '<div class="oto-sci-card-title">Project Identity</div>';
+            h += '<div class="oto-sci-field"><label>Project name</label>';
+            h += '<input type="text" id="oneToOneSciProjectName" value="' + escapeHtml(pref.name || '').replace(/"/g, '&quot;') + '" onchange="oneToOneAutoSave()" placeholder="e.g. CRISPR off target analysis" style="display:block;width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;box-sizing:border-box;" /></div>';
+            h += '<div class="oto-sci-field"><label>Project description (optional)</label>';
+            h += '<input type="text" id="oneToOneSciProjectDesc" value="' + escapeHtml(pref.description || '').replace(/"/g, '&quot;') + '" onchange="oneToOneAutoSave()" placeholder="Brief context" style="display:block;width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;box-sizing:border-box;" /></div>';
+            h += '</div>';
+
             // Junior fields
             h += '<div id="otoSciJunior" style="' + (profile === 'junior' ? '' : 'display:none;') + '">';
             h += _buildJuniorFormHtml(jr);
@@ -5319,6 +5329,11 @@ function dicInitEmbedModeFromUrl() {
 
             const obj = { version: 1, profile: vals.profile, bottleneck: vals.bottleneck || '', updated_at: new Date().toISOString() };
 
+            // Project Identity (shared)
+            const projName = ((document.getElementById('oneToOneSciProjectName') || {}).value || '').trim();
+            const projDesc = ((document.getElementById('oneToOneSciProjectDesc') || {}).value || '').trim();
+            obj.project_ref = { name: projName, description: projDesc };
+
             // Junior
             obj.junior = {
                 ind_level: vals.jr_ind_level || '', ind_prog: vals.jr_ind_prog || '', ind_comment: vals.jr_ind_comment || '',
@@ -5410,6 +5425,9 @@ function dicInitEmbedModeFromUrl() {
             html += '</div>';
             if (sci && sci.profile) {
                 html += '<div style="margin-bottom:6px;"><span class="oto-profile-pill ' + (sci.profile === 'senior' ? 'senior' : 'junior') + '">' + (sci.profile === 'senior' ? 'Senior' : 'Junior') + ' profile</span></div>';
+                const pr = sci.project_ref || {};
+                html += '<div class="oto-preview-kv"><strong>Project:</strong> ' + escapeHtml(pr.name || 'Not set') + '</div>';
+                if (pr.description) html += '<div style="font-size:11px;color:#9ca3af;margin:0 0 4px;">' + escapeHtml(pr.description) + '</div>';
                 if (sci.bottleneck) html += '<div class="oto-preview-kv"><strong>Bottleneck:</strong> ' + escapeHtml(sci.bottleneck) + '</div>';
                 html += _buildSciPreviewSummary(sci);
             } else {
@@ -5478,6 +5496,9 @@ function dicInitEmbedModeFromUrl() {
                     const sci = prev.scientific_json;
                     if (sci && sci.profile) {
                         body += '<div style="margin-bottom:6px;"><span class="oto-profile-pill ' + (sci.profile === 'senior' ? 'senior' : 'junior') + '">' + (sci.profile === 'senior' ? 'Senior' : 'Junior') + ' profile</span></div>';
+                        const pr = sci.project_ref || {};
+                        if (pr.name) body += '<div class="oto-preview-kv"><strong>Project:</strong> ' + escapeHtml(pr.name) + '</div>';
+                        if (pr.description) body += '<div style="font-size:11px;color:#9ca3af;margin:0 0 4px;">' + escapeHtml(pr.description) + '</div>';
                         if (sci.bottleneck) body += '<div class="oto-preview-kv"><strong>Bottleneck:</strong> ' + escapeHtml(sci.bottleneck) + '</div>';
                         body += _buildSciPreviewSummary(sci);
                     } else {
