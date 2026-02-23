@@ -1253,6 +1253,23 @@
   right:-10px !important;
 }
 
+
+
+/* RS download: guarantee button receives clicks */
+#rsDownloadBtn{
+  position:relative !important;
+  z-index:99999 !important;
+  pointer-events:auto !important;
+  cursor:pointer !important;
+}
+#rsDownloadMenu{
+  z-index:99999 !important;
+  pointer-events:auto !important;
+  background:#ffffff !important;
+  opacity:1 !important;
+  visibility:visible !important;
+}
+
 </style>
 </head>
 <body>
@@ -1418,7 +1435,7 @@
             class="gv-toolbar-icon"
             style="background:#ffffff;border:1px solid #e5e7eb;"
             title="Download"
-            aria-label="Download">
+            aria-label="Download" type="button" onclick="return rsDlToggleMenu(event);">
       <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
         <path d="M10 3v10M10 13l-3.5-3.5M10 13l3.5-3.5M4 16h12"
               stroke="#111827" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -3491,6 +3508,23 @@ window.open(url, "_blank");
     menu.style.zIndex = "9999";
   });
 })();
+</script>
+
+<script>
+/* RS_DOWNLOAD_GLOBAL_TOGGLE_V1 */
+function rsDlToggleMenu(e){
+  try{
+    if (e){ e.preventDefault(); e.stopPropagation(); }
+    const menu = document.getElementById("rsDownloadMenu");
+    if (!menu) return false;
+    const cur = (menu.style.display || "none");
+    menu.style.display = (cur === "block") ? "none" : "block";
+    return false;
+  } catch(err){
+    console.error(err);
+    return false;
+  }
+}
 </script>
 
 </body>
