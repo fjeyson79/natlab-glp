@@ -29,14 +29,14 @@
 
         /* ── Header ── */
         .rs-header {
-            background: linear-gradient(135deg, #1a365d 0%, #2d5a87 100%);
+            background: linear-gradient(135deg, #a3856a 0%, #b89a7a 100%);
             color: white;
             padding: 0 28px;
             display: flex;
             align-items: center;
             height: 54px;
             gap: 18px;
-            box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+            box-shadow: 0 1px 3px rgba(44, 44, 44, 0.10);
         }
         .rs-header-back {
             color: rgba(255,255,255,0.75);
@@ -67,7 +67,38 @@
         .rs-wall {
             width: 280px;
             min-width: 240px;
-            background: var(--white);
+            background:
+                /* faint horizontal ruled lines */
+                repeating-linear-gradient(
+                    180deg,
+                    transparent,
+                    transparent 27px,
+                    rgba(180, 160, 130, 0.07) 27px,
+                    rgba(180, 160, 130, 0.07) 28px
+                ),
+                /* subtle grain / noise via micro checkerboard */
+                repeating-linear-gradient(
+                    45deg,
+                    transparent,
+                    transparent 1px,
+                    rgba(160, 140, 110, 0.025) 1px,
+                    rgba(160, 140, 110, 0.025) 2px
+                ),
+                repeating-linear-gradient(
+                    -45deg,
+                    transparent,
+                    transparent 1px,
+                    rgba(140, 120, 95, 0.02) 1px,
+                    rgba(140, 120, 95, 0.02) 2px
+                ),
+                /* warm paper base gradient */
+                linear-gradient(
+                    180deg,
+                    #f7f2ea 0%,
+                    #f3ede3 40%,
+                    #efe8dc 100%
+                );
+            background-color: #f3ede3; /* solid fallback */
             border-right: 1px solid var(--border);
             overflow-y: auto;
             flex-shrink: 0;
@@ -102,8 +133,8 @@
             background: #fdfcfa;
         }
         .rs-proj-card.active {
-            border-color: var(--accent);
-            background: #f0f4fa;
+            border-color: var(--clay);
+            background: #faf6f0;
         }
         .rs-proj-card-title {
             font-size: 0.86rem;
@@ -168,13 +199,18 @@
 
         /* ── Empty state ── */
         .rs-empty {
-            text-align: center;
-            padding: 100px 40px;
+            text-align: left;
+            padding: 80px 12px 100px;
+            max-width: 520px;
         }
         .rs-empty-mark {
-            font-size: 2.8rem;
-            margin-bottom: 18px;
-            opacity: 0.3;
+            margin-bottom: 22px;
+            opacity: 0.22;
+            line-height: 1;
+        }
+        .rs-empty-mark svg {
+            width: 48px;
+            height: 48px;
         }
         .rs-empty h2 {
             font-family: Georgia, serif;
@@ -186,9 +222,9 @@
         .rs-empty p {
             font-size: 0.9rem;
             color: var(--ink-soft);
-            max-width: 380px;
-            margin: 0 auto;
-            line-height: 1.6;
+            max-width: 420px;
+            margin: 0;
+            line-height: 1.7;
         }
 
         /* ── Project detail view ── */
@@ -359,11 +395,11 @@
         }
         .rs-btn:hover { border-color: var(--clay); background: #fdfcfa; }
         .rs-btn-primary {
-            background: var(--accent);
+            background: #8c6e50;
             color: white;
-            border-color: var(--accent);
+            border-color: #8c6e50;
         }
-        .rs-btn-primary:hover { background: #142c4d; }
+        .rs-btn-primary:hover { background: #6e5540; }
 
         /* ── Responsive ── */
         @media (max-width: 768px) {
@@ -398,9 +434,9 @@
         <div class="rs-atelier" id="rsAtelier">
             <!-- Empty state -->
             <div id="rsEmptyState" class="rs-empty">
-                <div class="rs-empty-mark">&#9998;</div>
-                <h2>Welcome to Research Studio</h2>
-                <p>Select a project from the left panel or create a new one to begin.</p>
+                <div class="rs-empty-mark"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M24 4c-7.2 0-13 4.8-13 12 0 3.8 1.8 7 4.5 9.2 1.6 1.3 2.5 3.2 2.5 5.3V33h12v-2.5c0-2.1.9-4 2.5-5.3C35.2 23 37 19.8 37 16c0-7.2-5.8-12-13-12z"/><path d="M18 33c0 3.3 2.7 6 6 6s6-2.7 6-6"/><path d="M24 4v3"/><path d="M24 16c-2.2 0-4 1.8-4 4"/></svg></div>
+                <h2>Welcome to the NAT-Lab Research Studio</h2>
+                <p>Where hypotheses are sharpened, evidence is interpreted, and precision medicine takes form.</p>
             </div>
 
             <!-- Project detail (read only in Phase 1) -->
