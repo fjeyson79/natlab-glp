@@ -17,6 +17,8 @@
             --white: #ffffff;
             --accent: #1a365d;
             --shadow: rgba(44, 44, 44, 0.06);
+            --warn: #b45309;
+            --success: #2e7d32;
         }
 
         body {
@@ -61,6 +63,7 @@
         .rs-shell {
             display: flex;
             height: calc(100vh - 54px);
+            position: relative;
         }
 
         /* ── Left: Studio Wall ── */
@@ -68,7 +71,6 @@
             width: 280px;
             min-width: 240px;
             background:
-                /* faint horizontal ruled lines */
                 repeating-linear-gradient(
                     180deg,
                     transparent,
@@ -76,7 +78,6 @@
                     rgba(180, 160, 130, 0.07) 27px,
                     rgba(180, 160, 130, 0.07) 28px
                 ),
-                /* subtle grain / noise via micro checkerboard */
                 repeating-linear-gradient(
                     45deg,
                     transparent,
@@ -91,14 +92,13 @@
                     rgba(140, 120, 95, 0.02) 1px,
                     rgba(140, 120, 95, 0.02) 2px
                 ),
-                /* warm paper base gradient */
                 linear-gradient(
                     180deg,
                     #f7f2ea 0%,
                     #f3ede3 40%,
                     #efe8dc 100%
                 );
-            background-color: #f3ede3; /* solid fallback */
+            background-color: #f3ede3;
             border-right: 1px solid var(--border);
             overflow-y: auto;
             flex-shrink: 0;
@@ -242,24 +242,76 @@
         .rs-detail-subtitle {
             font-size: 0.82rem;
             color: var(--ink-soft);
-            margin-bottom: 28px;
+            margin-bottom: 12px;
         }
 
-        /* ── Reflection summary (read only in Phase 1) ── */
+        /* ── Lock banner ── */
+        .rs-lock-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+            min-height: 36px;
+            flex-wrap: wrap;
+        }
+        .rs-lock-banner {
+            font-size: 0.8rem;
+            padding: 6px 14px;
+            border-radius: 7px;
+            background: #fff8ee;
+            border: 1px solid #f0d9a8;
+            color: var(--warn);
+        }
+        .rs-editing-indicator {
+            font-size: 0.78rem;
+            padding: 5px 12px;
+            border-radius: 7px;
+            background: #e8f5e9;
+            border: 1px solid #c8e6c9;
+            color: var(--success);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .rs-editing-indicator .rs-timer {
+            font-variant-numeric: tabular-nums;
+            font-weight: 600;
+        }
+
+        /* ── Reflection card (Phase 2: editable) ── */
         .rs-reflection-card {
             background: linear-gradient(135deg, #faf8f4 0%, #f5f0e8 100%);
             border: 1px solid var(--clay-light);
             border-radius: 10px;
             padding: 24px 28px;
             margin-bottom: 32px;
+            position: relative;
+        }
+        .rs-reflection-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
         }
         .rs-reflection-heading {
             font-family: Georgia, serif;
             font-size: 1rem;
             font-weight: 400;
             color: var(--ink);
-            margin-bottom: 16px;
         }
+        .rs-reflection-toggle {
+            font-size: 0.72rem;
+            color: var(--ink-soft);
+            cursor: pointer;
+            background: none;
+            border: none;
+            font-family: inherit;
+            padding: 3px 8px;
+            border-radius: 4px;
+            transition: background 0.15s;
+        }
+        .rs-reflection-toggle:hover { background: rgba(0,0,0,0.04); }
+
         .rs-reflection-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -275,6 +327,10 @@
             margin-bottom: 3px;
             font-weight: 600;
         }
+        .rs-reflection-label .rs-req {
+            color: #c44;
+            margin-left: 2px;
+        }
         .rs-reflection-value {
             font-size: 0.88rem;
             color: var(--ink);
@@ -286,7 +342,98 @@
             font-style: italic;
         }
 
-        /* ── Sections (read only in Phase 1) ── */
+        /* Reflection summary strip (collapsed state) */
+        .rs-reflection-strip {
+            display: none;
+            font-size: 0.78rem;
+            color: var(--ink-soft);
+            line-height: 1.5;
+            padding: 2px 0;
+        }
+        .rs-reflection-strip span {
+            display: inline;
+        }
+        .rs-reflection-strip .rs-strip-label {
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.65rem;
+            letter-spacing: 0.05em;
+            color: var(--ink-soft);
+        }
+
+        /* Reflection edit form */
+        .rs-reflection-edit {
+            display: none;
+        }
+        .rs-reflection-edit.visible {
+            display: block;
+        }
+        .rs-refl-input {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.88rem;
+            font-family: inherit;
+            color: var(--ink);
+            outline: none;
+            transition: border-color 0.2s;
+            background: var(--white);
+        }
+        .rs-refl-input:focus { border-color: var(--clay); }
+        .rs-refl-textarea {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.88rem;
+            font-family: inherit;
+            color: var(--ink);
+            outline: none;
+            transition: border-color 0.2s;
+            resize: vertical;
+            min-height: 60px;
+            background: var(--white);
+        }
+        .rs-refl-textarea:focus { border-color: var(--clay); }
+        .rs-refl-select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.88rem;
+            font-family: inherit;
+            color: var(--ink);
+            outline: none;
+            background: var(--white);
+            cursor: pointer;
+        }
+        .rs-reflection-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            margin-top: 14px;
+        }
+
+        /* ── Gating overlay for sections ── */
+        .rs-gated-message {
+            text-align: center;
+            padding: 32px 16px;
+            color: var(--ink-soft);
+            font-size: 0.9rem;
+            font-style: italic;
+            background: linear-gradient(135deg, #faf8f4 0%, #f5f0e8 100%);
+            border: 1px dashed var(--border);
+            border-radius: 10px;
+            margin-bottom: 32px;
+        }
+        .rs-sections-gated {
+            opacity: 0.4;
+            pointer-events: none;
+            user-select: none;
+        }
+
+        /* ── Sections ── */
         .rs-sections-heading {
             font-family: Georgia, serif;
             font-size: 1.1rem;
@@ -322,6 +469,30 @@
             color: #c0bbb2;
             font-style: italic;
             font-size: 0.86rem;
+        }
+
+        /* Section editing textarea */
+        .rs-section-editor {
+            width: 100%;
+            min-height: 120px;
+            padding: 12px 16px;
+            border: 1px solid var(--clay);
+            border-radius: 7px;
+            font-size: 0.9rem;
+            font-family: inherit;
+            line-height: 1.7;
+            color: var(--ink);
+            outline: none;
+            resize: vertical;
+            background: var(--white);
+            transition: border-color 0.2s;
+        }
+        .rs-section-editor:focus { border-color: #8c6e50; box-shadow: 0 0 0 2px rgba(140, 110, 80, 0.1); }
+        .rs-section-save-row {
+            display: flex;
+            justify-content: flex-end;
+            gap: 6px;
+            margin-top: 6px;
         }
 
         /* ── Info bar at bottom of detail ── */
@@ -394,18 +565,210 @@
             transition: all 0.15s;
         }
         .rs-btn:hover { border-color: var(--clay); background: #fdfcfa; }
+        .rs-btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .rs-btn-primary {
             background: #8c6e50;
             color: white;
             border-color: #8c6e50;
         }
         .rs-btn-primary:hover { background: #6e5540; }
+        .rs-btn-primary:disabled { background: #b0a090; border-color: #b0a090; }
+        .rs-btn-sm {
+            padding: 4px 10px;
+            font-size: 0.76rem;
+        }
+        .rs-btn-success {
+            background: var(--success);
+            color: white;
+            border-color: var(--success);
+        }
+        .rs-btn-success:hover { background: #1b5e20; }
+
+        /* ── Comments Drawer ── */
+        .rs-comments-toggle {
+            position: fixed;
+            right: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            background: #8c6e50;
+            color: white;
+            border: none;
+            padding: 14px 7px;
+            font-size: 0.72rem;
+            font-family: inherit;
+            font-weight: 500;
+            letter-spacing: 0.05em;
+            cursor: pointer;
+            border-radius: 7px 0 0 7px;
+            z-index: 100;
+            transition: background 0.15s;
+        }
+        .rs-comments-toggle:hover { background: #6e5540; }
+        .rs-comments-toggle .rs-badge {
+            display: inline-block;
+            writing-mode: horizontal-tb;
+            background: #c44;
+            color: white;
+            font-size: 0.6rem;
+            padding: 1px 5px;
+            border-radius: 8px;
+            margin-top: 6px;
+            font-weight: 700;
+            min-width: 16px;
+            text-align: center;
+        }
+
+        .rs-comments-drawer {
+            position: fixed;
+            right: -400px;
+            top: 54px;
+            width: 380px;
+            height: calc(100vh - 54px);
+            background: var(--white);
+            border-left: 1px solid var(--border);
+            box-shadow: -4px 0 20px rgba(0,0,0,0.08);
+            z-index: 200;
+            transition: right 0.25s ease;
+            display: flex;
+            flex-direction: column;
+        }
+        .rs-comments-drawer.open {
+            right: 0;
+        }
+        .rs-comments-drawer-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-shrink: 0;
+        }
+        .rs-comments-drawer-header h3 {
+            font-family: Georgia, serif;
+            font-weight: 400;
+            font-size: 1rem;
+        }
+        .rs-comments-drawer-close {
+            background: none;
+            border: none;
+            font-size: 1.2rem;
+            cursor: pointer;
+            color: var(--ink-soft);
+            padding: 2px 6px;
+        }
+        .rs-comments-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px 20px;
+        }
+        .rs-comment-group-label {
+            font-size: 0.68rem;
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
+            color: var(--ink-soft);
+            font-weight: 600;
+            margin-top: 14px;
+            margin-bottom: 6px;
+            padding-bottom: 4px;
+            border-bottom: 1px solid var(--border);
+        }
+        .rs-comment-group-label:first-child { margin-top: 0; }
+        .rs-comment-item {
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            border-radius: 7px;
+            margin-bottom: 8px;
+            font-size: 0.84rem;
+            line-height: 1.5;
+            position: relative;
+        }
+        .rs-comment-item.resolved {
+            opacity: 0.5;
+            background: #fafafa;
+        }
+        .rs-comment-meta {
+            font-size: 0.7rem;
+            color: var(--ink-soft);
+            margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .rs-comment-type-badge {
+            font-size: 0.6rem;
+            padding: 1px 6px;
+            border-radius: 6px;
+            background: var(--clay-light);
+            color: #7c6330;
+            font-weight: 600;
+        }
+        .rs-comment-body {
+            color: var(--ink);
+        }
+        .rs-comment-resolve-btn {
+            font-size: 0.7rem;
+            color: var(--success);
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 2px 0;
+            margin-top: 4px;
+            font-family: inherit;
+        }
+        .rs-comment-resolve-btn:hover { text-decoration: underline; }
+        .rs-comment-resolved-note {
+            font-size: 0.68rem;
+            color: var(--ink-soft);
+            margin-top: 4px;
+            font-style: italic;
+        }
+
+        /* New comment form at bottom of drawer */
+        .rs-new-comment {
+            border-top: 1px solid var(--border);
+            padding: 14px 20px;
+            flex-shrink: 0;
+        }
+        .rs-new-comment-row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        .rs-new-comment select, .rs-new-comment textarea {
+            width: 100%;
+            padding: 6px 10px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.82rem;
+            font-family: inherit;
+            color: var(--ink);
+            outline: none;
+            background: var(--white);
+        }
+        .rs-new-comment select { flex: 1; }
+        .rs-new-comment textarea {
+            min-height: 50px;
+            resize: vertical;
+        }
+        .rs-new-comment textarea:focus, .rs-new-comment select:focus { border-color: var(--clay); }
+
+        .rs-no-comments {
+            text-align: center;
+            color: var(--ink-soft);
+            font-size: 0.84rem;
+            padding: 30px 10px;
+            font-style: italic;
+        }
 
         /* ── Responsive ── */
         @media (max-width: 768px) {
             .rs-shell { flex-direction: column; }
             .rs-wall { width: 100%; height: auto; max-height: 40vh; border-right: none; border-bottom: 1px solid var(--border); }
             .rs-atelier { padding: 24px 20px; }
+            .rs-comments-drawer { width: 100%; right: -100%; }
         }
     </style>
 </head>
@@ -439,33 +802,44 @@
                 <p>Where hypotheses are sharpened, evidence is interpreted, and precision medicine takes form.</p>
             </div>
 
-            <!-- Project detail (read only in Phase 1) -->
+            <!-- Project detail -->
             <div id="rsDetail" class="rs-detail">
                 <div class="rs-detail-title" id="rsDetailTitle"></div>
                 <div class="rs-detail-subtitle" id="rsDetailSubtitle"></div>
 
-                <!-- Reflection summary -->
-                <div class="rs-reflection-card">
-                    <div class="rs-reflection-heading">Reflection Layer</div>
-                    <div class="rs-reflection-grid">
+                <!-- Lock bar -->
+                <div class="rs-lock-bar" id="rsLockBar"></div>
+
+                <!-- Reflection Layer -->
+                <div class="rs-reflection-card" id="rsReflectionCard">
+                    <div class="rs-reflection-header">
+                        <div class="rs-reflection-heading">Reflection Layer</div>
+                        <button class="rs-reflection-toggle" id="rsReflToggle" onclick="rsToggleReflection()">Collapse</button>
+                    </div>
+
+                    <!-- Summary strip (shown when collapsed) -->
+                    <div class="rs-reflection-strip" id="rsReflStrip"></div>
+
+                    <!-- Read only view -->
+                    <div class="rs-reflection-grid" id="rsReflView">
                         <div class="rs-reflection-field full">
-                            <div class="rs-reflection-label">Core Hypothesis</div>
+                            <div class="rs-reflection-label">Core Hypothesis <span class="rs-req">*</span></div>
                             <div class="rs-reflection-value" id="rsValHypothesis"></div>
                         </div>
                         <div class="rs-reflection-field">
-                            <div class="rs-reflection-label">Scientific Intention</div>
+                            <div class="rs-reflection-label">Scientific Intention <span class="rs-req">*</span></div>
                             <div class="rs-reflection-value" id="rsValIntention"></div>
                         </div>
                         <div class="rs-reflection-field">
-                            <div class="rs-reflection-label">Current Phase</div>
+                            <div class="rs-reflection-label">Current Phase <span class="rs-req">*</span></div>
                             <div class="rs-reflection-value" id="rsValPhase"></div>
                         </div>
                         <div class="rs-reflection-field full">
-                            <div class="rs-reflection-label">Intellectual Tension</div>
+                            <div class="rs-reflection-label">Intellectual Tension <span class="rs-req">*</span></div>
                             <div class="rs-reflection-value" id="rsValTension"></div>
                         </div>
                         <div class="rs-reflection-field">
-                            <div class="rs-reflection-label">Next Milestone</div>
+                            <div class="rs-reflection-label">Next Milestone <span class="rs-req">*</span></div>
                             <div class="rs-reflection-value" id="rsValMilestone"></div>
                         </div>
                         <div class="rs-reflection-field">
@@ -473,14 +847,101 @@
                             <div class="rs-reflection-value" id="rsValMilestoneDate"></div>
                         </div>
                     </div>
+
+                    <!-- Edit form (shown when user can edit reflection) -->
+                    <div class="rs-reflection-edit" id="rsReflEdit">
+                        <div class="rs-reflection-grid">
+                            <div class="rs-reflection-field full">
+                                <div class="rs-reflection-label">Core Hypothesis <span class="rs-req">*</span></div>
+                                <textarea class="rs-refl-textarea" id="rsEditHypothesis" rows="2" placeholder="What is the central hypothesis?"></textarea>
+                            </div>
+                            <div class="rs-reflection-field">
+                                <div class="rs-reflection-label">Scientific Intention <span class="rs-req">*</span></div>
+                                <textarea class="rs-refl-textarea" id="rsEditIntention" rows="2" placeholder="What do you intend to demonstrate?"></textarea>
+                            </div>
+                            <div class="rs-reflection-field">
+                                <div class="rs-reflection-label">Current Phase <span class="rs-req">*</span></div>
+                                <select class="rs-refl-select" id="rsEditPhase">
+                                    <option value="">Select phase</option>
+                                    <option value="Planning">Planning</option>
+                                    <option value="Data generation">Data generation</option>
+                                    <option value="Analysis">Analysis</option>
+                                    <option value="Writing">Writing</option>
+                                    <option value="Submission">Submission</option>
+                                    <option value="Revision">Revision</option>
+                                </select>
+                            </div>
+                            <div class="rs-reflection-field full">
+                                <div class="rs-reflection-label">Intellectual Tension <span class="rs-req">*</span></div>
+                                <textarea class="rs-refl-textarea" id="rsEditTension" rows="2" placeholder="What open question or tension guides the work?"></textarea>
+                            </div>
+                            <div class="rs-reflection-field">
+                                <div class="rs-reflection-label">Next Milestone <span class="rs-req">*</span></div>
+                                <input type="text" class="rs-refl-input" id="rsEditMilestone" placeholder="Next concrete milestone">
+                            </div>
+                            <div class="rs-reflection-field">
+                                <div class="rs-reflection-label">Milestone Date</div>
+                                <input type="date" class="rs-refl-input" id="rsEditMilestoneDate">
+                            </div>
+                        </div>
+                        <div class="rs-reflection-actions">
+                            <button class="rs-btn" onclick="rsToggleReflectionEdit(false)">Cancel</button>
+                            <button class="rs-btn rs-btn-primary" id="rsReflSaveBtn" onclick="rsSaveReflection()">Save reflection</button>
+                        </div>
+                    </div>
+
+                    <!-- Edit reflection button (shown when in read mode and user can edit) -->
+                    <div id="rsReflEditBtnWrap" style="margin-top:12px; display:none;">
+                        <button class="rs-btn rs-btn-sm" onclick="rsToggleReflectionEdit(true)">Edit reflection</button>
+                    </div>
+                </div>
+
+                <!-- Gating message (shown when reflection incomplete) -->
+                <div class="rs-gated-message" id="rsGatedMsg" style="display:none;">
+                    Define the scientific direction before drafting.
                 </div>
 
                 <!-- Manuscript sections -->
-                <div class="rs-sections-heading">Manuscript Sections</div>
-                <div id="rsSections"></div>
+                <div id="rsSectionsWrap">
+                    <div class="rs-sections-heading">Manuscript Sections</div>
+                    <div id="rsSections"></div>
+                </div>
 
                 <!-- Info bar -->
                 <div class="rs-info-bar" id="rsInfoBar"></div>
+            </div>
+        </div>
+
+        <!-- Comments toggle button (right edge) -->
+        <button class="rs-comments-toggle" id="rsCommentsToggle" onclick="rsToggleComments()" style="display:none;">
+            Comments<span class="rs-badge" id="rsCommentsBadge" style="display:none;">0</span>
+        </button>
+
+        <!-- Comments drawer -->
+        <div class="rs-comments-drawer" id="rsCommentsDrawer">
+            <div class="rs-comments-drawer-header">
+                <h3>Comments</h3>
+                <button class="rs-comments-drawer-close" onclick="rsToggleComments()">&times;</button>
+            </div>
+            <div class="rs-comments-list" id="rsCommentsList"></div>
+            <div class="rs-new-comment" id="rsNewCommentForm">
+                <div class="rs-new-comment-row">
+                    <select id="rsNewCommentTarget">
+                        <option value="">Target...</option>
+                    </select>
+                    <select id="rsNewCommentType">
+                        <option value="">Type...</option>
+                        <option value="Strategic">Strategic</option>
+                        <option value="Methodological">Methodological</option>
+                        <option value="Interpretative">Interpretative</option>
+                        <option value="Risk warning">Risk warning</option>
+                        <option value="Encouragement">Encouragement</option>
+                    </select>
+                </div>
+                <textarea id="rsNewCommentBody" placeholder="Write your comment..."></textarea>
+                <div style="display:flex; justify-content:flex-end; margin-top:8px;">
+                    <button class="rs-btn rs-btn-primary rs-btn-sm" onclick="rsPostComment()">Add comment</button>
+                </div>
             </div>
         </div>
     </div>
@@ -501,13 +962,24 @@
 
     <script>
     // ══════════════════════════════════════════════════════════
-    // Research Studio: Phase 1 (read only shell)
+    // Research Studio: Phase 2 (reflection editing, locks,
+    // comments, section editing)
     // ══════════════════════════════════════════════════════════
 
     const RS = {
         user: null,
         projects: [],
-        currentProjectId: null
+        currentProjectId: null,
+        currentProject: null,
+        currentSections: [],
+        currentLinks: [],
+        currentComments: [],
+        lock: null,
+        editing: false,
+        lockRenewInterval: null,
+        reflectionCollapsed: false,
+        reflectionEditing: false,
+        commentsOpen: false
     };
 
     const SECTION_LABELS = {
@@ -519,6 +991,8 @@
         discussion: 'Discussion',
         conclusion: 'Conclusion'
     };
+
+    const SECTION_KEYS = ['aims', 'abstract', 'introduction', 'methodology', 'results', 'discussion', 'conclusion'];
 
     // ── Helpers ──
     function esc(str) {
@@ -533,6 +1007,12 @@
         return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
     }
 
+    function fmtTime(iso) {
+        if (!iso) return '';
+        const d = new Date(iso);
+        return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    }
+
     function statusDotClass(status) {
         if (!status) return 'active';
         const s = status.toLowerCase().replace(/\s/g, '');
@@ -540,6 +1020,37 @@
         if (s === 'completed') return 'completed';
         if (s === 'archived') return 'archived';
         return 'active';
+    }
+
+    // Strip HTML tags for plain text extraction from content_html
+    function htmlToPlainText(html) {
+        if (!html) return '';
+        const tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        return tmp.textContent || tmp.innerText || '';
+    }
+
+    function isOwner() {
+        return RS.currentProject && RS.user && RS.currentProject.owner_id === RS.user.researcher_id;
+    }
+
+    function canEditReflection() {
+        // Owner, PI, supervisor can edit reflection
+        if (!RS.currentProject || !RS.user) return false;
+        if (isOwner()) return true;
+        if (RS.user.role === 'pi' && RS.currentProject.affiliation === RS.user.affiliation) return true;
+        // TODO: supervisor with supervised researcher access
+        return false;
+    }
+
+    function isReflectionComplete() {
+        if (!RS.currentProject) return false;
+        const p = RS.currentProject;
+        return !!(p.hypothesis && p.hypothesis.trim() &&
+                  p.intention && p.intention.trim() &&
+                  p.phase &&
+                  p.tension && p.tension.trim() &&
+                  p.next_milestone && p.next_milestone.trim());
     }
 
     // ── Init ──
@@ -601,8 +1112,13 @@
 
     // ── Open project detail ──
     async function rsOpenProject(projectId) {
+        // Release any existing lock before switching
+        if (RS.editing && RS.currentProjectId && RS.currentProjectId !== projectId) {
+            await rsStopEditing();
+        }
+
         RS.currentProjectId = projectId;
-        rsRenderProjectList(); // update active state
+        rsRenderProjectList();
 
         try {
             const resp = await fetch('/api/di/studio/projects/' + projectId);
@@ -612,15 +1128,28 @@
                 return;
             }
             const data = await resp.json();
-            rsRenderDetail(data);
+            RS.currentProject = data.project;
+            RS.currentSections = data.sections || [];
+            RS.currentLinks = data.links || [];
+            RS.lock = data.lock || null;
+            RS.editing = false;
+            RS.reflectionEditing = false;
+
+            // Show comments toggle
+            document.getElementById('rsCommentsToggle').style.display = '';
+
+            rsRenderDetail();
+            rsLoadComments();
         } catch (err) {
             console.error('Open project error:', err);
         }
     }
 
-    function rsRenderDetail(data) {
-        const p = data.project;
-        const sections = data.sections || [];
+    // ══════════════════════════════════════════════════════════
+    // Render Detail
+    // ══════════════════════════════════════════════════════════
+    function rsRenderDetail() {
+        const p = RS.currentProject;
 
         // Hide empty state, show detail
         document.getElementById('rsEmptyState').classList.add('hidden');
@@ -632,7 +1161,192 @@
         document.getElementById('rsDetailSubtitle').textContent =
             (p.owner_name || '') + ' \u00B7 ' + (p.affiliation || '') + ' \u00B7 ' + (p.status || 'Active');
 
-        // Reflection fields
+        // Lock bar
+        rsRenderLockBar();
+
+        // Reflection
+        rsRenderReflection();
+
+        // Gating
+        const reflComplete = isReflectionComplete();
+        const gatedMsg = document.getElementById('rsGatedMsg');
+        const sectionsWrap = document.getElementById('rsSectionsWrap');
+        if (!reflComplete) {
+            gatedMsg.style.display = '';
+            sectionsWrap.classList.add('rs-sections-gated');
+        } else {
+            gatedMsg.style.display = 'none';
+            sectionsWrap.classList.remove('rs-sections-gated');
+        }
+
+        // Sections
+        rsRenderSections();
+
+        // Info bar
+        document.getElementById('rsInfoBar').innerHTML =
+            '<span>Created: ' + fmtDate(p.created_at) + '</span>' +
+            '<span>Updated: ' + fmtDate(p.updated_at) + '</span>' +
+            (p.target_journal ? '<span>Target journal: ' + esc(p.target_journal) + '</span>' : '') +
+            '<span>Evidence links: ' + RS.currentLinks.length + '</span>';
+
+        // Update comment badge
+        rsUpdateCommentBadge();
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // Lock Bar
+    // ══════════════════════════════════════════════════════════
+    function rsRenderLockBar() {
+        const bar = document.getElementById('rsLockBar');
+        bar.innerHTML = '';
+
+        const reflComplete = isReflectionComplete();
+
+        if (RS.editing) {
+            // Currently editing: show indicator + Save + Stop editing
+            const indicator = document.createElement('span');
+            indicator.className = 'rs-editing-indicator';
+            indicator.innerHTML = 'Editing <span class="rs-timer" id="rsLockTimer"></span>';
+            bar.appendChild(indicator);
+
+            const saveBtn = document.createElement('button');
+            saveBtn.className = 'rs-btn rs-btn-success rs-btn-sm';
+            saveBtn.textContent = 'Save';
+            saveBtn.onclick = rsSaveAllSections;
+            bar.appendChild(saveBtn);
+
+            const stopBtn = document.createElement('button');
+            stopBtn.className = 'rs-btn rs-btn-sm';
+            stopBtn.textContent = 'Stop editing';
+            stopBtn.onclick = rsStopEditing;
+            bar.appendChild(stopBtn);
+
+            rsStartLockTimer();
+        } else if (RS.lock && RS.user && RS.lock.locked_by_researcher_id !== RS.user.researcher_id) {
+            // Locked by someone else
+            const banner = document.createElement('span');
+            banner.className = 'rs-lock-banner';
+            banner.textContent = 'This project is currently being edited by ' + (RS.lock.locked_by_name || 'another user') + ', view only mode enabled.';
+            bar.appendChild(banner);
+        } else if (isOwner() && reflComplete) {
+            // Owner can start editing
+            const editBtn = document.createElement('button');
+            editBtn.className = 'rs-btn rs-btn-primary rs-btn-sm';
+            editBtn.textContent = 'Edit manuscript';
+            editBtn.onclick = rsStartEditing;
+            bar.appendChild(editBtn);
+        }
+    }
+
+    async function rsStartEditing() {
+        try {
+            const resp = await fetch('/api/di/studio/projects/' + RS.currentProjectId + '/lock', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const data = await resp.json();
+            if (data.success) {
+                RS.lock = data.lock;
+                RS.editing = true;
+                rsRenderLockBar();
+                rsRenderSections();
+                // Start lock renew interval
+                RS.lockRenewInterval = setInterval(rsRenewLock, 5 * 60 * 1000); // every 5 min
+            } else {
+                alert(data.error || 'Could not acquire lock');
+                // Refresh to see who holds it
+                rsOpenProject(RS.currentProjectId);
+            }
+        } catch (err) {
+            console.error('Start editing error:', err);
+            alert('Network error, please try again.');
+        }
+    }
+
+    async function rsStopEditing() {
+        if (RS.lockRenewInterval) {
+            clearInterval(RS.lockRenewInterval);
+            RS.lockRenewInterval = null;
+        }
+        try {
+            await fetch('/api/di/studio/projects/' + RS.currentProjectId + '/lock/release', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+        } catch (err) {
+            console.error('Release lock error:', err);
+        }
+        RS.lock = null;
+        RS.editing = false;
+        // Reload to get fresh data
+        await rsOpenProject(RS.currentProjectId);
+    }
+
+    async function rsRenewLock() {
+        if (!RS.editing || !RS.currentProjectId) return;
+        try {
+            const resp = await fetch('/api/di/studio/projects/' + RS.currentProjectId + '/lock/renew', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const data = await resp.json();
+            if (data.success) {
+                RS.lock = data.lock;
+            } else {
+                // Lock lost
+                RS.editing = false;
+                if (RS.lockRenewInterval) clearInterval(RS.lockRenewInterval);
+                alert('Editing lock expired. Your session has ended.');
+                rsOpenProject(RS.currentProjectId);
+            }
+        } catch (err) {
+            console.error('Renew lock error:', err);
+        }
+    }
+
+    function rsStartLockTimer() {
+        const timerEl = document.getElementById('rsLockTimer');
+        if (!timerEl || !RS.lock) return;
+
+        function updateTimer() {
+            if (!RS.lock || !RS.lock.expires_at) return;
+            const now = Date.now();
+            const expires = new Date(RS.lock.expires_at).getTime();
+            const remaining = Math.max(0, expires - now);
+            const mins = Math.floor(remaining / 60000);
+            const secs = Math.floor((remaining % 60000) / 1000);
+            const t = document.getElementById('rsLockTimer');
+            if (t) t.textContent = mins + ':' + String(secs).padStart(2, '0');
+            if (remaining <= 0 && RS.editing) {
+                RS.editing = false;
+                if (RS.lockRenewInterval) clearInterval(RS.lockRenewInterval);
+                alert('Editing lock expired.');
+                rsOpenProject(RS.currentProjectId);
+            }
+        }
+        updateTimer();
+        // Clear any previous timer
+        if (RS._timerInterval) clearInterval(RS._timerInterval);
+        RS._timerInterval = setInterval(updateTimer, 1000);
+    }
+
+    // Release lock on page unload (best effort)
+    window.addEventListener('beforeunload', function() {
+        if (RS.editing && RS.currentProjectId) {
+            navigator.sendBeacon(
+                '/api/di/studio/projects/' + RS.currentProjectId + '/lock/release',
+                new Blob([JSON.stringify({})], { type: 'application/json' })
+            );
+        }
+    });
+
+    // ══════════════════════════════════════════════════════════
+    // Reflection Layer
+    // ══════════════════════════════════════════════════════════
+    function rsRenderReflection() {
+        const p = RS.currentProject;
+
+        // Read only values
         rsSetReflectionValue('rsValHypothesis', p.hypothesis);
         rsSetReflectionValue('rsValIntention', p.intention);
         rsSetReflectionValue('rsValPhase', p.phase);
@@ -640,33 +1354,24 @@
         rsSetReflectionValue('rsValMilestone', p.next_milestone);
         rsSetReflectionValue('rsValMilestoneDate', p.milestone_date ? fmtDate(p.milestone_date) : null);
 
-        // Sections
-        const container = document.getElementById('rsSections');
-        container.innerHTML = '';
-        sections.forEach(sec => {
-            const block = document.createElement('div');
-            block.className = 'rs-section-block';
+        // Populate edit form
+        document.getElementById('rsEditHypothesis').value = p.hypothesis || '';
+        document.getElementById('rsEditIntention').value = p.intention || '';
+        document.getElementById('rsEditPhase').value = p.phase || '';
+        document.getElementById('rsEditTension').value = p.tension || '';
+        document.getElementById('rsEditMilestone').value = p.next_milestone || '';
+        document.getElementById('rsEditMilestoneDate').value = p.milestone_date ? p.milestone_date.split('T')[0] : '';
 
-            const label = SECTION_LABELS[sec.section_key] || sec.section_key;
-            const hasContent = sec.content_html && sec.content_html.trim();
+        // Show edit button for those who can edit
+        const editBtnWrap = document.getElementById('rsReflEditBtnWrap');
+        editBtnWrap.style.display = canEditReflection() && !RS.reflectionEditing ? '' : 'none';
 
-            block.innerHTML =
-                '<div class="rs-section-title">' + esc(label) + '</div>' +
-                '<div class="rs-section-content">' +
-                    (hasContent
-                        ? sec.content_html
-                        : '<span class="rs-section-placeholder">Empty section. Editing available in a future update.</span>') +
-                '</div>';
+        // Show/hide edit form vs view
+        document.getElementById('rsReflView').style.display = RS.reflectionEditing ? 'none' : '';
+        document.getElementById('rsReflEdit').className = RS.reflectionEditing ? 'rs-reflection-edit visible' : 'rs-reflection-edit';
 
-            container.appendChild(block);
-        });
-
-        // Info bar
-        document.getElementById('rsInfoBar').innerHTML =
-            '<span>Created: ' + fmtDate(p.created_at) + '</span>' +
-            '<span>Updated: ' + fmtDate(p.updated_at) + '</span>' +
-            (p.target_journal ? '<span>Target journal: ' + esc(p.target_journal) + '</span>' : '') +
-            '<span>Evidence links: ' + (data.links ? data.links.length : 0) + '</span>';
+        // Update summary strip
+        rsUpdateReflectionStrip();
     }
 
     function rsSetReflectionValue(elementId, value) {
@@ -680,7 +1385,352 @@
         }
     }
 
-    // ── Create project modal ──
+    function rsToggleReflection() {
+        RS.reflectionCollapsed = !RS.reflectionCollapsed;
+        const toggle = document.getElementById('rsReflToggle');
+        const view = document.getElementById('rsReflView');
+        const edit = document.getElementById('rsReflEdit');
+        const strip = document.getElementById('rsReflStrip');
+        const editBtnWrap = document.getElementById('rsReflEditBtnWrap');
+
+        if (RS.reflectionCollapsed) {
+            toggle.textContent = 'Expand';
+            view.style.display = 'none';
+            edit.style.display = 'none';
+            editBtnWrap.style.display = 'none';
+            strip.style.display = '';
+        } else {
+            toggle.textContent = 'Collapse';
+            strip.style.display = 'none';
+            rsRenderReflection();
+        }
+    }
+
+    function rsUpdateReflectionStrip() {
+        const p = RS.currentProject;
+        if (!p) return;
+        const strip = document.getElementById('rsReflStrip');
+        const parts = [];
+        if (p.hypothesis && p.hypothesis.trim()) {
+            const short = p.hypothesis.length > 80 ? p.hypothesis.substring(0, 80) + '...' : p.hypothesis;
+            parts.push('<span class="rs-strip-label">Hypothesis:</span> ' + esc(short));
+        }
+        if (p.phase) {
+            parts.push('<span class="rs-strip-label">Phase:</span> ' + esc(p.phase));
+        }
+        if (p.next_milestone && p.next_milestone.trim()) {
+            const short = p.next_milestone.length > 60 ? p.next_milestone.substring(0, 60) + '...' : p.next_milestone;
+            parts.push('<span class="rs-strip-label">Next:</span> ' + esc(short));
+        }
+        strip.innerHTML = parts.length > 0 ? parts.join(' &nbsp;\u00B7&nbsp; ') : '<em style="color:#bbb;">Reflection not yet defined</em>';
+    }
+
+    function rsToggleReflectionEdit(show) {
+        RS.reflectionEditing = show;
+        if (RS.reflectionCollapsed && show) {
+            RS.reflectionCollapsed = false;
+            document.getElementById('rsReflToggle').textContent = 'Collapse';
+            document.getElementById('rsReflStrip').style.display = 'none';
+        }
+        rsRenderReflection();
+    }
+
+    async function rsSaveReflection() {
+        const btn = document.getElementById('rsReflSaveBtn');
+        btn.disabled = true;
+        btn.textContent = 'Saving...';
+
+        const payload = {
+            hypothesis: document.getElementById('rsEditHypothesis').value,
+            intention: document.getElementById('rsEditIntention').value,
+            phase: document.getElementById('rsEditPhase').value,
+            tension: document.getElementById('rsEditTension').value,
+            next_milestone: document.getElementById('rsEditMilestone').value,
+            milestone_date: document.getElementById('rsEditMilestoneDate').value || null
+        };
+
+        try {
+            const resp = await fetch('/api/di/studio/projects/' + RS.currentProjectId + '/reflection', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await resp.json();
+            if (data.success) {
+                RS.reflectionEditing = false;
+                // Refresh project data
+                await rsOpenProject(RS.currentProjectId);
+            } else {
+                alert(data.error || 'Failed to save reflection');
+            }
+        } catch (err) {
+            console.error('Save reflection error:', err);
+            alert('Network error, please try again.');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Save reflection';
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // Sections Rendering
+    // ══════════════════════════════════════════════════════════
+    function rsRenderSections() {
+        const container = document.getElementById('rsSections');
+        container.innerHTML = '';
+
+        const reflComplete = isReflectionComplete();
+        const canEdit = RS.editing && isOwner() && reflComplete;
+
+        RS.currentSections.forEach(sec => {
+            const block = document.createElement('div');
+            block.className = 'rs-section-block';
+
+            const label = SECTION_LABELS[sec.section_key] || sec.section_key;
+            const hasContent = sec.content_html && sec.content_html.trim();
+            const plainText = htmlToPlainText(sec.content_html);
+
+            let contentHtml;
+            if (canEdit) {
+                // Editable textarea
+                contentHtml =
+                    '<div class="rs-section-title">' + esc(label) + '</div>' +
+                    '<textarea class="rs-section-editor" data-section-key="' + esc(sec.section_key) + '"' +
+                    ' placeholder="Begin writing ' + esc(label).toLowerCase() + '...">' + esc(plainText) + '</textarea>';
+            } else {
+                contentHtml =
+                    '<div class="rs-section-title">' + esc(label) + '</div>' +
+                    '<div class="rs-section-content">' +
+                        (hasContent
+                            ? sec.content_html
+                            : '<span class="rs-section-placeholder">Empty section.</span>') +
+                    '</div>';
+            }
+
+            block.innerHTML = contentHtml;
+            container.appendChild(block);
+        });
+    }
+
+    async function rsSaveAllSections() {
+        if (!RS.editing || !RS.currentProjectId) return;
+
+        const editors = document.querySelectorAll('.rs-section-editor');
+        let saveCount = 0;
+        let errorMsg = '';
+
+        for (const editor of editors) {
+            const key = editor.getAttribute('data-section-key');
+            const content = editor.value;
+            try {
+                const resp = await fetch('/api/di/studio/projects/' + RS.currentProjectId + '/sections/' + key, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content: content })
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    saveCount++;
+                } else {
+                    errorMsg = data.error || 'Failed to save ' + key;
+                    break;
+                }
+            } catch (err) {
+                errorMsg = 'Network error saving ' + key;
+                break;
+            }
+        }
+
+        if (errorMsg) {
+            alert(errorMsg + ' (saved ' + saveCount + ' sections before error)');
+        }
+
+        // Reload project to refresh section data
+        const projResp = await fetch('/api/di/studio/projects/' + RS.currentProjectId);
+        if (projResp.ok) {
+            const data = await projResp.json();
+            RS.currentProject = data.project;
+            RS.currentSections = data.sections || [];
+            RS.currentLinks = data.links || [];
+            RS.lock = data.lock || null;
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // Comments
+    // ══════════════════════════════════════════════════════════
+    async function rsLoadComments() {
+        if (!RS.currentProjectId) return;
+        try {
+            const resp = await fetch('/api/di/studio/projects/' + RS.currentProjectId + '/comments');
+            const data = await resp.json();
+            RS.currentComments = data.comments || [];
+            rsRenderComments();
+            rsUpdateCommentBadge();
+            rsPopulateCommentTargets();
+        } catch (err) {
+            console.error('Load comments error:', err);
+        }
+    }
+
+    function rsUpdateCommentBadge() {
+        const badge = document.getElementById('rsCommentsBadge');
+        const unresolved = RS.currentComments.filter(c => !c.resolved).length;
+        if (unresolved > 0) {
+            badge.textContent = unresolved;
+            badge.style.display = '';
+        } else {
+            badge.style.display = 'none';
+        }
+    }
+
+    function rsPopulateCommentTargets() {
+        const sel = document.getElementById('rsNewCommentTarget');
+        sel.innerHTML = '<option value="">Target...</option>';
+
+        // Reflection fields
+        const reflFields = ['core_hypothesis', 'scientific_intention', 'current_phase', 'intellectual_tension', 'next_milestone'];
+        const reflLabels = { core_hypothesis: 'Core Hypothesis', scientific_intention: 'Scientific Intention', current_phase: 'Current Phase', intellectual_tension: 'Intellectual Tension', next_milestone: 'Next Milestone' };
+        reflFields.forEach(f => {
+            const opt = document.createElement('option');
+            opt.value = 'reflection:' + f;
+            opt.textContent = 'Reflection: ' + (reflLabels[f] || f);
+            sel.appendChild(opt);
+        });
+
+        // Sections
+        SECTION_KEYS.forEach(k => {
+            const opt = document.createElement('option');
+            opt.value = 'section:' + k;
+            opt.textContent = 'Section: ' + (SECTION_LABELS[k] || k);
+            sel.appendChild(opt);
+        });
+    }
+
+    function rsRenderComments() {
+        const list = document.getElementById('rsCommentsList');
+        list.innerHTML = '';
+
+        if (RS.currentComments.length === 0) {
+            list.innerHTML = '<div class="rs-no-comments">No comments yet.</div>';
+            return;
+        }
+
+        // Group by target_type + target_key
+        const groups = {};
+        RS.currentComments.forEach(c => {
+            const key = c.target_type + ':' + c.target_key;
+            if (!groups[key]) groups[key] = [];
+            groups[key].push(c);
+        });
+
+        for (const [groupKey, comments] of Object.entries(groups)) {
+            const [type, targetKey] = groupKey.split(':');
+            let label = type + ': ' + targetKey;
+            if (type === 'reflection') {
+                const rl = { core_hypothesis: 'Core Hypothesis', scientific_intention: 'Scientific Intention', current_phase: 'Current Phase', intellectual_tension: 'Intellectual Tension', next_milestone: 'Next Milestone' };
+                label = 'Reflection: ' + (rl[targetKey] || targetKey);
+            } else if (type === 'section') {
+                label = 'Section: ' + (SECTION_LABELS[targetKey] || targetKey);
+            }
+
+            const groupLabel = document.createElement('div');
+            groupLabel.className = 'rs-comment-group-label';
+            groupLabel.textContent = label;
+            list.appendChild(groupLabel);
+
+            comments.forEach(c => {
+                const item = document.createElement('div');
+                item.className = 'rs-comment-item' + (c.resolved ? ' resolved' : '');
+
+                let resolveHtml = '';
+                if (!c.resolved) {
+                    // Owner can resolve any, author can resolve own
+                    const canResolve = isOwner() || (RS.user && c.author_id === RS.user.researcher_id);
+                    if (canResolve) {
+                        resolveHtml = '<button class="rs-comment-resolve-btn" onclick="rsResolveComment(\'' + c.id + '\')">Resolve</button>';
+                    }
+                } else {
+                    resolveHtml = '<div class="rs-comment-resolved-note">Resolved by ' + esc(c.resolved_by_name || 'unknown') + ' on ' + fmtDate(c.resolved_at) + '</div>';
+                }
+
+                item.innerHTML =
+                    '<div class="rs-comment-meta">' +
+                        '<span class="rs-comment-type-badge">' + esc(c.comment_type) + '</span>' +
+                        '<span>' + esc(c.author_name) + ' (' + esc(c.author_role) + ')</span>' +
+                        '<span>' + fmtDate(c.created_at) + ' ' + fmtTime(c.created_at) + '</span>' +
+                    '</div>' +
+                    '<div class="rs-comment-body">' + esc(c.body) + '</div>' +
+                    resolveHtml;
+
+                list.appendChild(item);
+            });
+        }
+    }
+
+    function rsToggleComments() {
+        RS.commentsOpen = !RS.commentsOpen;
+        const drawer = document.getElementById('rsCommentsDrawer');
+        if (RS.commentsOpen) {
+            drawer.classList.add('open');
+        } else {
+            drawer.classList.remove('open');
+        }
+    }
+
+    async function rsPostComment() {
+        const targetVal = document.getElementById('rsNewCommentTarget').value;
+        const commentType = document.getElementById('rsNewCommentType').value;
+        const body = document.getElementById('rsNewCommentBody').value.trim();
+
+        if (!targetVal || !commentType || !body) {
+            alert('Please fill in target, type, and comment body.');
+            return;
+        }
+
+        const [target_type, target_key] = targetVal.split(':');
+
+        try {
+            const resp = await fetch('/api/di/studio/projects/' + RS.currentProjectId + '/comments', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ target_type, target_key, comment_type: commentType, body })
+            });
+            const data = await resp.json();
+            if (data.success) {
+                document.getElementById('rsNewCommentBody').value = '';
+                document.getElementById('rsNewCommentTarget').value = '';
+                document.getElementById('rsNewCommentType').value = '';
+                await rsLoadComments();
+            } else {
+                alert(data.error || 'Failed to add comment');
+            }
+        } catch (err) {
+            console.error('Post comment error:', err);
+            alert('Network error, please try again.');
+        }
+    }
+
+    async function rsResolveComment(commentId) {
+        try {
+            const resp = await fetch('/api/di/studio/comments/' + commentId + '/resolve', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const data = await resp.json();
+            if (data.success) {
+                await rsLoadComments();
+            } else {
+                alert(data.error || 'Failed to resolve comment');
+            }
+        } catch (err) {
+            console.error('Resolve comment error:', err);
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // Create project modal (unchanged from Phase 1)
+    // ══════════════════════════════════════════════════════════
     function rsOpenCreateModal() {
         document.getElementById('rsNewTitle').value = '';
         document.getElementById('rsCreateModal').classList.add('active');
@@ -723,9 +1773,12 @@
         if (e.target === this) rsCloseCreateModal();
     });
 
-    // Close modal on Escape
+    // Close modal and drawer on Escape
     document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') rsCloseCreateModal();
+        if (e.key === 'Escape') {
+            rsCloseCreateModal();
+            if (RS.commentsOpen) rsToggleComments();
+        }
     });
 
     // ── Start ──
