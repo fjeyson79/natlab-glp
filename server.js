@@ -68,6 +68,18 @@ const upload = multer({
     }
 });
 
+// Figure representative upload (PNG, JPG, PDF) — max 20 MB
+const uploadFigure = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB
+  fileFilter: (req, file, cb) => {
+    const ok = ["image/png", "image/jpeg", "application/pdf"].includes(file.mimetype);
+    if (!ok) return cb(new Error("Only PNG, JPG, or PDF files are accepted"), false);
+    cb(null, true);
+  }
+});
+
+
 // Multer config for inventory CSV uploads (separate from PDF upload)
 const inventoryUpload = multer({
     storage: multer.memoryStorage(),
@@ -12641,7 +12653,7 @@ app.delete('/api/di/studio/projects/:id/figures/:figureId', requireAuth, async (
 // ── POST /api/di/studio/projects/:id/figures/:figureId/image ──
 // Upload a representative image for a figure. 10 MB max, image types only.
 // Requires owner + lock + reflection complete. Memory only storage via multer.
-app.post('/api/di/studio/projects/:id/figures/:figureId/image', requireAuth, upload.single('file'), async (req, res) => {
+app.post('/api/di/studio/projects/:id/figures/:figureId/image', requireAuth, uploadFigure.single('file'), async (req, res) => {
     if (!(await checkStudioTables())) return res.status(503).json({ error: 'Research Studio tables not available yet' });
     if (!(await checkStudioFiguresTable())) return res.status(503).json({ error: 'Figures tables not available yet' });
     const user = req.session.user;

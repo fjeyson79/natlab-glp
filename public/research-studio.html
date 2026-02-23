@@ -996,6 +996,13 @@
             transition: border-color 0.12s;
             margin-top: 6px;
         }
+
+        .rs-figure-upload-hint{
+            margin-top: 6px;
+            font-size: 0.78rem;
+            color: var(--ink-soft);
+        }
+
         .rs-figure-upload-area:hover { border-color: var(--clay); }
         .rs-figure-evidence-list {
             margin-top: 8px;
@@ -2811,14 +2818,15 @@
         }
 
         // Representative image
-        html += '<label>Representative Image</label>';
+        html += '<label>Representative File</label>';
         if (hasImage) {
             html += '<img class="rs-figure-img-preview" src="/api/di/studio/assets/' + fig.assets[0].id + '/view" alt="Figure image">';
         }
         if (canEdit) {
             html += '<div class="rs-figure-upload-area" onclick="document.getElementById(\'rsFigFileInput\').click()">' +
-                (hasImage ? 'Replace image' : 'Click to upload image (10 MB max)') + '</div>' +
-                '<input type="file" id="rsFigFileInput" accept="image/jpeg,image/png,image/gif,image/webp" style="display:none;" onchange="rsUploadFigureImage(this)">';
+                (hasImage ? 'Replace image' : 'Click to upload figure file') + '</div>' +
+                '<div class="rs-figure-upload-hint">Allowed formats: PNG, JPG, PDF. Max size: 20 MB.</div>' +
+                '<input type="file" id="rsFigFileInput" accept=".jpg,.jpeg,.png,.pdf,application/pdf,image/jpeg,image/png" style="display:none;" onchange="rsUploadFigureImage(this)">';
         } else if (!hasImage) {
             html += '<div style="font-size:0.82rem; color:var(--ink-soft); font-style:italic;">No image uploaded.</div>';
         }
