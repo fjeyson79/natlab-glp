@@ -3281,6 +3281,10 @@
 }
 
 const pid = rsGetProjectId();
+const pid = (typeof window.rsGetProjectId === "function")
+  ? window.rsGetProjectId()
+  : (window.RS && RS.currentProjectId ? RS.currentProjectId : null);
+
 if (!pid){
   alert("No project selected.");
   return;
