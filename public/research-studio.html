@@ -755,12 +755,387 @@
             font-style: italic;
         }
 
+        /* ── Phase 3: Rich Text Toolbar ── */
+        .rs-editor-wrap { position: relative; }
+        .rs-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 2px;
+            padding: 5px 8px;
+            background: #f8f6f2;
+            border: 1px solid var(--clay);
+            border-bottom: none;
+            border-radius: 7px 7px 0 0;
+            align-items: center;
+        }
+        .rs-toolbar-btn {
+            padding: 3px 7px;
+            border: none;
+            background: none;
+            cursor: pointer;
+            font-size: 0.82rem;
+            font-family: inherit;
+            color: var(--ink);
+            border-radius: 4px;
+            transition: background 0.12s;
+            line-height: 1.2;
+        }
+        .rs-toolbar-btn:hover { background: var(--clay-light); }
+        .rs-toolbar-btn.active { background: var(--clay-light); font-weight: 700; }
+        .rs-toolbar-sep {
+            width: 1px;
+            height: 18px;
+            background: var(--border);
+            margin: 0 4px;
+        }
+        .rs-ce-editor {
+            width: 100%;
+            min-height: 140px;
+            padding: 12px 16px;
+            border: 1px solid var(--clay);
+            border-radius: 0 0 7px 7px;
+            font-size: 0.9rem;
+            font-family: inherit;
+            line-height: 1.7;
+            color: var(--ink);
+            outline: none;
+            background: var(--white);
+            overflow-y: auto;
+        }
+        .rs-ce-editor:focus { border-color: #8c6e50; box-shadow: 0 0 0 2px rgba(140, 110, 80, 0.1); }
+        .rs-ce-editor h2 { font-family: Georgia, serif; font-size: 1.15rem; font-weight: 400; margin: 12px 0 6px; }
+        .rs-ce-editor blockquote { border-left: 3px solid var(--clay); padding-left: 14px; margin: 8px 0; color: var(--ink-soft); }
+        .rs-ce-editor table { border-collapse: collapse; width: 100%; margin: 8px 0; }
+        .rs-ce-editor td, .rs-ce-editor th { border: 1px solid var(--border); padding: 6px 10px; font-size: 0.85rem; min-width: 60px; }
+        .rs-ce-editor th { background: #f8f6f2; font-weight: 600; }
+        .rs-ce-editor a { color: var(--accent); text-decoration: underline; }
+        .rs-ce-editor ul, .rs-ce-editor ol { margin: 6px 0; padding-left: 24px; }
+        .rs-ce-editor p { margin: 4px 0; }
+
+        /* Autosave indicator */
+        .rs-autosave {
+            font-size: 0.7rem;
+            color: var(--ink-soft);
+            margin-left: auto;
+            padding: 2px 8px;
+        }
+        .rs-autosave.saving { color: var(--warn); }
+        .rs-autosave.saved { color: var(--success); }
+
+        /* ── Phase 3: Footnotes ── */
+        .rs-footnote { color: var(--accent); cursor: pointer; font-weight: 600; }
+        .rs-footnote:hover { text-decoration: underline; }
+        .rs-footnotes-list {
+            margin-top: 10px;
+            padding-top: 8px;
+            border-top: 1px solid var(--border);
+            font-size: 0.78rem;
+            color: var(--ink-soft);
+        }
+        .rs-footnotes-list div { margin-bottom: 3px; display: flex; align-items: baseline; gap: 6px; }
+        .rs-footnotes-list .rs-fn-idx { font-weight: 700; color: var(--accent); min-width: 18px; }
+        .rs-fn-remove { background: none; border: none; color: #c44; cursor: pointer; font-size: 0.7rem; margin-left: 6px; }
+        .rs-fn-remove:hover { text-decoration: underline; }
+
+        /* ── Phase 3: Evidence Picker Modal ── */
+        .rs-evidence-modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.35);
+            z-index: 1100;
+            align-items: center;
+            justify-content: center;
+        }
+        .rs-evidence-modal.active { display: flex; }
+        .rs-evidence-modal-content {
+            background: var(--white);
+            border-radius: 12px;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.16);
+            width: 90%;
+            max-width: 560px;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .rs-evidence-modal-header {
+            padding: 18px 22px 12px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .rs-evidence-modal-header h3 { font-family: Georgia, serif; font-weight: 400; font-size: 1.05rem; }
+        .rs-evidence-search-row {
+            padding: 10px 22px;
+            display: flex;
+            gap: 8px;
+        }
+        .rs-evidence-search-row input, .rs-evidence-search-row select {
+            padding: 7px 10px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.84rem;
+            font-family: inherit;
+            outline: none;
+        }
+        .rs-evidence-search-row input { flex: 1; }
+        .rs-evidence-search-row input:focus, .rs-evidence-search-row select:focus { border-color: var(--clay); }
+        .rs-evidence-results {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px 22px 16px;
+        }
+        .rs-evidence-item {
+            padding: 9px 12px;
+            border: 1px solid var(--border);
+            border-radius: 7px;
+            margin-bottom: 6px;
+            cursor: pointer;
+            transition: border-color 0.12s, background 0.12s;
+            font-size: 0.84rem;
+        }
+        .rs-evidence-item:hover { border-color: var(--clay); background: #fdfcfa; }
+        .rs-evidence-item-meta { font-size: 0.7rem; color: var(--ink-soft); margin-top: 2px; }
+
+        /* ── Phase 3: Figures Shelf (left panel) ── */
+        .rs-figure-tile {
+            padding: 8px 10px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            margin-bottom: 5px;
+            cursor: pointer;
+            font-size: 0.78rem;
+            transition: border-color 0.12s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .rs-figure-tile:hover { border-color: var(--clay); }
+        .rs-figure-tile-thumb {
+            width: 36px;
+            height: 36px;
+            border-radius: 4px;
+            object-fit: cover;
+            background: #f0ece4;
+            flex-shrink: 0;
+        }
+        .rs-figure-tile-info { overflow: hidden; }
+        .rs-figure-tile-num { font-weight: 600; font-size: 0.68rem; color: var(--ink-soft); text-transform: uppercase; }
+        .rs-figure-tile-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .rs-add-figure-btn {
+            width: 100%;
+            padding: 7px;
+            border: 1px dashed var(--border);
+            border-radius: 6px;
+            background: none;
+            cursor: pointer;
+            font-size: 0.76rem;
+            color: var(--ink-soft);
+            transition: border-color 0.12s;
+            margin-top: 3px;
+        }
+        .rs-add-figure-btn:hover { border-color: var(--clay); color: var(--ink); }
+
+        /* ── Phase 3: Figure Drawer ── */
+        .rs-figure-drawer {
+            position: fixed;
+            left: -480px;
+            top: 54px;
+            width: 450px;
+            height: calc(100vh - 54px);
+            background: var(--white);
+            border-right: 1px solid var(--border);
+            box-shadow: 4px 0 20px rgba(0,0,0,0.08);
+            z-index: 250;
+            transition: left 0.25s ease;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+        .rs-figure-drawer.open { left: 280px; }
+        .rs-figure-drawer-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-shrink: 0;
+        }
+        .rs-figure-drawer-header h3 { font-family: Georgia, serif; font-weight: 400; font-size: 1rem; }
+        .rs-figure-drawer-body { padding: 16px 20px; flex: 1; overflow-y: auto; }
+        .rs-figure-drawer label { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-soft); display: block; margin-bottom: 4px; margin-top: 14px; }
+        .rs-figure-drawer label:first-child { margin-top: 0; }
+        .rs-figure-drawer input[type="text"], .rs-figure-drawer textarea {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.88rem;
+            font-family: inherit;
+            color: var(--ink);
+            outline: none;
+        }
+        .rs-figure-drawer input:focus, .rs-figure-drawer textarea:focus { border-color: var(--clay); }
+        .rs-figure-drawer textarea { min-height: 60px; resize: vertical; }
+        .rs-figure-img-preview {
+            max-width: 100%;
+            max-height: 200px;
+            border-radius: 6px;
+            margin-top: 8px;
+            border: 1px solid var(--border);
+        }
+        .rs-figure-upload-area {
+            border: 1px dashed var(--border);
+            border-radius: 7px;
+            padding: 16px;
+            text-align: center;
+            cursor: pointer;
+            font-size: 0.82rem;
+            color: var(--ink-soft);
+            transition: border-color 0.12s;
+            margin-top: 6px;
+        }
+        .rs-figure-upload-area:hover { border-color: var(--clay); }
+        .rs-figure-evidence-list {
+            margin-top: 8px;
+            font-size: 0.8rem;
+        }
+        .rs-figure-evidence-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 0;
+            border-bottom: 1px solid #f0ece4;
+        }
+
+        /* ── Phase 3: Figure Block in sections ── */
+        .rs-figure-block {
+            border: 1px solid var(--clay-light);
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin: 10px 0;
+            background: linear-gradient(135deg, #faf8f4 0%, #f5f0e8 100%);
+            cursor: pointer;
+            font-size: 0.86rem;
+        }
+        .rs-figure-block:hover { border-color: var(--clay); }
+        .rs-figure-block-num { font-weight: 600; font-size: 0.72rem; color: var(--ink-soft); text-transform: uppercase; }
+
+        /* ── Phase 3: Export + Presentation buttons ── */
+        .rs-action-bar {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        /* ── Phase 3: Presentation Mode ── */
+        .rs-presentation {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: var(--white);
+            z-index: 2000;
+            flex-direction: row;
+        }
+        .rs-presentation.active { display: flex; }
+        .rs-pres-nav {
+            width: 240px;
+            border-right: 1px solid var(--border);
+            overflow-y: auto;
+            padding: 24px 0;
+            background: #fbf7f1;
+            flex-shrink: 0;
+        }
+        .rs-pres-nav-item {
+            padding: 10px 20px;
+            font-size: 0.84rem;
+            cursor: pointer;
+            transition: background 0.12s;
+            border-left: 3px solid transparent;
+        }
+        .rs-pres-nav-item:hover { background: #f5f0e8; }
+        .rs-pres-nav-item.active { background: #f0e6d3; border-left-color: var(--clay); font-weight: 500; }
+        .rs-pres-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 48px 64px 60px;
+            max-width: 800px;
+        }
+        .rs-pres-title {
+            font-family: Georgia, serif;
+            font-size: 1.5rem;
+            font-weight: 400;
+            margin-bottom: 6px;
+        }
+        .rs-pres-section-title {
+            font-family: Georgia, serif;
+            font-size: 1.25rem;
+            font-weight: 400;
+            margin-bottom: 16px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid var(--border);
+        }
+        .rs-pres-section-body { font-size: 0.92rem; line-height: 1.75; }
+        .rs-pres-close {
+            position: fixed;
+            top: 16px;
+            right: 24px;
+            z-index: 2001;
+            background: var(--white);
+            border: 1px solid var(--border);
+            border-radius: 50%;
+            width: 36px;
+            height: 36px;
+            font-size: 1.2rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        .rs-pres-close:hover { border-color: var(--clay); }
+
+        /* ── Phase 3: Link prompt modal ── */
+        .rs-link-prompt {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.3);
+            z-index: 1200;
+            align-items: center;
+            justify-content: center;
+        }
+        .rs-link-prompt.active { display: flex; }
+
+        /* ── Phase 3: Table controls ── */
+        .rs-table-controls {
+            display: inline-flex;
+            gap: 4px;
+            margin: 4px 0;
+        }
+        .rs-table-controls button {
+            font-size: 0.68rem;
+            padding: 2px 6px;
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            background: #f8f6f2;
+            cursor: pointer;
+            color: var(--ink-soft);
+        }
+        .rs-table-controls button:hover { border-color: var(--clay); color: var(--ink); }
+
         /* ── Responsive ── */
         @media (max-width: 768px) {
             .rs-shell { flex-direction: column; }
             .rs-wall { width: 100%; height: auto; max-height: 40vh; border-right: none; border-bottom: 1px solid var(--border); }
             .rs-atelier { padding: 24px 20px; }
             .rs-comments-drawer { width: 100%; right: -100%; }
+            .rs-figure-drawer { width: 100%; left: -100%; }
+            .rs-figure-drawer.open { left: 0; }
+            .rs-pres-nav { width: 180px; }
+            .rs-pres-content { padding: 24px 20px; }
         }
     </style>
 </head>
@@ -782,6 +1157,11 @@
                     <div id="rsProjectList"></div>
                     <button class="rs-create-btn" id="rsCreateBtn" onclick="rsOpenCreateModal()">+ New Project</button>
                 </div>
+            </div>
+            <!-- Figures Shelf (Phase 3) -->
+            <div class="rs-wall-section" id="rsFiguresShelf" style="display:none;">
+                <div class="rs-wall-section-header">Figures</div>
+                <div class="rs-wall-section-body" id="rsFiguresList"></div>
             </div>
         </div>
 
@@ -904,6 +1284,13 @@
                     Define the scientific direction before drafting.
                 </div>
 
+                <!-- Action bar (Phase 3: export, presentation) -->
+                <div class="rs-action-bar" id="rsActionBar" style="display:none;">
+                    <button class="rs-btn rs-btn-sm" onclick="rsExportJson()">Export JSON</button>
+                    <button class="rs-btn rs-btn-sm" onclick="rsExportHtml()">Print View</button>
+                    <button class="rs-btn rs-btn-sm" onclick="rsOpenPresentation()">Presentation</button>
+                </div>
+
                 <!-- Manuscript sections -->
                 <div id="rsSectionsWrap">
                     <div class="rs-sections-heading">Manuscript Sections</div>
@@ -963,10 +1350,60 @@
         </div>
     </div>
 
+    <!-- Evidence Picker Modal (Phase 3) -->
+    <div class="rs-evidence-modal" id="rsEvidenceModal">
+        <div class="rs-evidence-modal-content">
+            <div class="rs-evidence-modal-header">
+                <h3>Link Evidence</h3>
+                <button class="rs-comments-drawer-close" onclick="rsCloseEvidenceModal()">&times;</button>
+            </div>
+            <div class="rs-evidence-search-row">
+                <input type="text" id="rsEvidenceQuery" placeholder="Search by filename..." oninput="rsSearchEvidence()">
+                <select id="rsEvidenceType" onchange="rsSearchEvidence()">
+                    <option value="">All types</option>
+                    <option value="DATA">DATA</option>
+                    <option value="SOP">SOP</option>
+                    <option value="SUBMISSION">Submission</option>
+                </select>
+            </div>
+            <div class="rs-evidence-results" id="rsEvidenceResults">
+                <div class="rs-no-comments">Search for GLP records to link as evidence.</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Link URL Prompt Modal (Phase 3) -->
+    <div class="rs-link-prompt" id="rsLinkPrompt">
+        <div class="rs-modal">
+            <h3>Insert Link</h3>
+            <input type="text" class="rs-modal-input" id="rsLinkUrl" placeholder="https://..." onkeydown="if(event.key==='Enter') rsInsertLinkConfirm()">
+            <div class="rs-modal-actions">
+                <button class="rs-btn" onclick="rsCloseLinkPrompt()">Cancel</button>
+                <button class="rs-btn rs-btn-primary" onclick="rsInsertLinkConfirm()">Insert</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Figure Drawer (Phase 3) -->
+    <div class="rs-figure-drawer" id="rsFigureDrawer">
+        <div class="rs-figure-drawer-header">
+            <h3 id="rsFigureDrawerTitle">Figure</h3>
+            <button class="rs-comments-drawer-close" onclick="rsCloseFigureDrawer()">&times;</button>
+        </div>
+        <div class="rs-figure-drawer-body" id="rsFigureDrawerBody"></div>
+    </div>
+
+    <!-- Presentation Mode Overlay (Phase 3) -->
+    <div class="rs-presentation" id="rsPresentation">
+        <button class="rs-pres-close" onclick="rsClosePresentation()" title="Close">&times;</button>
+        <div class="rs-pres-nav" id="rsPresNav"></div>
+        <div class="rs-pres-content" id="rsPresContent"></div>
+    </div>
+
     <script>
     // ══════════════════════════════════════════════════════════
-    // Research Studio: Phase 2 (reflection editing, locks,
-    // comments, section editing)
+    // Research Studio: Phase 3 (rich editor, footnotes, figures,
+    // evidence linking, export, presentation)
     // ══════════════════════════════════════════════════════════
 
     const RS = {
@@ -977,12 +1414,21 @@
         currentSections: [],
         currentLinks: [],
         currentComments: [],
+        currentFigures: [],
         lock: null,
         editing: false,
         lockRenewInterval: null,
         reflectionCollapsed: false,
         reflectionEditing: false,
-        commentsOpen: false
+        commentsOpen: false,
+        // Phase 3 state
+        autosaveTimers: {},
+        figureDrawerOpen: false,
+        figureDrawerFigureId: null,
+        evidenceModalSectionKey: null,
+        evidenceSearchTimeout: null,
+        presentationOpen: false,
+        presentationIndex: 0
     };
 
     const SECTION_LABELS = {
@@ -1134,6 +1580,7 @@
             RS.currentProject = data.project;
             RS.currentSections = data.sections || [];
             RS.currentLinks = data.links || [];
+            RS.currentFigures = data.figures || [];
             RS.lock = data.lock || null;
             RS.editing = false;
             RS.reflectionEditing = false;
@@ -1143,6 +1590,7 @@
 
             rsRenderDetail();
             rsLoadComments();
+            rsRenderFiguresShelf();
         } catch (err) {
             console.error('Open project error:', err);
         }
@@ -1185,12 +1633,16 @@
         // Sections
         rsRenderSections();
 
+        // Action bar (Phase 3)
+        document.getElementById('rsActionBar').style.display = '';
+
         // Info bar
         document.getElementById('rsInfoBar').innerHTML =
             '<span>Created: ' + fmtDate(p.created_at) + '</span>' +
             '<span>Updated: ' + fmtDate(p.updated_at) + '</span>' +
             (p.target_journal ? '<span>Target journal: ' + esc(p.target_journal) + '</span>' : '') +
-            '<span>Evidence links: ' + RS.currentLinks.length + '</span>';
+            '<span>Evidence links: ' + RS.currentLinks.length + '</span>' +
+            '<span>Figures: ' + RS.currentFigures.length + '</span>';
 
         // Update comment badge
         rsUpdateCommentBadge();
@@ -1477,8 +1929,205 @@
     }
 
     // ══════════════════════════════════════════════════════════
-    // Sections Rendering
+    // Sections Rendering (Phase 3: rich text editor)
     // ══════════════════════════════════════════════════════════
+
+    // Client side HTML sanitizer for paste events
+    function rsClientSanitize(html) {
+        const ALLOWED = /^(b|strong|i|em|u|sup|sub|h2|ul|ol|li|blockquote|table|tr|td|th|a|p|br)$/i;
+        const tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        // Remove script, style, iframe, embed, object
+        tmp.querySelectorAll('script,style,iframe,embed,object,form,input,button,select,textarea,applet').forEach(el => el.remove());
+        // Strip disallowed tags but keep content
+        function walk(node) {
+            if (node.nodeType === 1) {
+                // Remove event handlers and style
+                Array.from(node.attributes).forEach(attr => {
+                    if (attr.name.startsWith('on') || attr.name === 'style') node.removeAttribute(attr.name);
+                });
+                const tag = node.tagName.toLowerCase();
+                if (!ALLOWED.test(tag) && tag !== 'div') {
+                    // Replace with span content
+                    const frag = document.createDocumentFragment();
+                    while (node.firstChild) frag.appendChild(node.firstChild);
+                    node.parentNode.replaceChild(frag, node);
+                    return;
+                }
+                if (tag === 'a') {
+                    const href = node.getAttribute('href') || '';
+                    if (/^\s*javascript\s*:/i.test(href)) node.setAttribute('href', '#');
+                    // Strip all attributes except href, target, rel
+                    Array.from(node.attributes).forEach(attr => {
+                        if (!['href','target','rel'].includes(attr.name)) node.removeAttribute(attr.name);
+                    });
+                } else if (tag !== 'sup' && tag !== 'div') {
+                    // Strip all attributes from non-special tags
+                    Array.from(node.attributes).forEach(attr => node.removeAttribute(attr.name));
+                }
+                Array.from(node.childNodes).forEach(child => walk(child));
+            }
+        }
+        walk(tmp);
+        return tmp.innerHTML;
+    }
+
+    function rsBuildToolbar(sectionKey) {
+        const bar = document.createElement('div');
+        bar.className = 'rs-toolbar';
+        bar.setAttribute('data-section-key', sectionKey);
+
+        const btns = [
+            { cmd: 'bold', label: '<b>B</b>', title: 'Bold' },
+            { cmd: 'italic', label: '<i>I</i>', title: 'Italic' },
+            { cmd: 'underline', label: '<u>U</u>', title: 'Underline' },
+            { sep: true },
+            { cmd: 'superscript', label: 'X<sup>2</sup>', title: 'Superscript' },
+            { cmd: 'subscript', label: 'X<sub>2</sub>', title: 'Subscript' },
+            { sep: true },
+            { cmd: 'formatBlock:h2', label: 'H2', title: 'Heading' },
+            { cmd: 'insertUnorderedList', label: '&bull; List', title: 'Bulleted list' },
+            { cmd: 'insertOrderedList', label: '1. List', title: 'Numbered list' },
+            { cmd: 'formatBlock:blockquote', label: '&ldquo;', title: 'Quote block' },
+            { sep: true },
+            { cmd: 'createLink', label: '&#128279;', title: 'Insert link' },
+            { cmd: 'insertTable', label: '&#9638;', title: 'Insert table' },
+            { sep: true },
+            { cmd: 'insertFootnote', label: 'Fn', title: 'Insert evidence footnote' },
+            { cmd: 'insertFigureBlock', label: 'Fig', title: 'Insert figure block' },
+        ];
+
+        btns.forEach(b => {
+            if (b.sep) {
+                const sep = document.createElement('span');
+                sep.className = 'rs-toolbar-sep';
+                bar.appendChild(sep);
+                return;
+            }
+            const btn = document.createElement('button');
+            btn.className = 'rs-toolbar-btn';
+            btn.innerHTML = b.label;
+            btn.title = b.title;
+            btn.type = 'button';
+            btn.onmousedown = function(e) { e.preventDefault(); };
+            btn.onclick = function(e) {
+                e.preventDefault();
+                rsToolbarAction(b.cmd, sectionKey);
+            };
+            bar.appendChild(btn);
+        });
+
+        // Autosave indicator on right
+        const indicator = document.createElement('span');
+        indicator.className = 'rs-autosave';
+        indicator.id = 'rsAutoSave_' + sectionKey;
+        bar.appendChild(indicator);
+
+        return bar;
+    }
+
+    function rsToolbarAction(cmd, sectionKey) {
+        const editor = document.querySelector('.rs-ce-editor[data-section-key="' + sectionKey + '"]');
+        if (!editor) return;
+        editor.focus();
+
+        if (cmd === 'createLink') {
+            rsOpenLinkPrompt(sectionKey);
+            return;
+        }
+        if (cmd === 'insertTable') {
+            rsInsertTable(editor);
+            return;
+        }
+        if (cmd === 'insertFootnote') {
+            RS.evidenceModalSectionKey = sectionKey;
+            rsOpenEvidenceModal();
+            return;
+        }
+        if (cmd === 'insertFigureBlock') {
+            rsInsertFigureBlockPrompt(sectionKey);
+            return;
+        }
+        if (cmd.startsWith('formatBlock:')) {
+            const tag = cmd.split(':')[1];
+            document.execCommand('formatBlock', false, '<' + tag + '>');
+        } else {
+            document.execCommand(cmd, false, null);
+        }
+        rsScheduleAutosave(sectionKey);
+    }
+
+    function rsInsertTable(editor) {
+        const tableHtml = '<table><tr><td>&nbsp;</td><td>&nbsp;</td></tr><tr><td>&nbsp;</td><td>&nbsp;</td></tr></table><p><br></p>';
+        document.execCommand('insertHTML', false, tableHtml);
+        rsScheduleAutosave(editor.getAttribute('data-section-key'));
+    }
+
+    // Link prompt
+    function rsOpenLinkPrompt(sectionKey) {
+        RS._linkSectionKey = sectionKey;
+        RS._savedSelection = rsSaveSelection();
+        document.getElementById('rsLinkUrl').value = '';
+        document.getElementById('rsLinkPrompt').classList.add('active');
+        setTimeout(function() { document.getElementById('rsLinkUrl').focus(); }, 100);
+    }
+    function rsCloseLinkPrompt() {
+        document.getElementById('rsLinkPrompt').classList.remove('active');
+    }
+    function rsInsertLinkConfirm() {
+        let url = document.getElementById('rsLinkUrl').value.trim();
+        if (!url) { rsCloseLinkPrompt(); return; }
+        // Sanitize: block javascript:
+        if (/^\s*javascript\s*:/i.test(url)) { alert('Invalid URL.'); return; }
+        if (!/^https?:\/\//i.test(url) && !url.startsWith('/')) url = 'https://' + url;
+        rsCloseLinkPrompt();
+        const editor = document.querySelector('.rs-ce-editor[data-section-key="' + RS._linkSectionKey + '"]');
+        if (editor) editor.focus();
+        rsRestoreSelection(RS._savedSelection);
+        document.execCommand('createLink', false, url);
+        // Add target="_blank" and rel
+        const links = editor ? editor.querySelectorAll('a[href="' + url + '"]') : [];
+        links.forEach(function(a) {
+            a.setAttribute('target', '_blank');
+            a.setAttribute('rel', 'noopener noreferrer');
+        });
+        rsScheduleAutosave(RS._linkSectionKey);
+    }
+
+    // Selection save/restore for link prompt
+    function rsSaveSelection() {
+        const sel = window.getSelection();
+        if (sel.rangeCount > 0) return sel.getRangeAt(0).cloneRange();
+        return null;
+    }
+    function rsRestoreSelection(range) {
+        if (!range) return;
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+    }
+
+    // Insert figure block placeholder
+    function rsInsertFigureBlockPrompt(sectionKey) {
+        if (RS.currentFigures.length === 0) {
+            alert('Create a figure first using the Figures shelf in the left panel.');
+            return;
+        }
+        const labels = RS.currentFigures.map(function(f) { return 'Figure ' + f.figure_number + ': ' + (f.title || 'Untitled'); });
+        const idx = prompt('Choose figure number (1 to ' + RS.currentFigures.length + '):\n' + labels.join('\n'));
+        if (!idx) return;
+        const figIdx = parseInt(idx, 10) - 1;
+        if (figIdx < 0 || figIdx >= RS.currentFigures.length) { alert('Invalid figure number.'); return; }
+        const fig = RS.currentFigures[figIdx];
+        const blockHtml = '<div class="rs-figure-block" data-figure-id="' + fig.id + '" contenteditable="false">' +
+            '<span class="rs-figure-block-num">Figure ' + fig.figure_number + '</span> ' +
+            esc(fig.title || 'Untitled') + '</div><p><br></p>';
+        const editor = document.querySelector('.rs-ce-editor[data-section-key="' + sectionKey + '"]');
+        if (editor) editor.focus();
+        document.execCommand('insertHTML', false, blockHtml);
+        rsScheduleAutosave(sectionKey);
+    }
+
     function rsRenderSections() {
         const container = document.getElementById('rsSections');
         container.innerHTML = '';
@@ -1486,63 +2135,158 @@
         const reflComplete = isReflectionComplete();
         const canEdit = RS.editing && isOwner() && reflComplete;
 
-        RS.currentSections.forEach(sec => {
+        RS.currentSections.forEach(function(sec) {
             const block = document.createElement('div');
             block.className = 'rs-section-block';
 
             const label = SECTION_LABELS[sec.section_key] || sec.section_key;
             const hasContent = sec.content_html && sec.content_html.trim();
-            const plainText = htmlToPlainText(sec.content_html);
+            const sectionLinks = RS.currentLinks.filter(function(l) { return l.section_key === sec.section_key; });
 
-            let contentHtml;
             if (canEdit) {
-                // Editable textarea
-                contentHtml =
-                    '<div class="rs-section-title">' + esc(label) + '</div>' +
-                    '<textarea class="rs-section-editor" data-section-key="' + esc(sec.section_key) + '"' +
-                    ' placeholder="Begin writing ' + esc(label).toLowerCase() + '...">' + esc(plainText) + '</textarea>';
+                // Rich text editor
+                const titleEl = document.createElement('div');
+                titleEl.className = 'rs-section-title';
+                titleEl.textContent = label;
+                block.appendChild(titleEl);
+
+                const wrap = document.createElement('div');
+                wrap.className = 'rs-editor-wrap';
+
+                // Toolbar
+                wrap.appendChild(rsBuildToolbar(sec.section_key));
+
+                // Contenteditable editor
+                const editor = document.createElement('div');
+                editor.className = 'rs-ce-editor';
+                editor.setAttribute('contenteditable', 'true');
+                editor.setAttribute('data-section-key', sec.section_key);
+                editor.setAttribute('data-placeholder', 'Begin writing ' + label.toLowerCase() + '...');
+                editor.innerHTML = hasContent ? sec.content_html : '';
+
+                // Paste sanitization
+                editor.addEventListener('paste', function(e) {
+                    e.preventDefault();
+                    const clipHtml = e.clipboardData.getData('text/html');
+                    const clipText = e.clipboardData.getData('text/plain');
+                    if (clipHtml) {
+                        const clean = rsClientSanitize(clipHtml);
+                        document.execCommand('insertHTML', false, clean);
+                    } else if (clipText) {
+                        document.execCommand('insertText', false, clipText);
+                    }
+                    rsScheduleAutosave(sec.section_key);
+                });
+
+                // Input event for autosave
+                editor.addEventListener('input', function() {
+                    rsScheduleAutosave(sec.section_key);
+                });
+
+                wrap.appendChild(editor);
+                block.appendChild(wrap);
             } else {
-                contentHtml =
-                    '<div class="rs-section-title">' + esc(label) + '</div>' +
-                    '<div class="rs-section-content">' +
-                        (hasContent
-                            ? sec.content_html
-                            : '<span class="rs-section-placeholder">Empty section.</span>') +
-                    '</div>';
+                // Read only
+                const titleEl = document.createElement('div');
+                titleEl.className = 'rs-section-title';
+                titleEl.textContent = label;
+                block.appendChild(titleEl);
+
+                const contentEl = document.createElement('div');
+                contentEl.className = 'rs-section-content';
+                contentEl.innerHTML = hasContent
+                    ? sec.content_html
+                    : '<span class="rs-section-placeholder">Empty section.</span>';
+                block.appendChild(contentEl);
             }
 
-            block.innerHTML = contentHtml;
+            // Footnotes list (Phase 3)
+            if (sectionLinks.length > 0) {
+                const fnList = document.createElement('div');
+                fnList.className = 'rs-footnotes-list';
+                sectionLinks.forEach(function(link, i) {
+                    const fnItem = document.createElement('div');
+                    const linkLabel = link.label || (link.evidence_type + ' ' + link.evidence_id);
+                    fnItem.innerHTML = '<span class="rs-fn-idx">[' + (link.footnote_index || (i + 1)) + ']</span> ' +
+                        '<span>' + esc(linkLabel) + '</span>' +
+                        (canEdit ? '<button class="rs-fn-remove" onclick="rsRemoveLink(\'' + link.id + '\')" title="Remove">remove</button>' : '');
+                    fnList.appendChild(fnItem);
+                });
+                block.appendChild(fnList);
+            }
+
             container.appendChild(block);
         });
+
+        // Render figure blocks click handlers in read mode
+        container.querySelectorAll('.rs-figure-block').forEach(function(fb) {
+            fb.style.cursor = 'pointer';
+            fb.onclick = function() {
+                const figId = fb.getAttribute('data-figure-id');
+                if (figId) rsOpenFigureDrawer(figId);
+            };
+        });
+    }
+
+    // ── Autosave with debounce (2 seconds) ──
+    function rsScheduleAutosave(sectionKey) {
+        if (RS.autosaveTimers[sectionKey]) clearTimeout(RS.autosaveTimers[sectionKey]);
+        const indicator = document.getElementById('rsAutoSave_' + sectionKey);
+        if (indicator) { indicator.textContent = ''; indicator.className = 'rs-autosave'; }
+        RS.autosaveTimers[sectionKey] = setTimeout(function() { rsAutosaveSection(sectionKey); }, 2000);
+    }
+
+    async function rsAutosaveSection(sectionKey) {
+        if (!RS.editing || !RS.currentProjectId) return;
+        const editor = document.querySelector('.rs-ce-editor[data-section-key="' + sectionKey + '"]');
+        if (!editor) return;
+
+        const indicator = document.getElementById('rsAutoSave_' + sectionKey);
+        if (indicator) { indicator.textContent = 'Saving...'; indicator.className = 'rs-autosave saving'; }
+
+        try {
+            const resp = await fetch('/api/di/studio/projects/' + RS.currentProjectId + '/sections/' + sectionKey, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content_html: editor.innerHTML })
+            });
+            const data = await resp.json();
+            if (data.success) {
+                if (indicator) { indicator.textContent = 'Saved'; indicator.className = 'rs-autosave saved'; }
+                // Update local section data
+                const sec = RS.currentSections.find(function(s) { return s.section_key === sectionKey; });
+                if (sec && data.section) { sec.content_html = data.section.content_html; sec.updated_at = data.section.updated_at; }
+                setTimeout(function() { if (indicator) indicator.textContent = ''; }, 3000);
+            } else {
+                if (indicator) { indicator.textContent = 'Save failed'; indicator.className = 'rs-autosave saving'; }
+            }
+        } catch (err) {
+            console.error('Autosave error:', err);
+            if (indicator) { indicator.textContent = 'Save failed'; indicator.className = 'rs-autosave saving'; }
+        }
     }
 
     async function rsSaveAllSections() {
         if (!RS.editing || !RS.currentProjectId) return;
+        // Clear pending autosaves and save all immediately
+        Object.keys(RS.autosaveTimers).forEach(function(k) { clearTimeout(RS.autosaveTimers[k]); });
+        RS.autosaveTimers = {};
 
-        const editors = document.querySelectorAll('.rs-section-editor');
+        const editors = document.querySelectorAll('.rs-ce-editor');
         let saveCount = 0;
         let errorMsg = '';
 
         for (const editor of editors) {
             const key = editor.getAttribute('data-section-key');
-            const content = editor.value;
             try {
                 const resp = await fetch('/api/di/studio/projects/' + RS.currentProjectId + '/sections/' + key, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ content: content })
+                    body: JSON.stringify({ content_html: editor.innerHTML })
                 });
                 const data = await resp.json();
-                if (data.success) {
-                    saveCount++;
-                } else {
-                    errorMsg = data.error || 'Failed to save ' + key;
-                    break;
-                }
-            } catch (err) {
-                errorMsg = 'Network error saving ' + key;
-                break;
-            }
+                if (data.success) { saveCount++; } else { errorMsg = data.error || 'Failed to save ' + key; break; }
+            } catch (err) { errorMsg = 'Network error saving ' + key; break; }
         }
 
         if (errorMsg) {
@@ -1556,6 +2300,7 @@
             RS.currentProject = data.project;
             RS.currentSections = data.sections || [];
             RS.currentLinks = data.links || [];
+            RS.currentFigures = data.figures || [];
             RS.lock = data.lock || null;
         }
     }
@@ -1776,14 +2521,510 @@
     document.getElementById('rsCreateModal').addEventListener('click', function(e) {
         if (e.target === this) rsCloseCreateModal();
     });
+    document.getElementById('rsEvidenceModal').addEventListener('click', function(e) {
+        if (e.target === this) rsCloseEvidenceModal();
+    });
+    document.getElementById('rsLinkPrompt').addEventListener('click', function(e) {
+        if (e.target === this) rsCloseLinkPrompt();
+    });
 
     // Close modal and drawer on Escape
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {
+            if (RS.presentationOpen) { rsClosePresentation(); return; }
             rsCloseCreateModal();
+            rsCloseEvidenceModal();
+            rsCloseLinkPrompt();
+            if (RS.figureDrawerOpen) rsCloseFigureDrawer();
             if (RS.commentsOpen) rsToggleComments();
         }
+        // Presentation arrow key navigation
+        if (RS.presentationOpen) {
+            if (e.key === 'ArrowDown' || e.key === 'ArrowRight') { rsPresentationNav(1); }
+            if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') { rsPresentationNav(-1); }
+        }
     });
+
+    // ══════════════════════════════════════════════════════════
+    // Evidence Search and Linking (Phase 3)
+    // ══════════════════════════════════════════════════════════
+    function rsOpenEvidenceModal() {
+        document.getElementById('rsEvidenceModal').classList.add('active');
+        document.getElementById('rsEvidenceQuery').value = '';
+        document.getElementById('rsEvidenceType').value = '';
+        document.getElementById('rsEvidenceResults').innerHTML = '<div class="rs-no-comments">Search for GLP records to link as evidence.</div>';
+        setTimeout(function() { document.getElementById('rsEvidenceQuery').focus(); }, 100);
+    }
+    function rsCloseEvidenceModal() {
+        document.getElementById('rsEvidenceModal').classList.remove('active');
+        RS.evidenceModalSectionKey = null;
+    }
+
+    function rsSearchEvidence() {
+        if (RS.evidenceSearchTimeout) clearTimeout(RS.evidenceSearchTimeout);
+        RS.evidenceSearchTimeout = setTimeout(rsDoEvidenceSearch, 400);
+    }
+
+    async function rsDoEvidenceSearch() {
+        const q = document.getElementById('rsEvidenceQuery').value.trim();
+        const type = document.getElementById('rsEvidenceType').value;
+        if (!q && !type) {
+            document.getElementById('rsEvidenceResults').innerHTML = '<div class="rs-no-comments">Enter a search term or select a type.</div>';
+            return;
+        }
+        try {
+            const params = new URLSearchParams();
+            if (q) params.set('q', q);
+            if (type) params.set('type', type);
+            const resp = await fetch('/api/di/studio/projects/' + RS.currentProjectId + '/evidence/search?' + params.toString());
+            const data = await resp.json();
+            rsRenderEvidenceResults(data.results || []);
+        } catch (err) {
+            console.error('Evidence search error:', err);
+        }
+    }
+
+    function rsRenderEvidenceResults(results) {
+        const container = document.getElementById('rsEvidenceResults');
+        if (results.length === 0) {
+            container.innerHTML = '<div class="rs-no-comments">No matching records found.</div>';
+            return;
+        }
+        container.innerHTML = '';
+        results.forEach(function(r) {
+            const item = document.createElement('div');
+            item.className = 'rs-evidence-item';
+            item.innerHTML = '<div>' + esc(r.filename || 'Untitled') + '</div>' +
+                '<div class="rs-evidence-item-meta">' + esc(r.evidence_type) + ' &middot; ' + esc(r.status) +
+                (r.researcher_name ? ' &middot; ' + esc(r.researcher_name) : '') + ' &middot; ' + fmtDate(r.created_at) + '</div>';
+            item.onclick = function() { rsLinkEvidence(r); };
+            container.appendChild(item);
+        });
+    }
+
+    async function rsLinkEvidence(record) {
+        if (!RS.currentProjectId || !RS.editing) return;
+        const sectionKey = RS.evidenceModalSectionKey;
+
+        // Determine footnote index
+        const existingLinks = RS.currentLinks.filter(function(l) { return l.section_key === sectionKey; });
+        const footnoteIndex = existingLinks.length + 1;
+
+        try {
+            const resp = await fetch('/api/di/studio/projects/' + RS.currentProjectId + '/links', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    evidence_type: record.evidence_type,
+                    evidence_id: record.id,
+                    label: record.filename || (record.evidence_type + ' ' + record.id),
+                    section_key: sectionKey,
+                    footnote_index: footnoteIndex
+                })
+            });
+            const data = await resp.json();
+            if (data.success) {
+                RS.currentLinks.push(data.link);
+                // Insert footnote marker in editor
+                if (sectionKey) {
+                    const editor = document.querySelector('.rs-ce-editor[data-section-key="' + sectionKey + '"]');
+                    if (editor) {
+                        editor.focus();
+                        const marker = '<sup class="rs-footnote" data-link-id="' + data.link.id + '">' + footnoteIndex + '</sup>';
+                        document.execCommand('insertHTML', false, marker);
+                        rsScheduleAutosave(sectionKey);
+                    }
+                }
+                rsCloseEvidenceModal();
+                rsRenderSections();
+            } else {
+                alert(data.error || 'Failed to link evidence');
+            }
+        } catch (err) {
+            console.error('Link evidence error:', err);
+            alert('Network error, please try again.');
+        }
+    }
+
+    async function rsRemoveLink(linkId) {
+        if (!RS.editing || !RS.currentProjectId) return;
+        if (!confirm('Remove this evidence link?')) return;
+        try {
+            const resp = await fetch('/api/di/studio/projects/' + RS.currentProjectId + '/links/' + linkId, {
+                method: 'DELETE'
+            });
+            const data = await resp.json();
+            if (data.success) {
+                RS.currentLinks = RS.currentLinks.filter(function(l) { return l.id !== linkId; });
+                // Remove footnote marker from editors
+                document.querySelectorAll('.rs-footnote[data-link-id="' + linkId + '"]').forEach(function(el) { el.remove(); });
+                rsRenderSections();
+            }
+        } catch (err) {
+            console.error('Remove link error:', err);
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // Figures (Phase 3)
+    // ══════════════════════════════════════════════════════════
+    function rsRenderFiguresShelf() {
+        const shelf = document.getElementById('rsFiguresShelf');
+        const list = document.getElementById('rsFiguresList');
+        if (!RS.currentProjectId) { shelf.style.display = 'none'; return; }
+        shelf.style.display = '';
+        list.innerHTML = '';
+
+        RS.currentFigures.forEach(function(fig) {
+            const tile = document.createElement('div');
+            tile.className = 'rs-figure-tile';
+            tile.onclick = function() { rsOpenFigureDrawer(fig.id); };
+
+            const hasImage = fig.assets && fig.assets.length > 0;
+            let thumbHtml = '<div class="rs-figure-tile-thumb" style="display:flex;align-items:center;justify-content:center;font-size:0.7rem;color:var(--ink-soft);">No img</div>';
+            if (hasImage) {
+                thumbHtml = '<img class="rs-figure-tile-thumb" src="/api/di/studio/assets/' + fig.assets[0].id + '/view" alt="">';
+            }
+
+            tile.innerHTML = thumbHtml +
+                '<div class="rs-figure-tile-info">' +
+                '<div class="rs-figure-tile-num">Figure ' + fig.figure_number + '</div>' +
+                '<div class="rs-figure-tile-title">' + esc(fig.title || 'Untitled') + '</div></div>';
+            list.appendChild(tile);
+        });
+
+        if (RS.editing && isOwner() && isReflectionComplete()) {
+            const addBtn = document.createElement('button');
+            addBtn.className = 'rs-add-figure-btn';
+            addBtn.textContent = '+ New Figure';
+            addBtn.onclick = rsCreateFigure;
+            list.appendChild(addBtn);
+        }
+    }
+
+    async function rsCreateFigure() {
+        if (!RS.editing || !RS.currentProjectId) return;
+        try {
+            const resp = await fetch('/api/di/studio/projects/' + RS.currentProjectId + '/figures', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title: '', legend: '' })
+            });
+            const data = await resp.json();
+            if (data.success) {
+                RS.currentFigures.push(data.figure);
+                rsRenderFiguresShelf();
+                rsOpenFigureDrawer(data.figure.id);
+            } else {
+                alert(data.error || 'Failed to create figure');
+            }
+        } catch (err) {
+            console.error('Create figure error:', err);
+        }
+    }
+
+    function rsOpenFigureDrawer(figureId) {
+        const fig = RS.currentFigures.find(function(f) { return f.id === figureId; });
+        if (!fig) return;
+        RS.figureDrawerOpen = true;
+        RS.figureDrawerFigureId = figureId;
+
+        document.getElementById('rsFigureDrawerTitle').textContent = 'Figure ' + fig.figure_number;
+        document.getElementById('rsFigureDrawer').classList.add('open');
+
+        rsRenderFigureDrawerBody(fig);
+    }
+
+    function rsCloseFigureDrawer() {
+        RS.figureDrawerOpen = false;
+        RS.figureDrawerFigureId = null;
+        document.getElementById('rsFigureDrawer').classList.remove('open');
+    }
+
+    function rsRenderFigureDrawerBody(fig) {
+        const body = document.getElementById('rsFigureDrawerBody');
+        const canEdit = RS.editing && isOwner();
+        const hasImage = fig.assets && fig.assets.length > 0;
+        const evidenceLinks = fig.evidence_links || [];
+
+        let html = '';
+
+        // Title
+        html += '<label>Title</label>';
+        if (canEdit) {
+            html += '<input type="text" id="rsFigTitle" value="' + esc(fig.title || '') + '" placeholder="Figure title">';
+        } else {
+            html += '<div style="font-size:0.88rem;">' + esc(fig.title || 'Untitled') + '</div>';
+        }
+
+        // Legend
+        html += '<label>Legend</label>';
+        if (canEdit) {
+            html += '<textarea id="rsFigLegend" placeholder="Figure legend or description">' + esc(fig.legend || '') + '</textarea>';
+        } else {
+            html += '<div style="font-size:0.88rem;">' + esc(fig.legend || 'No legend.') + '</div>';
+        }
+
+        // Representative image
+        html += '<label>Representative Image</label>';
+        if (hasImage) {
+            html += '<img class="rs-figure-img-preview" src="/api/di/studio/assets/' + fig.assets[0].id + '/view" alt="Figure image">';
+        }
+        if (canEdit) {
+            html += '<div class="rs-figure-upload-area" onclick="document.getElementById(\'rsFigFileInput\').click()">' +
+                (hasImage ? 'Replace image' : 'Click to upload image (10 MB max)') + '</div>' +
+                '<input type="file" id="rsFigFileInput" accept="image/jpeg,image/png,image/gif,image/webp" style="display:none;" onchange="rsUploadFigureImage(this)">';
+        } else if (!hasImage) {
+            html += '<div style="font-size:0.82rem; color:var(--ink-soft); font-style:italic;">No image uploaded.</div>';
+        }
+
+        // Linked evidence
+        html += '<label>Linked Evidence</label>';
+        if (evidenceLinks.length === 0) {
+            html += '<div style="font-size:0.82rem; color:var(--ink-soft); font-style:italic;">No evidence linked to this figure.</div>';
+        } else {
+            html += '<div class="rs-figure-evidence-list">';
+            evidenceLinks.forEach(function(el) {
+                html += '<div class="rs-figure-evidence-item">' +
+                    '<span>' + esc(el.label || el.evidence_type + ' ' + el.evidence_id) + '</span>' +
+                    (canEdit ? '<button class="rs-fn-remove" onclick="rsRemoveFigureLink(\'' + el.id + '\')">remove</button>' : '') +
+                    '</div>';
+            });
+            html += '</div>';
+        }
+        if (canEdit) {
+            html += '<button class="rs-btn rs-btn-sm" style="margin-top:8px;" onclick="rsLinkEvidenceToFigure()">Link evidence</button>';
+        }
+
+        // Save / Delete buttons
+        if (canEdit) {
+            html += '<div style="display:flex; gap:8px; margin-top:20px; padding-top:14px; border-top:1px solid var(--border);">' +
+                '<button class="rs-btn rs-btn-primary rs-btn-sm" onclick="rsSaveFigure()">Save figure</button>' +
+                '<button class="rs-btn rs-btn-sm" style="color:#c44;" onclick="rsDeleteFigure()">Delete</button></div>';
+        }
+
+        body.innerHTML = html;
+    }
+
+    async function rsSaveFigure() {
+        const fig = RS.currentFigures.find(function(f) { return f.id === RS.figureDrawerFigureId; });
+        if (!fig) return;
+        const title = document.getElementById('rsFigTitle') ? document.getElementById('rsFigTitle').value : fig.title;
+        const legend = document.getElementById('rsFigLegend') ? document.getElementById('rsFigLegend').value : fig.legend;
+
+        try {
+            const resp = await fetch('/api/di/studio/projects/' + RS.currentProjectId + '/figures/' + fig.id, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title: title, legend: legend })
+            });
+            const data = await resp.json();
+            if (data.success) {
+                // Update local
+                fig.title = data.figure.title;
+                fig.legend = data.figure.legend;
+                rsRenderFiguresShelf();
+                rsRenderFigureDrawerBody(fig);
+            } else {
+                alert(data.error || 'Failed to save figure');
+            }
+        } catch (err) {
+            console.error('Save figure error:', err);
+        }
+    }
+
+    async function rsDeleteFigure() {
+        if (!confirm('Delete this figure? This cannot be undone.')) return;
+        const figId = RS.figureDrawerFigureId;
+        try {
+            const resp = await fetch('/api/di/studio/projects/' + RS.currentProjectId + '/figures/' + figId, {
+                method: 'DELETE'
+            });
+            const data = await resp.json();
+            if (data.success) {
+                RS.currentFigures = RS.currentFigures.filter(function(f) { return f.id !== figId; });
+                rsCloseFigureDrawer();
+                rsRenderFiguresShelf();
+                rsRenderSections();
+            }
+        } catch (err) {
+            console.error('Delete figure error:', err);
+        }
+    }
+
+    async function rsUploadFigureImage(input) {
+        if (!input.files || input.files.length === 0) return;
+        const file = input.files[0];
+        if (file.size > 10 * 1024 * 1024) { alert('Image must be 10 MB or smaller.'); return; }
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            const resp = await fetch('/api/di/studio/projects/' + RS.currentProjectId + '/figures/' + RS.figureDrawerFigureId + '/image', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await resp.json();
+            if (data.success) {
+                // Update local figure assets
+                const fig = RS.currentFigures.find(function(f) { return f.id === RS.figureDrawerFigureId; });
+                if (fig) {
+                    fig.assets = [data.asset];
+                    rsRenderFigureDrawerBody(fig);
+                    rsRenderFiguresShelf();
+                }
+            } else {
+                alert(data.error || 'Upload failed');
+            }
+        } catch (err) {
+            console.error('Upload figure image error:', err);
+            alert('Upload failed, please try again.');
+        }
+        input.value = '';
+    }
+
+    function rsLinkEvidenceToFigure() {
+        // Open evidence modal in figure linking mode
+        RS._figureLinkMode = true;
+        rsOpenEvidenceModal();
+    }
+
+    async function rsLinkEvidenceToFigureConfirm(record) {
+        if (!RS.figureDrawerFigureId) return;
+        try {
+            const resp = await fetch('/api/di/studio/projects/' + RS.currentProjectId + '/figures/' + RS.figureDrawerFigureId + '/links', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    evidence_type: record.evidence_type,
+                    evidence_id: record.id,
+                    label: record.filename || (record.evidence_type + ' ' + record.id)
+                })
+            });
+            const data = await resp.json();
+            if (data.success) {
+                const fig = RS.currentFigures.find(function(f) { return f.id === RS.figureDrawerFigureId; });
+                if (fig) {
+                    if (!fig.evidence_links) fig.evidence_links = [];
+                    fig.evidence_links.push(data.figure_link);
+                    rsRenderFigureDrawerBody(fig);
+                }
+                rsCloseEvidenceModal();
+            } else {
+                alert(data.error || 'Failed to link evidence');
+            }
+        } catch (err) {
+            console.error('Link evidence to figure error:', err);
+        }
+    }
+
+    async function rsRemoveFigureLink(figureLinkId) {
+        if (!confirm('Remove this evidence link?')) return;
+        try {
+            const resp = await fetch('/api/di/studio/projects/' + RS.currentProjectId + '/figure-links/' + figureLinkId, {
+                method: 'DELETE'
+            });
+            const data = await resp.json();
+            if (data.success) {
+                const fig = RS.currentFigures.find(function(f) { return f.id === RS.figureDrawerFigureId; });
+                if (fig && fig.evidence_links) {
+                    fig.evidence_links = fig.evidence_links.filter(function(el) { return el.id !== figureLinkId; });
+                    rsRenderFigureDrawerBody(fig);
+                }
+            }
+        } catch (err) {
+            console.error('Remove figure link error:', err);
+        }
+    }
+
+    // Override rsLinkEvidence to handle figure mode
+    const _rsLinkEvidenceOrig = rsLinkEvidence;
+    rsLinkEvidence = function(record) {
+        if (RS._figureLinkMode) {
+            RS._figureLinkMode = false;
+            rsLinkEvidenceToFigureConfirm(record);
+        } else {
+            _rsLinkEvidenceOrig(record);
+        }
+    };
+
+    // ══════════════════════════════════════════════════════════
+    // Export (Phase 3)
+    // ══════════════════════════════════════════════════════════
+    async function rsExportJson() {
+        if (!RS.currentProjectId) return;
+        try {
+            const resp = await fetch('/api/di/studio/projects/' + RS.currentProjectId + '/export?format=json');
+            const data = await resp.json();
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = (RS.currentProject.title || 'project').replace(/[^a-zA-Z0-9]/g, '_') + '_export.json';
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch (err) {
+            console.error('Export JSON error:', err);
+            alert('Export failed, please try again.');
+        }
+    }
+
+    function rsExportHtml() {
+        if (!RS.currentProjectId) return;
+        window.open('/api/di/studio/projects/' + RS.currentProjectId + '/export?format=html', '_blank');
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // Presentation Mode (Phase 3)
+    // ══════════════════════════════════════════════════════════
+    function rsOpenPresentation() {
+        if (!RS.currentProjectId || RS.currentSections.length === 0) return;
+        RS.presentationOpen = true;
+        RS.presentationIndex = 0;
+
+        const overlay = document.getElementById('rsPresentation');
+        overlay.classList.add('active');
+
+        // Build nav
+        const nav = document.getElementById('rsPresNav');
+        nav.innerHTML = '';
+        RS.currentSections.forEach(function(sec, i) {
+            const item = document.createElement('div');
+            item.className = 'rs-pres-nav-item' + (i === 0 ? ' active' : '');
+            item.textContent = SECTION_LABELS[sec.section_key] || sec.section_key;
+            item.onclick = function() { rsPresentationGoTo(i); };
+            nav.appendChild(item);
+        });
+
+        rsPresentationGoTo(0);
+    }
+
+    function rsClosePresentation() {
+        RS.presentationOpen = false;
+        document.getElementById('rsPresentation').classList.remove('active');
+    }
+
+    function rsPresentationGoTo(index) {
+        if (index < 0 || index >= RS.currentSections.length) return;
+        RS.presentationIndex = index;
+        const sec = RS.currentSections[index];
+        const label = SECTION_LABELS[sec.section_key] || sec.section_key;
+
+        const content = document.getElementById('rsPresContent');
+        content.innerHTML = '<div class="rs-pres-title">' + esc(RS.currentProject.title || '') + '</div>' +
+            '<div class="rs-pres-section-title">' + esc(label) + '</div>' +
+            '<div class="rs-pres-section-body">' + (sec.content_html || '<em style="color:#999;">Empty section.</em>') + '</div>';
+
+        // Update nav active state
+        document.querySelectorAll('.rs-pres-nav-item').forEach(function(el, i) {
+            el.className = 'rs-pres-nav-item' + (i === index ? ' active' : '');
+        });
+    }
+
+    function rsPresentationNav(delta) {
+        rsPresentationGoTo(RS.presentationIndex + delta);
+    }
 
     // ── Start ──
     rsInit();
