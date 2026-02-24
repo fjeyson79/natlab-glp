@@ -246,6 +246,12 @@ async function notifyResearcher(payload) {
 }
 
   // Serve static files from public folder under /di
+// Block deprecated Research Studio UI entry points (served by express.static below)
+app.get(['/research-studio.html', '/di/research-studio.html'], (req, res) => {
+    // 410 Gone is explicit: this used to exist, but has been intentionally removed.
+    return res.status(410).send('Research Studio has been deprecated in the GLP portal.');
+});
+
 app.use('/di', express.static(path.join(__dirname, 'public')));
 
 // Also serve static files at root level for direct access
