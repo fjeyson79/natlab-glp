@@ -3514,6 +3514,15 @@ credentials: 'include'
                 if (!data.success) return;
 
                 var snap = data.snapshot;
+
+                // Normalize v2 snapshot to legacy UI expectations
+                if (snap) {
+                    snap.maturity = snap.maturity || snap.glp_level;
+                    if (!snap.scores && typeof snap.overall_score === 'number') {
+                        snap.scores = { overall: snap.overall_score };
+                    }
+                }
+
                 var harmony = data.harmony;
 
                 // Fetch previous week for delta
