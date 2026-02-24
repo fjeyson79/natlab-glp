@@ -8,7 +8,6 @@ const session = require('express-session');
 const path = require('path');
 const FormData = require('form-data');
 const fetch = require('node-fetch');
-const { google } = require('googleapis');
 const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
 const { Readable } = require('stream');
 const archiver = require('archiver');
@@ -84,7 +83,6 @@ const inventoryUpload = multer({
 // =====================================================
 // R2 STORAGE (S3-compatible) - minimal implementation
 // Stores object key in di_submissions.drive_file_id as: r2:<key>
-// Keeps Google Drive code as fallback.
 // =====================================================
 
 function r2Enabled() {
@@ -247,221 +245,13 @@ async function notifyResearcher(payload) {
   }
 }
 
-// Google Drive Configuration
-const GOOGLE_DRIVE_ROOT_FOLDER = 'NATLAB-GLP';
-let driveClient = null;
-let driveEnabled = false;
-let driveInitError = null;
-
-// Validate Drive config at startup
-function validateDriveConfig() {
-    const keyEnv = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
-    console.log('[DRIVE] Validating configuration...');
-    console.log('[DRIVE] GOOGLE_SERVICE_ACCOUNT_KEY present:', !!keyEnv);
-    console.log('[DRIVE] GOOGLE_SERVICE_ACCOUNT_KEY length:', keyEnv ? keyEnv.length : 0);
-
-    if (!keyEnv) {
-        console.error('[DRIVE] ERROR: GOOGLE_SERVICE_ACCOUNT_KEY env var is missing');
-        return { valid: false, error: 'GOOGLE_SERVICE_ACCOUNT_KEY not set' };
-    }
-
-    try {
-        const creds = JSON.parse(keyEnv);
-        const hasRequiredFields = creds.client_email && creds.private_key && creds.project_id;
-        console.log('[DRIVE] Credentials parsed successfully');
-        console.log('[DRIVE] Has client_email:', !!creds.client_email);
-        console.log('[DRIVE] Has private_key:', !!creds.private_key);
-        console.log('[DRIVE] Has project_id:', !!creds.project_id);
-        console.log('[DRIVE] Service account:', creds.client_email || 'MISSING');
-
-        if (!hasRequiredFields) {
-            return { valid: false, error: 'Missing required fields in service account JSON' };
-        }
-        return { valid: true, credentials: creds };
-    } catch (e) {
-        console.error('[DRIVE] ERROR: Failed to parse GOOGLE_SERVICE_ACCOUNT_KEY as JSON:', e.message);
-        return { valid: false, error: 'Invalid JSON in GOOGLE_SERVICE_ACCOUNT_KEY: ' + e.message };
-    }
-}
-
-function initializeDriveClient() {
-    const validation = validateDriveConfig();
-    if (!validation.valid) {
-        driveInitError = validation.error;
-        driveEnabled = false;
-        console.error('[DRIVE] Initialization FAILED:', driveInitError);
-        return null;
-    }
-
-    try {
-        const auth = new google.auth.GoogleAuth({
-            credentials: validation.credentials,
-            scopes: ['https://www.googleapis.com/auth/drive.file']
-        });
-        driveClient = google.drive({ version: 'v3', auth });
-        driveEnabled = true;
-        console.log('[DRIVE] Client initialized successfully');
-        return driveClient;
-    } catch (e) {
-        driveInitError = e.message;
-        driveEnabled = false;
-        console.error('[DRIVE] Initialization FAILED:', e.message);
-        return null;
-    }
-}
-
-function getGoogleDriveClient() {
-    if (driveClient) return driveClient;
-    return initializeDriveClient();
-}
-
-function isDriveEnabled() {
-    return driveEnabled && driveClient !== null;
-}
-
-// Google Drive Helper Functions
-async function findOrCreateFolder(drive, name, parentId = null) {
-    const query = parentId
-        ? `name='${name}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`
-        : `name='${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-
-    const res = await drive.files.list({ q: query, fields: 'files(id, name)' });
-
-    if (res.data.files.length > 0) {
-        return res.data.files[0].id;
-    }
-
-    const folderMetadata = {
-        name,
-        mimeType: 'application/vnd.google-apps.folder',
-        ...(parentId && { parents: [parentId] })
-    };
-
-    const folder = await drive.files.create({
-        requestBody: folderMetadata,
-        fields: 'id'
-    });
-
-    return folder.data.id;
-}
-
-async function getSubmittedFolderId(drive, year, researcherId) {
-    const rootId = await findOrCreateFolder(drive, GOOGLE_DRIVE_ROOT_FOLDER);
-    const yearId = await findOrCreateFolder(drive, String(year), rootId);
-    const researcherFolderId = await findOrCreateFolder(drive, researcherId, yearId);
-    const submittedId = await findOrCreateFolder(drive, 'Submitted', researcherFolderId);
-    return submittedId;
-}
-
-async function getApprovedFolderId(drive, year, researcherId) {
-    const rootId = await findOrCreateFolder(drive, GOOGLE_DRIVE_ROOT_FOLDER);
-    const yearId = await findOrCreateFolder(drive, String(year), rootId);
-    const researcherFolderId = await findOrCreateFolder(drive, researcherId, yearId);
-    const approvedId = await findOrCreateFolder(drive, 'Approved', researcherFolderId);
-    return approvedId;
-}
-
-async function uploadFileToDrive(drive, buffer, filename, mimeType, folderId) {
-    const fileMetadata = {
-        name: filename,
-        parents: [folderId]
-    };
-
-    const media = {
-        mimeType,
-        body: Readable.from(buffer)
-    };
-
-    const file = await drive.files.create({
-        requestBody: fileMetadata,
-        media,
-        fields: 'id, webViewLink'
-    });
-
-    // Set public read permission
-    await drive.permissions.create({
-        fileId: file.data.id,
-        requestBody: {
-            role: 'reader',
-            type: 'anyone'
-        }
-    });
-
-    return file.data.id;
-}
-
-async function deleteFileFromDrive(drive, fileId) {
-    try {
-        await drive.files.delete({ fileId });
-        return true;
-    } catch (err) {
-        console.error('Drive delete error:', err.message);
-        return false;
-    }
-}
-
-async function downloadFileFromDrive(drive, fileId) {
-    const res = await drive.files.get(
-        { fileId, alt: 'media' },
-        { responseType: 'arraybuffer' }
-    );
-    return Buffer.from(res.data);
-}
-
-async function createStampedPdf(pdfBuffer, signerName, timestamp) {
-    const pdfDoc = await PDFDocument.load(pdfBuffer);
-    const pages = pdfDoc.getPages();
-    const firstPage = pages[0];
-    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-
-    const stampText = `Approved by PI (${signerName}) - ${timestamp}`;
-    const { width } = firstPage.getSize();
-
-    // Add stamp at bottom of first page
-    firstPage.drawText(stampText, {
-        x: 50,
-        y: 30,
-        size: 10,
-        font,
-        color: rgb(0.2, 0.4, 0.2)
-    });
-
-    // Add stamp border
-    firstPage.drawRectangle({
-        x: 45,
-        y: 25,
-        width: font.widthOfTextAtSize(stampText, 10) + 10,
-        height: 18,
-        borderColor: rgb(0.2, 0.4, 0.2),
-        borderWidth: 1
-    });
-
-    return await pdfDoc.save();
-}
-
-function getDriveViewUrl(fileId) {
-    return `https://drive.google.com/file/d/${fileId}/view`;
-}
-
-function getDriveDownloadUrl(fileId) {
-    return `https://drive.google.com/uc?export=download&id=${fileId}`;
-}
-
-// Serve static files from public folder under /di
+  // Serve static files from public folder under /di
 app.use('/di', express.static(path.join(__dirname, 'public')));
 
 // Also serve static files at root level for direct access
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Initialize Drive at startup
-console.log('[STARTUP] Initializing Google Drive...');
-initializeDriveClient();
-console.log('[STARTUP] Drive enabled:', driveEnabled);
-if (driveInitError) {
-    console.error('[STARTUP] Drive init error:', driveInitError);
-}
-
-// Health check endpoint
+  // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
@@ -474,32 +264,6 @@ app.get('/health', (req, res) => {
     }
   });
 });
-
-// Drive debug endpoint
-app.get('/api/di/debug-drive', async (req, res) => {
-    const info = {
-        driveEnabled,
-        driveInitError,
-        envVarPresent: !!process.env.GOOGLE_SERVICE_ACCOUNT_KEY,
-        envVarLength: process.env.GOOGLE_SERVICE_ACCOUNT_KEY?.length || 0,
-        timestamp: new Date().toISOString()
-    };
-
-    // Try a simple Drive operation if enabled
-    if (driveEnabled && driveClient) {
-        try {
-            const aboutRes = await driveClient.about.get({ fields: 'user' });
-            info.driveUser = aboutRes.data.user?.emailAddress || 'unknown';
-            info.driveTestSuccess = true;
-        } catch (e) {
-            info.driveTestSuccess = false;
-            info.driveTestError = e.message;
-        }
-    }
-
-    res.json(info);
-});
-
 // Debug endpoint to check members (temporary - for troubleshooting)
 app.get('/api/di/debug-members', async (req, res) => {
     try {
@@ -1449,7 +1213,7 @@ app.get('/api/di/my-files', requireAuth, async (req, res) => {
 });
 
 // POST /api/di/upload
-// Upload PDF file to Google Drive and forward to n8n webhook
+// Upload PDF file to R2 and (optionally) forward to n8n webhook
 app.post('/api/di/upload', requireAuth, upload.single('file'), async (req, res) => {
     try {
         const { fileType } = req.body;
@@ -2110,7 +1874,6 @@ app.get('/api/di/verify/:code', async (req, res) => {
 });
 
 // GET /api/di/download/:id
-// Redirect to Google Drive file or return appropriate error
 app.get('/api/di/download/:id', async (req, res) => {
     const { id } = req.params;
     const { download } = req.query;
@@ -2170,24 +1933,14 @@ if (fileId && isR2Id(fileId)) {
             return res.status(409).json({
                 error: 'FILE_NOT_READY',
                 message: 'File not available. Upload may have failed or file was removed for revision.',
-                status: submission.status,
-                driveEnabled: driveEnabled
-            });
+                status: submission.status
+              });
         }
 
-        // Build Drive URLs
-        const viewUrl = getDriveViewUrl(fileId);
-        const downloadUrl = getDriveDownloadUrl(fileId);
-
-        console.log(`[DOWNLOAD] Redirecting to Drive: fileId=${fileId}`);
-
-        // Redirect to appropriate Google Drive URL
-        if (download === 'true') {
-            res.redirect(downloadUrl);
-        } else {
-            res.redirect(viewUrl);
-        }
-
+          return res.status(400).json({
+              error: 'UNSUPPORTED_STORAGE',
+              message: 'Only R2-backed files are supported.'
+          });
     } catch (err) {
         console.error(`[DOWNLOAD] Error for submission ${id}:`, err);
         res.status(500).json({ error: 'SERVER_ERROR', message: err.message });
@@ -2762,9 +2515,7 @@ app.get('/api/di/directory', requirePI, async (req, res) => {
                 fileType: sub.file_type,
                 date: sub.created_at,
                 driveFileId: sub.drive_file_id,
-                viewUrl: sub.drive_file_id ? getDriveViewUrl(sub.drive_file_id) : null,
-                downloadUrl: sub.drive_file_id ? getDriveDownloadUrl(sub.drive_file_id) : null
-            });
+});
             yearMap[year].researchers[sub.researcher_id].count++;
         }
 
