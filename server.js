@@ -3511,6 +3511,35 @@ app.get('/api/di/vision/files', requireAuth, async (req, res) => {
         const user = req.session.user;
         const scope = req.query.scope || 'my';
         let targetResearcherId = user.researcher_id;
+        // PI convenience: if PI uses scope=my and has no personal submissions,
+        // return latest group submissions instead
+        if (scope === 'my' && (user.role === 'pi' || user.role === 'PI')) {
+            const result = await pool.query(`
+                SELECT s.submission_id,
+                       s.researcher_id,
+                       s.original_filename AS filename,
+                       s.file_type AS file_type,
+                       s.file_type AS context_type,
+                       s.status,
+                       s.created_at,
+                       s.signed_at,
+                       COALESCE(s.drive_file_id, s.signed_pdf_path) as r2_object_key,
+                       a.name as researcher_name,
+                       a.affiliation
+                FROM di_submissions s
+                LEFT JOIN di_allowlist a ON s.researcher_id = a.researcher_id
+                WHERE s.status != 'DISCARDED'
+                ORDER BY s.created_at DESC
+                LIMIT 500
+            `);
+            return res.json({
+                success: true,
+                files: result.rows,
+                scope: 'group',
+                researcher_id: null
+            });
+        }
+
 
         if (scope === 'researcher') {
             // Supervisor only — validate assignment
