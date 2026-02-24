@@ -11507,11 +11507,12 @@ app.get('/api/di/studio/projects', requireAuth, async (req, res) => {
 });
 
 // POST /api/di/studio/projects
-// Create a new project with 7 standard manuscript section stubs.
+// Create a new project with 7 manuscript section stubs.
+// RS 2.0 Genesis: also accepts { why, hypothesis } to seed core nodes + story sections.
 app.post('/api/di/studio/projects', requireAuth, async (req, res) => {
     if (!(await checkStudioTables())) return res.status(503).json({ error: 'Research Studio tables not available yet' });
     const user = req.session.user;
-    const { title } = req.body;
+    const { title, why, hypothesis } = req.body;
     if (!title || !title.trim()) {
         return res.status(400).json({ error: 'Title is required' });
     }
@@ -11519,15 +11520,28 @@ app.post('/api/di/studio/projects', requireAuth, async (req, res) => {
         return res.status(400).json({ error: 'Title must be 500 characters or fewer' });
     }
 
+    const hasNodesTable = await checkStudioNodesTable();
+    // If nodes table exists, require Genesis fields
+    if (hasNodesTable) {
+        if (!why || !why.trim()) return res.status(400).json({ error: 'WHY is required' });
+        if (!hypothesis || !hypothesis.trim()) return res.status(400).json({ error: 'Core Hypothesis is required' });
+        if (why.trim().length > 2000) return res.status(400).json({ error: 'WHY must be 2000 characters or fewer' });
+        if (hypothesis.trim().length > 2000) return res.status(400).json({ error: 'Hypothesis must be 2000 characters or fewer' });
+    }
+
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
 
+        // Create project (seed reflection columns for backward compat)
+        const cleanWhy = hasNodesTable ? sanitizeStudioText(why.trim()) : '';
+        const cleanHyp = hasNodesTable ? sanitizeStudioText(hypothesis.trim()) : '';
+
         const projResult = await client.query(`
-            INSERT INTO di_studio_projects (owner_id, affiliation, title)
-            VALUES ($1, $2, $3)
+            INSERT INTO di_studio_projects (owner_id, affiliation, title, hypothesis, intention)
+            VALUES ($1, $2, $3, $4, $5)
             RETURNING *
-        `, [user.researcher_id, user.affiliation, title.trim()]);
+        `, [user.researcher_id, user.affiliation, title.trim(), cleanHyp || null, cleanWhy || null]);
         const project = projResult.rows[0];
 
         // Create 7 standard manuscript section rows
@@ -11536,6 +11550,39 @@ app.post('/api/di/studio/projects', requireAuth, async (req, res) => {
                 INSERT INTO di_studio_sections (project_id, section_key, sort_order)
                 VALUES ($1, $2, $3)
             `, [project.id, STUDIO_SECTION_KEYS[i], i]);
+        }
+
+        // RS 2.0: create 6 core nodes + 6 story sections
+        if (hasNodesTable) {
+            const coreDefaults = [
+                ['core_why', cleanWhy],
+                ['core_hypothesis', cleanHyp],
+                ['core_translation', ''],
+                ['core_landscape', ''],
+                ['core_why_us', ''],
+                ['core_tension', '']
+            ];
+            for (const [nt, ct] of coreDefaults) {
+                await client.query(`
+                    INSERT INTO di_studio_nodes (project_id, node_type, content_text)
+                    VALUES ($1, $2, $3)
+                `, [project.id, nt, ct]);
+            }
+
+            const storyDefaults = [
+                ['the_problem', 'core_why'],
+                ['the_opportunity', null],
+                ['the_core_idea', 'core_hypothesis'],
+                ['the_proof', null],
+                ['the_implication', 'core_translation'],
+                ['why_us', 'core_why_us']
+            ];
+            for (const [sk, sf] of storyDefaults) {
+                await client.query(`
+                    INSERT INTO di_studio_story_sections (project_id, section_key, seeded_from)
+                    VALUES ($1, $2, $3)
+                `, [project.id, sk, sf]);
+            }
         }
 
         await client.query('COMMIT');
@@ -11594,7 +11641,7 @@ app.get('/api/di/studio/projects/:id', requireAuth, async (req, res) => {
             ORDER BY section_key, footnote_index
         `, [projectId]);
 
-        // Build reflection completeness flag
+        // Build reflection completeness flag (legacy)
         const reflectionComplete = !!(
             project.hypothesis && project.hypothesis.trim() &&
             project.intention && project.intention.trim() &&
@@ -11602,6 +11649,9 @@ app.get('/api/di/studio/projects/:id', requireAuth, async (req, res) => {
             project.tension && project.tension.trim() &&
             project.next_milestone && project.next_milestone.trim()
         );
+
+        // Genesis completeness flag (RS 2.0)
+        const genesisComplete = await studioGenesisComplete(projectId);
 
         // Phase 2: include lock status if table exists
         let lockInfo = null;
@@ -11654,6 +11704,32 @@ app.get('/api/di/studio/projects/:id', requireAuth, async (req, res) => {
             }
         }
 
+        // Phase 4: load concept map nodes, edges, story sections
+        let nodes = [];
+        let edges = [];
+        let storySections = [];
+        let defaultMode = null;
+        if (await checkStudioNodesTable()) {
+            const nodesResult = await pool.query(`
+                SELECT * FROM di_studio_nodes WHERE project_id = $1 ORDER BY created_at ASC
+            `, [projectId]);
+            nodes = nodesResult.rows;
+
+            const edgesResult = await pool.query(`
+                SELECT * FROM di_studio_edges WHERE project_id = $1 ORDER BY created_at ASC
+            `, [projectId]);
+            edges = edgesResult.rows;
+
+            const storyResult = await pool.query(`
+                SELECT * FROM di_studio_story_sections WHERE project_id = $1 ORDER BY section_key
+            `, [projectId]);
+            storySections = storyResult.rows;
+
+            if (await checkStudioDefaultModeCol()) {
+                defaultMode = project.default_mode || 'concept_map';
+            }
+        }
+
         res.json({
             project: {
                 id: project.id,
@@ -11671,12 +11747,17 @@ app.get('/api/di/studio/projects/:id', requireAuth, async (req, res) => {
                 target_journal: project.target_journal,
                 notes_json: project.notes_json,
                 reflection_complete: reflectionComplete,
+                genesis_complete: genesisComplete,
+                default_mode: defaultMode,
                 created_at: project.created_at,
                 updated_at: project.updated_at
             },
             sections: sectionsResult.rows,
             links: linksResult.rows,
             figures: figures,
+            nodes: nodes,
+            edges: edges,
+            story_sections: storySections,
             lock: lockInfo,
             unresolved_comment_count: unresolvedCommentCount
         });
@@ -11751,6 +11832,53 @@ async function checkStudioFiguresTable() {
     }
     return studioFiguresTableExists;
 }
+
+// Phase 4 table existence checks (migration 027 — concept map, edges, story)
+let studioNodesTableExists = null;
+let studioNodesTableLastCheck = 0;
+
+async function checkStudioNodesTable() {
+    const now = Date.now();
+    if (studioNodesTableExists === null || studioNodesTableExists === false || (now - studioNodesTableLastCheck > ROLE_COLUMN_CHECK_INTERVAL)) {
+        try {
+            const result = await pool.query(`
+                SELECT table_name FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'di_studio_nodes'
+            `);
+            studioNodesTableExists = result.rows.length > 0;
+            studioNodesTableLastCheck = now;
+        } catch (err) {
+            studioNodesTableExists = false;
+        }
+    }
+    return studioNodesTableExists;
+}
+
+let studioDefaultModeColExists = null;
+let studioDefaultModeColLastCheck = 0;
+
+async function checkStudioDefaultModeCol() {
+    const now = Date.now();
+    if (studioDefaultModeColExists === null || studioDefaultModeColExists === false || (now - studioDefaultModeColLastCheck > ROLE_COLUMN_CHECK_INTERVAL)) {
+        try {
+            const result = await pool.query(`
+                SELECT column_name FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'di_studio_projects' AND column_name = 'default_mode'
+            `);
+            studioDefaultModeColExists = result.rows.length > 0;
+            studioDefaultModeColLastCheck = now;
+        } catch (err) {
+            studioDefaultModeColExists = false;
+        }
+    }
+    return studioDefaultModeColExists;
+}
+
+const STUDIO_CORE_NODE_TYPES = ['core_why', 'core_hypothesis', 'core_translation', 'core_landscape', 'core_why_us', 'core_tension'];
+const STUDIO_PHASE1_NODE_TYPES = [...STUDIO_CORE_NODE_TYPES, 'evidence'];
+const STUDIO_EDGE_STRENGTHS = ['strong', 'moderate', 'exploratory', 'contradictory'];
+const STUDIO_STORY_KEYS = ['the_problem', 'the_opportunity', 'the_core_idea', 'the_proof', 'the_implication', 'why_us'];
+const STUDIO_NODE_SYNC_MAP = { core_hypothesis: 'hypothesis', core_why: 'intention', core_tension: 'tension' };
 
 // Shared access check helper for studio projects
 async function studioAccessCheck(projectId, user) {
@@ -12352,7 +12480,7 @@ async function studioRequireLock(projectId, user) {
     return { ok: true };
 }
 
-// Helper: check reflection is complete for a project
+// Helper: check reflection is complete for a project (legacy, kept for backward compat)
 function studioReflectionComplete(project) {
     return !!(
         project.hypothesis && project.hypothesis.trim() &&
@@ -12361,6 +12489,22 @@ function studioReflectionComplete(project) {
         project.tension && project.tension.trim() &&
         project.next_milestone && project.next_milestone.trim()
     );
+}
+
+// Helper: check genesis is complete (WHY + Hypothesis defined) — new gating for RS 2.0
+async function studioGenesisComplete(projectId) {
+    if (!(await checkStudioNodesTable())) return false;
+    try {
+        const result = await pool.query(`
+            SELECT node_type, content_text FROM di_studio_nodes
+            WHERE project_id = $1 AND node_type IN ('core_why', 'core_hypothesis')
+        `, [projectId]);
+        const why = result.rows.find(r => r.node_type === 'core_why');
+        const hyp = result.rows.find(r => r.node_type === 'core_hypothesis');
+        return !!(why && why.content_text && why.content_text.trim() && hyp && hyp.content_text && hyp.content_text.trim());
+    } catch (err) {
+        return false;
+    }
 }
 
 // ── GET /api/di/studio/projects/:id/evidence/search ──
@@ -12453,7 +12597,7 @@ app.post('/api/di/studio/projects/:id/links', requireAuth, async (req, res) => {
     const access = await studioAccessCheck(projectId, user);
     if (access.error) return res.status(access.status).json({ error: access.error });
     if (!access.isOwner) return res.status(403).json({ error: 'Only the project owner can create evidence links' });
-    if (!studioReflectionComplete(access.project)) return res.status(400).json({ error: 'Complete the reflection layer before linking evidence' });
+    if (!(await studioGenesisComplete(access.project.id))) return res.status(400).json({ error: 'Define WHY and Core Hypothesis before linking evidence' });
 
     const lockCheck = await studioRequireLock(projectId, user);
     if (lockCheck.error) return res.status(lockCheck.status).json({ error: lockCheck.error });
@@ -12497,7 +12641,7 @@ app.delete('/api/di/studio/projects/:id/links/:linkId', requireAuth, async (req,
     const access = await studioAccessCheck(projectId, user);
     if (access.error) return res.status(access.status).json({ error: access.error });
     if (!access.isOwner) return res.status(403).json({ error: 'Only the project owner can delete evidence links' });
-    if (!studioReflectionComplete(access.project)) return res.status(400).json({ error: 'Complete the reflection layer before modifying evidence links' });
+    if (!(await studioGenesisComplete(access.project.id))) return res.status(400).json({ error: 'Define WHY and Core Hypothesis before modifying evidence links' });
 
     const lockCheck = await studioRequireLock(projectId, user);
     if (lockCheck.error) return res.status(lockCheck.status).json({ error: lockCheck.error });
@@ -12528,7 +12672,7 @@ app.post('/api/di/studio/projects/:id/figures', requireAuth, async (req, res) =>
     const access = await studioAccessCheck(projectId, user);
     if (access.error) return res.status(access.status).json({ error: access.error });
     if (!access.isOwner) return res.status(403).json({ error: 'Only the project owner can create figures' });
-    if (!studioReflectionComplete(access.project)) return res.status(400).json({ error: 'Complete the reflection layer before creating figures' });
+    if (!(await studioGenesisComplete(access.project.id))) return res.status(400).json({ error: 'Define WHY and Core Hypothesis before creating figures' });
 
     const lockCheck = await studioRequireLock(projectId, user);
     if (lockCheck.error) return res.status(lockCheck.status).json({ error: lockCheck.error });
@@ -12570,7 +12714,7 @@ app.put('/api/di/studio/projects/:id/figures/:figureId', requireAuth, async (req
     const access = await studioAccessCheck(projectId, user);
     if (access.error) return res.status(access.status).json({ error: access.error });
     if (!access.isOwner) return res.status(403).json({ error: 'Only the project owner can edit figures' });
-    if (!studioReflectionComplete(access.project)) return res.status(400).json({ error: 'Complete the reflection layer before editing figures' });
+    if (!(await studioGenesisComplete(access.project.id))) return res.status(400).json({ error: 'Define WHY and Core Hypothesis before editing figures' });
 
     const lockCheck = await studioRequireLock(projectId, user);
     if (lockCheck.error) return res.status(lockCheck.status).json({ error: lockCheck.error });
@@ -12609,7 +12753,7 @@ app.delete('/api/di/studio/projects/:id/figures/:figureId', requireAuth, async (
     const access = await studioAccessCheck(projectId, user);
     if (access.error) return res.status(access.status).json({ error: access.error });
     if (!access.isOwner) return res.status(403).json({ error: 'Only the project owner can delete figures' });
-    if (!studioReflectionComplete(access.project)) return res.status(400).json({ error: 'Complete the reflection layer before modifying figures' });
+    if (!(await studioGenesisComplete(access.project.id))) return res.status(400).json({ error: 'Define WHY and Core Hypothesis before modifying figures' });
 
     const lockCheck = await studioRequireLock(projectId, user);
     if (lockCheck.error) return res.status(lockCheck.status).json({ error: lockCheck.error });
@@ -12663,7 +12807,7 @@ app.post('/api/di/studio/projects/:id/figures/:figureId/image', requireAuth, upl
     const access = await studioAccessCheck(projectId, user);
     if (access.error) return res.status(access.status).json({ error: access.error });
     if (!access.isOwner) return res.status(403).json({ error: 'Only the project owner can upload figure images' });
-    if (!studioReflectionComplete(access.project)) return res.status(400).json({ error: 'Complete the reflection layer before uploading figure images' });
+    if (!(await studioGenesisComplete(access.project.id))) return res.status(400).json({ error: 'Define WHY and Core Hypothesis before uploading figure images' });
 
     const lockCheck = await studioRequireLock(projectId, user);
     if (lockCheck.error) return res.status(lockCheck.status).json({ error: lockCheck.error });
@@ -12758,7 +12902,7 @@ app.post('/api/di/studio/projects/:id/figures/:figureId/links', requireAuth, asy
     const access = await studioAccessCheck(projectId, user);
     if (access.error) return res.status(access.status).json({ error: access.error });
     if (!access.isOwner) return res.status(403).json({ error: 'Only the project owner can link evidence to figures' });
-    if (!studioReflectionComplete(access.project)) return res.status(400).json({ error: 'Complete the reflection layer before linking evidence' });
+    if (!(await studioGenesisComplete(access.project.id))) return res.status(400).json({ error: 'Define WHY and Core Hypothesis before linking evidence' });
 
     const lockCheck = await studioRequireLock(projectId, user);
     if (lockCheck.error) return res.status(lockCheck.status).json({ error: lockCheck.error });
@@ -12798,7 +12942,7 @@ app.delete('/api/di/studio/projects/:id/figure-links/:figureLinkId', requireAuth
     const access = await studioAccessCheck(projectId, user);
     if (access.error) return res.status(access.status).json({ error: access.error });
     if (!access.isOwner) return res.status(403).json({ error: 'Only the project owner can remove figure evidence links' });
-    if (!studioReflectionComplete(access.project)) return res.status(400).json({ error: 'Complete the reflection layer before modifying evidence links' });
+    if (!(await studioGenesisComplete(access.project.id))) return res.status(400).json({ error: 'Define WHY and Core Hypothesis before modifying evidence links' });
 
     const lockCheck = await studioRequireLock(projectId, user);
     if (lockCheck.error) return res.status(lockCheck.status).json({ error: lockCheck.error });
@@ -13022,6 +13166,360 @@ app.get("/api/di/studio/projects/:projectId/manuscript/export", requireAuth, asy
     console.error("manuscript export error:", err);
     res.status(500).json({ error: "export_failed" });
   }
+});
+
+// =====================================================
+// RESEARCH STUDIO 2.0 ENDPOINTS (Phase 4: concept map, edges, story)
+// =====================================================
+
+// ── GET /api/di/studio/projects/:id/nodes ──
+// Return all concept map nodes and edges for a project.
+app.get('/api/di/studio/projects/:id/nodes', requireAuth, async (req, res) => {
+    if (!(await checkStudioNodesTable())) return res.status(503).json({ error: 'Concept map tables not available yet' });
+    const access = await studioAccessCheck(req.params.id, req.session.user);
+    if (access.error) return res.status(access.status).json({ error: access.error });
+
+    try {
+        const nodesResult = await pool.query(
+            'SELECT * FROM di_studio_nodes WHERE project_id = $1 ORDER BY created_at ASC',
+            [req.params.id]
+        );
+        const edgesResult = await pool.query(
+            'SELECT * FROM di_studio_edges WHERE project_id = $1 ORDER BY created_at ASC',
+            [req.params.id]
+        );
+        res.json({ nodes: nodesResult.rows, edges: edgesResult.rows });
+    } catch (err) {
+        console.error('Studio get nodes error:', err);
+        res.status(500).json({ error: 'Failed to load concept map' });
+    }
+});
+
+// ── PUT /api/di/studio/projects/:id/nodes/:nodeId ──
+// Update a core node's content_text. One-way sync to legacy reflection columns.
+app.put('/api/di/studio/projects/:id/nodes/:nodeId', requireAuth, async (req, res) => {
+    if (!(await checkStudioNodesTable())) return res.status(503).json({ error: 'Concept map tables not available yet' });
+    const access = await studioAccessCheck(req.params.id, req.session.user);
+    if (access.error) return res.status(access.status).json({ error: access.error });
+
+    // Owner needs lock; PI can edit without lock
+    if (access.isOwner) {
+        const lockCheck = await studioRequireLock(req.params.id, req.session.user);
+        if (lockCheck.error) return res.status(lockCheck.status).json({ error: lockCheck.error });
+    }
+
+    const { content_text } = req.body;
+    if (content_text === undefined) return res.status(400).json({ error: 'content_text is required' });
+    const clean = sanitizeStudioText(String(content_text).slice(0, 2000));
+
+    try {
+        // Verify node belongs to project
+        const nodeResult = await pool.query(
+            'SELECT * FROM di_studio_nodes WHERE id = $1 AND project_id = $2',
+            [req.params.nodeId, req.params.id]
+        );
+        if (nodeResult.rows.length === 0) return res.status(404).json({ error: 'Node not found' });
+        const node = nodeResult.rows[0];
+
+        await pool.query(
+            'UPDATE di_studio_nodes SET content_text = $1, updated_at = NOW() WHERE id = $2',
+            [clean, node.id]
+        );
+
+        // One-way sync to legacy reflection columns
+        const syncCol = STUDIO_NODE_SYNC_MAP[node.node_type];
+        if (syncCol) {
+            await pool.query(
+                `UPDATE di_studio_projects SET ${syncCol} = $1, updated_at = NOW() WHERE id = $2`,
+                [clean, req.params.id]
+            );
+        }
+
+        await pool.query('UPDATE di_studio_projects SET updated_at = NOW() WHERE id = $1', [req.params.id]);
+
+        res.json({ success: true, node: { ...node, content_text: clean, updated_at: new Date().toISOString() } });
+    } catch (err) {
+        console.error('Studio update node error:', err);
+        res.status(500).json({ error: 'Failed to update node' });
+    }
+});
+
+// ── POST /api/di/studio/projects/:id/nodes ──
+// Create a peripheral evidence node.
+app.post('/api/di/studio/projects/:id/nodes', requireAuth, async (req, res) => {
+    if (!(await checkStudioNodesTable())) return res.status(503).json({ error: 'Concept map tables not available yet' });
+    const access = await studioAccessCheck(req.params.id, req.session.user);
+    if (access.error) return res.status(access.status).json({ error: access.error });
+    if (!access.isOwner) return res.status(403).json({ error: 'Only the project owner can create nodes' });
+
+    const lockCheck = await studioRequireLock(req.params.id, req.session.user);
+    if (lockCheck.error) return res.status(lockCheck.status).json({ error: lockCheck.error });
+    if (!(await studioGenesisComplete(req.params.id))) return res.status(400).json({ error: 'Define WHY and Core Hypothesis first' });
+
+    const { node_type, label, content_text, position_x, position_y, evidence_ref_id } = req.body;
+    if (node_type !== 'evidence') return res.status(400).json({ error: 'Only evidence nodes can be created in Phase 1' });
+    if (!label || !label.trim()) return res.status(400).json({ error: 'Label is required' });
+
+    const cleanLabel = sanitizeStudioText(String(label).slice(0, 300));
+    const cleanContent = sanitizeStudioText(String(content_text || '').slice(0, 2000));
+    const px = (typeof position_x === 'number') ? Math.max(0, Math.min(100, position_x)) : 50;
+    const py = (typeof position_y === 'number') ? Math.max(0, Math.min(100, position_y)) : 85;
+    const eRefId = evidence_ref_id ? String(evidence_ref_id).slice(0, 100) : null;
+
+    try {
+        const result = await pool.query(`
+            INSERT INTO di_studio_nodes (project_id, node_type, label, content_text, position_x, position_y, evidence_ref_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING *
+        `, [req.params.id, 'evidence', cleanLabel, cleanContent, px, py, eRefId]);
+
+        res.json({ success: true, node: result.rows[0] });
+    } catch (err) {
+        console.error('Studio create node error:', err);
+        res.status(500).json({ error: 'Failed to create node' });
+    }
+});
+
+// ── PUT /api/di/studio/projects/:id/nodes/:nodeId/position ──
+// Update a peripheral node's position (drag).
+app.put('/api/di/studio/projects/:id/nodes/:nodeId/position', requireAuth, async (req, res) => {
+    if (!(await checkStudioNodesTable())) return res.status(503).json({ error: 'Concept map tables not available yet' });
+    const access = await studioAccessCheck(req.params.id, req.session.user);
+    if (access.error) return res.status(access.status).json({ error: access.error });
+    if (!access.isOwner) return res.status(403).json({ error: 'Only the project owner can reposition nodes' });
+
+    const lockCheck = await studioRequireLock(req.params.id, req.session.user);
+    if (lockCheck.error) return res.status(lockCheck.status).json({ error: lockCheck.error });
+
+    const { position_x, position_y } = req.body;
+    if (typeof position_x !== 'number' || typeof position_y !== 'number') {
+        return res.status(400).json({ error: 'position_x and position_y are required numbers' });
+    }
+
+    try {
+        const nodeResult = await pool.query(
+            'SELECT * FROM di_studio_nodes WHERE id = $1 AND project_id = $2',
+            [req.params.nodeId, req.params.id]
+        );
+        if (nodeResult.rows.length === 0) return res.status(404).json({ error: 'Node not found' });
+        const node = nodeResult.rows[0];
+        if (node.node_type.startsWith('core_')) return res.status(400).json({ error: 'Core nodes have fixed positions' });
+
+        const px = Math.max(0, Math.min(100, position_x));
+        const py = Math.max(0, Math.min(100, position_y));
+
+        await pool.query(
+            'UPDATE di_studio_nodes SET position_x = $1, position_y = $2, updated_at = NOW() WHERE id = $3',
+            [px, py, node.id]
+        );
+
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Studio update node position error:', err);
+        res.status(500).json({ error: 'Failed to update node position' });
+    }
+});
+
+// ── DELETE /api/di/studio/projects/:id/nodes/:nodeId ──
+// Delete a peripheral node (cascades edges). Core nodes cannot be deleted.
+app.delete('/api/di/studio/projects/:id/nodes/:nodeId', requireAuth, async (req, res) => {
+    if (!(await checkStudioNodesTable())) return res.status(503).json({ error: 'Concept map tables not available yet' });
+    const access = await studioAccessCheck(req.params.id, req.session.user);
+    if (access.error) return res.status(access.status).json({ error: access.error });
+    if (!access.isOwner) return res.status(403).json({ error: 'Only the project owner can delete nodes' });
+
+    const lockCheck = await studioRequireLock(req.params.id, req.session.user);
+    if (lockCheck.error) return res.status(lockCheck.status).json({ error: lockCheck.error });
+
+    try {
+        const nodeResult = await pool.query(
+            'SELECT * FROM di_studio_nodes WHERE id = $1 AND project_id = $2',
+            [req.params.nodeId, req.params.id]
+        );
+        if (nodeResult.rows.length === 0) return res.status(404).json({ error: 'Node not found' });
+        if (nodeResult.rows[0].node_type.startsWith('core_')) return res.status(400).json({ error: 'Core nodes cannot be deleted' });
+
+        // Edges cascade via ON DELETE CASCADE
+        await pool.query('DELETE FROM di_studio_nodes WHERE id = $1', [req.params.nodeId]);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Studio delete node error:', err);
+        res.status(500).json({ error: 'Failed to delete node' });
+    }
+});
+
+// ── POST /api/di/studio/projects/:id/edges ──
+// Create an edge between two nodes.
+app.post('/api/di/studio/projects/:id/edges', requireAuth, async (req, res) => {
+    if (!(await checkStudioNodesTable())) return res.status(503).json({ error: 'Concept map tables not available yet' });
+    const access = await studioAccessCheck(req.params.id, req.session.user);
+    if (access.error) return res.status(access.status).json({ error: access.error });
+    if (!access.isOwner) return res.status(403).json({ error: 'Only the project owner can create edges' });
+
+    const lockCheck = await studioRequireLock(req.params.id, req.session.user);
+    if (lockCheck.error) return res.status(lockCheck.status).json({ error: lockCheck.error });
+
+    const { source_node_id, target_node_id, strength } = req.body;
+    if (!source_node_id || !target_node_id) return res.status(400).json({ error: 'source_node_id and target_node_id are required' });
+    if (source_node_id === target_node_id) return res.status(400).json({ error: 'Cannot link a node to itself' });
+    if (strength && !STUDIO_EDGE_STRENGTHS.includes(strength)) {
+        return res.status(400).json({ error: 'Invalid strength. Use: ' + STUDIO_EDGE_STRENGTHS.join(', ') });
+    }
+
+    try {
+        // Verify both nodes belong to this project
+        const nodesResult = await pool.query(
+            'SELECT id FROM di_studio_nodes WHERE id IN ($1, $2) AND project_id = $3',
+            [source_node_id, target_node_id, req.params.id]
+        );
+        if (nodesResult.rows.length < 2) return res.status(400).json({ error: 'Both nodes must belong to this project' });
+
+        const result = await pool.query(`
+            INSERT INTO di_studio_edges (project_id, source_node_id, target_node_id, strength)
+            VALUES ($1, $2, $3, $4)
+            RETURNING *
+        `, [req.params.id, source_node_id, target_node_id, strength || 'moderate']);
+
+        res.json({ success: true, edge: result.rows[0] });
+    } catch (err) {
+        if (err.code === '23505') return res.status(409).json({ error: 'This edge already exists' });
+        console.error('Studio create edge error:', err);
+        res.status(500).json({ error: 'Failed to create edge' });
+    }
+});
+
+// ── PUT /api/di/studio/projects/:id/edges/:edgeId ──
+// Update an edge's strength.
+app.put('/api/di/studio/projects/:id/edges/:edgeId', requireAuth, async (req, res) => {
+    if (!(await checkStudioNodesTable())) return res.status(503).json({ error: 'Concept map tables not available yet' });
+    const access = await studioAccessCheck(req.params.id, req.session.user);
+    if (access.error) return res.status(access.status).json({ error: access.error });
+    if (!access.isOwner) return res.status(403).json({ error: 'Only the project owner can modify edges' });
+
+    const lockCheck = await studioRequireLock(req.params.id, req.session.user);
+    if (lockCheck.error) return res.status(lockCheck.status).json({ error: lockCheck.error });
+
+    const { strength } = req.body;
+    if (!strength || !STUDIO_EDGE_STRENGTHS.includes(strength)) {
+        return res.status(400).json({ error: 'Invalid strength. Use: ' + STUDIO_EDGE_STRENGTHS.join(', ') });
+    }
+
+    try {
+        const result = await pool.query(
+            'UPDATE di_studio_edges SET strength = $1 WHERE id = $2 AND project_id = $3 RETURNING *',
+            [strength, req.params.edgeId, req.params.id]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Edge not found' });
+        res.json({ success: true, edge: result.rows[0] });
+    } catch (err) {
+        console.error('Studio update edge error:', err);
+        res.status(500).json({ error: 'Failed to update edge' });
+    }
+});
+
+// ── DELETE /api/di/studio/projects/:id/edges/:edgeId ──
+// Delete an edge.
+app.delete('/api/di/studio/projects/:id/edges/:edgeId', requireAuth, async (req, res) => {
+    if (!(await checkStudioNodesTable())) return res.status(503).json({ error: 'Concept map tables not available yet' });
+    const access = await studioAccessCheck(req.params.id, req.session.user);
+    if (access.error) return res.status(access.status).json({ error: access.error });
+    if (!access.isOwner) return res.status(403).json({ error: 'Only the project owner can delete edges' });
+
+    const lockCheck = await studioRequireLock(req.params.id, req.session.user);
+    if (lockCheck.error) return res.status(lockCheck.status).json({ error: lockCheck.error });
+
+    try {
+        const result = await pool.query(
+            'DELETE FROM di_studio_edges WHERE id = $1 AND project_id = $2 RETURNING id',
+            [req.params.edgeId, req.params.id]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Edge not found' });
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Studio delete edge error:', err);
+        res.status(500).json({ error: 'Failed to delete edge' });
+    }
+});
+
+// ── GET /api/di/studio/projects/:id/story ──
+// Return all 6 story sections.
+app.get('/api/di/studio/projects/:id/story', requireAuth, async (req, res) => {
+    if (!(await checkStudioNodesTable())) return res.status(503).json({ error: 'Story mode tables not available yet' });
+    const access = await studioAccessCheck(req.params.id, req.session.user);
+    if (access.error) return res.status(access.status).json({ error: access.error });
+
+    try {
+        const result = await pool.query(
+            'SELECT * FROM di_studio_story_sections WHERE project_id = $1 ORDER BY section_key',
+            [req.params.id]
+        );
+        res.json({ story_sections: result.rows });
+    } catch (err) {
+        console.error('Studio get story error:', err);
+        res.status(500).json({ error: 'Failed to load story sections' });
+    }
+});
+
+// ── PUT /api/di/studio/projects/:id/story/:sectionKey ──
+// Update a story section's content_text.
+app.put('/api/di/studio/projects/:id/story/:sectionKey', requireAuth, async (req, res) => {
+    if (!(await checkStudioNodesTable())) return res.status(503).json({ error: 'Story mode tables not available yet' });
+    const access = await studioAccessCheck(req.params.id, req.session.user);
+    if (access.error) return res.status(access.status).json({ error: access.error });
+    if (!access.isOwner) return res.status(403).json({ error: 'Only the project owner can edit story sections' });
+
+    const lockCheck = await studioRequireLock(req.params.id, req.session.user);
+    if (lockCheck.error) return res.status(lockCheck.status).json({ error: lockCheck.error });
+
+    const sectionKey = req.params.sectionKey;
+    if (!STUDIO_STORY_KEYS.includes(sectionKey)) {
+        return res.status(400).json({ error: 'Invalid story section key' });
+    }
+
+    const { content_text } = req.body;
+    if (content_text === undefined) return res.status(400).json({ error: 'content_text is required' });
+    const clean = sanitizeStudioText(String(content_text).slice(0, 5000));
+
+    try {
+        const result = await pool.query(`
+            UPDATE di_studio_story_sections SET content_text = $1, updated_at = NOW()
+            WHERE project_id = $2 AND section_key = $3
+            RETURNING *
+        `, [clean, req.params.id, sectionKey]);
+
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Story section not found' });
+
+        await pool.query('UPDATE di_studio_projects SET updated_at = NOW() WHERE id = $1', [req.params.id]);
+        res.json({ success: true, section: result.rows[0] });
+    } catch (err) {
+        console.error('Studio update story error:', err);
+        res.status(500).json({ error: 'Failed to update story section' });
+    }
+});
+
+// ── PUT /api/di/studio/projects/:id/default-mode ──
+// Save the user's preferred mode for this project.
+app.put('/api/di/studio/projects/:id/default-mode', requireAuth, async (req, res) => {
+    if (!(await checkStudioDefaultModeCol())) return res.status(503).json({ error: 'default_mode column not available yet' });
+    const access = await studioAccessCheck(req.params.id, req.session.user);
+    if (access.error) return res.status(access.status).json({ error: access.error });
+    if (!access.isOwner) return res.status(403).json({ error: 'Only the project owner can change the default mode' });
+
+    const { mode } = req.body;
+    if (!['concept_map', 'story', 'draft'].includes(mode)) {
+        return res.status(400).json({ error: 'Invalid mode. Use: concept_map, story, draft' });
+    }
+
+    try {
+        await pool.query(
+            'UPDATE di_studio_projects SET default_mode = $1 WHERE id = $2',
+            [mode, req.params.id]
+        );
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Studio update default mode error:', err);
+        res.status(500).json({ error: 'Failed to update default mode' });
+    }
 });
 
 app.listen(PORT, "0.0.0.0", () => console.log("[STARTUP] Server listening on port " + PORT));

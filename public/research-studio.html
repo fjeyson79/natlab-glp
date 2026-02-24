@@ -8,17 +8,32 @@
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
         :root {
-            --ivory: #faf8f4;
-            --clay: #c9a96e;
-            --clay-light: #f0e6d3;
-            --ink: #2c2c2c;
-            --ink-soft: #6b6b6b;
-            --border: #e8e4de;
-            --white: #ffffff;
-            --accent: #1a365d;
-            --shadow: rgba(44, 44, 44, 0.06);
-            --warn: #b45309;
-            --success: #2e7d32;
+            /* RS 2.0 Dark charcoal + emerald */
+            --charcoal:       #1a1a1e;
+            --charcoal-soft:  #232328;
+            --charcoal-card:  #28282e;
+            --charcoal-hover: #2e2e35;
+            --emerald:        #10b981;
+            --emerald-dim:    #065f46;
+            --emerald-glow:   rgba(16, 185, 129, 0.12);
+            --text-primary:   #e8e8ec;
+            --text-secondary: #9ca3af;
+            --text-muted:     #6b7280;
+            --border-dark:    #363640;
+            --border-subtle:  #2a2a32;
+            --danger:         #ef4444;
+            /* Legacy aliases — existing CSS auto-adapts */
+            --ivory:   #1a1a1e;
+            --clay:    #10b981;
+            --clay-light: #065f46;
+            --ink:     #e8e8ec;
+            --ink-soft: #9ca3af;
+            --border:  #363640;
+            --white:   #ffffff;
+            --accent:  #10b981;
+            --shadow:  rgba(0, 0, 0, 0.3);
+            --warn:    #f59e0b;
+            --success: #10b981;
         }
 
         body {
@@ -31,14 +46,15 @@
 
         /* ── Header ── */
         .rs-header {
-            background: linear-gradient(135deg, #a3856a 0%, #b89a7a 100%);
-            color: white;
+            background: linear-gradient(135deg, #1a1a1e 0%, #28282e 100%);
+            color: var(--text-primary);
             padding: 0 28px;
             display: flex;
             align-items: center;
             height: 54px;
             gap: 18px;
-            box-shadow: 0 1px 3px rgba(44, 44, 44, 0.10);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+            border-bottom: 1px solid var(--border-dark);
         }
         .rs-header-back {
             color: rgba(255,255,255,0.75);
@@ -70,8 +86,8 @@
         .rs-wall{
   width: 280px;
   min-width: 240px;
-  background: #fbf7f1;
-  border-right: 1px solid var(--border);
+  background: var(--charcoal-soft);
+  border-right: 1px solid var(--border-dark);
   overflow-y: auto;
   flex-shrink: 0;
 }
@@ -106,11 +122,11 @@
         }
         .rs-proj-card:hover {
             border-color: var(--clay);
-            background: #fdfcfa;
+            background: var(--charcoal-card);
         }
         .rs-proj-card.active {
             border-color: var(--clay);
-            background: #faf6f0;
+            background: var(--charcoal-hover);
         }
         .rs-proj-card-title {
             font-size: 0.86rem;
@@ -132,7 +148,7 @@
             padding: 1px 7px;
             border-radius: 8px;
             background: var(--clay-light);
-            color: #7c6330;
+            color: var(--emerald);
             font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.03em;
@@ -142,7 +158,7 @@
             border-radius: 50%;
             display: inline-block;
         }
-        .rs-status-dot.active   { background: #2e7d32; }
+        .rs-status-dot.active   { background: var(--emerald); }
         .rs-status-dot.onhold   { background: #e65100; }
         .rs-status-dot.completed{ background: #1565c0; }
         .rs-status-dot.archived { background: #9e9e9e; }
@@ -163,7 +179,7 @@
         .rs-create-btn:hover {
             border-color: var(--clay);
             color: var(--ink);
-            background: #fdfcfa;
+            background: var(--charcoal-card);
         }
 
         /* ── Right: Writing Atelier ── */
@@ -272,7 +288,7 @@
 
         /* ── Reflection card (Phase 2: editable) ── */
         .rs-reflection-card {
-            background: linear-gradient(135deg, #faf8f4 0%, #f5f0e8 100%);
+            background: linear-gradient(135deg, var(--charcoal-card) 0%, var(--charcoal-hover) 100%);
             border: 1px solid var(--clay-light);
             border-radius: 10px;
             padding: 24px 28px;
@@ -414,7 +430,7 @@
             color: var(--ink-soft);
             font-size: 0.9rem;
             font-style: italic;
-            background: linear-gradient(135deg, #faf8f4 0%, #f5f0e8 100%);
+            background: linear-gradient(135deg, var(--charcoal-card) 0%, var(--charcoal-hover) 100%);
             border: 1px dashed var(--border);
             border-radius: 10px;
             margin-bottom: 32px;
@@ -458,7 +474,7 @@
             color: var(--ink);
         }
         .rs-section-placeholder {
-            color: #c0bbb2;
+            color: var(--text-muted);
             font-style: italic;
             font-size: 0.86rem;
         }
@@ -479,7 +495,7 @@
             background: var(--white);
             transition: border-color 0.2s;
         }
-        .rs-section-editor:focus { border-color: #8c6e50; box-shadow: 0 0 0 2px rgba(140, 110, 80, 0.1); }
+        .rs-section-editor:focus { border-color: var(--emerald-dim); box-shadow: 0 0 0 2px var(--emerald-glow); }
         .rs-section-save-row {
             display: flex;
             justify-content: flex-end;
@@ -556,15 +572,15 @@
             color: var(--ink);
             transition: all 0.15s;
         }
-        .rs-btn:hover { border-color: var(--clay); background: #fdfcfa; }
+        .rs-btn:hover { border-color: var(--clay); background: var(--charcoal-card); }
         .rs-btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .rs-btn-primary {
             background: #8c6e50;
             color: white;
-            border-color: #8c6e50;
+            border-color: var(--emerald-dim);
         }
         .rs-btn-primary:hover { background: #6e5540; }
-        .rs-btn-primary:disabled { background: #b0a090; border-color: #b0a090; }
+        .rs-btn-primary:disabled { background: var(--text-muted); border-color: var(--text-muted); }
         .rs-btn-sm {
             padding: 4px 10px;
             font-size: 0.76rem;
@@ -678,7 +694,7 @@
         }
         .rs-comment-item.resolved {
             opacity: 0.5;
-            background: #fafafa;
+            background: var(--charcoal-soft);
         }
         .rs-comment-meta {
             font-size: 0.7rem;
@@ -694,7 +710,7 @@
             padding: 1px 6px;
             border-radius: 6px;
             background: var(--clay-light);
-            color: #7c6330;
+            color: var(--emerald);
             font-weight: 600;
         }
         .rs-comment-body {
@@ -762,7 +778,7 @@
             flex-wrap: wrap;
             gap: 2px;
             padding: 5px 8px;
-            background: #f8f6f2;
+            background: var(--charcoal-card);
             border: 1px solid var(--clay);
             border-bottom: none;
             border-radius: 7px 7px 0 0;
@@ -802,12 +818,12 @@
             background: var(--white);
             overflow-y: auto;
         }
-        .rs-ce-editor:focus { border-color: #8c6e50; box-shadow: 0 0 0 2px rgba(140, 110, 80, 0.1); }
+        .rs-ce-editor:focus { border-color: var(--emerald-dim); box-shadow: 0 0 0 2px var(--emerald-glow); }
         .rs-ce-editor h2 { font-family: Georgia, serif; font-size: 1.15rem; font-weight: 400; margin: 12px 0 6px; }
         .rs-ce-editor blockquote { border-left: 3px solid var(--clay); padding-left: 14px; margin: 8px 0; color: var(--ink-soft); }
         .rs-ce-editor table { border-collapse: collapse; width: 100%; margin: 8px 0; }
         .rs-ce-editor td, .rs-ce-editor th { border: 1px solid var(--border); padding: 6px 10px; font-size: 0.85rem; min-width: 60px; }
-        .rs-ce-editor th { background: #f8f6f2; font-weight: 600; }
+        .rs-ce-editor th { background: var(--charcoal-card); font-weight: 600; }
         .rs-ce-editor a { color: var(--accent); text-decoration: underline; }
         .rs-ce-editor ul, .rs-ce-editor ol { margin: 6px 0; padding-left: 24px; }
         .rs-ce-editor p { margin: 4px 0; }
@@ -895,7 +911,7 @@
             transition: border-color 0.12s, background 0.12s;
             font-size: 0.84rem;
         }
-        .rs-evidence-item:hover { border-color: var(--clay); background: #fdfcfa; }
+        .rs-evidence-item:hover { border-color: var(--clay); background: var(--charcoal-card); }
         .rs-evidence-item-meta { font-size: 0.7rem; color: var(--ink-soft); margin-top: 2px; }
 
         /* ── Phase 3: Figures Shelf (left panel) ── */
@@ -917,7 +933,7 @@
             height: 36px;
             border-radius: 4px;
             object-fit: cover;
-            background: #f0ece4;
+            background: var(--charcoal-hover);
             flex-shrink: 0;
         }
         .rs-figure-tile-info { overflow: hidden; }
@@ -1022,7 +1038,7 @@
             border-radius: 8px;
             padding: 12px 16px;
             margin: 10px 0;
-            background: linear-gradient(135deg, #faf8f4 0%, #f5f0e8 100%);
+            background: linear-gradient(135deg, var(--charcoal-card) 0%, var(--charcoal-hover) 100%);
             cursor: pointer;
             font-size: 0.86rem;
         }
@@ -1052,7 +1068,7 @@
             border-right: 1px solid var(--border);
             overflow-y: auto;
             padding: 24px 0;
-            background: #fbf7f1;
+            background: var(--charcoal-soft);
             flex-shrink: 0;
         }
         .rs-pres-nav-item {
@@ -1062,8 +1078,8 @@
             transition: background 0.12s;
             border-left: 3px solid transparent;
         }
-        .rs-pres-nav-item:hover { background: #f5f0e8; }
-        .rs-pres-nav-item.active { background: #f0e6d3; border-left-color: var(--clay); font-weight: 500; }
+        .rs-pres-nav-item:hover { background: var(--charcoal-hover); }
+        .rs-pres-nav-item.active { background: var(--emerald-dim); border-left-color: var(--clay); font-weight: 500; }
         .rs-pres-content {
             flex: 1;
             overflow-y: auto;
@@ -1127,7 +1143,7 @@
             padding: 2px 6px;
             border: 1px solid var(--border);
             border-radius: 3px;
-            background: #f8f6f2;
+            background: var(--charcoal-card);
             cursor: pointer;
             color: var(--ink-soft);
         }
@@ -1150,8 +1166,8 @@
   top:44px;
   right:0;
   min-width:140px;
-  background:#ffffff;
-  border:1px solid #e5e7eb;
+  background:var(--charcoal-card);
+  border:1px solid var(--border-dark);
   border-radius:12px;
   box-shadow:0 10px 22px rgba(0,0,0,0.10);
   padding:6px;
@@ -1170,7 +1186,7 @@
 }
 
 .rs-download-item:hover{
-  background:#f5f7fa;
+  background:var(--charcoal-hover);
 }
 
 /\* ===== Research Studio Toolbar Scaling Fix ===== \*/
@@ -1192,10 +1208,10 @@
 /* Make dropdown always visible (no transparency) */
 #rsDownloadMenu.rs-download-menu{
   display:none;
-  background:#ffffff !important;
+  background:var(--charcoal-card) !important;
   opacity:1 !important;
   visibility:visible !important;
-  border:1px solid #e5e7eb !important;
+  border:1px solid var(--border-dark) !important;
   border-radius:12px !important;
   box-shadow:0 12px 24px rgba(0,0,0,0.15) !important;
   min-width:170px !important;
@@ -1226,9 +1242,9 @@
 
 /* Fix dropdown visibility */
 .rs-download-menu{
-  background:#ffffff !important;
+  background:var(--charcoal-card) !important;
   opacity:1 !important;
-  border:1px solid #e5e7eb !important;
+  border:1px solid var(--border-dark) !important;
   border-radius:12px;
   box-shadow:0 12px 24px rgba(0,0,0,0.15);
   min-width:160px;
@@ -1244,8 +1260,8 @@
 
 /* RS hotfix: make presentation button match download + nudge download menu right */
 .rs-actions .gv-toolbar-icon.gv-toolbar-presentation{
-  background:#ffffff !important;
-  border:1px solid #e5e7eb !important;
+  background:var(--charcoal-card) !important;
+  border:1px solid var(--border-dark) !important;
   color: inherit !important;
 }
 
@@ -1265,10 +1281,426 @@
 #rsDownloadMenu{
   z-index:99999 !important;
   pointer-events:auto !important;
-  background:#ffffff !important;
+  background:var(--charcoal-card) !important;
   opacity:1 !important;
   visibility:visible !important;
 }
+
+/* ═══════════════════════════════════════════════════
+   RS 2.0: Mode Switcher, Concept Map, Story Mode, Genesis
+   ═══════════════════════════════════════════════════ */
+
+/* ── Mode Switcher ── */
+.rs-mode-bar {
+  display: none;
+  align-items: center;
+  gap: 2px;
+  margin-left: 24px;
+  background: var(--charcoal);
+  border-radius: 6px;
+  padding: 2px;
+  border: 1px solid var(--border-dark);
+}
+.rs-mode-bar.visible { display: flex; }
+.rs-mode-btn {
+  padding: 4px 14px;
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+.rs-mode-btn:hover { color: var(--text-secondary); background: var(--charcoal-hover); }
+.rs-mode-btn.active { color: var(--emerald); background: var(--charcoal-hover); }
+
+/* ── Concept Map ── */
+.rs-cmap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  display: none;
+}
+.rs-cmap.visible { display: block; }
+.rs-cmap-svg {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  z-index: 1;
+}
+.rs-cmap-svg line { stroke-width: 1.5; }
+.rs-cmap-svg line.edge-strong        { stroke: var(--emerald); stroke-dasharray: none; }
+.rs-cmap-svg line.edge-moderate       { stroke: var(--emerald-dim); stroke-dasharray: none; }
+.rs-cmap-svg line.edge-exploratory    { stroke: var(--text-muted); stroke-dasharray: 6,4; }
+.rs-cmap-svg line.edge-contradictory  { stroke: var(--danger); stroke-dasharray: 6,4; }
+
+.rs-cmap-node {
+  position: absolute;
+  width: 180px;
+  padding: 14px 16px;
+  border: 1.5px solid var(--border-dark);
+  border-radius: 10px;
+  background: var(--charcoal-card);
+  cursor: pointer;
+  z-index: 2;
+  transform: translate(-50%, -50%);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.rs-cmap-node:hover { border-color: var(--emerald-dim); box-shadow: 0 0 16px var(--emerald-glow); }
+.rs-cmap-node.active-node { border-color: var(--emerald); box-shadow: 0 0 20px var(--emerald-glow); }
+.rs-cmap-node-label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--emerald);
+  margin-bottom: 6px;
+}
+.rs-cmap-node-preview {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  min-height: 1.4em;
+}
+.rs-cmap-node-preview:empty::after {
+  content: 'Click to define...';
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* Core node positions */
+.rs-cmap-node--core_why          { top: 12%; left: 50%; width: 200px; }
+.rs-cmap-node--core_hypothesis   { top: 46%; left: 50%; width: 220px; }
+.rs-cmap-node--core_translation  { top: 36%; left: 82%; }
+.rs-cmap-node--core_landscape    { top: 36%; left: 18%; }
+.rs-cmap-node--core_why_us       { top: 82%; left: 50%; }
+.rs-cmap-node--core_tension      { top: 68%; left: 50%; }
+
+/* Peripheral evidence nodes */
+.rs-cmap-node--evidence {
+  width: 150px;
+  padding: 10px 12px;
+  border-style: dashed;
+  cursor: grab;
+}
+.rs-cmap-node--evidence:active { cursor: grabbing; }
+.rs-cmap-node--evidence .rs-cmap-node-label { color: var(--text-secondary); font-size: 0.58rem; }
+
+/* Inline concept map editor panel */
+.rs-cmap-editor {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 420px;
+  max-width: 90%;
+  background: var(--charcoal-soft);
+  border: 1.5px solid var(--emerald-dim);
+  border-radius: 12px;
+  padding: 20px;
+  z-index: 10;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+}
+.rs-cmap-editor-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--emerald);
+  margin-bottom: 10px;
+}
+.rs-cmap-editor textarea {
+  width: 100%;
+  min-height: 100px;
+  background: var(--charcoal);
+  border: 1px solid var(--border-dark);
+  border-radius: 6px;
+  color: var(--text-primary);
+  padding: 10px;
+  font-size: 0.85rem;
+  font-family: inherit;
+  line-height: 1.5;
+  resize: vertical;
+}
+.rs-cmap-editor textarea:focus { outline: none; border-color: var(--emerald-dim); }
+.rs-cmap-editor-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 10px;
+  gap: 8px;
+}
+.rs-cmap-editor-charcount { font-size: 0.7rem; color: var(--text-muted); }
+
+/* Unlinked Evidence strip */
+.rs-cmap-unlinked {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  background: var(--charcoal-soft);
+  border-top: 1px solid var(--border-dark);
+  padding: 8px 16px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  overflow-x: auto;
+}
+.rs-cmap-unlinked-label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.rs-cmap-unlinked-badge {
+  display: inline-block;
+  background: var(--emerald-dim);
+  color: var(--emerald);
+  font-size: 0.6rem;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 8px;
+  margin-left: 4px;
+}
+.rs-cmap-unlinked-item {
+  flex-shrink: 0;
+  background: var(--charcoal-card);
+  border: 1px dashed var(--border-dark);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: border-color 0.15s;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rs-cmap-unlinked-item:hover { border-color: var(--emerald-dim); }
+
+/* Concept map toolbar */
+.rs-cmap-toolbar {
+  position: absolute;
+  top: 12px; right: 16px;
+  z-index: 5;
+  display: flex;
+  gap: 6px;
+}
+.rs-cmap-toolbar button {
+  padding: 5px 12px;
+  font-size: 0.7rem;
+  border: 1px solid var(--border-dark);
+  border-radius: 5px;
+  background: var(--charcoal-card);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.rs-cmap-toolbar button:hover { border-color: var(--emerald-dim); color: var(--emerald); }
+.rs-cmap-toolbar button.active { border-color: var(--emerald); color: var(--emerald); background: var(--charcoal-hover); }
+
+/* Edge strength picker (small popover) */
+.rs-strength-picker {
+  position: fixed;
+  background: var(--charcoal-soft);
+  border: 1px solid var(--emerald-dim);
+  border-radius: 8px;
+  padding: 8px;
+  z-index: 100;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  display: none;
+}
+.rs-strength-picker.visible { display: block; }
+.rs-strength-option {
+  display: block;
+  width: 100%;
+  padding: 5px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  text-align: left;
+  font-size: 0.75rem;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.rs-strength-option:hover { background: var(--charcoal-hover); color: var(--text-primary); }
+.rs-strength-option.str-strong       { border-left: 3px solid var(--emerald); }
+.rs-strength-option.str-moderate     { border-left: 3px solid var(--emerald-dim); }
+.rs-strength-option.str-exploratory  { border-left: 3px solid var(--text-muted); }
+.rs-strength-option.str-contradictory { border-left: 3px solid var(--danger); }
+
+/* ── Story Mode ── */
+.rs-story {
+  display: none;
+  padding: 32px 40px;
+  max-width: 800px;
+  margin: 0 auto;
+  height: 100%;
+  overflow-y: auto;
+}
+.rs-story.visible { display: block; }
+.rs-story-header {
+  margin-bottom: 28px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-dark);
+}
+.rs-story-title {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 1.4rem;
+  color: var(--text-primary);
+  font-weight: 400;
+  margin-bottom: 4px;
+}
+.rs-story-subtitle {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--emerald-dim);
+  font-weight: 600;
+}
+.rs-story-card {
+  background: var(--charcoal-card);
+  border: 1px solid var(--border-dark);
+  border-radius: 8px;
+  padding: 18px 20px;
+  margin-bottom: 14px;
+  transition: border-color 0.15s;
+}
+.rs-story-card:hover { border-color: var(--border-subtle); }
+.rs-story-card:focus-within { border-color: var(--emerald-dim); }
+.rs-story-card-title {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--emerald);
+  margin-bottom: 4px;
+}
+.rs-story-card-source {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+.rs-story-card textarea {
+  width: 100%;
+  min-height: 80px;
+  background: var(--charcoal);
+  border: 1px solid var(--border-subtle);
+  border-radius: 5px;
+  color: var(--text-primary);
+  padding: 10px;
+  font-size: 0.85rem;
+  font-family: inherit;
+  line-height: 1.5;
+  resize: vertical;
+}
+.rs-story-card textarea:focus { outline: none; border-color: var(--emerald-dim); }
+.rs-story-card textarea:read-only {
+  background: var(--charcoal-soft);
+  cursor: default;
+}
+.rs-story-card-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 6px;
+}
+.rs-story-card-charcount { font-size: 0.65rem; color: var(--text-muted); }
+.rs-story-card-saved {
+  font-size: 0.65rem;
+  color: var(--emerald-dim);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.rs-story-card-saved.show { opacity: 1; }
+.rs-story-lock-msg {
+  padding: 10px 16px;
+  background: var(--charcoal-card);
+  border: 1px solid var(--border-dark);
+  border-radius: 6px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+/* ── Genesis Panel (redesigned create modal) ── */
+.rs-modal--genesis { max-width: 520px; }
+.rs-genesis-intro {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  margin-bottom: 18px;
+  line-height: 1.5;
+}
+.rs-genesis-field {
+  margin-bottom: 14px;
+}
+.rs-genesis-label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 5px;
+}
+.rs-genesis-hint {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  margin-top: 3px;
+}
+.rs-genesis-textarea {
+  width: 100%;
+  min-height: 60px;
+  background: var(--charcoal);
+  border: 1px solid var(--border-dark);
+  border-radius: 6px;
+  color: var(--text-primary);
+  padding: 8px 10px;
+  font-size: 0.85rem;
+  font-family: inherit;
+  line-height: 1.5;
+  resize: vertical;
+}
+.rs-genesis-textarea:focus { outline: none; border-color: var(--emerald-dim); }
+
+/* ── RS 2.0 button overrides ── */
+.rs-btn-emerald {
+  background: var(--emerald);
+  color: #fff;
+  border: none;
+  padding: 7px 18px;
+  border-radius: 5px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.rs-btn-emerald:hover { background: #0d9668; }
+.rs-btn-emerald:disabled { opacity: 0.4; cursor: not-allowed; }
+.rs-btn-ghost {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-dark);
+  padding: 7px 18px;
+  border-radius: 5px;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.rs-btn-ghost:hover { border-color: var(--text-muted); color: var(--text-primary); }
 
 </style>
 </head>
@@ -1277,6 +1709,11 @@
     <div class="rs-header">
         <a href="/upload.html" class="rs-header-back">&larr; Back to Portal</a>
         <span class="rs-header-title">Research Studio</span>
+        <div class="rs-mode-bar" id="rsModeBar">
+            <button class="rs-mode-btn active" data-mode="concept_map" onclick="rsSetMode('concept_map')">Concept Map</button>
+            <button class="rs-mode-btn" data-mode="story" onclick="rsSetMode('story')">Story</button>
+            <button class="rs-mode-btn" data-mode="draft" onclick="rsSetMode('draft')">Draft</button>
+        </div>
         <span class="rs-header-user" id="rsUserName"></span>
     </div>
 
@@ -1318,7 +1755,51 @@
                 <p>Where hypotheses are sharpened, evidence is interpreted, and precision medicine takes form.</p>
             </div>
 
-            <!-- Project detail -->
+            <!-- RS 2.0: Concept Map -->
+            <div id="rsConceptMap" class="rs-cmap">
+                <svg class="rs-cmap-svg" id="rsCmapSvg"></svg>
+                <div class="rs-cmap-toolbar" id="rsCmapToolbar">
+                    <button id="rsCmapAddEvidence" onclick="rsCmapAddEvidence()" title="Import evidence from GLP">+ Evidence</button>
+                    <button id="rsCmapLinkBtn" onclick="rsCmapToggleLinking()" title="Link two nodes">Link</button>
+                </div>
+                <!-- Core nodes rendered by JS -->
+                <div id="rsCmapNodes"></div>
+                <!-- Inline editor -->
+                <div class="rs-cmap-editor" id="rsCmapEditor" style="display:none;">
+                    <div class="rs-cmap-editor-label" id="rsCmapEditorLabel"></div>
+                    <textarea id="rsCmapEditorTextarea" maxlength="2000" placeholder="Define this concept..."></textarea>
+                    <div class="rs-cmap-editor-actions">
+                        <span class="rs-cmap-editor-charcount" id="rsCmapEditorCharcount">0 / 2000</span>
+                        <button class="rs-btn-ghost" onclick="rsCmapCloseEditor()">Cancel</button>
+                        <button class="rs-btn-emerald" onclick="rsCmapSaveNode()">Save</button>
+                    </div>
+                </div>
+                <!-- Unlinked evidence strip -->
+                <div class="rs-cmap-unlinked" id="rsCmapUnlinked" style="display:none;">
+                    <span class="rs-cmap-unlinked-label">Unlinked Evidence <span class="rs-cmap-unlinked-badge" id="rsCmapUnlinkedCount">0</span></span>
+                    <div id="rsCmapUnlinkedList" style="display:contents;"></div>
+                </div>
+            </div>
+
+            <!-- RS 2.0: Story Mode -->
+            <div id="rsStoryMode" class="rs-story">
+                <div class="rs-story-header">
+                    <h2 class="rs-story-title" id="rsStoryTitle"></h2>
+                    <div class="rs-story-subtitle">Narrative Architecture</div>
+                </div>
+                <div id="rsStoryLockMsg" class="rs-story-lock-msg" style="display:none;">Acquire the editing lock to edit story sections.</div>
+                <div id="rsStorySections"></div>
+            </div>
+
+            <!-- RS 2.0: Strength picker popover -->
+            <div class="rs-strength-picker" id="rsStrengthPicker">
+                <button class="rs-strength-option str-strong" data-str="strong" onclick="rsCmapPickStrength('strong')">Strong</button>
+                <button class="rs-strength-option str-moderate" data-str="moderate" onclick="rsCmapPickStrength('moderate')">Moderate</button>
+                <button class="rs-strength-option str-exploratory" data-str="exploratory" onclick="rsCmapPickStrength('exploratory')">Exploratory</button>
+                <button class="rs-strength-option str-contradictory" data-str="contradictory" onclick="rsCmapPickStrength('contradictory')">Contradictory</button>
+            </div>
+
+            <!-- Project detail (Draft Mode) -->
             <div id="rsDetail" class="rs-detail">
                 <div class="rs-detail-title" id="rsDetailTitle"></div>
                 <div class="rs-detail-subtitle" id="rsDetailSubtitle"></div>
@@ -1433,7 +1914,7 @@
   <div style="position:relative;">
     <button id="rsDownloadBtn"
             class="gv-toolbar-icon"
-            style="background:#ffffff;border:1px solid #e5e7eb;"
+            style="background:var(--charcoal-card);border:1px solid var(--border-dark);"
             title="Download"
             aria-label="Download" type="button" onclick="return rsDlToggleMenu(event);">
       <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
@@ -1498,14 +1979,30 @@
 
     <!-- Create project modal -->
     <div class="rs-modal-overlay" id="rsCreateModal">
-        <div class="rs-modal">
-            <h3>New Research Project</h3>
-            <input type="text" class="rs-modal-input" id="rsNewTitle"
-                   placeholder="Project title" maxlength="500"
-                   onkeydown="if(event.key==='Enter') rsCreateProject()">
+        <div class="rs-modal rs-modal--genesis">
+            <h3>Genesis: Define Your Research Project</h3>
+            <p class="rs-genesis-intro">Every project begins with a clear WHY and a core hypothesis.</p>
+            <div class="rs-genesis-field">
+                <label class="rs-genesis-label">Project Title <span class="rs-req">*</span></label>
+                <input type="text" class="rs-modal-input" id="rsNewTitle"
+                       placeholder="Working title for your research project" maxlength="500">
+            </div>
+            <div class="rs-genesis-field">
+                <label class="rs-genesis-label">WHY <span class="rs-req">*</span></label>
+                <textarea class="rs-genesis-textarea" id="rsNewWhy" rows="3"
+                          placeholder="Why does this research matter? What problem are you addressing?"
+                          maxlength="2000"></textarea>
+                <div class="rs-genesis-hint">This becomes the foundation of your Concept Map.</div>
+            </div>
+            <div class="rs-genesis-field">
+                <label class="rs-genesis-label">Core Hypothesis <span class="rs-req">*</span></label>
+                <textarea class="rs-genesis-textarea" id="rsNewHypothesis" rows="3"
+                          placeholder="What is the central hypothesis you will test?"
+                          maxlength="2000"></textarea>
+            </div>
             <div class="rs-modal-actions">
-                <button class="rs-btn" onclick="rsCloseCreateModal()">Cancel</button>
-                <button class="rs-btn rs-btn-primary" onclick="rsCreateProject()">Create</button>
+                <button class="rs-btn-ghost" onclick="rsCloseCreateModal()">Cancel</button>
+                <button class="rs-btn-emerald" id="rsGenesisCreateBtn" onclick="rsCreateProject()" disabled>Create Project</button>
             </div>
         </div>
     </div>
@@ -1588,7 +2085,16 @@
         evidenceModalSectionKey: null,
         evidenceSearchTimeout: null,
         presentationOpen: false,
-        presentationIndex: 0
+        presentationIndex: 0,
+        // RS 2.0 state
+        currentMode: 'concept_map',
+        currentNodes: [],
+        currentEdges: [],
+        currentStorySections: [],
+        cmapEditingNode: null,
+        cmapLinkingFrom: null,
+        nodesTableAvailable: false,
+        storyAutosaveTimers: {}
     };
 
     const SECTION_LABELS = {
@@ -1602,6 +2108,22 @@
     };
 
     const SECTION_KEYS = ['aims', 'abstract', 'introduction', 'methodology', 'results', 'discussion', 'conclusion'];
+
+    // RS 2.0 constants
+    const CORE_NODE_TYPES = ['core_why', 'core_hypothesis', 'core_translation', 'core_landscape', 'core_why_us', 'core_tension'];
+    const CORE_NODE_LABELS = {
+        core_why: 'WHY', core_hypothesis: 'CORE HYPOTHESIS', core_translation: 'TRANSLATION / IMPACT',
+        core_landscape: 'COMPETITIVE LANDSCAPE', core_why_us: 'WHY US', core_tension: 'INTELLECTUAL TENSION'
+    };
+    const STORY_SECTIONS = [
+        { key: 'the_problem', title: 'The Problem', source: 'core_why' },
+        { key: 'the_opportunity', title: 'The Opportunity', source: null },
+        { key: 'the_core_idea', title: 'The Core Idea', source: 'core_hypothesis' },
+        { key: 'the_proof', title: 'The Proof', source: null },
+        { key: 'the_implication', title: 'The Implication', source: 'core_translation' },
+        { key: 'why_us', title: 'Why Us', source: 'core_why_us' }
+    ];
+    const EDGE_COLORS = { strong: 'edge-strong', moderate: 'edge-moderate', exploratory: 'edge-exploratory', contradictory: 'edge-contradictory' };
 
     // ── Helpers ──
     function esc(str) {
@@ -1741,16 +2263,37 @@
             RS.currentSections = data.sections || [];
             RS.currentLinks = data.links || [];
             RS.currentFigures = data.figures || [];
+            RS.currentNodes = data.nodes || [];
+            RS.currentEdges = data.edges || [];
+            RS.currentStorySections = data.story_sections || [];
+            RS.nodesTableAvailable = RS.currentNodes.length > 0 || (data.nodes !== undefined);
             RS.lock = data.lock || null;
             RS.editing = false;
             RS.reflectionEditing = false;
+            RS.cmapEditingNode = null;
+            RS.cmapLinkingFrom = null;
 
             // Show comments toggle
             document.getElementById('rsCommentsToggle').style.display = '';
 
+            // Show mode bar if nodes table available
+            var modeBar = document.getElementById('rsModeBar');
+            if (RS.nodesTableAvailable) {
+                modeBar.classList.add('visible');
+                var defaultMode = data.project.default_mode || 'concept_map';
+                rsSetMode(defaultMode, true);
+            } else {
+                modeBar.classList.remove('visible');
+                rsSetMode('draft', true);
+            }
+
             rsRenderDetail();
             rsLoadComments();
             rsRenderFiguresShelf();
+            if (RS.nodesTableAvailable) {
+                rsRenderConceptMap();
+                rsRenderStoryMode();
+            }
         } catch (err) {
             console.error('Open project error:', err);
         }
@@ -1762,10 +2305,13 @@
     function rsRenderDetail() {
         const p = RS.currentProject;
 
-        // Hide empty state, show detail
+        // Hide empty state; detail visibility is managed by rsSetMode
         document.getElementById('rsEmptyState').classList.add('hidden');
         const detail = document.getElementById('rsDetail');
-        detail.classList.add('visible');
+        // Only add visible if we are in draft mode (or no nodes table)
+        if (!RS.nodesTableAvailable || RS.currentMode === 'draft') {
+            detail.classList.add('visible');
+        }
 
         // Title and subtitle
         document.getElementById('rsDetailTitle').textContent = p.title;
@@ -1778,11 +2324,11 @@
         // Reflection
         rsRenderReflection();
 
-        // Gating
-        const reflComplete = isReflectionComplete();
-        const gatedMsg = document.getElementById('rsGatedMsg');
-        const sectionsWrap = document.getElementById('rsSectionsWrap');
-        if (!reflComplete) {
+        // Gating: genesis-based (WHY + Hypothesis defined) — always true for new projects
+        var genesisOk = RS.nodesTableAvailable ? !!(RS.currentProject.genesis_complete) : isReflectionComplete();
+        var gatedMsg = document.getElementById('rsGatedMsg');
+        var sectionsWrap = document.getElementById('rsSectionsWrap');
+        if (!genesisOk) {
             gatedMsg.style.display = '';
             sectionsWrap.classList.add('rs-sections-gated');
         } else {
@@ -1815,7 +2361,7 @@
         const bar = document.getElementById('rsLockBar');
         bar.innerHTML = '';
 
-        const reflComplete = isReflectionComplete();
+        var reflComplete = RS.nodesTableAvailable ? !!(RS.currentProject && RS.currentProject.genesis_complete) : isReflectionComplete();
 
         if (RS.editing) {
             // Currently editing: pulsing dot indicator + Save + Stop editing
@@ -1864,6 +2410,12 @@
                 rsRenderLockBar();
                 rsRenderSections();
                 rsRenderFiguresShelf();
+                // RS 2.0: refresh concept map toolbar and story mode editability
+                if (RS.nodesTableAvailable) {
+                    var toolbar = document.getElementById('rsCmapToolbar');
+                    if (toolbar) toolbar.style.display = (RS.currentMode === 'concept_map') ? '' : 'none';
+                    rsRenderStoryMode();
+                }
                 // Start silent lock renew (every 10 min for 15 min lock) and expiry watch
                 RS.lockRenewInterval = setInterval(rsRenewLock, 10 * 60 * 1000);
                 rsStartExpiryWatch();
@@ -2683,32 +3235,56 @@
     }
 
     // ══════════════════════════════════════════════════════════
-    // Create project modal (unchanged from Phase 1)
+    // Genesis Panel (RS 2.0 project creation)
     // ══════════════════════════════════════════════════════════
     function rsOpenCreateModal() {
         document.getElementById('rsNewTitle').value = '';
+        var whyEl = document.getElementById('rsNewWhy');
+        var hypEl = document.getElementById('rsNewHypothesis');
+        if (whyEl) whyEl.value = '';
+        if (hypEl) hypEl.value = '';
+        rsGenesisValidate();
         document.getElementById('rsCreateModal').classList.add('active');
-        setTimeout(() => document.getElementById('rsNewTitle').focus(), 100);
+        setTimeout(function() { document.getElementById('rsNewTitle').focus(); }, 100);
     }
 
     function rsCloseCreateModal() {
         document.getElementById('rsCreateModal').classList.remove('active');
     }
 
+    function rsGenesisValidate() {
+        var btn = document.getElementById('rsGenesisCreateBtn');
+        if (!btn) return;
+        var title = (document.getElementById('rsNewTitle').value || '').trim();
+        var why = (document.getElementById('rsNewWhy') ? document.getElementById('rsNewWhy').value : '').trim();
+        var hyp = (document.getElementById('rsNewHypothesis') ? document.getElementById('rsNewHypothesis').value : '').trim();
+        btn.disabled = !(title && why && hyp);
+    }
+
+    // Bind validation to genesis fields
+    (function() {
+        ['rsNewTitle', 'rsNewWhy', 'rsNewHypothesis'].forEach(function(id) {
+            var el = document.getElementById(id);
+            if (el) el.addEventListener('input', rsGenesisValidate);
+        });
+    })();
+
     async function rsCreateProject() {
-        const title = document.getElementById('rsNewTitle').value.trim();
-        if (!title) {
-            document.getElementById('rsNewTitle').focus();
-            return;
-        }
+        var title = document.getElementById('rsNewTitle').value.trim();
+        var why = (document.getElementById('rsNewWhy') ? document.getElementById('rsNewWhy').value.trim() : '');
+        var hyp = (document.getElementById('rsNewHypothesis') ? document.getElementById('rsNewHypothesis').value.trim() : '');
+
+        if (!title) { document.getElementById('rsNewTitle').focus(); return; }
+        if (!why) { document.getElementById('rsNewWhy').focus(); return; }
+        if (!hyp) { document.getElementById('rsNewHypothesis').focus(); return; }
 
         try {
-            const resp = await fetch('/api/di/studio/projects', {
+            var resp = await fetch('/api/di/studio/projects', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ title: title })
+                body: JSON.stringify({ title: title, why: why, hypothesis: hyp })
             });
-            const data = await resp.json();
+            var data = await resp.json();
             if (data.success) {
                 rsCloseCreateModal();
                 await rsLoadProjects();
@@ -2737,6 +3313,9 @@
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {
             if (RS.presentationOpen) { rsClosePresentation(); return; }
+            if (RS.cmapEditingNode) { rsCmapCloseEditor(); return; }
+            var picker = document.getElementById('rsStrengthPicker');
+            if (picker && picker.classList.contains('visible')) { picker.classList.remove('visible'); RS._pendingEdge = null; return; }
             rsCloseCreateModal();
             rsCloseEvidenceModal();
             rsCloseLinkPrompt();
@@ -2810,6 +3389,13 @@
     async function rsLinkEvidence(record) {
         if (!RS.currentProjectId || !RS.editing) return;
         const sectionKey = RS.evidenceModalSectionKey;
+
+        // RS 2.0: concept map evidence import
+        if (sectionKey === '__concept_map__') {
+            rsCloseEvidenceModal();
+            rsCmapCreateEvidenceNode(record.evidence_type, record.id, record.filename || (record.evidence_type + ' ' + record.id));
+            return;
+        }
 
         // Determine footnote index
         const existingLinks = RS.currentLinks.filter(function(l) { return l.section_key === sectionKey; });
@@ -3232,6 +3818,460 @@
         rsPresentationGoTo(RS.presentationIndex + delta);
     }
 
+    // ══════════════════════════════════════════════════════════
+    // RS 2.0: Mode Switching
+    // ══════════════════════════════════════════════════════════
+    function rsSetMode(mode, skipSave) {
+        RS.currentMode = mode;
+        // Update mode bar buttons
+        document.querySelectorAll('.rs-mode-btn').forEach(function(btn) {
+            btn.classList.toggle('active', btn.getAttribute('data-mode') === mode);
+        });
+        // Toggle containers
+        var cmap = document.getElementById('rsConceptMap');
+        var story = document.getElementById('rsStoryMode');
+        var detail = document.getElementById('rsDetail');
+        var empty = document.getElementById('rsEmptyState');
+        if (!RS.currentProjectId) {
+            if (cmap) cmap.classList.remove('visible');
+            if (story) story.classList.remove('visible');
+            if (detail) detail.classList.remove('visible');
+            return;
+        }
+        empty.classList.add('hidden');
+        if (cmap) cmap.classList.toggle('visible', mode === 'concept_map');
+        if (story) story.classList.toggle('visible', mode === 'story');
+        if (detail) detail.classList.toggle('visible', mode === 'draft');
+        // Show figures shelf only in draft
+        var figShelf = document.getElementById('rsFiguresShelf');
+        if (figShelf) figShelf.style.display = (mode === 'draft' && RS.currentFigures.length > 0) ? '' : 'none';
+        // Show toolbar only in concept map + editing
+        var toolbar = document.getElementById('rsCmapToolbar');
+        if (toolbar) toolbar.style.display = (mode === 'concept_map' && RS.editing) ? '' : 'none';
+        // Save preference
+        if (!skipSave && RS.currentProjectId && RS.nodesTableAvailable) {
+            fetch('/api/di/studio/projects/' + RS.currentProjectId + '/default-mode', {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mode: mode })
+            }).catch(function() {});
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // RS 2.0: Concept Map
+    // ══════════════════════════════════════════════════════════
+    function rsRenderConceptMap() {
+        var container = document.getElementById('rsCmapNodes');
+        container.innerHTML = '';
+        // Render core nodes
+        CORE_NODE_TYPES.forEach(function(nt) {
+            var node = RS.currentNodes.find(function(n) { return n.node_type === nt; });
+            var div = document.createElement('div');
+            div.className = 'rs-cmap-node rs-cmap-node--' + nt;
+            div.setAttribute('data-node-id', node ? node.id : '');
+            div.setAttribute('data-node-type', nt);
+            div.innerHTML =
+                '<div class="rs-cmap-node-label">' + esc(CORE_NODE_LABELS[nt]) + '</div>' +
+                '<div class="rs-cmap-node-preview">' + esc(node ? node.content_text : '') + '</div>';
+            div.onclick = function(e) { rsCmapNodeClick(nt, node, e); };
+            container.appendChild(div);
+        });
+        // Render evidence peripheral nodes (positioned)
+        RS.currentNodes.filter(function(n) { return n.node_type === 'evidence'; }).forEach(function(node) {
+            var div = document.createElement('div');
+            div.className = 'rs-cmap-node rs-cmap-node--evidence';
+            div.style.left = (node.position_x || 50) + '%';
+            div.style.top = (node.position_y || 85) + '%';
+            div.setAttribute('data-node-id', node.id);
+            div.setAttribute('data-node-type', 'evidence');
+            div.innerHTML =
+                '<div class="rs-cmap-node-label">EVIDENCE</div>' +
+                '<div class="rs-cmap-node-preview">' + esc(node.label || node.content_text) + '</div>';
+            div.onclick = function(e) { rsCmapNodeClick('evidence', node, e); };
+            // Drag support
+            rsCmapMakeDraggable(div, node);
+            container.appendChild(div);
+        });
+        rsCmapDrawEdges();
+        rsCmapRenderUnlinked();
+    }
+
+    function rsCmapNodeClick(nodeType, node, e) {
+        if (RS.cmapLinkingFrom) {
+            // We are in linking mode — this is the target
+            rsCmapLinkTarget(node, e);
+            return;
+        }
+        // Open editor for core nodes; for evidence nodes, allow delete or linking
+        if (nodeType.startsWith('core_') && node) {
+            rsCmapOpenEditor(node);
+        } else if (nodeType === 'evidence' && node) {
+            // Start linking from this node
+            rsCmapStartLinking(node, e);
+        }
+    }
+
+    function rsCmapOpenEditor(node) {
+        RS.cmapEditingNode = node;
+        var editor = document.getElementById('rsCmapEditor');
+        var label = document.getElementById('rsCmapEditorLabel');
+        var textarea = document.getElementById('rsCmapEditorTextarea');
+        var charcount = document.getElementById('rsCmapEditorCharcount');
+        label.textContent = CORE_NODE_LABELS[node.node_type] || node.node_type;
+        textarea.value = node.content_text || '';
+        charcount.textContent = (node.content_text || '').length + ' / 2000';
+        textarea.oninput = function() {
+            charcount.textContent = textarea.value.length + ' / 2000';
+        };
+        editor.style.display = '';
+        // Highlight node
+        document.querySelectorAll('.rs-cmap-node').forEach(function(n) { n.classList.remove('active-node'); });
+        var el = document.querySelector('[data-node-id="' + node.id + '"]');
+        if (el) el.classList.add('active-node');
+        setTimeout(function() { textarea.focus(); }, 50);
+    }
+
+    function rsCmapCloseEditor() {
+        document.getElementById('rsCmapEditor').style.display = 'none';
+        RS.cmapEditingNode = null;
+        document.querySelectorAll('.rs-cmap-node').forEach(function(n) { n.classList.remove('active-node'); });
+    }
+
+    async function rsCmapSaveNode() {
+        if (!RS.cmapEditingNode) return;
+        var textarea = document.getElementById('rsCmapEditorTextarea');
+        var content = textarea.value.trim();
+        try {
+            var resp = await fetch('/api/di/studio/projects/' + RS.currentProjectId + '/nodes/' + RS.cmapEditingNode.id, {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content_text: content })
+            });
+            var data = await resp.json();
+            if (data.success) {
+                // Update local state
+                var idx = RS.currentNodes.findIndex(function(n) { return n.id === RS.cmapEditingNode.id; });
+                if (idx >= 0) RS.currentNodes[idx].content_text = content;
+                // Also update project reflection fields for legacy compat
+                var syncMap = { core_hypothesis: 'hypothesis', core_why: 'intention', core_tension: 'tension' };
+                var reflField = syncMap[RS.cmapEditingNode.node_type];
+                if (reflField && RS.currentProject) RS.currentProject[reflField] = content;
+                rsCmapCloseEditor();
+                rsRenderConceptMap();
+                // Re-check genesis complete
+                if (RS.currentProject) RS.currentProject.genesis_complete = true;
+            } else {
+                alert(data.error || 'Failed to save');
+            }
+        } catch (err) {
+            console.error('Save node error:', err);
+            alert('Network error');
+        }
+    }
+
+    // ── SVG Edge Drawing ──
+    function rsCmapDrawEdges() {
+        var svg = document.getElementById('rsCmapSvg');
+        svg.innerHTML = '';
+        // Draw edges for all core node connections (thin lines to hypothesis center)
+        // Plus user-created edges
+        RS.currentEdges.forEach(function(edge) {
+            var srcEl = document.querySelector('[data-node-id="' + edge.source_node_id + '"]');
+            var tgtEl = document.querySelector('[data-node-id="' + edge.target_node_id + '"]');
+            if (!srcEl || !tgtEl) return;
+            var srcRect = srcEl.getBoundingClientRect();
+            var tgtRect = tgtEl.getBoundingClientRect();
+            var container = svg.getBoundingClientRect();
+            var sx = srcRect.left + srcRect.width / 2 - container.left;
+            var sy = srcRect.top + srcRect.height / 2 - container.top;
+            var tx = tgtRect.left + tgtRect.width / 2 - container.left;
+            var ty = tgtRect.top + tgtRect.height / 2 - container.top;
+            var line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', sx);
+            line.setAttribute('y1', sy);
+            line.setAttribute('x2', tx);
+            line.setAttribute('y2', ty);
+            line.setAttribute('class', EDGE_COLORS[edge.strength] || 'edge-moderate');
+            line.setAttribute('data-edge-id', edge.id);
+            svg.appendChild(line);
+        });
+    }
+
+    // Redraw edges on resize
+    window.addEventListener('resize', function() {
+        if (RS.currentMode === 'concept_map' && RS.currentProjectId) rsCmapDrawEdges();
+    });
+
+    // ── Unlinked Evidence Strip ──
+    function rsCmapRenderUnlinked() {
+        var strip = document.getElementById('rsCmapUnlinked');
+        var list = document.getElementById('rsCmapUnlinkedList');
+        var badge = document.getElementById('rsCmapUnlinkedCount');
+        var evidenceNodes = RS.currentNodes.filter(function(n) { return n.node_type === 'evidence'; });
+        var linkedNodeIds = {};
+        RS.currentEdges.forEach(function(e) { linkedNodeIds[e.source_node_id] = true; linkedNodeIds[e.target_node_id] = true; });
+        var unlinked = evidenceNodes.filter(function(n) { return !linkedNodeIds[n.id]; });
+        badge.textContent = unlinked.length;
+        list.innerHTML = '';
+        if (unlinked.length === 0) {
+            strip.style.display = 'none';
+            return;
+        }
+        strip.style.display = '';
+        unlinked.forEach(function(n) {
+            var item = document.createElement('div');
+            item.className = 'rs-cmap-unlinked-item';
+            item.textContent = n.label || n.content_text || 'Evidence';
+            item.title = n.label || n.content_text;
+            item.onclick = function() { rsCmapStartLinking(n); };
+            list.appendChild(item);
+        });
+    }
+
+    // ── Evidence Import ──
+    function rsCmapAddEvidence() {
+        if (!RS.editing) { alert('Start editing to add evidence.'); return; }
+        // Reuse existing evidence modal but with a concept map callback
+        RS.evidenceModalSectionKey = '__concept_map__';
+        document.getElementById('rsEvidenceModal').classList.add('active');
+        document.getElementById('rsEvidenceSearch').value = '';
+        document.getElementById('rsEvidenceResults').innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:24px;">Search for evidence to import into the concept map.</div>';
+        setTimeout(function() { document.getElementById('rsEvidenceSearch').focus(); }, 100);
+    }
+
+    async function rsCmapCreateEvidenceNode(evidenceType, evidenceId, label) {
+        try {
+            var resp = await fetch('/api/di/studio/projects/' + RS.currentProjectId + '/nodes', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    node_type: 'evidence',
+                    label: label || (evidenceType + ': ' + evidenceId),
+                    content_text: label || '',
+                    position_x: 30 + Math.random() * 40,
+                    position_y: 70 + Math.random() * 15,
+                    evidence_ref_id: evidenceId
+                })
+            });
+            var data = await resp.json();
+            if (data.success) {
+                RS.currentNodes.push(data.node);
+                rsRenderConceptMap();
+            } else {
+                alert(data.error || 'Failed to create evidence node');
+            }
+        } catch (err) {
+            console.error('Create evidence node error:', err);
+        }
+    }
+
+    // ── Draggable peripheral nodes ──
+    function rsCmapMakeDraggable(el, node) {
+        var dragging = false;
+        var startX, startY, startLeft, startTop;
+        el.addEventListener('mousedown', function(e) {
+            if (!RS.editing) return;
+            if (e.button !== 0) return;
+            dragging = true;
+            startX = e.clientX;
+            startY = e.clientY;
+            startLeft = parseFloat(el.style.left);
+            startTop = parseFloat(el.style.top);
+            e.preventDefault();
+        });
+        document.addEventListener('mousemove', function(e) {
+            if (!dragging) return;
+            var container = document.getElementById('rsConceptMap');
+            var rect = container.getBoundingClientRect();
+            var dx = (e.clientX - startX) / rect.width * 100;
+            var dy = (e.clientY - startY) / rect.height * 100;
+            var newX = Math.max(5, Math.min(95, startLeft + dx));
+            var newY = Math.max(5, Math.min(95, startTop + dy));
+            el.style.left = newX + '%';
+            el.style.top = newY + '%';
+            rsCmapDrawEdges();
+        });
+        document.addEventListener('mouseup', function(e) {
+            if (!dragging) return;
+            dragging = false;
+            // Save new position
+            var newX = parseFloat(el.style.left);
+            var newY = parseFloat(el.style.top);
+            fetch('/api/di/studio/projects/' + RS.currentProjectId + '/nodes/' + node.id + '/position', {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ position_x: newX, position_y: newY })
+            }).catch(function() {});
+            // Update local state
+            var n = RS.currentNodes.find(function(nd) { return nd.id === node.id; });
+            if (n) { n.position_x = newX; n.position_y = newY; }
+        });
+    }
+
+    // ── Edge Creation (Linking) ──
+    function rsCmapToggleLinking() {
+        var btn = document.getElementById('rsCmapLinkBtn');
+        if (RS.cmapLinkingFrom) {
+            RS.cmapLinkingFrom = null;
+            btn.classList.remove('active');
+            btn.textContent = 'Link';
+            document.querySelectorAll('.rs-cmap-node').forEach(function(n) { n.classList.remove('active-node'); });
+        } else {
+            alert('Click a source node, then click a target node to create a link.');
+            btn.classList.add('active');
+            btn.textContent = 'Cancel Link';
+        }
+    }
+
+    function rsCmapStartLinking(node, e) {
+        if (!RS.editing) return;
+        RS.cmapLinkingFrom = node;
+        var btn = document.getElementById('rsCmapLinkBtn');
+        btn.classList.add('active');
+        btn.textContent = 'Cancel Link';
+        document.querySelectorAll('.rs-cmap-node').forEach(function(n) { n.classList.remove('active-node'); });
+        var el = document.querySelector('[data-node-id="' + node.id + '"]');
+        if (el) el.classList.add('active-node');
+    }
+
+    function rsCmapLinkTarget(targetNode, evt) {
+        if (!RS.cmapLinkingFrom || !targetNode) return;
+        if (RS.cmapLinkingFrom.id === targetNode.id) {
+            RS.cmapLinkingFrom = null;
+            document.getElementById('rsCmapLinkBtn').classList.remove('active');
+            document.getElementById('rsCmapLinkBtn').textContent = 'Link';
+            document.querySelectorAll('.rs-cmap-node').forEach(function(n) { n.classList.remove('active-node'); });
+            return;
+        }
+        // Show strength picker at mouse position
+        RS._pendingEdge = { source: RS.cmapLinkingFrom.id, target: targetNode.id };
+        var picker = document.getElementById('rsStrengthPicker');
+        picker.style.left = ((evt ? evt.clientX : 400) + 4) + 'px';
+        picker.style.top = ((evt ? evt.clientY : 300) + 4) + 'px';
+        picker.classList.add('visible');
+    }
+
+    async function rsCmapPickStrength(strength) {
+        document.getElementById('rsStrengthPicker').classList.remove('visible');
+        if (!RS._pendingEdge) return;
+        try {
+            var resp = await fetch('/api/di/studio/projects/' + RS.currentProjectId + '/edges', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    source_node_id: RS._pendingEdge.source,
+                    target_node_id: RS._pendingEdge.target,
+                    strength: strength
+                })
+            });
+            var data = await resp.json();
+            if (data.success) {
+                RS.currentEdges.push(data.edge);
+                rsRenderConceptMap();
+            } else {
+                alert(data.error || 'Failed to create link');
+            }
+        } catch (err) {
+            console.error('Create edge error:', err);
+        }
+        RS._pendingEdge = null;
+        RS.cmapLinkingFrom = null;
+        document.getElementById('rsCmapLinkBtn').classList.remove('active');
+        document.getElementById('rsCmapLinkBtn').textContent = 'Link';
+        document.querySelectorAll('.rs-cmap-node').forEach(function(n) { n.classList.remove('active-node'); });
+    }
+
+    // Close strength picker on click outside
+    document.addEventListener('click', function(e) {
+        var picker = document.getElementById('rsStrengthPicker');
+        if (picker && picker.classList.contains('visible') && !picker.contains(e.target)) {
+            picker.classList.remove('visible');
+            RS._pendingEdge = null;
+        }
+    });
+
+    // ══════════════════════════════════════════════════════════
+    // RS 2.0: Story Mode
+    // ══════════════════════════════════════════════════════════
+    function rsRenderStoryMode() {
+        var titleEl = document.getElementById('rsStoryTitle');
+        var container = document.getElementById('rsStorySections');
+        var lockMsg = document.getElementById('rsStoryLockMsg');
+        titleEl.textContent = RS.currentProject ? RS.currentProject.title : '';
+        container.innerHTML = '';
+
+        // Show lock message if not editing
+        lockMsg.style.display = (RS.editing) ? 'none' : '';
+
+        STORY_SECTIONS.forEach(function(sec) {
+            var data = RS.currentStorySections.find(function(s) { return s.section_key === sec.key; });
+            var content = data ? data.content_text : '';
+            // One-time seed: if empty and source node has content
+            if (!content && sec.source) {
+                var sourceNode = RS.currentNodes.find(function(n) { return n.node_type === sec.source; });
+                if (sourceNode && sourceNode.content_text) {
+                    content = sourceNode.content_text;
+                    // Save the seed
+                    if (data) data.content_text = content;
+                }
+            }
+            var card = document.createElement('div');
+            card.className = 'rs-story-card';
+            card.innerHTML =
+                '<div class="rs-story-card-title">' + esc(sec.title) + '</div>' +
+                (sec.source ? '<div class="rs-story-card-source">Derived from: ' + esc(CORE_NODE_LABELS[sec.source] || sec.source) + '</div>' : '') +
+                '<textarea id="rsStory_' + sec.key + '" maxlength="5000" placeholder="Write your narrative for this section..."' +
+                    (RS.editing ? '' : ' readonly') + '>' + esc(content) + '</textarea>' +
+                '<div class="rs-story-card-meta">' +
+                    '<span class="rs-story-card-charcount" id="rsStoryCount_' + sec.key + '">' + content.length + ' / 5000</span>' +
+                    '<span class="rs-story-card-saved" id="rsStorySaved_' + sec.key + '">Saved</span>' +
+                '</div>';
+            container.appendChild(card);
+
+            // Bind autosave
+            var textarea = document.getElementById('rsStory_' + sec.key);
+            var countEl = document.getElementById('rsStoryCount_' + sec.key);
+            if (textarea) {
+                textarea.addEventListener('input', function() {
+                    countEl.textContent = textarea.value.length + ' / 5000';
+                    rsStoryAutosave(sec.key);
+                });
+                textarea.addEventListener('blur', function() {
+                    if (RS.editing) rsStorySaveSection(sec.key);
+                });
+            }
+        });
+    }
+
+    function rsStoryAutosave(key) {
+        if (RS.storyAutosaveTimers[key]) clearTimeout(RS.storyAutosaveTimers[key]);
+        RS.storyAutosaveTimers[key] = setTimeout(function() {
+            rsStorySaveSection(key);
+        }, 2000);
+    }
+
+    async function rsStorySaveSection(key) {
+        if (!RS.editing) return;
+        var textarea = document.getElementById('rsStory_' + key);
+        if (!textarea) return;
+        var content = textarea.value;
+        try {
+            var resp = await fetch('/api/di/studio/projects/' + RS.currentProjectId + '/story/' + key, {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content_text: content })
+            });
+            var data = await resp.json();
+            if (data.success) {
+                var savedEl = document.getElementById('rsStorySaved_' + key);
+                if (savedEl) {
+                    savedEl.classList.add('show');
+                    setTimeout(function() { savedEl.classList.remove('show'); }, 1500);
+                }
+                // Update local state
+                var local = RS.currentStorySections.find(function(s) { return s.section_key === key; });
+                if (local) local.content_text = content;
+            }
+        } catch (err) {
+            console.error('Save story section error:', err);
+        }
+    }
+
     // ── Start ──
     rsInit();
     </script>
@@ -3414,7 +4454,7 @@
     document.addEventListener("keydown", function(e){ if (e.key === "Escape") hide(); });
 
     // Ensure menu is visible above panels
-    menu.style.background = "#ffffff";
+    menu.style.background = "var(--charcoal-card)";
     menu.style.opacity = "1";
     menu.style.visibility = "visible";
     menu.style.zIndex = "9999";
