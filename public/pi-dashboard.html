@@ -2834,6 +2834,80 @@
         </div>
     </div>
 
+                    <!-- D. GLP Conformity legend (static) -->
+                    <div class="glpCard" id="glpcConformityLegend" style="display:none;">
+                        <div class="glpLegend">
+                            <div class="glpLegend__title">How GLP Conformity levels are defined</div>
+                            <div class="glpLegend__sub">GLP Conformity reflects the completeness and internal consistency of documented GLP practices.</div>
+
+                            <div class="glpLegendItem">
+                                <div class="glpLegendItem__badge" style="background:#8ca8c4;">
+                                    <img src="/assets/glp-icons/Hatchling.png" alt="Hatchling" />
+                                </div>
+                                <div class="glpLegendItem__body">
+                                    <div class="glpLegendItem__name">GLP initiation phase &mdash; Hatchling</div>
+                                    <div class="glpLegendItem__label">Interpretation</div>
+                                    <div class="glpLegendItem__text">GLP structures are at an early stage. Documentation, SOPs, and traceability practices are being introduced, but are not yet consistently applied.</div>
+                                    <div class="glpLegendItem__label">Guidance</div>
+                                    <div class="glpLegendItem__text">Establish core SOPs and begin structured documentation of experiments and materials.</div>
+                                </div>
+                            </div>
+
+                            <div class="glpLegendItem">
+                                <div class="glpLegendItem__badge" style="background:#5f9ea0;">
+                                    <img src="/assets/glp-icons/Fledgling.png" alt="Fledgling" />
+                                </div>
+                                <div class="glpLegendItem__body">
+                                    <div class="glpLegendItem__name">GLP emerging &mdash; Fledgling</div>
+                                    <div class="glpLegendItem__label">Interpretation</div>
+                                    <div class="glpLegendItem__text">Initial GLP elements are in place. Documentation practices exist, and selected SOPs, records, or inventories are being used, but coverage and consistency remain limited.</div>
+                                    <div class="glpLegendItem__label">Guidance</div>
+                                    <div class="glpLegendItem__text">Expand SOP coverage and ensure regular use across ongoing experiments.</div>
+                                </div>
+                            </div>
+
+                            <div class="glpLegendItem">
+                                <div class="glpLegendItem__badge" style="background:#1565c0;">
+                                    <img src="/assets/glp-icons/Owl.png" alt="Owl" />
+                                </div>
+                                <div class="glpLegendItem__body">
+                                    <div class="glpLegendItem__name">GLP in development &mdash; Owl</div>
+                                    <div class="glpLegendItem__label">Interpretation</div>
+                                    <div class="glpLegendItem__text">Your documentation practices are developing. SOPs and experimental records are being established, with initial inventory tracking and structured workflows in place.</div>
+                                    <div class="glpLegendItem__label">Guidance</div>
+                                    <div class="glpLegendItem__text">Continue linking experiments to approved SOPs to strengthen evidence alignment.</div>
+                                </div>
+                            </div>
+
+                            <div class="glpLegendItem">
+                                <div class="glpLegendItem__badge" style="background:#2e7d32;">
+                                    <img src="/assets/glp-icons/Eagle-GLP.png" alt="Eagle" />
+                                </div>
+                                <div class="glpLegendItem__body">
+                                    <div class="glpLegendItem__name">GLP consolidated &mdash; Eagle</div>
+                                    <div class="glpLegendItem__label">Interpretation</div>
+                                    <div class="glpLegendItem__text">GLP practices are well established. SOPs, experimental records, training, and inventory systems are consistently applied, with clear traceability across workflows.</div>
+                                    <div class="glpLegendItem__label">Guidance</div>
+                                    <div class="glpLegendItem__text">Maintain consistency and regularly review documentation quality and approvals.</div>
+                                </div>
+                            </div>
+
+                            <div class="glpLegendItem">
+                                <div class="glpLegendItem__badge" style="background:#6a1b9a;">
+                                    <img src="/assets/glp-icons/Dragon-GLP.png" alt="Dragon" />
+                                </div>
+                                <div class="glpLegendItem__body">
+                                    <div class="glpLegendItem__name">GLP fully integrated &mdash; Dragon</div>
+                                    <div class="glpLegendItem__label">Interpretation</div>
+                                    <div class="glpLegendItem__text">GLP is fully integrated into daily laboratory operations. Documentation, approvals, training, and traceability are comprehensive, auditable, and embedded across all activities.</div>
+                                    <div class="glpLegendItem__label">Guidance</div>
+                                    <div class="glpLegendItem__text">Sustain GLP practices and support external audits, collaborations, or regulatory alignment.</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+
     <!-- ==================== BACKUP TAB ==================== -->
     <div class="tab-content" id="tab-backup">
         <!-- Description -->
@@ -9590,10 +9664,12 @@ function dicBuildPdfViewerSrc(fileUrl) {
           const traj = document.getElementById('glpcTrajectoryPanel');
           const evidence = document.getElementById('glpcEvidenceCard');
           const conformity = document.getElementById('glpcConformityCard');
+          const legend = document.getElementById('glpcConformityLegend');
 
           if (traj) traj.style.display = (glpcViewMode === 'progress') ? '' : 'none';
           if (evidence) evidence.style.display = (glpcViewMode === 'status') ? '' : 'none';
           if (conformity) conformity.style.display = (glpcViewMode === 'status') ? '' : 'none';
+          if (legend) legend.style.display = (glpcViewMode === 'status') ? '' : 'none';
         }
 
 </script>
