@@ -3222,7 +3222,9 @@ app.get('/api/di/pending-approvals', requirePI, async (req, res) => {
 app.get('/api/di/lab-files', requirePI, async (req, res) => {
     try {
         const result = await pool.query(
-            `SELECT s.submission_id, s.researcher_id, s.original_filename AS filename, s.file_type AS context_type,
+            `SELECT s.submission_id, s.researcher_id, s.original_filename AS filename,
+                   s.file_type AS file_type,
+                   s.file_type AS context_type,
                     s.status, s.created_at, s.signed_at, s.drive_file_id,
                     COALESCE(s.drive_file_id, s.signed_pdf_path) as r2_object_key,
                     a.name as researcher_name
@@ -3572,7 +3574,9 @@ app.get('/api/di/vision/files', requireAuth, async (req, res) => {
         const presCountCol = hasAssoc ? ', COALESCE(pres_c.cnt, 0)::int as linked_pres_count' : ', 0 as linked_pres_count';
 
         const result = await pool.query(`
-            SELECT s.submission_id, s.researcher_id, s.original_filename AS filename, s.file_type AS context_type,
+            SELECT s.submission_id, s.researcher_id, s.original_filename AS filename,
+                   s.file_type AS file_type,
+                   s.file_type AS context_type,
                    s.status, s.created_at, s.signed_at,
                    COALESCE(s.drive_file_id, s.signed_pdf_path) as r2_object_key,
                    a.name as researcher_name, a.affiliation
