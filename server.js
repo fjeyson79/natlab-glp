@@ -3195,7 +3195,7 @@ app.get('/api/di/pending-approvals', requirePI, async (req, res) => {
             ? ', s.record_origin, s.original_created_at'
             : ', NULL as record_origin, NULL as original_created_at';
         const result = await pool.query(
-            `SELECT s.submission_id, s.researcher_id, s.original_filename AS filename, s.file_type AS context_type,
+            `SELECT s.submission_id, s.researcher_id, s.original_filename AS filename, s.file_type AS file_type, s.file_type AS context_type,
                     s.status, s.created_at, s.ai_review,
                     a.name as researcher_name
                     ${legacyCols}
