@@ -2696,6 +2696,13 @@
                                 <button class="glpWeekNav" id="glpcWeekNext" onclick="glpcNavWeek(1)" title="Next week" disabled>&rsaquo;</button>
                             </div>
                         </div>
+                        <div class="glpc-trajectory-header" id="glpcViewSwitch" style="margin-left:10px;">
+                          <div class="glpc-mode-switch" style="gap:6px;">
+                            <button class="glpc-mode-btn active" id="glpcViewStatus" onclick="glpcSetView('status')">Status</button>
+                            <button class="glpc-mode-btn" id="glpcViewProgress" onclick="glpcSetView('progress')">Progress</button>
+                          </div>
+                        </div>
+
                         <div class="glpHdr__mainRow">
                             <div class="glpHdr__mainLeft">
                                 <div class="glpName" id="glpcName"></div>
@@ -7159,6 +7166,7 @@ function dicBuildPdfViewerSrc(fileUrl) {
             // Show viewer, hide empty state
             document.getElementById('glpcEmptyState').style.display = 'none';
             document.getElementById('glpcHeaderCard').style.display = '';
+            glpcSetView('status');
             document.getElementById('glpcEvidenceCard').style.display = '';
             document.getElementById('glpcConformityCard').style.display = '';
 
@@ -7200,6 +7208,7 @@ function dicBuildPdfViewerSrc(fileUrl) {
 
             document.getElementById('glpcEmptyState').style.display = 'none';
             document.getElementById('glpcHeaderCard').style.display = '';
+            glpcSetView('status');
             document.getElementById('glpcEvidenceCard').style.display = '';
             document.getElementById('glpcConformityCard').style.display = '';
 
@@ -7489,6 +7498,7 @@ function dicBuildPdfViewerSrc(fileUrl) {
 
         function glpcShowNoData() {
             document.getElementById('glpcHeaderCard').style.display = '';
+            glpcSetView('status');
             document.getElementById('glpcEvidenceCard').style.display = 'none';
             document.getElementById('glpcConformityCard').style.display = 'none';
             document.getElementById('glpcLastUpdated').textContent = 'No snapshots available';
@@ -9563,5 +9573,29 @@ function dicBuildPdfViewerSrc(fileUrl) {
         try { setTimeout(() => { try { dicInitInternalDocs(); } catch (e) {} }, 0); } catch (e) {}
     </script>
 <script src="/js/presentation-mode.js"></script>
+<script>
+
+        /* ---- GLP View Toggle (Status / Progress) ---- */
+        let glpcViewMode = 'status';
+
+        function glpcSetView(mode) {
+          glpcViewMode = mode || 'status';
+
+          const btnStatus = document.getElementById('glpcViewStatus');
+          const btnProgress = document.getElementById('glpcViewProgress');
+
+          if (btnStatus) btnStatus.classList.toggle('active', glpcViewMode === 'status');
+          if (btnProgress) btnProgress.classList.toggle('active', glpcViewMode === 'progress');
+
+          const traj = document.getElementById('glpcTrajectoryPanel');
+          const evidence = document.getElementById('glpcEvidenceCard');
+          const conformity = document.getElementById('glpcConformityCard');
+
+          if (traj) traj.style.display = (glpcViewMode === 'progress') ? '' : 'none';
+          if (evidence) evidence.style.display = (glpcViewMode === 'status') ? '' : 'none';
+          if (conformity) conformity.style.display = (glpcViewMode === 'status') ? '' : 'none';
+        }
+
+</script>
 </body>
 </html>
