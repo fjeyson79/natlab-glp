@@ -1955,69 +1955,59 @@ if (fileId && isR2Id(fileId)) {
 
 
 async function createStampedPdf(pdfBuffer, signerName, signedAtIso) {
-    // Stamping is mandatory. If this fails, approval must fail (no silent fallback).
     const { PDFDocument, rgb, StandardFonts } = require("pdf-lib");
 
     const pdfDoc = await PDFDocument.load(pdfBuffer, { ignoreEncryption: true });
     const pages = pdfDoc.getPages();
     if (!pages || pages.length === 0) throw new Error("PDF has no pages");
 
-    const page = pages[0];
-    const { width, height } = page.getSize();
-
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-    const signedAtHuman = new Date(signedAtIso).toLocaleString("sv-SE", { timeZone: "Europe/Stockholm" });
+    const d = new Date(signedAtIso);
+    const signedAtHuman = new Intl.DateTimeFormat("sv-SE", {
+        timeZone: "Europe/Stockholm",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false
+    }).format(d).replace(",", "");
 
-    // Stamp block (top-right)
-    const pad = 24;
-    const boxW = Math.min(300, width * 0.48);
-    const boxH = 72;
-    const x = width - boxW - pad;
-    const y = height - boxH - pad;
+    const text = `APPROVED by ${signerName}, ${signedAtHuman}`;
 
-    page.drawRectangle({
-        x, y,
-        width: boxW,
-        height: boxH,
-        borderWidth: 1,
-        borderColor: rgb(0.70, 0.70, 0.70),
-        color: rgb(1, 1, 1),
-        opacity: 0.95
-    });
+    const green = rgb(0.10, 0.60, 0.20);
+    const fontSize = 8.5;
+    const pad = 10;
+    const boxPadX = 10;
+    const boxPadY = 5;
 
-    page.drawText("APPROVED", {
-        x: x + 12,
-        y: y + boxH - 18,
-        size: 12,
-        font: fontBold,
-        color: rgb(0.10, 0.10, 0.10)
-    });
+    for (const page of pages) {
+        const { width } = page.getSize();
 
-    page.drawText(`Signed by: `, {
-        x: x + 12,
-        y: y + boxH - 36,
-        size: 9,
-        font,
-        color: rgb(0.20, 0.20, 0.20)
-    });
+        const textWidth = font.widthOfTextAtSize(text, fontSize);
+        const boxW = Math.min(width - (pad * 2), textWidth + (boxPadX * 2));
+        const boxH = fontSize + (boxPadY * 2);
+        const x = pad;
+        const y = pad;
 
-    page.drawText(`Signed at: `, {
-        x: x + 12,
-        y: y + boxH - 50,
-        size: 9,
-        font,
-        color: rgb(0.20, 0.20, 0.20)
-    });
+        page.drawRectangle({
+            x,
+            y,
+            width: boxW,
+            height: boxH,
+            borderWidth: 1.1,
+            borderColor: green
+        });
 
-    page.drawText("NAT Lab GLP", {
-        x: x + 12,
-        y: y + 10,
-        size: 8,
-        font,
-        color: rgb(0.30, 0.30, 0.30)
-    });
+        page.drawText(text, {
+            x: x + boxPadX,
+            y: y + boxPadY + 1,
+            size: fontSize,
+            font,
+            color: green
+        });
+    }
 
     const out = await pdfDoc.save();
     return Buffer.from(out);
