@@ -3384,8 +3384,8 @@ app.post('/api/di/vision/submissions/:id/archive', requirePI, async (req, res) =
         if (sub.status === 'ARCHIVED') return res.status(409).json({ error: 'Already archived' });
 
         // Only allow archiving items that are in revision state
-        if (sub.status !== 'REVISION_NEEDED') {
-            return res.status(409).json({ error: 'Only REVISION_NEEDED submissions can be archived' });
+        if (sub.status !== 'REVISION_NEEDED' && sub.status !== 'REVISION') {
+            return res.status(409).json({ error: 'Only revision submissions can be archived' });
         }
 
         await pool.query(
