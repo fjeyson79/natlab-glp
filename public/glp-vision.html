@@ -639,8 +639,8 @@ function gvRenderResults() {
 
 function gvArchiveButtonHtml(fileId, file) {
     try {
-        const role = (gvUser && gvUser.role ? String(gvUser.role) : '').toLowerCase();
-        if (role !== 'pi') return '';
+        const role = (gvUser && gvUser.role ? String(gvUser.role) : '').trim().toLowerCase();
+        if (role !== 'pi' && role !== 'principal_investigator' && role !== 'principal investigator') return '';
         if (!file || file.status !== 'REVISION_NEEDED') return '';
         return `<button class="gv-toolbar-icon" style="background:#ffffff;border:1px solid #e5e7eb;" onclick="gvArchiveSelected(fileId)" title="Archive" aria-label="Archive">Archive</button>`;
     } catch (e) { return ''; }
