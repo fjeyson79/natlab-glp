@@ -2013,12 +2013,11 @@
                 <!-- Status block: icon + maturity/qualifier + timestamp -->
                 <div class="glpHdr__statusRow">
                     <div id="glpMaturityIcon">
-                        <!-- Owl (GLP in development) — default icon -->
-                        <img src="/assets/glp-icons/Owl.png" alt="Owl" />
+                        <!-- Icon set dynamically by loadGlpWeek -->
                     </div>
                     <div class="glpHdr__statusText">
-                        <div class="glpHdr__maturityLine" id="glpStateText">GLP in development</div>
-                        <div class="glpHdr__qualifierLine" id="glpQualifier">Partial implementation</div>
+                        <div class="glpHdr__maturityLine" id="glpStateText">Loading GLP status&hellip;</div>
+                        <div class="glpHdr__qualifierLine" id="glpQualifier"></div>
                     </div>
                     <div class="glpHdr__timestamp" id="glpLastUpdated">Last updated: &mdash;</div>
                 </div>
@@ -2152,8 +2151,8 @@
                             <div class="glpDialAccent" id="glpDialAccent" aria-hidden="true"></div>
                             <div class="glpDialInner">
                                 <div class="glpDialIcon" id="glpDialIcon"></div>
-                                <span class="glpDialState" id="glpDialState">Developing</span>
-                                <span class="glpDialSub" id="glpDialSub">Foundations are forming</span>
+                                <span class="glpDialState" id="glpDialState"></span>
+                                <span class="glpDialSub" id="glpDialSub"></span>
                             </div>
                         </div>
                     </div>
@@ -2161,24 +2160,23 @@
                         <div class="glpConfSection">
                             <div class="glpConfSection__title">What is working well</div>
                             <ul class="glpConfSection__list" id="glpConfWorking">
-                                <li>SOPs are being created and linked to experimental records.</li>
-                                <li>Inventory tracking is active with structured product and sample entries.</li>
+                                <li>Loading&hellip;</li>
                             </ul>
                         </div>
                         <div class="glpConfSection">
                             <div class="glpConfSection__title">Main improvement for next week</div>
                             <ul class="glpConfSection__list" id="glpConfImprovement">
-                                <li>Link remaining experiments to their corresponding approved SOPs.</li>
+                                <li></li>
                             </ul>
                         </div>
                         <div class="glpConfSection">
                             <div class="glpConfSection__title">Trend vs previous weeks</div>
-                            <p class="glpConfSection__text" id="glpConfTrend">Documentation practices have been stable over recent weeks.</p>
+                            <p class="glpConfSection__text" id="glpConfTrend"></p>
                         </div>
                         <div class="glpConfSection">
                             <div class="glpConfSection__title">Focus for the coming week</div>
                             <ul class="glpConfSection__list" id="glpConfFocus">
-                                <li>Continue linking experiments to approved SOPs to strengthen evidence alignment.</li>
+                                <li></li>
                             </ul>
                         </div>
                     </div>
@@ -3722,7 +3720,7 @@ credentials: 'include'
             var dialSub   = document.getElementById('glpDialSub');
             if (dialState) dialState.textContent = '';
             if (dialSub) dialSub.textContent = '';
-            var iconEl = document.querySelector('.glpHdr__icon');
+            var iconEl = document.getElementById('glpMaturityIcon');
             if (iconEl) iconEl.innerHTML = '';
 
             var win1 = document.getElementById('harmonyWin1');
