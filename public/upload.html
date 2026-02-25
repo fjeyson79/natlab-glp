@@ -3713,6 +3713,18 @@ credentials: 'include'
         }
 
         function renderHarmonyPending() {
+            // Neutralize header while loading real snapshot (no mock)
+            var st = document.getElementById('glpStateText');
+            var ql = document.getElementById('glpQualifier');
+            if (st) st.textContent = 'Loading GLP status…';
+            if (ql) ql.textContent = '';
+            var dialState = document.getElementById('glpDialState');
+            var dialSub   = document.getElementById('glpDialSub');
+            if (dialState) dialState.textContent = '';
+            if (dialSub) dialSub.textContent = '';
+            var iconEl = document.querySelector('.glpHdr__icon');
+            if (iconEl) iconEl.innerHTML = '';
+
             var win1 = document.getElementById('harmonyWin1');
             var win2 = document.getElementById('harmonyWin2');
             if (win1) win1.textContent = 'Harmony analysis in progress\u2026';
