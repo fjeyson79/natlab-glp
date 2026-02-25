@@ -1547,8 +1547,8 @@ app.patch('/api/di/submissions/:id', async (req, res) => {
             }
         }
 
-        if (!status || !['PENDING', 'APPROVED', 'REVISION_NEEDED', 'DISCARDED'].includes(status)) {
-            return res.status(400).json({ error: 'status must be PENDING, APPROVED, REVISION_NEEDED, or DISCARDED' });
+        if (!status || !['PENDING', 'APPROVED', 'REVISION_NEEDED', 'DISCARDED', 'ARCHIVED'].includes(status)) {
+            return res.status(400).json({ error: 'status must be PENDING, APPROVED, REVISION_NEEDED, DISCARDED, or ARCHIVED' });
         }
 
         const result = await pool.query(
@@ -3357,13 +3357,44 @@ app.get('/api/di/vision/files', requireAuth, async (req, res) => {
             LEFT JOIN di_allowlist a ON s.researcher_id = a.researcher_id
             ${sopCountJoin}
             ${presCountJoin}
-            WHERE s.researcher_id = $1 AND s.status != 'DISCARDED'
+            WHERE s.researcher_id = $1 AND s.status NOT IN ('DISCARDED', 'ARCHIVED')
             ORDER BY s.created_at DESC
         `, [targetResearcherId]);
 
         res.json({ success: true, files: result.rows, scope, researcher_id: targetResearcherId });
     } catch (err) {
         console.error('[VISION-FILES] Error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/di/vision/submissions/:id/archive — Archive a revision submission (PI only)
+app.post('/api/di/vision/submissions/:id/archive', requirePI, async (req, res) => {
+    try {
+        const id = req.params.id;
+
+        const cur = await pool.query(
+            'SELECT submission_id, status, researcher_id, original_filename FROM di_submissions WHERE submission_id = $1',
+            [id]
+        );
+        if (cur.rows.length === 0) return res.status(404).json({ error: 'Submission not found' });
+
+        const sub = cur.rows[0];
+        if (sub.status === 'ARCHIVED') return res.status(409).json({ error: 'Already archived' });
+
+        // Only allow archiving items that are in revision state
+        if (sub.status !== 'REVISION_NEEDED') {
+            return res.status(409).json({ error: 'Only REVISION_NEEDED submissions can be archived' });
+        }
+
+        await pool.query(
+            "UPDATE di_submissions SET status = 'ARCHIVED', updated_at = NOW() WHERE submission_id = $1",
+            [id]
+        );
+
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[ARCHIVE-SUBMISSION] Error:', err);
         res.status(500).json({ error: 'Server error' });
     }
 });
@@ -9427,7 +9458,7 @@ app.get('/api/di/glp-status/coherence', requireAuth, async (req, res) => {
                 COUNT(*) FILTER (WHERE s.created_at >= b.pw_start AND s.created_at < b.tw_start)::int AS prev_week,
                 COUNT(*) FILTER (WHERE s.status = 'APPROVED')::int AS approved_total
             FROM di_submissions s, b
-            WHERE s.researcher_id = $1 AND s.status != 'DISCARDED'
+            WHERE s.researcher_id = $1 AND s.status NOT IN ('DISCARDED', 'ARCHIVED')
             GROUP BY s.file_type, b.tw_start, b.pw_start
         `, [rid]);
 
