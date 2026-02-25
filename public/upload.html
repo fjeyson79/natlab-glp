@@ -3384,25 +3384,15 @@ credentials: 'include'
             if (scope === 'group') {
                 if (scopeLabel) scopeLabel.textContent = 'Group';
                 if (hint) hint.textContent = 'Viewing your research group\u2019s collective GLP posture';
-                glpSetMockState('GLP consolidated', 'Consistent implementation', 'eagle');
-                glpSetConfContent(
-                    ['SOPs are shared and consistently referenced across group experiments.',
-                     'Training records and inventory tracking are well maintained across the group.'],
-                    'Review and update expiring SOPs to maintain full documentation coverage.',
-                    'Group documentation alignment has improved over recent weeks.',
-                    'Maintain consistency and regularly review documentation quality and approvals.'
-                );
+                /* DEMO seed disabled
+
+*/
             } else {
                 if (scopeLabel) scopeLabel.textContent = 'Individual';
                 if (hint) hint.textContent = 'Viewing your individual GLP posture';
-                glpSetMockState('GLP in development', 'Partial implementation', 'owl');
-                glpSetConfContent(
-                    ['SOPs are being created and linked to experimental records.',
-                     'Inventory tracking is active with structured product and sample entries.'],
-                    'Link remaining experiments to their corresponding approved SOPs.',
-                    'Documentation practices have been stable over recent weeks.',
-                    'Continue linking experiments to approved SOPs to strengthen evidence alignment.'
-                );
+                /* DEMO seed disabled
+
+*/
             }
         }
 
@@ -3485,6 +3475,7 @@ credentials: 'include'
         var glpStatusLoaded = false;
 
         async function loadGlpStatus() {
+            renderHarmonyPending();
             if (glpStatusLoaded) return;
             try {
                 var resp = await fetch('/api/glp/status/weeks', { credentials: 'include' });
