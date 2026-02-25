@@ -1953,6 +1953,76 @@ if (fileId && isR2Id(fileId)) {
     }
 });
 
+
+async function createStampedPdf(pdfBuffer, signerName, signedAtIso) {
+    // Stamping is mandatory. If this fails, approval must fail (no silent fallback).
+    const { PDFDocument, rgb, StandardFonts } = require("pdf-lib");
+
+    const pdfDoc = await PDFDocument.load(pdfBuffer, { ignoreEncryption: true });
+    const pages = pdfDoc.getPages();
+    if (!pages || pages.length === 0) throw new Error("PDF has no pages");
+
+    const page = pages[0];
+    const { width, height } = page.getSize();
+
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+    const signedAtHuman = new Date(signedAtIso).toLocaleString("sv-SE", { timeZone: "Europe/Stockholm" });
+
+    // Stamp block (top-right)
+    const pad = 24;
+    const boxW = Math.min(300, width * 0.48);
+    const boxH = 72;
+    const x = width - boxW - pad;
+    const y = height - boxH - pad;
+
+    page.drawRectangle({
+        x, y,
+        width: boxW,
+        height: boxH,
+        borderWidth: 1,
+        borderColor: rgb(0.70, 0.70, 0.70),
+        color: rgb(1, 1, 1),
+        opacity: 0.95
+    });
+
+    page.drawText("APPROVED", {
+        x: x + 12,
+        y: y + boxH - 18,
+        size: 12,
+        font: fontBold,
+        color: rgb(0.10, 0.10, 0.10)
+    });
+
+    page.drawText(`Signed by: `, {
+        x: x + 12,
+        y: y + boxH - 36,
+        size: 9,
+        font,
+        color: rgb(0.20, 0.20, 0.20)
+    });
+
+    page.drawText(`Signed at: `, {
+        x: x + 12,
+        y: y + boxH - 50,
+        size: 9,
+        font,
+        color: rgb(0.20, 0.20, 0.20)
+    });
+
+    page.drawText("NAT Lab GLP", {
+        x: x + 12,
+        y: y + 10,
+        size: 8,
+        font,
+        color: rgb(0.30, 0.30, 0.30)
+    });
+
+    const out = await pdfDoc.save();
+    return Buffer.from(out);
+}
+
 // ─── Shared approval/revision helpers (used by token-based and inline endpoints) ───
 async function performApproval(submissionId, approvalComment) {
     const result = await pool.query('SELECT * FROM di_submissions WHERE submission_id = $1', [submissionId]);
