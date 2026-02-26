@@ -2337,6 +2337,12 @@
                   </label>
 
                   <label class="gd-toggle" style="margin-top:10px;">
+                      <input type="checkbox" id="gdToggleMeeting">
+                      <span class="gd-switch"></span>
+                      <span class="gd-label">Group Meeting</span>
+                  </label>
+
+                  <label class="gd-toggle" style="margin-top:10px;">
                       <input type="checkbox" id="gdToggleInternal">
                       <span class="gd-switch"></span>
                       <span class="gd-label">Internal documents</span>
@@ -3288,6 +3294,121 @@
         </div>
     </div>
 
+    <!-- ==================== GROUP MEETING TAB ==================== -->
+    <div class="tab-content" id="tab-group-meeting">
+        <div style="display:flex; gap:20px; align-items:flex-start;">
+            <!-- Left: Generator + Schedule -->
+            <div style="flex:1; min-width:0;">
+                <div class="panel">
+                    <div class="panel-header">
+                        <h2><span class="icon">&#128197;</span> Group Meeting Generator</h2>
+                        <button class="btn btn-sm btn-secondary" onclick="mtgRefresh()">Refresh</button>
+                    </div>
+                    <div class="panel-content">
+                        <!-- Config form -->
+                        <div style="background:#f8f9fa;padding:16px;border-radius:10px;margin-bottom:16px;">
+                            <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+                                <div class="form-group" style="margin:0;flex:0 0 150px;">
+                                    <label style="font-size:12px;font-weight:600;">Date</label>
+                                    <input type="date" id="mtgDate" style="padding:6px 8px;font-size:13px;border:1px solid #d1d5db;border-radius:6px;width:100%;">
+                                </div>
+                                <div class="form-group" style="margin:0;flex:0 0 90px;">
+                                    <label style="font-size:12px;font-weight:600;">Time</label>
+                                    <input type="time" id="mtgTime" value="09:00" style="padding:6px 8px;font-size:13px;border:1px solid #d1d5db;border-radius:6px;width:100%;">
+                                </div>
+                                <div class="form-group" style="margin:0;flex:0 0 80px;">
+                                    <label style="font-size:12px;font-weight:600;">Duration</label>
+                                    <input type="number" id="mtgDuration" value="60" min="15" max="180" style="padding:6px 8px;font-size:13px;border:1px solid #d1d5db;border-radius:6px;width:100%;">
+                                </div>
+                                <div class="form-group" style="margin:0;flex:0 0 180px;">
+                                    <label style="font-size:12px;font-weight:600;">Format</label>
+                                    <select id="mtgFormat" style="padding:6px 8px;font-size:13px;border:1px solid #d1d5db;border-radius:6px;width:100%;">
+                                        <option value="deep">1 DATA Deep (30 min)</option>
+                                        <option value="focus">2 DATA Focus (10+10)</option>
+                                        <option value="deep_focus">Deep + Focus</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div style="margin-top:12px;display:flex;gap:8px;">
+                                <button class="btn btn-primary btn-sm" onclick="mtgGenerate()">Generate</button>
+                                <button class="btn btn-secondary btn-sm" onclick="mtgGenerate()">Regenerate</button>
+                                <button class="btn btn-sm" id="mtgLockBtn" onclick="mtgLock()" style="background:#28a745;color:#fff;display:none;">Lock</button>
+                                <button class="btn btn-sm" id="mtgUnlockBtn" onclick="mtgUnlock()" style="background:#dc3545;color:#fff;display:none;">Unlock</button>
+                            </div>
+                            <div id="mtgMessage" style="margin-top:8px;font-size:12px;display:none;"></div>
+                        </div>
+
+                        <!-- Current schedule display -->
+                        <div id="mtgScheduleDisplay" style="display:none;">
+                            <h3 style="font-size:14px;color:#1a365d;margin:0 0 8px;">
+                                <span id="mtgScheduleTitle">Schedule</span>
+                                <span id="mtgStatusBadge" style="font-size:10px;padding:2px 8px;border-radius:8px;margin-left:8px;"></span>
+                            </h3>
+                            <div id="mtgTimeline" style="font-size:13px;line-height:1.7;"></div>
+
+                            <h4 style="font-size:13px;color:#374151;margin:16px 0 6px;">Edit Participants</h4>
+                            <div id="mtgParticipantEditor"></div>
+                            <div style="margin-top:8px;">
+                                <button class="btn btn-sm btn-secondary" onclick="mtgSaveEdits()">Save Changes</button>
+                            </div>
+                        </div>
+
+                        <!-- Month Planner -->
+                        <div style="margin-top:20px;border-top:1px solid #e0e0e0;padding-top:16px;">
+                            <h3 style="font-size:14px;color:#1a365d;margin:0 0 10px;">Auto Plan (Month)</h3>
+                            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+                                <div class="form-group" style="margin:0;flex:0 0 100px;">
+                                    <label style="font-size:12px;font-weight:600;">Weeks</label>
+                                    <input type="number" id="mtgMonthWeeks" value="4" min="1" max="8" style="padding:6px 8px;font-size:13px;border:1px solid #d1d5db;border-radius:6px;width:100%;">
+                                </div>
+                                <div class="form-group" style="margin:0;flex:0 0 160px;">
+                                    <label style="font-size:12px;font-weight:600;">Pattern</label>
+                                    <select id="mtgMonthPattern" style="padding:6px 8px;font-size:13px;border:1px solid #d1d5db;border-radius:6px;width:100%;">
+                                        <option value="alternating">Alternating Deep/Focus</option>
+                                        <option value="deep">All DATA Deep</option>
+                                        <option value="focus">All DATA Focus</option>
+                                    </select>
+                                </div>
+                                <button class="btn btn-sm btn-primary" onclick="mtgMonthPlan()">Generate Month Plan</button>
+                            </div>
+                            <div id="mtgMonthResult" style="margin-top:8px;font-size:12px;"></div>
+                        </div>
+
+                        <!-- Meetings list -->
+                        <div style="margin-top:20px;border-top:1px solid #e0e0e0;padding-top:16px;">
+                            <h3 style="font-size:14px;color:#1a365d;margin:0 0 8px;">All Meetings</h3>
+                            <div id="mtgListBody" style="font-size:13px;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: Speaker Pool -->
+            <div style="flex:0 0 340px;">
+                <div class="panel">
+                    <div class="panel-header">
+                        <h2 style="font-size:15px;"><span class="icon">&#128101;</span> Speaker Pool</h2>
+                        <button class="btn btn-sm btn-secondary" onclick="mtgLoadPool()">Refresh</button>
+                    </div>
+                    <div class="panel-content" style="max-height:600px;overflow-y:auto;">
+                        <table style="width:100%;font-size:12px;border-collapse:collapse;">
+                            <thead>
+                                <tr style="border-bottom:1px solid #e0e0e0;">
+                                    <th style="text-align:left;padding:4px 6px;font-weight:600;">Name</th>
+                                    <th style="text-align:center;padding:4px 3px;font-weight:600;font-size:10px;">Deep</th>
+                                    <th style="text-align:center;padding:4px 3px;font-weight:600;font-size:10px;">Focus</th>
+                                    <th style="text-align:center;padding:4px 3px;font-weight:600;font-size:10px;">Flash</th>
+                                </tr>
+                            </thead>
+                            <tbody id="mtgPoolBody"></tbody>
+                        </table>
+                        <button class="btn btn-sm btn-primary" onclick="mtgSavePool()" style="margin-top:10px;">Save Pool</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- ==================== INTERNAL DOCUMENTS TAB ==================== -->
     <div class="tab-content" id="tab-internal-docs">
         <div class="two-column">
@@ -3493,7 +3614,18 @@ function dicInitEmbedModeFromUrl() {
                   if (el) el.classList.add('active');
                   _gdActivateTopTab();
                   _gdSetInternalToggle(true);
+                  const tm = document.getElementById("gdToggleMeeting"); if (tm) tm.checked = false;
                   if (typeof intdocInit === "function") intdocInit();
+                  return;
+              }
+              if (mode === "meeting") {
+                  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+                  const el = document.getElementById("tab-group-meeting");
+                  if (el) el.classList.add('active');
+                  _gdActivateTopTab();
+                  _gdSetInternalToggle(false);
+                  const tm = document.getElementById("gdToggleMeeting"); if (tm) tm.checked = true;
+                  if (typeof mtgInit === "function") mtgInit();
                   return;
               }
               // default: group docs
@@ -3502,14 +3634,23 @@ function dicInitEmbedModeFromUrl() {
               if (el) el.classList.add('active');
               _gdActivateTopTab();
               _gdSetInternalToggle(false);
+              const tm2 = document.getElementById("gdToggleMeeting"); if (tm2) tm2.checked = false;
               if (typeof loadGroupDocuments === "function") loadGroupDocuments();
           }
 
           (function _wireGroupDocsToggles() {
               const tInternal = document.getElementById("gdToggleInternal");
+              const tMeeting = document.getElementById("gdToggleMeeting");
               if (tInternal) {
                   tInternal.addEventListener("change", () => {
+                      if (tInternal.checked) { if (tMeeting) tMeeting.checked = false; }
                       gdOpenMode(tInternal.checked ? "internal" : "docs");
+                  });
+              }
+              if (tMeeting) {
+                  tMeeting.addEventListener("change", () => {
+                      if (tMeeting.checked) { if (tInternal) tInternal.checked = false; }
+                      gdOpenMode(tMeeting.checked ? "meeting" : "docs");
                   });
               }
 
@@ -3524,6 +3665,328 @@ function dicInitEmbedModeFromUrl() {
           })();
 
           // =====================================================
+
+          // =====================================================
+          // GROUP MEETING GENERATOR
+          // =====================================================
+          let mtgCurrentMeeting = null;
+          let mtgPoolData = [];
+
+          function mtgInit() {
+              // Set default date to next Thursday
+              const dateInput = document.getElementById('mtgDate');
+              if (dateInput && !dateInput.value) {
+                  const now = new Date();
+                  const d = new Date(now);
+                  d.setDate(d.getDate() + ((4 - d.getDay() + 7) % 7 || 7));
+                  dateInput.value = d.toISOString().slice(0, 10);
+              }
+              mtgLoadPool();
+              mtgLoadList();
+          }
+
+          function mtgMsg(text, type) {
+              const el = document.getElementById('mtgMessage');
+              if (!el) return;
+              el.style.display = text ? 'block' : 'none';
+              el.style.color = type === 'error' ? '#dc3545' : type === 'success' ? '#28a745' : '#374151';
+              el.textContent = text;
+          }
+
+          async function mtgGenerate() {
+              const date = document.getElementById('mtgDate').value;
+              const time = document.getElementById('mtgTime').value;
+              const dur = parseInt(document.getElementById('mtgDuration').value) || 60;
+              const fmt = document.getElementById('mtgFormat').value;
+              if (!date) { mtgMsg('Select a date', 'error'); return; }
+              mtgMsg('Generating...', '');
+              try {
+                  const resp = await fetch('/api/meetings/generate', {
+                      method: 'POST', credentials: 'include',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ meeting_date: date, meeting_time: time, duration_minutes: dur, format: fmt })
+                  });
+                  const data = await resp.json();
+                  if (!resp.ok) { mtgMsg(data.error || 'Error', 'error'); return; }
+                  mtgMsg('Draft generated', 'success');
+                  mtgCurrentMeeting = data.meeting;
+                  mtgRenderSchedule();
+                  mtgLoadList();
+              } catch (err) { mtgMsg('Network error', 'error'); }
+          }
+
+          function mtgRenderSchedule() {
+              const m = mtgCurrentMeeting;
+              const display = document.getElementById('mtgScheduleDisplay');
+              if (!m) { display.style.display = 'none'; return; }
+              display.style.display = 'block';
+
+              const dateStr = new Date(m.meeting_date + 'T00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+              document.getElementById('mtgScheduleTitle').textContent = dateStr + ' \u00b7 ' + (m.meeting_time || '09:00').slice(0, 5);
+
+              const badge = document.getElementById('mtgStatusBadge');
+              badge.textContent = m.status;
+              badge.style.background = m.status === 'LOCKED' ? '#d4edda' : '#fff3cd';
+              badge.style.color = m.status === 'LOCKED' ? '#155724' : '#856404';
+
+              document.getElementById('mtgLockBtn').style.display = m.status === 'DRAFT' ? '' : 'none';
+              document.getElementById('mtgUnlockBtn').style.display = m.status === 'LOCKED' ? '' : 'none';
+
+              // Timeline
+              const parts = m.participants || [];
+              let html = '';
+              let t = parseTimeToMin(m.meeting_time || '09:00');
+              parts.forEach(p => {
+                  const end = t + (p.minutes_allocated || 2);
+                  const label = p.slot_type.replace('DATA_', 'DATA ');
+                  const color = p.slot_type === 'DATA_DEEP' ? '#1a365d' : p.slot_type === 'DATA_FOCUS' ? '#2d5a87' : '#6b7280';
+                  html += `<div style="display:flex;gap:8px;align-items:center;padding:2px 0;">
+                      <span style="color:#999;font-size:11px;width:80px;">${minToTime(t)}\u2013${minToTime(end)}</span>
+                      <span style="color:${color};font-weight:600;font-size:12px;width:90px;">${label}</span>
+                      <span style="font-size:13px;">${p.name || p.user_id}</span>
+                  </div>`;
+                  t = end;
+              });
+              document.getElementById('mtgTimeline').innerHTML = html || '<span style="color:#999;">No participants</span>';
+
+              // Editor
+              mtgRenderEditor(parts, m.status === 'LOCKED');
+          }
+
+          function parseTimeToMin(t) { const [h, m] = (t || '09:00').split(':').map(Number); return h * 60 + m; }
+          function minToTime(m) { return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); }
+
+          function mtgRenderEditor(parts, locked) {
+              const container = document.getElementById('mtgParticipantEditor');
+              if (locked) { container.innerHTML = '<span style="font-size:12px;color:#999;">Unlock to edit</span>'; return; }
+
+              let html = '<div style="display:flex;flex-direction:column;gap:4px;">';
+              parts.forEach((p, i) => {
+                  html += `<div style="display:flex;gap:6px;align-items:center;font-size:12px;" data-idx="${i}">
+                      <span style="width:20px;color:#999;">${i + 1}.</span>
+                      <input type="text" value="${p.user_id}" data-field="user_id" style="width:100px;padding:3px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;">
+                      <select data-field="slot_type" style="padding:3px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;">
+                          <option value="DATA_DEEP" ${p.slot_type === 'DATA_DEEP' ? 'selected' : ''}>Deep</option>
+                          <option value="DATA_FOCUS" ${p.slot_type === 'DATA_FOCUS' ? 'selected' : ''}>Focus</option>
+                          <option value="DATA_FLASH" ${p.slot_type === 'DATA_FLASH' ? 'selected' : ''}>Flash</option>
+                      </select>
+                      <button onclick="mtgRemoveRow(this)" style="background:none;border:none;color:#dc3545;cursor:pointer;font-size:14px;">\u00d7</button>
+                      <button onclick="mtgMoveRow(this,-1)" style="background:none;border:none;cursor:pointer;font-size:12px;">\u25b2</button>
+                      <button onclick="mtgMoveRow(this,1)" style="background:none;border:none;cursor:pointer;font-size:12px;">\u25bc</button>
+                  </div>`;
+              });
+              html += '</div>';
+              html += '<button onclick="mtgAddRow()" style="margin-top:6px;font-size:11px;color:#2d5a87;background:none;border:none;cursor:pointer;">+ Add speaker</button>';
+              container.innerHTML = html;
+          }
+
+          function mtgRemoveRow(btn) { btn.closest('[data-idx]').remove(); }
+          function mtgMoveRow(btn, dir) {
+              const row = btn.closest('[data-idx]');
+              const container = row.parentElement;
+              if (dir === -1 && row.previousElementSibling) container.insertBefore(row, row.previousElementSibling);
+              if (dir === 1 && row.nextElementSibling) container.insertBefore(row.nextElementSibling, row);
+          }
+          function mtgAddRow() {
+              const container = document.getElementById('mtgParticipantEditor').querySelector('div');
+              if (!container) return;
+              const idx = container.children.length;
+              const div = document.createElement('div');
+              div.style.cssText = 'display:flex;gap:6px;align-items:center;font-size:12px;';
+              div.setAttribute('data-idx', idx);
+              div.innerHTML = `<span style="width:20px;color:#999;">${idx + 1}.</span>
+                  <input type="text" data-field="user_id" placeholder="user_id" style="width:100px;padding:3px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;">
+                  <select data-field="slot_type" style="padding:3px 6px;border:1px solid #d1d5db;border-radius:4px;font-size:12px;">
+                      <option value="DATA_FLASH" selected>Flash</option>
+                      <option value="DATA_FOCUS">Focus</option>
+                      <option value="DATA_DEEP">Deep</option>
+                  </select>
+                  <button onclick="mtgRemoveRow(this)" style="background:none;border:none;color:#dc3545;cursor:pointer;font-size:14px;">\u00d7</button>
+                  <button onclick="mtgMoveRow(this,-1)" style="background:none;border:none;cursor:pointer;font-size:12px;">\u25b2</button>
+                  <button onclick="mtgMoveRow(this,1)" style="background:none;border:none;cursor:pointer;font-size:12px;">\u25bc</button>`;
+              container.appendChild(div);
+          }
+
+          async function mtgSaveEdits() {
+              if (!mtgCurrentMeeting) return;
+              const rows = document.querySelectorAll('#mtgParticipantEditor [data-idx]');
+              const participants = [];
+              rows.forEach(row => {
+                  const uid = row.querySelector('[data-field="user_id"]').value.trim();
+                  const st = row.querySelector('[data-field="slot_type"]').value;
+                  if (uid) participants.push({ user_id: uid, slot_type: st });
+              });
+              try {
+                  const resp = await fetch('/api/meetings/update-participation', {
+                      method: 'POST', credentials: 'include',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ meeting_id: mtgCurrentMeeting.id, participants })
+                  });
+                  const data = await resp.json();
+                  if (!resp.ok) { mtgMsg(data.error || 'Error', 'error'); return; }
+                  mtgMsg('Saved', 'success');
+                  // Reload meeting
+                  const r2 = await fetch('/api/meetings/' + mtgCurrentMeeting.id, { credentials: 'include' });
+                  const d2 = await r2.json();
+                  mtgCurrentMeeting = d2.meeting;
+                  mtgRenderSchedule();
+              } catch (err) { mtgMsg('Network error', 'error'); }
+          }
+
+          async function mtgLock() {
+              if (!mtgCurrentMeeting) return;
+              if (!confirm('Lock this meeting? It will become visible to researchers.')) return;
+              try {
+                  const resp = await fetch('/api/meetings/lock', {
+                      method: 'POST', credentials: 'include',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ meeting_id: mtgCurrentMeeting.id })
+                  });
+                  const data = await resp.json();
+                  if (!resp.ok) { mtgMsg(data.error || 'Error', 'error'); return; }
+                  mtgMsg('Locked', 'success');
+                  mtgCurrentMeeting.status = 'LOCKED';
+                  mtgRenderSchedule();
+                  mtgLoadList();
+              } catch (err) { mtgMsg('Network error', 'error'); }
+          }
+
+          async function mtgUnlock() {
+              if (!mtgCurrentMeeting) return;
+              const note = prompt('Unlock reason (optional):');
+              try {
+                  const resp = await fetch('/api/meetings/unlock', {
+                      method: 'POST', credentials: 'include',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ meeting_id: mtgCurrentMeeting.id, note: note || '' })
+                  });
+                  const data = await resp.json();
+                  if (!resp.ok) { mtgMsg(data.error || 'Error', 'error'); return; }
+                  mtgMsg('Unlocked', 'success');
+                  mtgCurrentMeeting.status = 'DRAFT';
+                  mtgRenderSchedule();
+                  mtgLoadList();
+              } catch (err) { mtgMsg('Network error', 'error'); }
+          }
+
+          async function mtgMonthPlan() {
+              const weeks = parseInt(document.getElementById('mtgMonthWeeks').value) || 4;
+              const pattern = document.getElementById('mtgMonthPattern').value;
+              const time = document.getElementById('mtgTime').value;
+              const dur = parseInt(document.getElementById('mtgDuration').value) || 60;
+              const el = document.getElementById('mtgMonthResult');
+              el.innerHTML = 'Generating...';
+              try {
+                  const resp = await fetch('/api/meetings/month-plan', {
+                      method: 'POST', credentials: 'include',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ weeks, pattern, meeting_time: time, duration_minutes: dur })
+                  });
+                  const data = await resp.json();
+                  if (!resp.ok) { el.innerHTML = '<span style="color:#dc3545;">' + (data.error || 'Error') + '</span>'; return; }
+                  let html = '';
+                  (data.results || []).forEach(r => {
+                      if (r.skipped) html += `<div style="color:#999;">${r.date} \u2014 skipped (${r.reason})</div>`;
+                      else if (r.error) html += `<div style="color:#dc3545;">${r.date} \u2014 error: ${r.error}</div>`;
+                      else html += `<div style="color:#28a745;">${r.date} \u2014 ${r.format} \u2014 ${r.participants} speakers (DRAFT)</div>`;
+                  });
+                  el.innerHTML = html || 'No results';
+                  mtgLoadList();
+              } catch (err) { el.innerHTML = '<span style="color:#dc3545;">Network error</span>'; }
+          }
+
+          async function mtgLoadList() {
+              const el = document.getElementById('mtgListBody');
+              if (!el) return;
+              try {
+                  const resp = await fetch('/api/meetings/list', { credentials: 'include' });
+                  const data = await resp.json();
+                  if (!data.meetings || data.meetings.length === 0) { el.innerHTML = '<span style="color:#999;">No meetings yet</span>'; return; }
+                  let html = '<table style="width:100%;border-collapse:collapse;font-size:12px;">';
+                  html += '<tr style="border-bottom:1px solid #e0e0e0;"><th style="text-align:left;padding:4px;">Date</th><th style="padding:4px;">Time</th><th style="padding:4px;">Status</th><th style="padding:4px;"></th></tr>';
+                  data.meetings.forEach(m => {
+                      const dateStr = new Date(m.meeting_date + 'T00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+                      const badgeColor = m.status === 'LOCKED' ? '#d4edda' : '#fff3cd';
+                      const textColor = m.status === 'LOCKED' ? '#155724' : '#856404';
+                      html += `<tr style="border-bottom:1px solid #f0f2f5;">
+                          <td style="padding:4px;">${dateStr}</td>
+                          <td style="padding:4px;text-align:center;">${(m.meeting_time || '').slice(0, 5)}</td>
+                          <td style="padding:4px;text-align:center;"><span style="background:${badgeColor};color:${textColor};padding:1px 6px;border-radius:6px;font-size:10px;">${m.status}</span></td>
+                          <td style="padding:4px;"><button onclick="mtgLoadMeeting('${m.id}')" style="font-size:11px;color:#2d5a87;background:none;border:none;cursor:pointer;text-decoration:underline;">View</button></td>
+                      </tr>`;
+                  });
+                  html += '</table>';
+                  el.innerHTML = html;
+              } catch (err) { el.innerHTML = '<span style="color:#dc3545;">Error loading</span>'; }
+          }
+
+          async function mtgLoadMeeting(id) {
+              try {
+                  const resp = await fetch('/api/meetings/' + id, { credentials: 'include' });
+                  const data = await resp.json();
+                  if (data.meeting) {
+                      mtgCurrentMeeting = data.meeting;
+                      document.getElementById('mtgDate').value = data.meeting.meeting_date;
+                      document.getElementById('mtgTime').value = (data.meeting.meeting_time || '09:00').slice(0, 5);
+                      document.getElementById('mtgDuration').value = data.meeting.duration_minutes || 60;
+                      mtgRenderSchedule();
+                  }
+              } catch (err) { mtgMsg('Error loading meeting', 'error'); }
+          }
+
+          async function mtgLoadPool() {
+              try {
+                  const resp = await fetch('/api/meetings/pool', { credentials: 'include' });
+                  const data = await resp.json();
+                  mtgPoolData = data.pool || [];
+                  const tbody = document.getElementById('mtgPoolBody');
+                  if (!tbody) return;
+                  let html = '';
+                  mtgPoolData.forEach(u => {
+                      html += `<tr style="border-bottom:1px solid #f0f2f5;">
+                          <td style="padding:4px 6px;font-size:12px;">${u.name || u.user_id}</td>
+                          <td style="text-align:center;padding:4px 3px;"><input type="checkbox" data-uid="${u.user_id}" data-field="deep" ${u.allow_deep ? 'checked' : ''}></td>
+                          <td style="text-align:center;padding:4px 3px;"><input type="checkbox" data-uid="${u.user_id}" data-field="focus" ${u.allow_focus ? 'checked' : ''}></td>
+                          <td style="text-align:center;padding:4px 3px;"><input type="checkbox" data-uid="${u.user_id}" data-field="flash" ${u.allow_flash ? 'checked' : ''}></td>
+                      </tr>`;
+                  });
+                  tbody.innerHTML = html;
+              } catch (err) { console.error('[MTG] pool load error:', err); }
+          }
+
+          async function mtgSavePool() {
+              const entries = [];
+              const rows = document.querySelectorAll('#mtgPoolBody tr');
+              rows.forEach(row => {
+                  const deepCb = row.querySelector('[data-field="deep"]');
+                  const focusCb = row.querySelector('[data-field="focus"]');
+                  const flashCb = row.querySelector('[data-field="flash"]');
+                  if (deepCb) {
+                      entries.push({
+                          user_id: deepCb.dataset.uid,
+                          allow_deep: deepCb.checked,
+                          allow_focus: focusCb ? focusCb.checked : true,
+                          allow_flash: flashCb ? flashCb.checked : true
+                      });
+                  }
+              });
+              try {
+                  const resp = await fetch('/api/meetings/pool', {
+                      method: 'POST', credentials: 'include',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ entries })
+                  });
+                  const data = await resp.json();
+                  if (data.success) mtgMsg('Pool saved', 'success');
+                  else mtgMsg(data.error || 'Error', 'error');
+              } catch (err) { mtgMsg('Network error', 'error'); }
+          }
+
+          function mtgRefresh() {
+              mtgLoadPool();
+              mtgLoadList();
+              if (mtgCurrentMeeting) mtgLoadMeeting(mtgCurrentMeeting.id);
+          }
 
 
         // DASHBOARD TAB

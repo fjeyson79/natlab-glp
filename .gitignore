@@ -24,3 +24,8 @@ _backup_*/
 
 # Local snapshot test files
 glp-weekly-snapshot-*.json
+
+# local backups / scratch
+public/*.bak*
+server.js.bak*
+GLP Weekly v3 GROUP.json

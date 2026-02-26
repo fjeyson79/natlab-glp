@@ -359,6 +359,13 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
             <div class="gv-micro-title">SCOPE</div>
             <div id="gvScopeList"></div>
         </div>
+        <div class="gv-sidebar-section" id="gvMeetingSidebar" style="display:none;">
+            <div class="gv-micro-title">NEXT MEETING</div>
+            <div id="gvNextMeeting" style="font-size:12px;line-height:1.6;color:#374151;"></div>
+        </div>
+        <div class="gv-sidebar-section" id="gvSpeakingSidebar" style="display:none;">
+            <div id="gvSpeakingBox" style="background:#eef2ff;border:1px solid #c7d2fe;border-radius:8px;padding:10px 12px;font-size:12px;line-height:1.5;"></div>
+        </div>
     </div>
 
     <!-- Finder -->
@@ -465,9 +472,68 @@ async function gvInit() {
 
         gvRenderScopeList();
         await gvLoadFiles();
+        gvLoadNextMeeting();
     } catch (err) {
         console.error('[GV] Init error:', err);
         window.location.href = '/access.html';
+    }
+}
+
+// =====================================================
+// NEXT MEETING (Sidebar)
+// =====================================================
+async function gvLoadNextMeeting() {
+    try {
+        const resp = await fetch('/api/meetings/next', { credentials: 'include' });
+        const data = await resp.json();
+        const m = data.meeting;
+        if (!m) return; // no upcoming locked meeting
+
+        const meetingSection = document.getElementById('gvMeetingSidebar');
+        const meetingEl = document.getElementById('gvNextMeeting');
+        const speakingSection = document.getElementById('gvSpeakingSidebar');
+        const speakingBox = document.getElementById('gvSpeakingBox');
+
+        // Format date
+        const d = new Date(m.meeting_date + 'T00:00');
+        const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+        const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        const dateStr = dayNames[d.getDay()] + ' ' + monthNames[d.getMonth()] + ' ' + d.getDate();
+        const timeStr = (m.meeting_time || '09:00').slice(0, 5);
+
+        const parts = m.participants || [];
+        const deep = parts.filter(p => p.slot_type === 'DATA_DEEP');
+        const focus = parts.filter(p => p.slot_type === 'DATA_FOCUS');
+        const flash = parts.filter(p => p.slot_type === 'DATA_FLASH');
+
+        const userId = gvUser.researcher_id || gvUser.user_id;
+        const isInFlash = flash.some(p => p.user_id === userId);
+        const myDeep = deep.find(p => p.user_id === userId);
+        const myFocus = focus.find(p => p.user_id === userId);
+
+        // Render Next Meeting
+        let html = `<div style="font-weight:600;color:#1a365d;margin-bottom:2px;">Next Meeting \u00b7 ${dateStr}</div>`;
+        html += `<div style="font-size:14px;font-weight:700;color:#1a365d;margin-bottom:4px;">${timeStr}</div>`;
+        if (deep.length > 0) html += `<div><span style="color:#1a365d;font-weight:600;">DATA Deep:</span> ${deep.map(p => p.name || p.user_id).join(', ')}</div>`;
+        if (focus.length > 0) html += `<div><span style="color:#2d5a87;font-weight:600;">DATA Focus:</span> ${focus.map(p => p.name || p.user_id).join(' \u00b7 ')}</div>`;
+        if (flash.length > 0) {
+            const flashLabel = isInFlash ? 'You + Round' : 'Round';
+            html += `<div><span style="color:#6b7280;font-weight:600;">DATA Flash:</span> ${flashLabel}</div>`;
+        }
+        meetingEl.innerHTML = html;
+        meetingSection.style.display = '';
+
+        // Conditional My Speaking Time (only for Deep or Focus)
+        if (myDeep || myFocus) {
+            const slotLabel = myDeep ? 'DATA Deep' : 'DATA Focus';
+            const slotColor = myDeep ? '#1a365d' : '#2d5a87';
+            speakingBox.innerHTML = `<div style="font-weight:700;color:#1a365d;margin-bottom:2px;">My Speaking Time</div>
+                <div style="font-weight:600;color:${slotColor};">${slotLabel}</div>
+                <div style="color:#5a6578;">${dateStr} \u00b7 ${timeStr}</div>`;
+            speakingSection.style.display = '';
+        }
+    } catch (err) {
+        console.error('[GV] Meeting sidebar error:', err);
     }
 }
 

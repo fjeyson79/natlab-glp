@@ -11481,6 +11481,534 @@ app.get('/api/di/studio/projects/:id', requireAuth, async (req, res) => {
 
 
 
+// =====================================================
+// MEETING SCHEDULE (Migration 025)
+// =====================================================
+let meetingTablesExist = null;
+let meetingTablesLastCheck = 0;
+
+async function checkMeetingTables() {
+    const now = Date.now();
+    if (meetingTablesExist === null || meetingTablesExist === false || (now - meetingTablesLastCheck > ROLE_COLUMN_CHECK_INTERVAL)) {
+        try {
+            const result = await pool.query(`
+                SELECT table_name FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'meeting_schedule'
+            `);
+            meetingTablesExist = result.rows.length > 0;
+            meetingTablesLastCheck = now;
+        } catch (err) {
+            meetingTablesExist = false;
+        }
+    }
+    return meetingTablesExist;
+}
+
+// GET /api/meetings/next — public (any authenticated user), returns next locked meeting
+app.get('/api/meetings/next', requireAuth, async (req, res) => {
+    if (!(await checkMeetingTables())) return res.json({ meeting: null });
+    try {
+        const today = new Date().toISOString().slice(0, 10);
+        const mResult = await pool.query(`
+            SELECT id, meeting_date, meeting_time, duration_minutes, status
+            FROM meeting_schedule
+            WHERE meeting_date >= $1 AND status = 'LOCKED'
+            ORDER BY meeting_date ASC LIMIT 1
+        `, [today]);
+        if (mResult.rows.length === 0) return res.json({ meeting: null });
+        const m = mResult.rows[0];
+        const pResult = await pool.query(`
+            SELECT mp.user_id, mp.slot_type, mp.minutes_allocated, mp.order_position,
+                   a.name
+            FROM meeting_participation mp
+            LEFT JOIN di_allowlist a ON a.researcher_id = mp.user_id
+            WHERE mp.meeting_id = $1
+            ORDER BY mp.order_position ASC
+        `, [m.id]);
+        res.json({ meeting: { ...m, participants: pResult.rows } });
+    } catch (err) {
+        console.error('[MEETING] next error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/meetings/:id — PI or any auth for locked meetings
+app.get('/api/meetings/:id', requireAuth, async (req, res) => {
+    if (!(await checkMeetingTables())) return res.status(503).json({ error: 'Meeting tables not available' });
+    try {
+        const mResult = await pool.query('SELECT * FROM meeting_schedule WHERE id = $1', [req.params.id]);
+        if (mResult.rows.length === 0) return res.status(404).json({ error: 'Meeting not found' });
+        const m = mResult.rows[0];
+        if (m.status === 'DRAFT' && req.session.user.role !== 'pi') {
+            return res.status(403).json({ error: 'Draft meetings are only visible to PI' });
+        }
+        const pResult = await pool.query(`
+            SELECT mp.user_id, mp.slot_type, mp.minutes_allocated, mp.order_position, a.name
+            FROM meeting_participation mp
+            LEFT JOIN di_allowlist a ON a.researcher_id = mp.user_id
+            WHERE mp.meeting_id = $1
+            ORDER BY mp.order_position ASC
+        `, [m.id]);
+        res.json({ meeting: { ...m, participants: pResult.rows } });
+    } catch (err) {
+        console.error('[MEETING] get error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/meetings/by-date/:date — PI convenience lookup
+app.get('/api/meetings/by-date/:date', requirePI, async (req, res) => {
+    if (!(await checkMeetingTables())) return res.json({ meeting: null });
+    try {
+        const mResult = await pool.query('SELECT * FROM meeting_schedule WHERE meeting_date = $1', [req.params.date]);
+        if (mResult.rows.length === 0) return res.json({ meeting: null });
+        const m = mResult.rows[0];
+        const pResult = await pool.query(`
+            SELECT mp.user_id, mp.slot_type, mp.minutes_allocated, mp.order_position, a.name
+            FROM meeting_participation mp
+            LEFT JOIN di_allowlist a ON a.researcher_id = mp.user_id
+            WHERE mp.meeting_id = $1
+            ORDER BY mp.order_position ASC
+        `, [m.id]);
+        res.json({ meeting: { ...m, participants: pResult.rows } });
+    } catch (err) {
+        console.error('[MEETING] by-date error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/meetings/list — PI list of all meetings
+app.get('/api/meetings/list', requirePI, async (req, res) => {
+    if (!(await checkMeetingTables())) return res.json({ meetings: [] });
+    try {
+        const result = await pool.query(`
+            SELECT id, meeting_date, meeting_time, duration_minutes, status, created_at, locked_at
+            FROM meeting_schedule ORDER BY meeting_date DESC LIMIT 20
+        `);
+        res.json({ meetings: result.rows });
+    } catch (err) {
+        console.error('[MEETING] list error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/meetings/generate — PI creates/updates draft for a date
+app.post('/api/meetings/generate', requirePI, async (req, res) => {
+    if (!(await checkMeetingTables())) return res.status(503).json({ error: 'Meeting tables not available' });
+    const { meeting_date, meeting_time, duration_minutes, format, participants: manualParticipants } = req.body;
+    if (!meeting_date) return res.status(400).json({ error: 'meeting_date is required' });
+
+    const mTime = meeting_time || '09:00';
+    const mDuration = duration_minutes || 60;
+    const mFormat = format || 'deep'; // deep | focus | custom
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        // Check if meeting exists for this date
+        const existing = await client.query('SELECT id, status FROM meeting_schedule WHERE meeting_date = $1', [meeting_date]);
+        if (existing.rows.length > 0 && existing.rows[0].status === 'LOCKED') {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ error: 'Meeting for this date is locked. Unlock first to regenerate.' });
+        }
+
+        let meetingId;
+        if (existing.rows.length > 0) {
+            meetingId = existing.rows[0].id;
+            await client.query('UPDATE meeting_schedule SET meeting_time = $1, duration_minutes = $2 WHERE id = $3', [mTime, mDuration, meetingId]);
+            await client.query('DELETE FROM meeting_participation WHERE meeting_id = $1', [meetingId]);
+        } else {
+            const ins = await client.query(
+                'INSERT INTO meeting_schedule (meeting_date, meeting_time, duration_minutes, status, created_by) VALUES ($1, $2, $3, $4, $5) RETURNING id',
+                [meeting_date, mTime, mDuration, 'DRAFT', req.session.user.researcher_id]
+            );
+            meetingId = ins.rows[0].id;
+        }
+
+        // If manual participants provided, use them directly
+        if (manualParticipants && Array.isArray(manualParticipants)) {
+            for (let i = 0; i < manualParticipants.length; i++) {
+                const p = manualParticipants[i];
+                const mins = p.slot_type === 'DATA_DEEP' ? 30 : p.slot_type === 'DATA_FOCUS' ? 10 : 2;
+                await client.query(
+                    'INSERT INTO meeting_participation (meeting_id, user_id, slot_type, minutes_allocated, order_position) VALUES ($1,$2,$3,$4,$5)',
+                    [meetingId, p.user_id, p.slot_type, p.minutes_allocated || mins, i]
+                );
+            }
+        } else {
+            // Auto-generate from pool
+            const poolRows = await client.query('SELECT * FROM meeting_speaker_pool');
+            const poolMap = {};
+            poolRows.rows.forEach(r => { poolMap[r.user_id] = r; });
+
+            // Get active researchers/supervisors
+            const activeUsers = await client.query(
+                "SELECT researcher_id, name FROM di_allowlist WHERE active = true AND role IN ('researcher','supervisor') ORDER BY name"
+            );
+
+            // Get recent participation history for fairness
+            const recentMeetings = await client.query(`
+                SELECT mp.user_id, mp.slot_type, ms.meeting_date
+                FROM meeting_participation mp
+                JOIN meeting_schedule ms ON ms.id = mp.meeting_id
+                WHERE ms.meeting_date < $1 AND mp.slot_type IN ('DATA_DEEP','DATA_FOCUS')
+                ORDER BY ms.meeting_date DESC
+            `, [meeting_date]);
+
+            // Build last-major-slot map
+            const lastMajor = {};
+            recentMeetings.rows.forEach(r => {
+                if (!lastMajor[r.user_id]) lastMajor[r.user_id] = r.meeting_date;
+            });
+
+            // Count major slots in last 3 meetings
+            const recentDates = [...new Set(recentMeetings.rows.map(r => r.meeting_date))].slice(0, 3);
+            const recentCount = {};
+            recentMeetings.rows.forEach(r => {
+                if (recentDates.includes(r.meeting_date)) {
+                    recentCount[r.user_id] = (recentCount[r.user_id] || 0) + 1;
+                }
+            });
+
+            // Deterministic seed from meeting_date
+            function seededRandom(seed) {
+                let h = 0;
+                for (let i = 0; i < seed.length; i++) { h = ((h << 5) - h) + seed.charCodeAt(i); h |= 0; }
+                return function() { h = (h * 1103515245 + 12345) & 0x7fffffff; return h / 0x7fffffff; };
+            }
+            const rng = seededRandom(meeting_date);
+
+            // Sort users by fairness: longest since last major slot first
+            const eligible = activeUsers.rows.map(u => ({
+                ...u,
+                pool: poolMap[u.researcher_id] || { allow_deep: false, allow_focus: true, allow_flash: true },
+                lastMajorDate: lastMajor[u.researcher_id] || '1970-01-01',
+                recentMajorCount: recentCount[u.researcher_id] || 0
+            }));
+
+            eligible.sort((a, b) => {
+                if (a.lastMajorDate !== b.lastMajorDate) return a.lastMajorDate < b.lastMajorDate ? -1 : 1;
+                if (a.recentMajorCount !== b.recentMajorCount) return a.recentMajorCount - b.recentMajorCount;
+                return rng() - 0.5;
+            });
+
+            const parts = [];
+            let orderPos = 0;
+            let constraintRelaxed = false;
+
+            if (mFormat === 'deep' || mFormat === 'deep_focus') {
+                // Pick 1 Deep speaker
+                const deepEligible = eligible.filter(u => u.pool.allow_deep);
+                if (deepEligible.length > 0) {
+                    parts.push({ user_id: deepEligible[0].researcher_id, slot_type: 'DATA_DEEP', minutes_allocated: 30, order_position: orderPos++ });
+                }
+            }
+
+            if (mFormat === 'focus' || mFormat === 'deep_focus') {
+                // Pick 2 Focus speakers (excluding Deep speaker)
+                const usedIds = new Set(parts.map(p => p.user_id));
+                const focusEligible = eligible.filter(u => u.pool.allow_focus && !usedIds.has(u.researcher_id));
+                const focusCount = mFormat === 'focus' ? 2 : 2;
+                for (let i = 0; i < Math.min(focusCount, focusEligible.length); i++) {
+                    parts.push({ user_id: focusEligible[i].researcher_id, slot_type: 'DATA_FOCUS', minutes_allocated: 10, order_position: orderPos++ });
+                }
+            }
+
+            // Remaining get Flash
+            const usedIds = new Set(parts.map(p => p.user_id));
+            const flashEligible = eligible.filter(u => u.pool.allow_flash && !usedIds.has(u.researcher_id));
+            // Shuffle flash list deterministically
+            flashEligible.sort(() => rng() - 0.5);
+            flashEligible.forEach(u => {
+                parts.push({ user_id: u.researcher_id, slot_type: 'DATA_FLASH', minutes_allocated: 2, order_position: orderPos++ });
+            });
+
+            for (const p of parts) {
+                await client.query(
+                    'INSERT INTO meeting_participation (meeting_id, user_id, slot_type, minutes_allocated, order_position) VALUES ($1,$2,$3,$4,$5)',
+                    [meetingId, p.user_id, p.slot_type, p.minutes_allocated, p.order_position]
+                );
+            }
+        }
+
+        await client.query('COMMIT');
+
+        // Return the generated meeting
+        const m = await pool.query('SELECT * FROM meeting_schedule WHERE id = $1', [meetingId]);
+        const pResult = await pool.query(`
+            SELECT mp.user_id, mp.slot_type, mp.minutes_allocated, mp.order_position, a.name
+            FROM meeting_participation mp
+            LEFT JOIN di_allowlist a ON a.researcher_id = mp.user_id
+            WHERE mp.meeting_id = $1 ORDER BY mp.order_position ASC
+        `, [meetingId]);
+        res.json({ success: true, meeting: { ...m.rows[0], participants: pResult.rows } });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('[MEETING] generate error:', err);
+        res.status(500).json({ error: 'Server error' });
+    } finally {
+        client.release();
+    }
+});
+
+// POST /api/meetings/lock
+app.post('/api/meetings/lock', requirePI, async (req, res) => {
+    if (!(await checkMeetingTables())) return res.status(503).json({ error: 'Meeting tables not available' });
+    const { meeting_id } = req.body;
+    if (!meeting_id) return res.status(400).json({ error: 'meeting_id required' });
+    try {
+        const result = await pool.query(
+            "UPDATE meeting_schedule SET status = 'LOCKED', locked_at = now() WHERE id = $1 AND status = 'DRAFT' RETURNING id",
+            [meeting_id]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Draft meeting not found' });
+        res.json({ success: true, locked: true });
+    } catch (err) {
+        console.error('[MEETING] lock error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/meetings/unlock
+app.post('/api/meetings/unlock', requirePI, async (req, res) => {
+    if (!(await checkMeetingTables())) return res.status(503).json({ error: 'Meeting tables not available' });
+    const { meeting_id, note } = req.body;
+    if (!meeting_id) return res.status(400).json({ error: 'meeting_id required' });
+    try {
+        const result = await pool.query(
+            "UPDATE meeting_schedule SET status = 'DRAFT', locked_at = null, unlock_note = $2 WHERE id = $1 AND status = 'LOCKED' RETURNING id",
+            [meeting_id, note || null]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Locked meeting not found' });
+        res.json({ success: true, unlocked: true });
+    } catch (err) {
+        console.error('[MEETING] unlock error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/meetings/month-plan — generate drafts for next N Thursdays
+app.post('/api/meetings/month-plan', requirePI, async (req, res) => {
+    if (!(await checkMeetingTables())) return res.status(503).json({ error: 'Meeting tables not available' });
+    const { weeks, pattern, meeting_time, duration_minutes } = req.body;
+    const numWeeks = weeks || 4;
+    const mTime = meeting_time || '09:00';
+    const mDuration = duration_minutes || 60;
+    const mPattern = pattern || 'alternating'; // deep | focus | alternating
+
+    // Find next N Thursdays
+    const dates = [];
+    const now = new Date();
+    let d = new Date(now);
+    d.setDate(d.getDate() + ((4 - d.getDay() + 7) % 7 || 7)); // next Thursday
+    for (let i = 0; i < numWeeks; i++) {
+        dates.push(d.toISOString().slice(0, 10));
+        d = new Date(d);
+        d.setDate(d.getDate() + 7);
+    }
+
+    const results = [];
+    for (let i = 0; i < dates.length; i++) {
+        let fmt;
+        if (mPattern === 'deep') fmt = 'deep';
+        else if (mPattern === 'focus') fmt = 'focus';
+        else fmt = i % 2 === 0 ? 'deep' : 'focus'; // alternating
+
+        try {
+            // Use internal fetch to reuse generate logic
+            const genBody = { meeting_date: dates[i], meeting_time: mTime, duration_minutes: mDuration, format: fmt };
+            // Call generate inline
+            const existing = await pool.query('SELECT id, status FROM meeting_schedule WHERE meeting_date = $1', [dates[i]]);
+            if (existing.rows.length > 0 && existing.rows[0].status === 'LOCKED') {
+                results.push({ date: dates[i], skipped: true, reason: 'Already locked' });
+                continue;
+            }
+            // Delegate to the generate endpoint logic via a self-request simulation
+            // For simplicity, create draft shell here
+            let meetingId;
+            if (existing.rows.length > 0) {
+                meetingId = existing.rows[0].id;
+                await pool.query('UPDATE meeting_schedule SET meeting_time = $1, duration_minutes = $2 WHERE id = $3', [mTime, mDuration, meetingId]);
+                await pool.query('DELETE FROM meeting_participation WHERE meeting_id = $1', [meetingId]);
+            } else {
+                const ins = await pool.query(
+                    'INSERT INTO meeting_schedule (meeting_date, meeting_time, duration_minutes, status, created_by) VALUES ($1,$2,$3,$4,$5) RETURNING id',
+                    [dates[i], mTime, mDuration, 'DRAFT', req.session.user.researcher_id]
+                );
+                meetingId = ins.rows[0].id;
+            }
+
+            // Auto-assign using pool + fairness
+            const poolRows = await pool.query('SELECT * FROM meeting_speaker_pool');
+            const poolMap = {};
+            poolRows.rows.forEach(r => { poolMap[r.user_id] = r; });
+            const activeUsers = await pool.query(
+                "SELECT researcher_id, name FROM di_allowlist WHERE active = true AND role IN ('researcher','supervisor') ORDER BY name"
+            );
+            const recentMeetings = await pool.query(`
+                SELECT mp.user_id, mp.slot_type, ms.meeting_date
+                FROM meeting_participation mp JOIN meeting_schedule ms ON ms.id = mp.meeting_id
+                WHERE ms.meeting_date < $1 AND mp.slot_type IN ('DATA_DEEP','DATA_FOCUS')
+                ORDER BY ms.meeting_date DESC
+            `, [dates[i]]);
+            const lastMajor = {};
+            recentMeetings.rows.forEach(r => { if (!lastMajor[r.user_id]) lastMajor[r.user_id] = r.meeting_date; });
+            const recentDates = [...new Set(recentMeetings.rows.map(r => r.meeting_date))].slice(0, 3);
+            const recentCount = {};
+            recentMeetings.rows.forEach(r => { if (recentDates.includes(r.meeting_date)) recentCount[r.user_id] = (recentCount[r.user_id] || 0) + 1; });
+
+            function seededRandom(seed) {
+                let h = 0;
+                for (let i = 0; i < seed.length; i++) { h = ((h << 5) - h) + seed.charCodeAt(i); h |= 0; }
+                return function() { h = (h * 1103515245 + 12345) & 0x7fffffff; return h / 0x7fffffff; };
+            }
+            const rng = seededRandom(dates[i]);
+
+            const eligible = activeUsers.rows.map(u => ({
+                ...u,
+                pool: poolMap[u.researcher_id] || { allow_deep: false, allow_focus: true, allow_flash: true },
+                lastMajorDate: lastMajor[u.researcher_id] || '1970-01-01',
+                recentMajorCount: recentCount[u.researcher_id] || 0
+            }));
+            eligible.sort((a, b) => {
+                if (a.lastMajorDate !== b.lastMajorDate) return a.lastMajorDate < b.lastMajorDate ? -1 : 1;
+                if (a.recentMajorCount !== b.recentMajorCount) return a.recentMajorCount - b.recentMajorCount;
+                return rng() - 0.5;
+            });
+
+            const parts = [];
+            let orderPos = 0;
+            if (fmt === 'deep' || fmt === 'deep_focus') {
+                const deepE = eligible.filter(u => u.pool.allow_deep);
+                if (deepE.length > 0) parts.push({ user_id: deepE[0].researcher_id, slot_type: 'DATA_DEEP', minutes_allocated: 30, order_position: orderPos++ });
+            }
+            if (fmt === 'focus' || fmt === 'deep_focus') {
+                const used = new Set(parts.map(p => p.user_id));
+                const focusE = eligible.filter(u => u.pool.allow_focus && !used.has(u.researcher_id));
+                for (let j = 0; j < Math.min(2, focusE.length); j++) {
+                    parts.push({ user_id: focusE[j].researcher_id, slot_type: 'DATA_FOCUS', minutes_allocated: 10, order_position: orderPos++ });
+                }
+            }
+            const usedIds = new Set(parts.map(p => p.user_id));
+            const flashE = eligible.filter(u => u.pool.allow_flash && !usedIds.has(u.researcher_id));
+            flashE.sort(() => rng() - 0.5);
+            flashE.forEach(u => { parts.push({ user_id: u.researcher_id, slot_type: 'DATA_FLASH', minutes_allocated: 2, order_position: orderPos++ }); });
+
+            for (const p of parts) {
+                await pool.query(
+                    'INSERT INTO meeting_participation (meeting_id, user_id, slot_type, minutes_allocated, order_position) VALUES ($1,$2,$3,$4,$5)',
+                    [meetingId, p.user_id, p.slot_type, p.minutes_allocated, p.order_position]
+                );
+            }
+            results.push({ date: dates[i], meeting_id: meetingId, format: fmt, participants: parts.length });
+        } catch (err) {
+            console.error('[MEETING] month-plan date error:', dates[i], err);
+            results.push({ date: dates[i], error: err.message });
+        }
+    }
+    res.json({ success: true, results });
+});
+
+// GET /api/meetings/pool — read speaker pool
+app.get('/api/meetings/pool', requirePI, async (req, res) => {
+    if (!(await checkMeetingTables())) return res.json({ pool: [] });
+    try {
+        const activeUsers = await pool.query(
+            "SELECT researcher_id, name, role FROM di_allowlist WHERE active = true AND role IN ('researcher','supervisor') ORDER BY name"
+        );
+        const poolRows = await pool.query('SELECT * FROM meeting_speaker_pool');
+        const poolMap = {};
+        poolRows.rows.forEach(r => { poolMap[r.user_id] = r; });
+        const result = activeUsers.rows.map(u => ({
+            user_id: u.researcher_id,
+            name: u.name,
+            role: u.role,
+            allow_deep: poolMap[u.researcher_id]?.allow_deep ?? false,
+            allow_focus: poolMap[u.researcher_id]?.allow_focus ?? true,
+            allow_flash: poolMap[u.researcher_id]?.allow_flash ?? true
+        }));
+        res.json({ pool: result });
+    } catch (err) {
+        console.error('[MEETING] pool error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/meetings/pool — update speaker pool
+app.post('/api/meetings/pool', requirePI, async (req, res) => {
+    if (!(await checkMeetingTables())) return res.status(503).json({ error: 'Meeting tables not available' });
+    const { entries } = req.body;
+    if (!Array.isArray(entries)) return res.status(400).json({ error: 'entries array required' });
+    try {
+        for (const e of entries) {
+            if (!e.user_id) continue;
+            await pool.query(`
+                INSERT INTO meeting_speaker_pool (user_id, allow_deep, allow_focus, allow_flash, updated_at)
+                VALUES ($1, $2, $3, $4, now())
+                ON CONFLICT (user_id) DO UPDATE SET allow_deep = $2, allow_focus = $3, allow_flash = $4, updated_at = now()
+            `, [e.user_id, !!e.allow_deep, e.allow_focus !== false, e.allow_flash !== false]);
+        }
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[MEETING] pool update error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/meetings/update-participation — PI edits participants on a draft
+app.post('/api/meetings/update-participation', requirePI, async (req, res) => {
+    if (!(await checkMeetingTables())) return res.status(503).json({ error: 'Meeting tables not available' });
+    const { meeting_id, participants } = req.body;
+    if (!meeting_id || !Array.isArray(participants)) return res.status(400).json({ error: 'meeting_id and participants required' });
+    try {
+        const m = await pool.query('SELECT status FROM meeting_schedule WHERE id = $1', [meeting_id]);
+        if (m.rows.length === 0) return res.status(404).json({ error: 'Meeting not found' });
+        if (m.rows[0].status === 'LOCKED') return res.status(409).json({ error: 'Cannot edit locked meeting' });
+
+        await pool.query('DELETE FROM meeting_participation WHERE meeting_id = $1', [meeting_id]);
+        for (let i = 0; i < participants.length; i++) {
+            const p = participants[i];
+            const mins = p.slot_type === 'DATA_DEEP' ? 30 : p.slot_type === 'DATA_FOCUS' ? 10 : 2;
+            await pool.query(
+                'INSERT INTO meeting_participation (meeting_id, user_id, slot_type, minutes_allocated, order_position) VALUES ($1,$2,$3,$4,$5)',
+                [meeting_id, p.user_id, p.slot_type, p.minutes_allocated || mins, i]
+            );
+        }
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[MEETING] update-participation error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/meetings/update-details — PI updates date/time on a draft
+app.post('/api/meetings/update-details', requirePI, async (req, res) => {
+    if (!(await checkMeetingTables())) return res.status(503).json({ error: 'Meeting tables not available' });
+    const { meeting_id, meeting_date, meeting_time, duration_minutes } = req.body;
+    if (!meeting_id) return res.status(400).json({ error: 'meeting_id required' });
+    try {
+        const m = await pool.query('SELECT status FROM meeting_schedule WHERE id = $1', [meeting_id]);
+        if (m.rows.length === 0) return res.status(404).json({ error: 'Meeting not found' });
+        if (m.rows[0].status === 'LOCKED') return res.status(409).json({ error: 'Cannot edit locked meeting' });
+
+        const sets = [];
+        const vals = [];
+        let idx = 1;
+        if (meeting_date) { sets.push(`meeting_date = $${idx++}`); vals.push(meeting_date); }
+        if (meeting_time) { sets.push(`meeting_time = $${idx++}`); vals.push(meeting_time); }
+        if (duration_minutes) { sets.push(`duration_minutes = $${idx++}`); vals.push(duration_minutes); }
+        if (sets.length === 0) return res.status(400).json({ error: 'No fields to update' });
+        vals.push(meeting_id);
+        await pool.query(`UPDATE meeting_schedule SET ${sets.join(', ')} WHERE id = $${idx}`, vals);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[MEETING] update-details error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+
 app.listen(PORT, "0.0.0.0", () => console.log("[STARTUP] Server listening on port " + PORT));
 
 
