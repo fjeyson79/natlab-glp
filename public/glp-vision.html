@@ -267,6 +267,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 }
 .gv-assoc-chip.operational { border-left: 3px solid #2563eb; }
 .gv-assoc-chip.governance { border-left: 3px solid #7c2d3e; }
+.gv-assoc-chip.gv-assoc-clickable { cursor: pointer; }
+.gv-assoc-chip.gv-assoc-clickable:hover { background: #f0f4ff; }
 .gv-assoc-chip.heuristic { border-style: dashed; opacity: 0.7; cursor: pointer; }
 .gv-assoc-chip-remove {
     font-size: 12px; color: #d1d5db; cursor: pointer; margin-left: 2px;
@@ -808,7 +810,8 @@ function gvRenderIntelStrip(container, manual, heuristic, type) {
         const canRemove = gvIsOwnerView && role !== 'pi' && m.created_by === (gvUser && gvUser.researcher_id);
         const removeBtn = canRemove ? `<span class="gv-assoc-chip-remove" onclick="event.stopPropagation();gvUnlinkFile('${m.id}')">&times;</span>` : '';
 
-        html += `<span class="gv-assoc-chip ${layerClass}" title="${gvEsc(m.original_filename)}">
+        html += `<span class="gv-assoc-chip ${layerClass} gv-assoc-clickable" title="${gvEsc(m.original_filename)}"
+            onclick="gvSelectFile('${m.target_id}')">
             <span class="gv-tooltip">Linked by ${roleLabel}</span>
             ${gvEsc(gvTruncate(m.original_filename || '', 30))}${removeBtn}
         </span>`;

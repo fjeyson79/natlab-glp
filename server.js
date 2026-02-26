@@ -3522,6 +3522,16 @@ app.post('/api/di/vision/associations', requireAuth, async (req, res) => {
             return res.status(403).json({ error: 'Cannot create associations for files you do not own' });
         }
 
+        // Researcher/Supervisor: must also own target file (PI unrestricted)
+        const role = (req.session.user.role || '').trim().toLowerCase();
+        if (role !== 'pi' && role !== 'principal_investigator' && role !== 'principal investigator') {
+            const tgtCheck = await pool.query('SELECT researcher_id FROM di_submissions WHERE submission_id = $1', [target_id]);
+            if (tgtCheck.rows.length === 0) return res.status(404).json({ error: 'Target file not found' });
+            if (tgtCheck.rows[0].researcher_id !== req.session.user.researcher_id) {
+                return res.status(403).json({ error: 'You can only link your own documents.' });
+            }
+        }
+
         const hasVisionCols = await checkVisionColumns();
         const userId = req.session.user.researcher_id;
         const userRole = req.session.user.role || 'researcher';
