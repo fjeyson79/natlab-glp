@@ -208,6 +208,20 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
   line-height: 1;
 }
 
+/* Revision toolbar: allow wrap so Archive pill is always reachable */
+.gv-toolbar--revision { flex-wrap: wrap; }
+.gv-archive-btn {
+  width: auto;
+  height: auto;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #92400e;
+  background: #fffbeb;
+  border-color: #f59e0b;
+}
+.gv-archive-btn:hover { background: #fef3c7; }
+
 /* presentation icon background matches PI feel */
 .gv-toolbar-presentation{
   background: #ffffff;
@@ -642,7 +656,7 @@ function gvArchiveButtonHtml(fileId, file) {
         const role = (gvUser && gvUser.role ? String(gvUser.role) : '').trim().toLowerCase();
         if (role !== 'pi' && role !== 'principal_investigator' && role !== 'principal investigator') return '';
         if (!file || (file.status !== 'REVISION_NEEDED' && file.status !== 'REVISION')) return '';
-        return `<button class="gv-toolbar-icon" style="background:#ffffff;border:1px solid #e5e7eb;" onclick="gvArchiveSelected(fileId)" title="Archive" aria-label="Archive">Archive</button>`;
+        return `<button class="gv-toolbar-icon gv-archive-btn" onclick="gvArchiveSelected('${fileId}')" title="Archive" aria-label="Archive">Archive</button>`;
     } catch (e) { return ''; }
 }
 
@@ -691,6 +705,8 @@ function gvSelectFile(fileId) {
 
     // Toolbar
     const toolbar = document.getElementById('gvToolbar');
+    const isRevision = file.status === 'REVISION_NEEDED' || file.status === 'REVISION';
+    toolbar.className = 'gv-viewer-toolbar' + (isRevision ? ' gv-toolbar--revision' : '');
     let statusBadge = '';
     if (file.status === 'PENDING') statusBadge = '<span class="gv-badge pending" style="margin-left:8px;">PENDING</span>';
     else if (file.status === 'APPROVED') statusBadge = '<span class="gv-badge approved" style="margin-left:8px;">APPROVED</span>';
