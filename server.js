@@ -11533,7 +11533,7 @@ app.get('/api/meetings/next', requireAuth, async (req, res) => {
 });
 
 // GET /api/meetings/:id — PI or any auth for locked meetings
-app.get('/api/meetings/:id([0-9a-fA-F-]{36})', requireAuth, async (req, res) => {
+app.get('/api/meetings/:id', requireAuth, async (req, res) => {
     if (!(await checkMeetingTables())) return res.status(503).json({ error: 'Meeting tables not available' });
     try {
         const mResult = await pool.query('SELECT * FROM meeting_schedule WHERE id = $1', [req.params.id]);
