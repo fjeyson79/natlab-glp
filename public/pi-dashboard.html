@@ -4170,7 +4170,7 @@ function dicInitEmbedModeFromUrl() {
                       location_text: meeting.location_text,
                       participants: participants
                   };
-                  const whResp = await fetch('https://n8n-production-4d4f.up.railway.app/webhook-test/meeting-send', {
+                  const whResp = await fetch('https://n8n-production-4d4f.up.railway.app/webhook/meeting-send', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify(payload)
