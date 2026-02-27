@@ -11532,30 +11532,6 @@ app.get('/api/meetings/next', requireAuth, async (req, res) => {
     }
 });
 
-// GET /api/meetings/:id — PI or any auth for locked meetings
-app.get('/api/meetings/:id', requireAuth, async (req, res) => {
-    if (!(await checkMeetingTables())) return res.status(503).json({ error: 'Meeting tables not available' });
-    try {
-        const mResult = await pool.query('SELECT * FROM meeting_schedule WHERE id = $1', [req.params.id]);
-        if (mResult.rows.length === 0) return res.status(404).json({ error: 'Meeting not found' });
-        const m = mResult.rows[0];
-        if (m.status === 'DRAFT' && req.session.user.role !== 'pi') {
-            return res.status(403).json({ error: 'Draft meetings are only visible to PI' });
-        }
-        const pResult = await pool.query(`
-            SELECT mp.user_id, mp.slot_type, mp.minutes_allocated, mp.order_position, a.name
-            FROM meeting_participation mp
-            LEFT JOIN di_allowlist a ON a.researcher_id = mp.user_id
-            WHERE mp.meeting_id = $1
-            ORDER BY mp.order_position ASC
-        `, [m.id]);
-        res.json({ meeting: { ...m, participants: pResult.rows } });
-    } catch (err) {
-        console.error('[MEETING] get error:', err);
-        res.status(500).json({ error: 'Server error' });
-    }
-});
-
 // GET /api/meetings/by-date/:date — PI convenience lookup
 app.get('/api/meetings/by-date/:date', requirePI, async (req, res) => {
     if (!(await checkMeetingTables())) return res.json({ meeting: null });
@@ -11980,6 +11956,30 @@ app.post('/api/meetings/pool', requirePI, async (req, res) => {
         res.json({ success: true });
     } catch (err) {
         console.error('[MEETING] pool update error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/meetings/:id — PI or any auth for locked meetings
+app.get('/api/meetings/:id', requireAuth, async (req, res) => {
+    if (!(await checkMeetingTables())) return res.status(503).json({ error: 'Meeting tables not available' });
+    try {
+        const mResult = await pool.query('SELECT * FROM meeting_schedule WHERE id = $1', [req.params.id]);
+        if (mResult.rows.length === 0) return res.status(404).json({ error: 'Meeting not found' });
+        const m = mResult.rows[0];
+        if (m.status === 'DRAFT' && req.session.user.role !== 'pi') {
+            return res.status(403).json({ error: 'Draft meetings are only visible to PI' });
+        }
+        const pResult = await pool.query(`
+            SELECT mp.user_id, mp.slot_type, mp.minutes_allocated, mp.order_position, a.name
+            FROM meeting_participation mp
+            LEFT JOIN di_allowlist a ON a.researcher_id = mp.user_id
+            WHERE mp.meeting_id = $1
+            ORDER BY mp.order_position ASC
+        `, [m.id]);
+        res.json({ meeting: { ...m, participants: pResult.rows } });
+    } catch (err) {
+        console.error('[MEETING] get error:', err);
         res.status(500).json({ error: 'Server error' });
     }
 });
