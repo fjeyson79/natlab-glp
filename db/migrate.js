@@ -368,6 +368,9 @@ async function migrate() {
                 unlock_note TEXT
             )`,
             `ALTER TABLE meeting_schedule ADD COLUMN IF NOT EXISTS location_text TEXT`,
+            `ALTER TABLE meeting_schedule ADD COLUMN IF NOT EXISTS notification_sent_at TIMESTAMPTZ`,
+            `ALTER TABLE meeting_schedule ADD COLUMN IF NOT EXISTS notification_sent_by TEXT`,
+            `ALTER TABLE meeting_schedule ADD COLUMN IF NOT EXISTS notification_sent_count INTEGER`,
 
             `CREATE UNIQUE INDEX IF NOT EXISTS uq_meeting_schedule_date ON meeting_schedule(meeting_date)`,
             `CREATE INDEX IF NOT EXISTS idx_meeting_schedule_status ON meeting_schedule(status)`,

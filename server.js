@@ -11557,10 +11557,15 @@ app.get('/api/meetings/by-date/:date', requirePI, async (req, res) => {
 app.get('/api/meetings/list', requirePI, async (req, res) => {
     if (!(await checkMeetingTables())) return res.json({ meetings: [] });
     try {
-        const result = await pool.query(`
-            SELECT id, meeting_date, meeting_time, duration_minutes, status, location_text, created_at, locked_at
-            FROM meeting_schedule ORDER BY meeting_date DESC LIMIT 20
+        // Check if notification columns exist
+        const colCheck = await pool.query(`
+            SELECT column_name FROM information_schema.columns
+            WHERE table_name = 'meeting_schedule' AND column_name = 'notification_sent_at'
         `);
+        const hasNotifCols = colCheck.rows.length > 0;
+        const cols = 'id, meeting_date, meeting_time, duration_minutes, status, location_text, created_at, locked_at'
+            + (hasNotifCols ? ', notification_sent_at, notification_sent_by, notification_sent_count' : '');
+        const result = await pool.query(`SELECT ${cols} FROM meeting_schedule ORDER BY meeting_date DESC LIMIT 20`);
         res.json({ meetings: result.rows });
     } catch (err) {
         console.error('[MEETING] list error:', err);
@@ -11956,6 +11961,35 @@ app.post('/api/meetings/pool', requirePI, async (req, res) => {
         res.json({ success: true });
     } catch (err) {
         console.error('[MEETING] pool update error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/meetings/:id/mark-notified — PI logs that email notification was sent
+app.post('/api/meetings/:id/mark-notified', requirePI, async (req, res) => {
+    if (!(await checkMeetingTables())) return res.status(503).json({ error: 'Meeting tables not available' });
+    const { sent_count } = req.body;
+    try {
+        // Check columns exist (they may not be migrated yet)
+        const colCheck = await pool.query(`
+            SELECT column_name FROM information_schema.columns
+            WHERE table_name = 'meeting_schedule' AND column_name = 'notification_sent_at'
+        `);
+        if (colCheck.rows.length === 0) return res.status(503).json({ error: 'Notification columns not yet migrated' });
+
+        const result = await pool.query(
+            `UPDATE meeting_schedule
+             SET notification_sent_at = now(),
+                 notification_sent_by = $2,
+                 notification_sent_count = $3
+             WHERE id = $1
+             RETURNING id`,
+            [req.params.id, req.session.user.researcher_id, sent_count || 0]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Meeting not found' });
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('[MEETING] mark-notified error:', err);
         res.status(500).json({ error: 'Server error' });
     }
 });
