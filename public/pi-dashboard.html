@@ -3297,10 +3297,10 @@
     <!-- ==================== GROUP MEETING TAB ==================== -->
     <div class="tab-content" id="tab-group-meeting">
         <!-- Sub-toggle: Generator / Schedule -->
-        <div style="display:flex;gap:0;margin-bottom:16px;border-bottom:2px solid #e0e0e0;">
-            <button class="btn btn-sm" id="mtgSubGen" onclick="mtgSetView('generator')" style="border:none;border-bottom:2px solid #2d5a87;color:#1a365d;font-weight:600;padding:10px 18px;background:transparent;cursor:pointer;margin-bottom:-2px;">Generator</button>
-            <button class="btn btn-sm" id="mtgSubSch" onclick="mtgSetView('schedule')" style="border:none;border-bottom:2px solid transparent;color:#6b7280;font-weight:500;padding:10px 18px;background:transparent;cursor:pointer;margin-bottom:-2px;">Schedule</button>
-            <button class="btn btn-sm" id="mtgSubLive" onclick="mtgSetView('live')" style="border:none;border-bottom:2px solid transparent;color:#6b7280;font-weight:500;padding:10px 18px;background:transparent;cursor:pointer;margin-bottom:-2px;">Live Meeting</button>
+        <div style="display:flex;gap:6px;margin-bottom:18px;padding:4px;background:#f0f2f5;border-radius:10px;">
+            <button class="btn btn-sm" id="mtgSubGen" onclick="mtgSetView('generator')" style="border:none;border-radius:8px;color:#1a365d;font-weight:600;font-size:14px;padding:10px 22px;background:#fff;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.1);transition:background 180ms ease,color 180ms ease,box-shadow 180ms ease,transform 180ms ease;">Generator</button>
+            <button class="btn btn-sm" id="mtgSubSch" onclick="mtgSetView('schedule')" style="border:none;border-radius:8px;color:#6b7280;font-weight:500;font-size:14px;padding:10px 22px;background:transparent;cursor:pointer;box-shadow:none;transition:background 180ms ease,color 180ms ease,box-shadow 180ms ease,transform 180ms ease;">Schedule</button>
+            <button class="btn btn-sm" id="mtgSubLive" onclick="mtgSetView('live')" style="border:none;border-radius:8px;color:#6b7280;font-weight:500;font-size:14px;padding:10px 22px;background:transparent;cursor:pointer;box-shadow:none;transition:background 180ms ease,color 180ms ease,box-shadow 180ms ease,transform 180ms ease;">Live Meeting</button>
         </div>
 
         <!-- ===== GENERATOR VIEW ===== -->
@@ -3718,9 +3718,10 @@ function dicInitEmbedModeFromUrl() {
                   const active = (id === 'mtgSubGen' && view === 'generator') ||
                                  (id === 'mtgSubSch' && view === 'schedule') ||
                                  (id === 'mtgSubLive' && view === 'live');
-                  btn.style.borderBottomColor = active ? '#2d5a87' : 'transparent';
+                  btn.style.background = active ? '#fff' : 'transparent';
                   btn.style.color = active ? '#1a365d' : '#6b7280';
                   btn.style.fontWeight = active ? '600' : '500';
+                  btn.style.boxShadow = active ? '0 1px 3px rgba(0,0,0,0.1)' : 'none';
               });
               if (view === 'schedule') mtgLoadScheduleView();
               if (view === 'live') mtgRenderLive();
@@ -4268,7 +4269,10 @@ function dicInitEmbedModeFromUrl() {
 
               const meetingId = localStorage.getItem('mtg_live_meeting_id');
               if (!meetingId) {
-                  container.innerHTML = '<div style="text-align:center;padding:60px 20px;color:#6b7280;font-size:15px;">Start a <strong>LOCKED</strong> meeting from Schedule.</div>';
+                  container.innerHTML = '<div style="text-align:center;padding:80px 20px;">'
+                      + '<div style="font-size:18px;font-weight:600;color:#374151;margin-bottom:8px;">No live meeting in progress</div>'
+                      + '<div style="font-size:13px;color:#9ca3af;">Start a <strong>LOCKED</strong> meeting from the Schedule tab to begin.</div>'
+                      + '</div>';
                   return;
               }
 
@@ -4277,7 +4281,10 @@ function dicInitEmbedModeFromUrl() {
                   try { mtgLiveQueue = JSON.parse(localStorage.getItem('mtg_live_queue') || '[]'); } catch { mtgLiveQueue = []; }
               }
               if (!mtgLiveQueue.length) {
-                  container.innerHTML = '<div style="text-align:center;padding:60px 20px;color:#6b7280;">No speakers in queue. Start a meeting from Schedule.</div>';
+                  container.innerHTML = '<div style="text-align:center;padding:80px 20px;">'
+                      + '<div style="font-size:18px;font-weight:600;color:#374151;margin-bottom:8px;">No live meeting in progress</div>'
+                      + '<div style="font-size:13px;color:#9ca3af;">Start a <strong>LOCKED</strong> meeting from the Schedule tab to begin.</div>'
+                      + '</div>';
                   return;
               }
 
@@ -4359,6 +4366,7 @@ function dicInitEmbedModeFromUrl() {
                   <button onclick="mtgLiveBack()" style="${backStyle}" ${backDisabled ? 'disabled' : ''}>&#9664; Back</button>
                   <button onclick="mtgLiveNext()" style="padding:8px 28px;border:none;border-radius:6px;background:#2d5a87;color:#fff;cursor:pointer;font-size:14px;font-weight:600;">Next &#9654;</button>
                   <button onclick="mtgLiveReset()" style="padding:8px 16px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer;font-size:13px;color:#dc3545;">Reset</button>
+                  <button onclick="mtgExitLive()" style="padding:8px 16px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer;font-size:13px;color:#6b7280;">Exit</button>
               </div>`;
 
               // Meeting header
@@ -4409,6 +4417,16 @@ function dicInitEmbedModeFromUrl() {
               mtgRenderLive();
           }
 
+          function mtgExitLive() {
+              // Clear all localStorage keys
+              ['mtg_live_meeting_id','mtg_live_index','mtg_live_started_at','mtg_live_timer_started_at','mtg_live_queue','mtg_live_meeting_meta'].forEach(k => localStorage.removeItem(k));
+              // Clear in-memory state
+              mtgLiveQueue = [];
+              if (mtgLiveTimerInterval) { clearInterval(mtgLiveTimerInterval); mtgLiveTimerInterval = null; }
+              // Re-render (will hit empty state)
+              mtgRenderLive();
+          }
+
           function mtgLiveRestartTimer() {
               localStorage.setItem('mtg_live_timer_started_at', String(Date.now()));
               mtgLiveStartTimer();
@@ -4452,6 +4470,7 @@ function dicInitEmbedModeFromUrl() {
           // Keyboard shortcuts for Live Meeting
           document.addEventListener('keydown', function(e) {
               if (mtgCurrentView !== 'live') return;
+              if (!localStorage.getItem('mtg_live_meeting_id')) return;
               // Skip if typing in an input/textarea/select
               if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
               if (e.key === 'n' || e.key === 'N' || e.key === 'ArrowRight') { e.preventDefault(); mtgLiveNext(); }
