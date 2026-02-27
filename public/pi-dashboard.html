@@ -3724,9 +3724,16 @@ function dicInitEmbedModeFromUrl() {
           }
 
           function mtgDateStr(dateVal) {
-              const d = new Date(dateVal + 'T00:00');
-              const dn = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-              const mn = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+              if (!dateVal) return '';
+              var s = ('' + dateVal);
+              // If backend sends ISO timestamp, keep only YYYY-MM-DD
+              if (s.indexOf('T') !== -1) s = s.split('T')[0];
+              // Parse as local date
+              var d = new Date(s + 'T00:00:00');
+              if (isNaN(d.getTime())) d = new Date(dateVal);
+              if (isNaN(d.getTime())) return '';
+              var dn = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+              var mn = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
               return dn[d.getDay()] + ' ' + mn[d.getMonth()] + ' ' + d.getDate();
           }
 
