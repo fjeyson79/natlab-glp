@@ -2442,6 +2442,12 @@
                             <label for="newUserEmail">Institution Email *</label>
                             <input type="email" id="newUserEmail" required placeholder="john.doe@liu.se">
                         </div>
+                        <div class="form-group">
+                            <label for="newResearcherId">Researcher ID *</label>
+                            <input type="text" id="newResearcherId" required placeholder="e.g. NM, FJH3"
+                                   pattern="[A-Za-z0-9_]{2,12}" minlength="2" maxlength="12"
+                                   title="2–12 characters: letters, numbers, or underscore">
+                        </div>
                         <div class="form-row">
                             <div class="form-group">
                                 <label for="newUserAffiliation">Affiliation *</label>
@@ -7856,11 +7862,17 @@ function dicBuildPdfViewerSrc(fileUrl) {
 
             const name = document.getElementById('newUserName').value.trim();
             const email = document.getElementById('newUserEmail').value.trim().toLowerCase();
+            const researcher_id = document.getElementById('newResearcherId').value.trim();
             const affiliation = document.getElementById('newUserAffiliation').value;
             const role = document.getElementById('newUserRole').value;
 
-            if (!name || !email || !affiliation || !role) {
+            if (!name || !email || !researcher_id || !affiliation || !role) {
                 showMessage('addUserMessage', 'Please fill all fields', 'error');
+                return;
+            }
+
+            if (!/^[A-Za-z0-9_]{2,12}$/.test(researcher_id)) {
+                showMessage('addUserMessage', 'Researcher ID must be 2–12 characters (letters, numbers, underscore)', 'error');
                 return;
             }
 
@@ -7872,7 +7884,7 @@ function dicBuildPdfViewerSrc(fileUrl) {
                 const response = await fetch('/api/di/members', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name, institution_email: email, affiliation, role }),
+                    body: JSON.stringify({ name, institution_email: email, researcher_id, affiliation, role }),
                     credentials: 'include'
                 });
 

@@ -2440,9 +2440,25 @@ app.post('/api/di/members', requirePI, async (req, res) => {
             return res.status(400).json({ error: 'UNAV affiliation requires @unav.es or @alumni.unav.es email' });
         }
 
-        // Auto-generate researcher_id from email if not provided
+        // Validate researcher_id (required)
         if (!researcher_id) {
-            researcher_id = emailLower.split('@')[0].replace(/[^a-z0-9]/g, '.');
+            return res.status(400).json({ error: "Researcher ID is required" });
+        }
+
+        // Validate researcher_id
+        if (researcher_id) {
+            researcher_id = researcher_id.trim();
+            if (!/^[A-Za-z0-9_]{2,12}$/.test(researcher_id)) {
+                return res.status(400).json({ error: 'Researcher ID must be 2–12 characters (letters, numbers, underscore only)' });
+            }
+            // Case-insensitive uniqueness check
+            const dupCheck = await pool.query(
+                'SELECT researcher_id FROM di_allowlist WHERE LOWER(researcher_id) = LOWER($1)',
+                [researcher_id]
+            );
+            if (dupCheck.rows.length > 0) {
+                return res.status(400).json({ error: `Researcher ID "${researcher_id}" is already taken (case-insensitive)` });
+            }
         }
 
         const memberRole = role || 'researcher';
