@@ -367,6 +367,8 @@ async function migrate() {
                 locked_at TIMESTAMPTZ,
                 unlock_note TEXT
             )`,
+            `ALTER TABLE meeting_schedule ADD COLUMN IF NOT EXISTS location_text TEXT`,
+
             `CREATE UNIQUE INDEX IF NOT EXISTS uq_meeting_schedule_date ON meeting_schedule(meeting_date)`,
             `CREATE INDEX IF NOT EXISTS idx_meeting_schedule_status ON meeting_schedule(status)`,
 

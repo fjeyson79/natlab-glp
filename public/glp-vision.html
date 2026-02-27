@@ -494,8 +494,9 @@ async function gvLoadNextMeeting() {
         const speakingSection = document.getElementById('gvSpeakingSidebar');
         const speakingBox = document.getElementById('gvSpeakingBox');
 
-        // Format date
-        const d = new Date(m.meeting_date + 'T00:00');
+        // Format date — fix: parse YYYY-MM-DD safely to avoid timezone/NaN issues
+        const dateParts = String(m.meeting_date).split('T')[0].split('-');
+        const d = new Date(Number(dateParts[0]), Number(dateParts[1]) - 1, Number(dateParts[2]));
         const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
         const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
         const dateStr = dayNames[d.getDay()] + ' ' + monthNames[d.getMonth()] + ' ' + d.getDate();
@@ -507,23 +508,24 @@ async function gvLoadNextMeeting() {
         const flash = parts.filter(p => p.slot_type === 'DATA_FLASH');
 
         const userId = gvUser.researcher_id || gvUser.user_id;
-        const isInFlash = flash.some(p => p.user_id === userId);
         const myDeep = deep.find(p => p.user_id === userId);
         const myFocus = focus.find(p => p.user_id === userId);
 
-        // Render Next Meeting
-        let html = `<div style="font-weight:600;color:#1a365d;margin-bottom:2px;">Next Meeting \u00b7 ${dateStr}</div>`;
+        // Render Next Meeting — NAT-LAB · Thu Feb 26 format
+        let html = `<div style="font-weight:600;color:#1a365d;margin-bottom:2px;">NAT-LAB \u00b7 ${dateStr}</div>`;
         html += `<div style="font-size:14px;font-weight:700;color:#1a365d;margin-bottom:4px;">${timeStr}</div>`;
-        if (deep.length > 0) html += `<div><span style="color:#1a365d;font-weight:600;">DATA Deep:</span> ${deep.map(p => p.name || p.user_id).join(', ')}</div>`;
-        if (focus.length > 0) html += `<div><span style="color:#2d5a87;font-weight:600;">DATA Focus:</span> ${focus.map(p => p.name || p.user_id).join(' \u00b7 ')}</div>`;
+        if (m.location_text) {
+            html += `<div style="color:#5a6578;margin-bottom:3px;">Room: ${m.location_text}</div>`;
+        }
+        if (deep.length > 0) html += `<div style="margin-bottom:1px;"><span style="color:#1a365d;font-weight:600;">DATA Deep:</span> <strong style="color:#1a365d;">${deep.map(p => p.name || p.user_id).join(', ')}</strong></div>`;
+        if (focus.length > 0) html += `<div style="margin-bottom:1px;"><span style="color:#2d5a87;font-weight:600;">DATA Focus:</span> <strong style="color:#2d5a87;">${focus.map(p => p.name || p.user_id).join(' \u00b7 ')}</strong></div>`;
         if (flash.length > 0) {
-            const flashLabel = isInFlash ? 'You + Round' : 'Round';
-            html += `<div><span style="color:#6b7280;font-weight:600;">DATA Flash:</span> ${flashLabel}</div>`;
+            html += `<div><span style="color:#6b7280;font-weight:600;">DATA Flash:</span> <span style="color:#6b7280;">Round</span></div>`;
         }
         meetingEl.innerHTML = html;
         meetingSection.style.display = '';
 
-        // Conditional My Speaking Time (only for Deep or Focus)
+        // Conditional My Speaking Time (only for Deep or Focus, NOT flash-only)
         if (myDeep || myFocus) {
             const slotLabel = myDeep ? 'DATA Deep' : 'DATA Focus';
             const slotColor = myDeep ? '#1a365d' : '#2d5a87';

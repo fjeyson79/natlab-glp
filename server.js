@@ -11510,7 +11510,7 @@ app.get('/api/meetings/next', requireAuth, async (req, res) => {
     try {
         const today = new Date().toISOString().slice(0, 10);
         const mResult = await pool.query(`
-            SELECT id, meeting_date, meeting_time, duration_minutes, status
+            SELECT id, meeting_date, meeting_time, duration_minutes, status, location_text
             FROM meeting_schedule
             WHERE meeting_date >= $1 AND status = 'LOCKED'
             ORDER BY meeting_date ASC LIMIT 1
@@ -11582,7 +11582,7 @@ app.get('/api/meetings/list', requirePI, async (req, res) => {
     if (!(await checkMeetingTables())) return res.json({ meetings: [] });
     try {
         const result = await pool.query(`
-            SELECT id, meeting_date, meeting_time, duration_minutes, status, created_at, locked_at
+            SELECT id, meeting_date, meeting_time, duration_minutes, status, location_text, created_at, locked_at
             FROM meeting_schedule ORDER BY meeting_date DESC LIMIT 20
         `);
         res.json({ meetings: result.rows });
@@ -11595,12 +11595,13 @@ app.get('/api/meetings/list', requirePI, async (req, res) => {
 // POST /api/meetings/generate — PI creates/updates draft for a date
 app.post('/api/meetings/generate', requirePI, async (req, res) => {
     if (!(await checkMeetingTables())) return res.status(503).json({ error: 'Meeting tables not available' });
-    const { meeting_date, meeting_time, duration_minutes, format, participants: manualParticipants } = req.body;
+    const { meeting_date, meeting_time, duration_minutes, format, location_text, participants: manualParticipants } = req.body;
     if (!meeting_date) return res.status(400).json({ error: 'meeting_date is required' });
 
     const mTime = meeting_time || '09:00';
     const mDuration = duration_minutes || 60;
-    const mFormat = format || 'deep'; // deep | focus | custom
+    const mFormat = format || 'deep'; // deep | focus | focus_single | flash_only | deep_focus
+    const mLocation = location_text || null;
 
     const client = await pool.connect();
     try {
@@ -11616,12 +11617,12 @@ app.post('/api/meetings/generate', requirePI, async (req, res) => {
         let meetingId;
         if (existing.rows.length > 0) {
             meetingId = existing.rows[0].id;
-            await client.query('UPDATE meeting_schedule SET meeting_time = $1, duration_minutes = $2 WHERE id = $3', [mTime, mDuration, meetingId]);
+            await client.query('UPDATE meeting_schedule SET meeting_time = $1, duration_minutes = $2, location_text = $3 WHERE id = $4', [mTime, mDuration, mLocation, meetingId]);
             await client.query('DELETE FROM meeting_participation WHERE meeting_id = $1', [meetingId]);
         } else {
             const ins = await client.query(
-                'INSERT INTO meeting_schedule (meeting_date, meeting_time, duration_minutes, status, created_by) VALUES ($1, $2, $3, $4, $5) RETURNING id',
-                [meeting_date, mTime, mDuration, 'DRAFT', req.session.user.researcher_id]
+                'INSERT INTO meeting_schedule (meeting_date, meeting_time, duration_minutes, status, created_by, location_text) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
+                [meeting_date, mTime, mDuration, 'DRAFT', req.session.user.researcher_id, mLocation]
             );
             meetingId = ins.rows[0].id;
         }
@@ -11709,11 +11710,22 @@ app.post('/api/meetings/generate', requirePI, async (req, res) => {
                 // Pick 2 Focus speakers (excluding Deep speaker)
                 const usedIds = new Set(parts.map(p => p.user_id));
                 const focusEligible = eligible.filter(u => u.pool.allow_focus && !usedIds.has(u.researcher_id));
-                const focusCount = mFormat === 'focus' ? 2 : 2;
+                const focusCount = 2;
                 for (let i = 0; i < Math.min(focusCount, focusEligible.length); i++) {
                     parts.push({ user_id: focusEligible[i].researcher_id, slot_type: 'DATA_FOCUS', minutes_allocated: 10, order_position: orderPos++ });
                 }
             }
+
+            if (mFormat === 'focus_single') {
+                // Pick 1 Focus speaker
+                const usedIds = new Set(parts.map(p => p.user_id));
+                const focusEligible = eligible.filter(u => u.pool.allow_focus && !usedIds.has(u.researcher_id));
+                if (focusEligible.length > 0) {
+                    parts.push({ user_id: focusEligible[0].researcher_id, slot_type: 'DATA_FOCUS', minutes_allocated: 10, order_position: orderPos++ });
+                }
+            }
+
+            // flash_only: skip Deep/Focus, everyone goes to Flash
 
             // Remaining get Flash
             const usedIds = new Set(parts.map(p => p.user_id));
@@ -11788,14 +11800,30 @@ app.post('/api/meetings/unlock', requirePI, async (req, res) => {
     }
 });
 
+// DELETE /api/meetings/:id — PI cancels (deletes) a DRAFT meeting
+app.delete('/api/meetings/:id', requirePI, async (req, res) => {
+    if (!(await checkMeetingTables())) return res.status(503).json({ error: 'Meeting tables not available' });
+    try {
+        const m = await pool.query('SELECT status FROM meeting_schedule WHERE id = $1', [req.params.id]);
+        if (m.rows.length === 0) return res.status(404).json({ error: 'Meeting not found' });
+        if (m.rows[0].status === 'LOCKED') return res.status(409).json({ error: 'Cannot cancel a locked meeting. Unlock first.' });
+        await pool.query('DELETE FROM meeting_schedule WHERE id = $1', [req.params.id]);
+        res.json({ success: true, deleted: true });
+    } catch (err) {
+        console.error('[MEETING] delete error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
 // POST /api/meetings/month-plan — generate drafts for next N Thursdays
 app.post('/api/meetings/month-plan', requirePI, async (req, res) => {
     if (!(await checkMeetingTables())) return res.status(503).json({ error: 'Meeting tables not available' });
-    const { weeks, pattern, meeting_time, duration_minutes } = req.body;
+    const { weeks, pattern, meeting_time, duration_minutes, location_text } = req.body;
     const numWeeks = weeks || 4;
     const mTime = meeting_time || '09:00';
     const mDuration = duration_minutes || 60;
     const mPattern = pattern || 'alternating'; // deep | focus | alternating
+    const mLocation = location_text || null;
 
     // Find next N Thursdays
     const dates = [];
@@ -11829,12 +11857,12 @@ app.post('/api/meetings/month-plan', requirePI, async (req, res) => {
             let meetingId;
             if (existing.rows.length > 0) {
                 meetingId = existing.rows[0].id;
-                await pool.query('UPDATE meeting_schedule SET meeting_time = $1, duration_minutes = $2 WHERE id = $3', [mTime, mDuration, meetingId]);
+                await pool.query('UPDATE meeting_schedule SET meeting_time = $1, duration_minutes = $2, location_text = $3 WHERE id = $4', [mTime, mDuration, mLocation, meetingId]);
                 await pool.query('DELETE FROM meeting_participation WHERE meeting_id = $1', [meetingId]);
             } else {
                 const ins = await pool.query(
-                    'INSERT INTO meeting_schedule (meeting_date, meeting_time, duration_minutes, status, created_by) VALUES ($1,$2,$3,$4,$5) RETURNING id',
-                    [dates[i], mTime, mDuration, 'DRAFT', req.session.user.researcher_id]
+                    'INSERT INTO meeting_schedule (meeting_date, meeting_time, duration_minutes, status, created_by, location_text) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id',
+                    [dates[i], mTime, mDuration, 'DRAFT', req.session.user.researcher_id, mLocation]
                 );
                 meetingId = ins.rows[0].id;
             }
@@ -11985,7 +12013,7 @@ app.post('/api/meetings/update-participation', requirePI, async (req, res) => {
 // POST /api/meetings/update-details — PI updates date/time on a draft
 app.post('/api/meetings/update-details', requirePI, async (req, res) => {
     if (!(await checkMeetingTables())) return res.status(503).json({ error: 'Meeting tables not available' });
-    const { meeting_id, meeting_date, meeting_time, duration_minutes } = req.body;
+    const { meeting_id, meeting_date, meeting_time, duration_minutes, location_text } = req.body;
     if (!meeting_id) return res.status(400).json({ error: 'meeting_id required' });
     try {
         const m = await pool.query('SELECT status FROM meeting_schedule WHERE id = $1', [meeting_id]);
@@ -11998,6 +12026,7 @@ app.post('/api/meetings/update-details', requirePI, async (req, res) => {
         if (meeting_date) { sets.push(`meeting_date = $${idx++}`); vals.push(meeting_date); }
         if (meeting_time) { sets.push(`meeting_time = $${idx++}`); vals.push(meeting_time); }
         if (duration_minutes) { sets.push(`duration_minutes = $${idx++}`); vals.push(duration_minutes); }
+        if (location_text !== undefined) { sets.push(`location_text = $${idx++}`); vals.push(location_text || null); }
         if (sets.length === 0) return res.status(400).json({ error: 'No fields to update' });
         vals.push(meeting_id);
         await pool.query(`UPDATE meeting_schedule SET ${sets.join(', ')} WHERE id = $${idx}`, vals);

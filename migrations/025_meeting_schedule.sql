@@ -10,7 +10,8 @@ CREATE TABLE IF NOT EXISTS meeting_schedule (
     created_by VARCHAR(100) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     locked_at TIMESTAMPTZ,
-    unlock_note TEXT
+    unlock_note TEXT,
+    location_text TEXT
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_meeting_schedule_date ON meeting_schedule(meeting_date);
