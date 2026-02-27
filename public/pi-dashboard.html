@@ -3300,6 +3300,7 @@
         <div style="display:flex;gap:0;margin-bottom:16px;border-bottom:2px solid #e0e0e0;">
             <button class="btn btn-sm" id="mtgSubGen" onclick="mtgSetView('generator')" style="border:none;border-bottom:2px solid #2d5a87;color:#1a365d;font-weight:600;padding:10px 18px;background:transparent;cursor:pointer;margin-bottom:-2px;">Generator</button>
             <button class="btn btn-sm" id="mtgSubSch" onclick="mtgSetView('schedule')" style="border:none;border-bottom:2px solid transparent;color:#6b7280;font-weight:500;padding:10px 18px;background:transparent;cursor:pointer;margin-bottom:-2px;">Schedule</button>
+            <button class="btn btn-sm" id="mtgSubLive" onclick="mtgSetView('live')" style="border:none;border-bottom:2px solid transparent;color:#6b7280;font-weight:500;padding:10px 18px;background:transparent;cursor:pointer;margin-bottom:-2px;">Live Meeting</button>
         </div>
 
         <!-- ===== GENERATOR VIEW ===== -->
@@ -3425,9 +3426,20 @@
                     <button class="btn btn-sm btn-secondary" onclick="mtgLoadScheduleView()">Refresh</button>
                 </div>
                 <div class="panel-content">
+                    <!-- Format legend -->
+                    <div style="display:flex;gap:16px;margin-bottom:14px;padding:8px 12px;background:#f8f9fa;border-radius:8px;font-size:11px;color:#5a6578;">
+                        <span><strong style="color:#1a365d;">Deep</strong> 30 min</span>
+                        <span><strong style="color:#2d5a87;">Focus</strong> 10 min</span>
+                        <span><strong style="color:#6b7280;">Flash</strong> 2 min</span>
+                    </div>
                     <div id="mtgScheduleListBody" style="font-size:13px;"></div>
                 </div>
             </div>
+        </div>
+
+        <!-- ===== LIVE MEETING VIEW ===== -->
+        <div id="mtgViewLive" style="display:none;">
+            <div id="mtgLiveContent"></div>
         </div>
     </div>
 
@@ -3699,15 +3711,19 @@ function dicInitEmbedModeFromUrl() {
               mtgCurrentView = view;
               document.getElementById('mtgViewGenerator').style.display = view === 'generator' ? '' : 'none';
               document.getElementById('mtgViewSchedule').style.display = view === 'schedule' ? '' : 'none';
-              const genBtn = document.getElementById('mtgSubGen');
-              const schBtn = document.getElementById('mtgSubSch');
-              genBtn.style.borderBottomColor = view === 'generator' ? '#2d5a87' : 'transparent';
-              genBtn.style.color = view === 'generator' ? '#1a365d' : '#6b7280';
-              genBtn.style.fontWeight = view === 'generator' ? '600' : '500';
-              schBtn.style.borderBottomColor = view === 'schedule' ? '#2d5a87' : 'transparent';
-              schBtn.style.color = view === 'schedule' ? '#1a365d' : '#6b7280';
-              schBtn.style.fontWeight = view === 'schedule' ? '600' : '500';
+              document.getElementById('mtgViewLive').style.display = view === 'live' ? '' : 'none';
+              ['mtgSubGen','mtgSubSch','mtgSubLive'].forEach(id => {
+                  const btn = document.getElementById(id);
+                  if (!btn) return;
+                  const active = (id === 'mtgSubGen' && view === 'generator') ||
+                                 (id === 'mtgSubSch' && view === 'schedule') ||
+                                 (id === 'mtgSubLive' && view === 'live');
+                  btn.style.borderBottomColor = active ? '#2d5a87' : 'transparent';
+                  btn.style.color = active ? '#1a365d' : '#6b7280';
+                  btn.style.fontWeight = active ? '600' : '500';
+              });
               if (view === 'schedule') mtgLoadScheduleView();
+              if (view === 'live') mtgRenderLive();
           }
 
           function mtgFormatLabel(m) {
@@ -3797,6 +3813,17 @@ function dicInitEmbedModeFromUrl() {
 
               document.getElementById('mtgLockBtn').style.display = m.status === 'DRAFT' ? '' : 'none';
               document.getElementById('mtgUnlockBtn').style.display = m.status === 'LOCKED' ? '' : 'none';
+
+              // Ready for Live micro-indicator
+              let liveChip = document.getElementById('mtgReadyForLive');
+              if (!liveChip) {
+                  liveChip = document.createElement('span');
+                  liveChip.id = 'mtgReadyForLive';
+                  liveChip.textContent = 'Ready for Live';
+                  liveChip.style.cssText = 'font-size:10px;padding:2px 8px;border-radius:8px;margin-left:8px;background:#e0f2fe;color:#0369a1;font-weight:600;';
+                  document.getElementById('mtgStatusBadge').parentElement.appendChild(liveChip);
+              }
+              liveChip.style.display = m.status === 'LOCKED' ? 'inline' : 'none';
 
               // Timeline
               const parts = m.participants || [];
@@ -3958,7 +3985,7 @@ function dicInitEmbedModeFromUrl() {
               } catch (err) { el.innerHTML = '<span style="color:#dc3545;">Network error</span>'; }
           }
 
-          // Schedule View — full meeting table with actions
+          // Schedule View — card-style with inline speaker preview
           async function mtgLoadScheduleView() {
               const el = document.getElementById('mtgScheduleListBody');
               if (!el) return;
@@ -3969,7 +3996,7 @@ function dicInitEmbedModeFromUrl() {
                   const meetings = data.meetings || [];
                   if (meetings.length === 0) { el.innerHTML = '<span style="color:#999;">No meetings yet</span>'; return; }
 
-                  // Load participants for each meeting to compute format
+                  // Load participants for each meeting
                   const loaded = [];
                   for (const m of meetings) {
                       try {
@@ -3979,18 +4006,27 @@ function dicInitEmbedModeFromUrl() {
                       } catch { loaded.push(m); }
                   }
 
-                  let html = '<table style="width:100%;border-collapse:collapse;font-size:13px;">';
-                  html += '<thead><tr style="border-bottom:2px solid #e0e0e0;text-align:left;">';
-                  html += '<th style="padding:6px 8px;">Date</th><th style="padding:6px 8px;">Time</th><th style="padding:6px 8px;">Location</th><th style="padding:6px 8px;">Format</th><th style="padding:6px 8px;">Status</th><th style="padding:6px 8px;">Actions</th>';
-                  html += '</tr></thead><tbody>';
+                  let html = '';
                   loaded.forEach(m => {
                       const dateStr = mtgDateStr(m.meeting_date);
                       const timeStr = (m.meeting_time || '').slice(0, 5);
-                      const loc = m.location_text || '\u2014';
-                      const fmt = mtgFormatLabel(m);
+                      const loc = m.location_text || '';
                       const badgeBg = m.status === 'LOCKED' ? '#d4edda' : '#fff3cd';
                       const badgeC = m.status === 'LOCKED' ? '#155724' : '#856404';
+                      const parts = m.participants || [];
 
+                      // Speaker preview by category
+                      const deepNames = parts.filter(p => p.slot_type === 'DATA_DEEP').map(p => p.name || p.user_id);
+                      const focusNames = parts.filter(p => p.slot_type === 'DATA_FOCUS').map(p => p.name || p.user_id);
+                      const flashNames = parts.filter(p => p.slot_type === 'DATA_FLASH').map(p => p.name || p.user_id);
+
+                      let speakerHtml = '<div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px;margin-top:6px;">';
+                      speakerHtml += `<span><strong style="color:#1a365d;">Deep:</strong> ${deepNames.length ? deepNames[0] : '<span style="color:#999;">None</span>'}</span>`;
+                      speakerHtml += `<span><strong style="color:#2d5a87;">Focus:</strong> ${focusNames.length ? focusNames.join(', ') : '<span style="color:#999;">None</span>'}</span>`;
+                      speakerHtml += `<span><strong style="color:#6b7280;">Flash:</strong> ${flashNames.length ? flashNames.join(', ') : '<span style="color:#999;">None</span>'}</span>`;
+                      speakerHtml += '</div>';
+
+                      // Actions
                       let actions = '';
                       if (m.status === 'DRAFT') {
                           actions += `<button onclick="mtgSchedLock('${m.id}')" style="font-size:11px;color:#28a745;background:none;border:none;cursor:pointer;margin-right:6px;">Lock</button>`;
@@ -3998,19 +4034,23 @@ function dicInitEmbedModeFromUrl() {
                           actions += `<button onclick="mtgSchedCancel('${m.id}')" style="font-size:11px;color:#dc3545;background:none;border:none;cursor:pointer;">Cancel</button>`;
                       } else {
                           actions += `<button onclick="mtgSchedUnlock('${m.id}')" style="font-size:11px;color:#dc3545;background:none;border:none;cursor:pointer;margin-right:6px;">Unlock</button>`;
-                          actions += `<button onclick="mtgSchedEdit('${m.id}')" style="font-size:11px;color:#2d5a87;background:none;border:none;cursor:pointer;">Edit</button>`;
+                          actions += `<button onclick="mtgSchedEdit('${m.id}')" style="font-size:11px;color:#2d5a87;background:none;border:none;cursor:pointer;margin-right:6px;">Edit</button>`;
+                          actions += `<button onclick="mtgStartLive('${m.id}')" style="font-size:11px;color:#fff;background:#0369a1;border:none;cursor:pointer;padding:3px 10px;border-radius:4px;font-weight:600;">Start Meeting</button>`;
                       }
 
-                      html += `<tr style="border-bottom:1px solid #f0f2f5;">
-                          <td style="padding:6px 8px;">${dateStr}</td>
-                          <td style="padding:6px 8px;">${timeStr}</td>
-                          <td style="padding:6px 8px;color:#5a6578;font-size:12px;">${loc}</td>
-                          <td style="padding:6px 8px;font-size:12px;">${fmt}</td>
-                          <td style="padding:6px 8px;"><span style="background:${badgeBg};color:${badgeC};padding:1px 6px;border-radius:6px;font-size:10px;">${m.status}</span></td>
-                          <td style="padding:6px 8px;">${actions}</td>
-                      </tr>`;
+                      html += `<div style="border:1px solid #e0e0e0;border-radius:8px;padding:12px 16px;margin-bottom:10px;${m.status === 'LOCKED' ? 'border-left:3px solid #28a745;' : ''}">
+                          <div style="display:flex;justify-content:space-between;align-items:center;">
+                              <div style="display:flex;align-items:center;gap:10px;">
+                                  <span style="font-weight:600;color:#1a365d;">${dateStr}</span>
+                                  <span style="color:#5a6578;font-size:12px;">${timeStr}</span>
+                                  ${loc ? '<span style="color:#5a6578;font-size:12px;">&middot; ' + loc + '</span>' : ''}
+                                  <span style="background:${badgeBg};color:${badgeC};padding:1px 6px;border-radius:6px;font-size:10px;font-weight:600;">${m.status}</span>
+                              </div>
+                              <div style="display:flex;align-items:center;gap:4px;">${actions}</div>
+                          </div>
+                          ${speakerHtml}
+                      </div>`;
                   });
-                  html += '</tbody></table>';
                   el.innerHTML = html;
               } catch (err) { el.innerHTML = '<span style="color:#dc3545;">Error loading schedule</span>'; }
           }
@@ -4112,8 +4152,246 @@ function dicInitEmbedModeFromUrl() {
           function mtgRefresh() {
               mtgLoadPool();
               if (mtgCurrentView === 'schedule') mtgLoadScheduleView();
+              if (mtgCurrentView === 'live') mtgRenderLive();
               if (mtgCurrentMeeting) mtgLoadMeeting(mtgCurrentMeeting.id);
           }
+
+          // =====================================================
+          // LIVE MEETING
+          // =====================================================
+          let mtgLiveQueue = [];      // [{user_id, name, slot_type, minutes_allocated, order_position}]
+          let mtgLiveTimerInterval = null;
+
+          async function mtgStartLive(meetingId) {
+              try {
+                  const resp = await fetch('/api/meetings/' + meetingId, { credentials: 'include' });
+                  const data = await resp.json();
+                  if (!data.meeting) { alert('Meeting not found'); return; }
+                  if (data.meeting.status !== 'LOCKED') { alert('Only LOCKED meetings can be started live.'); return; }
+
+                  // Build queue: DATA_DEEP → DATA_FOCUS → DATA_FLASH, each by order_position
+                  const parts = data.meeting.participants || [];
+                  const deep = parts.filter(p => p.slot_type === 'DATA_DEEP').sort((a, b) => a.order_position - b.order_position);
+                  const focus = parts.filter(p => p.slot_type === 'DATA_FOCUS').sort((a, b) => a.order_position - b.order_position);
+                  const flash = parts.filter(p => p.slot_type === 'DATA_FLASH').sort((a, b) => a.order_position - b.order_position);
+                  mtgLiveQueue = [...deep, ...focus, ...flash];
+
+                  // Store in localStorage (always reset on start)
+                  localStorage.setItem('mtg_live_meeting_id', meetingId);
+                  localStorage.setItem('mtg_live_index', '0');
+                  localStorage.setItem('mtg_live_started_at', String(Date.now()));
+                  localStorage.setItem('mtg_live_timer_started_at', String(Date.now()));
+                  localStorage.setItem('mtg_live_queue', JSON.stringify(mtgLiveQueue));
+                  localStorage.setItem('mtg_live_meeting_meta', JSON.stringify({
+                      meeting_date: data.meeting.meeting_date,
+                      meeting_time: data.meeting.meeting_time,
+                      location_text: data.meeting.location_text
+                  }));
+
+                  mtgSetView('live');
+              } catch (err) { alert('Error loading meeting: ' + err.message); }
+          }
+
+          function mtgLiveGetIndex() {
+              return parseInt(localStorage.getItem('mtg_live_index') || '0', 10);
+          }
+
+          function mtgRenderLive() {
+              const container = document.getElementById('mtgLiveContent');
+              if (!container) return;
+
+              const meetingId = localStorage.getItem('mtg_live_meeting_id');
+              if (!meetingId) {
+                  container.innerHTML = '<div style="text-align:center;padding:60px 20px;color:#6b7280;font-size:15px;">Start a <strong>LOCKED</strong> meeting from Schedule.</div>';
+                  return;
+              }
+
+              // Restore queue from localStorage if needed
+              if (!mtgLiveQueue.length) {
+                  try { mtgLiveQueue = JSON.parse(localStorage.getItem('mtg_live_queue') || '[]'); } catch { mtgLiveQueue = []; }
+              }
+              if (!mtgLiveQueue.length) {
+                  container.innerHTML = '<div style="text-align:center;padding:60px 20px;color:#6b7280;">No speakers in queue. Start a meeting from Schedule.</div>';
+                  return;
+              }
+
+              const idx = mtgLiveGetIndex();
+              const current = mtgLiveQueue[idx] || null;
+              const next = mtgLiveQueue[idx + 1] || null;
+              const finished = idx >= mtgLiveQueue.length;
+              const meta = JSON.parse(localStorage.getItem('mtg_live_meeting_meta') || '{}');
+
+              // --- LEFT PANEL: Queue ---
+              let queueHtml = '<div style="padding:12px;">';
+              queueHtml += '<h3 style="font-size:13px;color:#1a365d;margin:0 0 12px;">Speaker Queue</h3>';
+              mtgLiveQueue.forEach((s, i) => {
+                  const isCurrent = i === idx && !finished;
+                  const isCompleted = i < idx;
+                  const modLabel = s.slot_type === 'DATA_DEEP' ? 'Deep' : s.slot_type === 'DATA_FOCUS' ? 'Focus' : 'Flash';
+                  const modColor = s.slot_type === 'DATA_DEEP' ? '#1a365d' : s.slot_type === 'DATA_FOCUS' ? '#2d5a87' : '#6b7280';
+                  const bg = isCurrent ? '#f0f7ff' : 'transparent';
+                  const border = isCurrent ? '2px solid #2d5a87' : '1px solid #e0e0e0';
+                  const opacity = isCompleted ? '0.5' : '1';
+                  const statusIcon = isCompleted ? '<span style="color:#28a745;margin-right:4px;">&#10003;</span>' :
+                                     isCurrent ? '<span style="color:#2d5a87;margin-right:4px;">&#9654;</span>' :
+                                     '<span style="color:#d1d5db;margin-right:4px;">&#8226;</span>';
+                  queueHtml += `<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;margin-bottom:4px;border-radius:6px;background:${bg};border:${border};opacity:${opacity};transition:opacity 200ms ease;">
+                      ${statusIcon}
+                      <span style="font-size:12px;font-weight:600;color:${modColor};width:40px;">${modLabel}</span>
+                      <span style="font-size:13px;flex:1;">${s.name || s.user_id}</span>
+                      <span style="font-size:11px;color:#999;">${s.minutes_allocated} min</span>
+                  </div>`;
+              });
+              queueHtml += '</div>';
+
+              // --- RIGHT PANEL: Current Speaker + Timer ---
+              let rightHtml = '<div style="padding:20px;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:400px;">';
+              if (finished) {
+                  rightHtml += '<div style="font-size:20px;color:#28a745;font-weight:700;margin-bottom:8px;">Meeting Complete</div>';
+                  rightHtml += '<div style="font-size:13px;color:#6b7280;">All speakers have presented.</div>';
+              } else if (current) {
+                  const modLabel = current.slot_type === 'DATA_DEEP' ? 'DATA Deep' : current.slot_type === 'DATA_FOCUS' ? 'DATA Focus' : 'DATA Flash';
+                  const modColor = current.slot_type === 'DATA_DEEP' ? '#1a365d' : current.slot_type === 'DATA_FOCUS' ? '#2d5a87' : '#6b7280';
+                  rightHtml += `<div style="font-size:11px;font-weight:700;color:#fff;background:${modColor};padding:3px 12px;border-radius:10px;margin-bottom:16px;letter-spacing:0.5px;">${modLabel}</div>`;
+                  rightHtml += `<div id="mtgLiveSpeakerName" style="font-size:32px;font-weight:700;color:#1a365d;margin-bottom:6px;transition:opacity 200ms ease;">${current.name || current.user_id}</div>`;
+                  rightHtml += `<div style="font-size:13px;color:#6b7280;margin-bottom:20px;">${current.minutes_allocated} minutes</div>`;
+
+                  // Timer ring SVG
+                  const circ = 2 * Math.PI * 54;
+                  rightHtml += `<div style="position:relative;width:130px;height:130px;margin-bottom:20px;">
+                      <svg width="130" height="130" viewBox="0 0 130 130">
+                          <circle cx="65" cy="65" r="54" stroke="#e0e0e0" stroke-width="6" fill="none" />
+                          <circle id="mtgLiveTimerRing" cx="65" cy="65" r="54" stroke="${modColor}" stroke-width="6" fill="none"
+                              stroke-dasharray="${circ.toFixed(2)}" stroke-dashoffset="0"
+                              transform="rotate(-90 65 65)" stroke-linecap="round" style="transition:stroke-dashoffset 1s linear;" />
+                      </svg>
+                      <div id="mtgLiveTimerText" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:22px;font-weight:700;color:#1a365d;">
+                          ${current.minutes_allocated}:00
+                      </div>
+                  </div>`;
+                  // Restart timer button
+                  rightHtml += `<button onclick="mtgLiveRestartTimer()" title="Restart timer" style="background:none;border:1px solid #d1d5db;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:11px;color:#6b7280;margin-bottom:20px;">&#8634; Restart timer</button>`;
+
+                  // Up Next strip
+                  if (next) {
+                      const nextMod = next.slot_type === 'DATA_DEEP' ? 'Deep' : next.slot_type === 'DATA_FOCUS' ? 'Focus' : 'Flash';
+                      rightHtml += `<div style="background:#f8f9fa;border-radius:8px;padding:8px 16px;text-align:center;width:100%;max-width:280px;">
+                          <div style="font-size:10px;color:#999;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Up Next</div>
+                          <div style="font-size:15px;font-weight:600;color:#374151;">${next.name || next.user_id}</div>
+                          <div style="font-size:11px;color:#6b7280;">${nextMod} &middot; ${next.minutes_allocated} min</div>
+                      </div>`;
+                  }
+              }
+              rightHtml += '</div>';
+
+              // Controls
+              const backDisabled = idx <= 0;
+              const backStyle = backDisabled
+                  ? 'padding:8px 20px;border:1px solid #e0e0e0;border-radius:6px;background:#f8f9fa;cursor:default;font-size:13px;color:#ccc;'
+                  : 'padding:8px 20px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer;font-size:13px;color:#374151;';
+              let controlsHtml = `<div style="display:flex;justify-content:center;gap:10px;padding:16px;border-top:1px solid #e0e0e0;">
+                  <button onclick="mtgLiveBack()" style="${backStyle}" ${backDisabled ? 'disabled' : ''}>&#9664; Back</button>
+                  <button onclick="mtgLiveNext()" style="padding:8px 28px;border:none;border-radius:6px;background:#2d5a87;color:#fff;cursor:pointer;font-size:14px;font-weight:600;">Next &#9654;</button>
+                  <button onclick="mtgLiveReset()" style="padding:8px 16px;border:1px solid #d1d5db;border-radius:6px;background:#fff;cursor:pointer;font-size:13px;color:#dc3545;">Reset</button>
+              </div>`;
+
+              // Meeting header
+              const dateStr = mtgDateStr(meta.meeting_date);
+              const timeStr = (meta.meeting_time || '').slice(0, 5);
+              let headerHtml = `<div style="padding:10px 16px;border-bottom:1px solid #e0e0e0;display:flex;align-items:center;gap:10px;background:#f8f9fa;">
+                  <span style="font-weight:600;color:#1a365d;font-size:14px;">Live Meeting</span>
+                  <span style="font-size:12px;color:#5a6578;">${dateStr} ${timeStr}</span>
+                  ${meta.location_text ? '<span style="font-size:12px;color:#5a6578;">&middot; ' + meta.location_text + '</span>' : ''}
+                  <span style="font-size:10px;padding:2px 8px;border-radius:8px;background:#d4edda;color:#155724;font-weight:600;margin-left:auto;">${finished ? 'COMPLETE' : (idx + 1) + ' / ' + mtgLiveQueue.length}</span>
+              </div>`;
+
+              container.innerHTML = `<div class="panel" style="overflow:hidden;">
+                  ${headerHtml}
+                  <div style="display:flex;min-height:420px;">
+                      <div style="flex:0 0 280px;border-right:1px solid #e0e0e0;overflow-y:auto;max-height:500px;">${queueHtml}</div>
+                      <div style="flex:1;">${rightHtml}</div>
+                  </div>
+                  ${controlsHtml}
+              </div>`;
+
+              // Start timer
+              mtgLiveStartTimer();
+          }
+
+          function mtgLiveNext() {
+              const idx = mtgLiveGetIndex();
+              if (idx < mtgLiveQueue.length) {
+                  localStorage.setItem('mtg_live_index', String(idx + 1));
+                  localStorage.setItem('mtg_live_timer_started_at', String(Date.now()));
+              }
+              mtgRenderLive();
+          }
+
+          function mtgLiveBack() {
+              const idx = mtgLiveGetIndex();
+              if (idx > 0) {
+                  localStorage.setItem('mtg_live_index', String(idx - 1));
+                  localStorage.setItem('mtg_live_timer_started_at', String(Date.now()));
+              }
+              mtgRenderLive();
+          }
+
+          function mtgLiveReset() {
+              if (!confirm('Reset meeting to the first speaker?')) return;
+              localStorage.setItem('mtg_live_index', '0');
+              localStorage.setItem('mtg_live_timer_started_at', String(Date.now()));
+              mtgRenderLive();
+          }
+
+          function mtgLiveRestartTimer() {
+              localStorage.setItem('mtg_live_timer_started_at', String(Date.now()));
+              mtgLiveStartTimer();
+          }
+
+          function mtgLiveStartTimer() {
+              if (mtgLiveTimerInterval) clearInterval(mtgLiveTimerInterval);
+              mtgLiveTimerInterval = setInterval(mtgLiveUpdateTimer, 1000);
+              mtgLiveUpdateTimer();
+          }
+
+          function mtgLiveUpdateTimer() {
+              const ring = document.getElementById('mtgLiveTimerRing');
+              const text = document.getElementById('mtgLiveTimerText');
+              if (!ring || !text) { if (mtgLiveTimerInterval) clearInterval(mtgLiveTimerInterval); return; }
+
+              const idx = mtgLiveGetIndex();
+              const current = mtgLiveQueue[idx];
+              if (!current) { if (mtgLiveTimerInterval) clearInterval(mtgLiveTimerInterval); return; }
+
+              const totalSec = current.minutes_allocated * 60;
+              const started = parseInt(localStorage.getItem('mtg_live_timer_started_at') || '0', 10);
+              const elapsed = Math.floor((Date.now() - started) / 1000);
+              const remaining = Math.max(0, totalSec - elapsed);
+              const progress = Math.min(1, elapsed / totalSec);
+
+              const circ = 2 * Math.PI * 54;
+              ring.setAttribute('stroke-dashoffset', (circ * progress).toFixed(2));
+
+              // Change color when expired
+              if (remaining <= 0) {
+                  ring.setAttribute('stroke', '#dc3545');
+              }
+
+              const mins = Math.floor(remaining / 60);
+              const secs = remaining % 60;
+              text.textContent = mins + ':' + String(secs).padStart(2, '0');
+              if (remaining <= 0) text.style.color = '#dc3545';
+          }
+
+          // Keyboard shortcuts for Live Meeting
+          document.addEventListener('keydown', function(e) {
+              if (mtgCurrentView !== 'live') return;
+              // Skip if typing in an input/textarea/select
+              if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+              if (e.key === 'n' || e.key === 'N' || e.key === 'ArrowRight') { e.preventDefault(); mtgLiveNext(); }
+              else if (e.key === 'b' || e.key === 'B' || e.key === 'ArrowLeft') { e.preventDefault(); mtgLiveBack(); }
+              else if (e.key === 'r' || e.key === 'R') { e.preventDefault(); mtgLiveReset(); }
+          });
 
 
         // DASHBOARD TAB
