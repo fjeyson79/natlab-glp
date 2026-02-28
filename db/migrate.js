@@ -394,6 +394,183 @@ async function migrate() {
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
             )`,
 
+            // ==================== OLIGO-ID PHASE 1 (migration 029) ====================
+
+            `CREATE EXTENSION IF NOT EXISTS pgcrypto`,
+
+            `CREATE TABLE IF NOT EXISTS probe_catalog (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                canonical_id TEXT NOT NULL,
+                display_name TEXT,
+                notes TEXT,
+                sequence TEXT,
+                sequence_norm TEXT,
+                chemistry_code TEXT NOT NULL DEFAULT 'STD',
+                oligo_kind TEXT NOT NULL DEFAULT 'OLIGO' CHECK (oligo_kind IN ('LIBRARY','OLIGO')),
+                library_type TEXT CHECK (library_type IS NULL OR library_type IN ('FRET','UNMODIFIED_MS','OTHER')),
+                library_type_notes TEXT,
+                fluorophore TEXT,
+                quencher TEXT,
+                length_nt INTEGER,
+                status TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE','RETIRED','DRAFT')),
+                finalized_at TIMESTAMPTZ,
+                finalized_by TEXT,
+                created_by TEXT NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )`,
+            `CREATE UNIQUE INDEX IF NOT EXISTS uq_probe_catalog_canonical_id ON probe_catalog (canonical_id)`,
+            `CREATE UNIQUE INDEX IF NOT EXISTS uq_probe_catalog_identity ON probe_catalog (sequence_norm, chemistry_code) WHERE sequence_norm IS NOT NULL`,
+            `CREATE INDEX IF NOT EXISTS idx_probe_catalog_status ON probe_catalog (status)`,
+            `CREATE INDEX IF NOT EXISTS idx_probe_catalog_created_by ON probe_catalog (created_by)`,
+
+            `DO $$ BEGIN
+                ALTER TABLE probe_catalog
+                    ADD CONSTRAINT probe_catalog_library_rules_chk
+                    CHECK (
+                        (oligo_kind = 'OLIGO' AND library_type IS NULL AND library_type_notes IS NULL AND fluorophore IS NULL AND quencher IS NULL)
+                        OR
+                        (oligo_kind = 'LIBRARY' AND library_type IS NOT NULL)
+                    );
+            EXCEPTION WHEN duplicate_object THEN NULL; END $$;`,
+
+            `DO $$ BEGIN
+                ALTER TABLE probe_catalog
+                    ADD CONSTRAINT probe_catalog_library_subtype_rules_chk
+                    CHECK (
+                        (library_type = 'FRET' AND fluorophore IS NOT NULL AND quencher IS NOT NULL)
+                        OR
+                        (library_type = 'UNMODIFIED_MS' AND fluorophore IS NULL AND quencher IS NULL)
+                        OR
+                        (library_type = 'OTHER' AND notes IS NOT NULL AND fluorophore IS NULL AND quencher IS NULL)
+                        OR
+                        (library_type IS NULL)
+                    );
+            EXCEPTION WHEN duplicate_object THEN NULL; END $$;`,
+
+            `CREATE TABLE IF NOT EXISTS probe_syntheses (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                probe_id UUID NOT NULL REFERENCES probe_catalog(id),
+                order_number TEXT,
+                order_item TEXT,
+                batch_key TEXT,
+                supplier TEXT,
+                review_status TEXT NOT NULL DEFAULT 'PENDING' CHECK (review_status IN ('PENDING','ACCEPTED','REJECTED','FLAGGED')),
+                reviewed_by TEXT,
+                reviewed_at TIMESTAMPTZ,
+                created_by TEXT NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )`,
+            `CREATE INDEX IF NOT EXISTS idx_probe_syntheses_probe ON probe_syntheses (probe_id)`,
+            `CREATE INDEX IF NOT EXISTS idx_probe_syntheses_order ON probe_syntheses (order_number)`,
+            `CREATE INDEX IF NOT EXISTS idx_probe_syntheses_review ON probe_syntheses (review_status)`,
+
+            `CREATE TABLE IF NOT EXISTS probe_synthesis_tubes (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                synthesis_id UUID NOT NULL REFERENCES probe_syntheses(id),
+                tube_label TEXT,
+                concentration NUMERIC,
+                concentration_unit TEXT DEFAULT 'uM',
+                volume_ul NUMERIC,
+                storage_location TEXT,
+                storage_temp TEXT CHECK (storage_temp IS NULL OR storage_temp IN ('RT','4C','-20C','-80C','LN2')),
+                status TEXT NOT NULL DEFAULT 'IN_STOCK' CHECK (status IN ('IN_STOCK','DEPLETED','DISCARDED')),
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )`,
+            `CREATE INDEX IF NOT EXISTS idx_probe_tubes_synthesis ON probe_synthesis_tubes (synthesis_id)`,
+            `CREATE INDEX IF NOT EXISTS idx_probe_tubes_status ON probe_synthesis_tubes (status)`,
+
+            `CREATE TABLE IF NOT EXISTS probe_libraries (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                library_name TEXT NOT NULL,
+                description TEXT,
+                created_by TEXT NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )`,
+            `CREATE UNIQUE INDEX IF NOT EXISTS uq_probe_libraries_name ON probe_libraries (library_name)`,
+
+            `CREATE TABLE IF NOT EXISTS probe_library_members (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                library_id UUID NOT NULL REFERENCES probe_libraries(id) ON DELETE CASCADE,
+                probe_id UUID NOT NULL REFERENCES probe_catalog(id),
+                added_by TEXT NOT NULL,
+                added_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE (library_id, probe_id)
+            )`,
+            `CREATE INDEX IF NOT EXISTS idx_probe_lib_members_library ON probe_library_members (library_id)`,
+            `CREATE INDEX IF NOT EXISTS idx_probe_lib_members_probe ON probe_library_members (probe_id)`,
+
+            `CREATE TABLE IF NOT EXISTS probe_pdfs (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                probe_id UUID REFERENCES probe_catalog(id),
+                original_filename TEXT NOT NULL,
+                r2_object_key TEXT NOT NULL,
+                file_size_bytes INTEGER,
+                parse_status TEXT NOT NULL DEFAULT 'UPLOADED' CHECK (parse_status IN ('UPLOADED','PARSED','FAILED')),
+                parsed_json JSONB,
+                uploaded_by TEXT NOT NULL,
+                uploaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )`,
+            `CREATE INDEX IF NOT EXISTS idx_probe_pdfs_probe ON probe_pdfs (probe_id)`,
+
+            `CREATE TABLE IF NOT EXISTS probe_audit_log (
+                id BIGSERIAL PRIMARY KEY,
+                entity_type TEXT NOT NULL,
+                entity_id UUID NOT NULL,
+                action TEXT NOT NULL,
+                actor TEXT NOT NULL,
+                old_values JSONB,
+                new_values JSONB,
+                note TEXT,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )`,
+            `CREATE INDEX IF NOT EXISTS idx_probe_audit_entity ON probe_audit_log (entity_type, entity_id)`,
+            `CREATE INDEX IF NOT EXISTS idx_probe_audit_actor ON probe_audit_log (actor)`,
+            `CREATE INDEX IF NOT EXISTS idx_probe_audit_created ON probe_audit_log (created_at DESC)`,
+
+            // Immutable identity trigger
+            `CREATE OR REPLACE FUNCTION probe_identity_immutable()
+            RETURNS TRIGGER AS $fn$
+            BEGIN
+                IF OLD.finalized_at IS NOT NULL THEN
+                    IF NEW.canonical_id IS DISTINCT FROM OLD.canonical_id THEN
+                        RAISE EXCEPTION 'Cannot modify canonical_id on a finalized probe';
+                    END IF;
+                    IF NEW.sequence IS DISTINCT FROM OLD.sequence THEN
+                        RAISE EXCEPTION 'Cannot modify sequence on a finalized probe';
+                    END IF;
+                    IF NEW.sequence_norm IS DISTINCT FROM OLD.sequence_norm THEN
+                        RAISE EXCEPTION 'Cannot modify sequence_norm on a finalized probe';
+                    END IF;
+                    IF NEW.chemistry_code IS DISTINCT FROM OLD.chemistry_code THEN
+                        RAISE EXCEPTION 'Cannot modify chemistry_code on a finalized probe';
+                    END IF;
+                    IF NEW.oligo_kind IS DISTINCT FROM OLD.oligo_kind THEN
+                        RAISE EXCEPTION 'Cannot modify oligo_kind on a finalized probe';
+                    END IF;
+                    IF NEW.library_type IS DISTINCT FROM OLD.library_type THEN
+                        RAISE EXCEPTION 'Cannot modify library_type on a finalized probe';
+                    END IF;
+                    IF NEW.library_type_notes IS DISTINCT FROM OLD.library_type_notes THEN
+                        RAISE EXCEPTION 'Cannot modify library_type_notes on a finalized probe';
+                    END IF;
+                    IF NEW.fluorophore IS DISTINCT FROM OLD.fluorophore THEN
+                        RAISE EXCEPTION 'Cannot modify fluorophore on a finalized probe';
+                    END IF;
+                    IF NEW.quencher IS DISTINCT FROM OLD.quencher THEN
+                        RAISE EXCEPTION 'Cannot modify quencher on a finalized probe';
+                    END IF;
+                    IF NEW.notes IS DISTINCT FROM OLD.notes THEN
+                        RAISE EXCEPTION 'Cannot modify notes on a finalized probe';
+                    END IF;
+                END IF;
+                RETURN NEW;
+            END;
+            $fn$ LANGUAGE plpgsql`,
+            `DROP TRIGGER IF EXISTS trg_probe_identity_immutable ON probe_catalog`,
+            `CREATE TRIGGER trg_probe_identity_immutable BEFORE UPDATE ON probe_catalog FOR EACH ROW EXECUTE FUNCTION probe_identity_immutable()`,
+
         ];
 
         for (const sql of migrations) {

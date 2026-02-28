@@ -12091,6 +12091,36 @@ app.post('/api/meetings/update-details', requirePI, async (req, res) => {
 // OLIGO-ID ROUTES (Phase 1)
 // =====================================================
 
+let probeCatalogExists = null;
+let probeCatalogLastCheck = 0;
+async function checkProbeCatalogTable() {
+    const now = Date.now();
+    if (probeCatalogExists === null || probeCatalogExists === false || (now - probeCatalogLastCheck > ROLE_COLUMN_CHECK_INTERVAL)) {
+        try {
+            const result = await pool.query(`
+                SELECT table_name FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'probe_catalog'
+            `);
+            probeCatalogExists = result.rows.length > 0;
+            probeCatalogLastCheck = now;
+        } catch (err) {
+            probeCatalogExists = false;
+        }
+    }
+    return probeCatalogExists;
+}
+
+const oligoCsvUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 5 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+        if ((file.originalname || '').toLowerCase().endsWith('.csv')) {
+            return cb(null, true);
+        }
+        return cb(new Error('Only CSV files are accepted'), false);
+    }
+});
+
 function oligoNormalizeSequence(seq) {
     if (!seq) return null;
     return String(seq).replace(/\s+/g, "").toLowerCase();
@@ -12125,15 +12155,17 @@ app.get("/api/oligo/catalog/:id", requirePI, async (req, res) => {
         if (!isUuid(probeId)) return res.status(400).json({ error: "Invalid probe ID" });
 
         const probeResult = await pool.query(
-            `SELECT id, canonical_id, display_name, sequence, length_nt, status, finalized_at, created_at
-             FROM probe_catalog WHERE id = `,
+            `SELECT id, canonical_id, display_name, sequence, chemistry_code, length_nt,
+                    oligo_kind, library_type, library_type_notes, fluorophore, quencher,
+                    status, finalized_at, created_at
+             FROM probe_catalog WHERE id = $1`,
             [probeId]
         );
         if (probeResult.rows.length === 0) return res.status(404).json({ error: "Probe not found" });
 
         const synthResult = await pool.query(
-            `SELECT id, order_number, order_item, batch_key, review_status, created_at
-             FROM probe_syntheses WHERE probe_id = 
+            `SELECT id, order_number, order_item, batch_key, supplier, review_status, created_at
+             FROM probe_syntheses WHERE probe_id = $1
              ORDER BY created_at DESC`,
             [probeId]
         );
@@ -12160,13 +12192,31 @@ app.post("/api/oligo/catalog", requirePI, async (req, res) => {
         const sequence_norm = oligoNormalizeSequence(sequence);
         const length_nt = sequence.length;
 
+        const chemistry_code = (String(req.body?.chemistry_code || "").trim().toUpperCase() || "STD");
+        const oligo_kind = (String(req.body?.oligo_kind || "OLIGO").trim().toUpperCase());
+        if (!((oligo_kind === "LIBRARY") || (oligo_kind === "OLIGO"))) return res.status(400).json({ error: "Invalid oligo_kind" });
+
+        const library_type = (String(req.body?.library_type || "").trim().toUpperCase() || null);
+        const library_type_notes = (req.body?.library_type_notes || null);
+        const fluorophore = (req.body?.fluorophore || null);
+        const quencher = (req.body?.quencher || null);
+
         const actor = (req.session?.user?.researcher_id || req.session?.user?.id || null);
 
         const result = await pool.query(
-            `INSERT INTO probe_catalog (canonical_id, display_name, sequence, sequence_norm, length_nt, status, created_by)
-             VALUES (, , , , , ACTIVE, )
-             RETURNING id, canonical_id, display_name, sequence, length_nt, status, finalized_at, created_at`,
-            [canonical_id, display_name, sequence, sequence_norm, length_nt, actor]
+            `INSERT INTO probe_catalog (
+                canonical_id, display_name, sequence, sequence_norm, chemistry_code, length_nt,
+                oligo_kind, library_type, library_type_notes, fluorophore, quencher,
+                status, created_by
+             ) VALUES (
+                $1,$2,$3,$4,$5,$6,
+                $7,$8,$9,$10,$11,
+                'ACTIVE',$12
+             )
+             RETURNING id, canonical_id, display_name, sequence, chemistry_code, length_nt, oligo_kind, library_type, status, finalized_at, created_at`,
+            [canonical_id, display_name, sequence, sequence_norm, chemistry_code, length_nt,
+             oligo_kind, library_type, library_type_notes, fluorophore, quencher,
+             actor]
         );
 
         res.json({ probe: result.rows[0] });
@@ -12187,8 +12237,8 @@ app.post("/api/oligo/catalog/:id/finalize", requirePI, async (req, res) => {
 
         const result = await pool.query(
             `UPDATE probe_catalog
-             SET finalized_at = NOW(), finalized_by = COALESCE(finalized_by, )
-             WHERE id =  AND finalized_at IS NULL
+             SET finalized_at = NOW(), finalized_by = COALESCE(finalized_by, $2)
+             WHERE id = $1 AND finalized_at IS NULL
              RETURNING id, canonical_id, status, finalized_at`,
             [probeId, (req.session?.user?.researcher_id || req.session?.user?.id || null)]
         );
@@ -12233,6 +12283,132 @@ app.post("/api/oligo/upload-pdf", requirePI, upload.single("file"), async (req, 
         });
     } catch (err) {
         console.error("[OLIGO] upload-pdf error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// POST /api/oligo/import-master – bulk CSV import into probe_catalog
+app.post("/api/oligo/import-master", requirePI, oligoCsvUpload.single("file"), async (req, res) => {
+    try {
+        if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+
+        const tableReady = await checkProbeCatalogTable();
+        if (!tableReady) return res.status(503).json({ error: "probe_catalog table not available. Run migration 029 first." });
+
+        // Parse CSV
+        const text = req.file.buffer.toString("utf-8");
+        const lines = text.split(/\r?\n/).filter(l => l.trim());
+        if (lines.length < 2) return res.status(400).json({ error: "CSV must have a header row and at least one data row" });
+
+        const headers = lines[0].split(",").map(h => h.trim().toLowerCase().replace(/["\s]+/g, ""));
+        const required = ["canonical_id", "display_name", "sequence"];
+        const missing = required.filter(c => !headers.includes(c));
+        if (missing.length > 0) {
+            return res.status(400).json({ error: "Missing required columns: " + missing.join(", ") });
+        }
+
+        const ciIdx = headers.indexOf("canonical_id");
+        const dnIdx = headers.indexOf("display_name");
+        const sqIdx = headers.indexOf("sequence");
+
+        // Build rows
+        const rows = [];
+        const parseErrors = [];
+        for (let i = 1; i < lines.length; i++) {
+            const values = lines[i].split(",").map(v => v.trim().replace(/^"|"$/g, ""));
+            const cid = (values[ciIdx] || "").trim();
+            const dname = (values[dnIdx] || "").trim();
+            const seqRaw = (values[sqIdx] || "").trim();
+
+            if (!cid) { parseErrors.push(`Row ${i + 1}: canonical_id is empty`); continue; }
+            if (!seqRaw) { parseErrors.push(`Row ${i + 1}: sequence is empty`); continue; }
+
+            const sequence = seqRaw.replace(/\s+/g, "").toUpperCase();
+            if (!/^[ACGTUNRYKMSWBDHV]+$/i.test(sequence)) {
+                parseErrors.push(`Row ${i + 1}: sequence contains invalid characters`);
+                continue;
+            }
+
+            rows.push({
+                canonical_id: cid,
+                display_name: dname || null,
+                sequence: sequence,
+                sequence_norm: oligoNormalizeSequence(sequence),
+                length_nt: sequence.length
+            });
+        }
+
+        if (parseErrors.length > 0 && rows.length === 0) {
+            return res.status(400).json({ error: "All rows failed validation", details: parseErrors });
+        }
+
+        const actor = req.session?.user?.researcher_id || req.session?.user?.id || "unknown";
+        let insertedCount = 0;
+        let duplicateCount = 0;
+        let errorCount = parseErrors.length;
+
+        // Transactional insert — all or nothing
+        const client = await pool.connect();
+        try {
+            await client.query("BEGIN");
+
+            for (const row of rows) {
+                try {
+                    await client.query(
+                        `INSERT INTO probe_catalog (canonical_id, display_name, sequence, sequence_norm, length_nt, status, finalized_at, created_by)
+                         VALUES ($1, $2, $3, $4, $5, 'ACTIVE', NOW(), $6)`,
+                        [row.canonical_id, row.display_name, row.sequence, row.sequence_norm, row.length_nt, actor]
+                    );
+                    insertedCount++;
+                } catch (insertErr) {
+                    if (insertErr.code === "23505") {
+                        // Unique violation (canonical_id or sequence_norm)
+                        duplicateCount++;
+                    } else {
+                        // Any other error → rollback entire import
+                        await client.query("ROLLBACK");
+                        console.error("[OLIGO] import-master row error:", insertErr);
+                        return res.status(500).json({
+                            error: "Import failed at row: " + row.canonical_id,
+                            detail: insertErr.message
+                        });
+                    }
+                }
+            }
+
+            // If there were duplicates, that's OK — commit the rest
+            // But if the user wants strict all-or-nothing including duplicates, uncomment below:
+            // if (duplicateCount > 0) { await client.query("ROLLBACK"); ... }
+
+            await client.query("COMMIT");
+
+            // Audit log
+            try {
+                await pool.query(
+                    `INSERT INTO probe_audit_log (entity_type, entity_id, action, actor, new_values)
+                     VALUES ('import', gen_random_uuid(), 'MASTER_IMPORT', $1, $2)`,
+                    [actor, JSON.stringify({ inserted_count: insertedCount, duplicate_count: duplicateCount, error_count: errorCount, filename: req.file.originalname })]
+                );
+            } catch (auditErr) {
+                console.error("[OLIGO] audit log error (non-fatal):", auditErr);
+            }
+
+            console.log(`[OLIGO] import-master: inserted=${insertedCount}, duplicates=${duplicateCount}, errors=${errorCount}, actor=${actor}`);
+            res.json({
+                success: true,
+                inserted_count: insertedCount,
+                duplicate_count: duplicateCount,
+                error_count: errorCount,
+                parse_errors: parseErrors.length > 0 ? parseErrors : undefined
+            });
+        } catch (txErr) {
+            await client.query("ROLLBACK");
+            throw txErr;
+        } finally {
+            client.release();
+        }
+    } catch (err) {
+        console.error("[OLIGO] import-master error:", err);
         res.status(500).json({ error: "Server error" });
     }
 });
