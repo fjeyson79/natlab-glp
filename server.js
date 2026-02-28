@@ -12260,27 +12260,284 @@ app.post("/api/oligo/upload-pdf", requirePI, upload.single("file"), async (req, 
             return res.status(400).json({ error: "Only PDF files are accepted" });
         }
 
-        res.json({
-            status: "stub",
-            message: "PDF extractor not yet implemented. This is a placeholder response.",
+        
+        // Biomers PDF preview extractor (no DB writes here).
+        // Truth: sequence_raw is never questioned. PI confirms/overrides sequence_norm + chemistry_code.
+        const pdfParse = require("pdf-parse");
+
+        const buf = req.file.buffer;
+        const parsed = await pdfParse(buf);
+        const text = String(parsed.text || "").replace(/\r/g, "");
+
+        function normSpace(x) { return String(x || "").replace(/\s+/g, " ").trim(); }
+        function compactSeq(x) { return String(x || "").replace(/\s+/g, "").trim(); }
+
+        // Best-effort: order + PO
+        let order_no = null;
+        let po_no = null;
+        const mOrder = text.match(/\bOrder\s*No\.?\s*[:#]?\s*([0-9]{6,})\b/i);
+        if (mOrder) order_no = mOrder[1];
+
+        const mPO = text.match(/\bP\.?O\.?\s*No\.?\s*[:#]?\s*([A-Za-z0-9\-_\/]+)\b/i);
+        if (mPO) po_no = mPO[1];
+
+        // Locate block headers: 00304503_30 RNA or 00304503_30 DNA
+        const reHeader = /(^|\n)\s*([0-9]{6,}_[0-9]{1,4})\s+(RNA|DNA)\b/g;
+        const headers = [];
+        let mh;
+        while ((mh = reHeader.exec(text)) !== null) {
+            headers.push({ pos: mh.index, canonical_id: mh[2], reported_polymer_type: mh[3] });
+        }
+
+        // If none found, still return text preview for debugging
+        if (headers.length === 0) {
+            return res.json({
+                status: "ok",
+                supplier: "biomers",
+                filename: req.file.originalname,
+                size_bytes: req.file.size,
+                order_no,
+                po_no,
+                items: [],
+                warnings: ["NO_HEADERS_FOUND"],
+                text_preview: text.slice(0, 4000)
+            });
+        }
+
+        function parseIntModMap(block) {
+            // Supports formats:
+            // Int. Mod. 5: ... 6: ... 7: ... 8: ...
+            // or lines: Int. Mod. 5: ...\n6: ...\n7: ...\n8: ...
+            const map = {};
+            const lines = block.split(/\n/).map(l => l.trim()).filter(Boolean);
+
+            // Find a line that contains "Int. Mod."
+            let start = -1;
+            for (let i = 0; i < lines.length; i++) {
+                if (/^Int\.?\s*Mod\.?/i.test(lines[i])) { start = i; break; }
+            }
+            if (start === -1) return map;
+
+            // Collect up to a few lines after start to capture 5..8 definitions
+            const chunk = lines.slice(start, start + 6).join(" ");
+
+            // Pull 5..8 definitions from the chunk
+            const re = /(\b[5-8])\s*:\s*([^:]+?)(?=(\b[5-8]\s*:)|$)/g;
+            let m;
+            while ((m = re.exec(chunk)) !== null) {
+                const k = m[1];
+                const v = normSpace(m[2]);
+                map[k] = v;
+            }
+            return map;
+        }
+
+        function intModToPrefixBase(v) {
+            const vv = String(v || "");
+            // 2'-OMe-A, 2'-F-dA, +A (Locked Nuc Acid)
+            if (/2'\s*[-]?\s*OMe/i.test(vv)) {
+                const base = (vv.match(/2'\s*[-]?\s*OMe\s*[-]?\s*([ACGTU])/i) || [])[1] || null;
+                return base ? { prefix: "m", base: base.toUpperCase() } : null;
+            }
+            if (/2'\s*[-]?\s*F/i.test(vv)) {
+                const base = (vv.match(/2'\s*[-]?\s*F\s*[-]?\s*d?([ACGTU])/i) || [])[1] || null;
+                return base ? { prefix: "f", base: base.toUpperCase() } : null;
+            }
+            if (/Locked\s+Nuc\s+Acid/i.test(vv) || /^\+\s*[ACGTU]/.test(vv)) {
+                const base = (vv.match(/\+\s*([ACGTU])/i) || [])[1] || null;
+                return base ? { prefix: "l", base: base.toUpperCase() } : null;
+            }
+            return null;
+        }
+
+        function applyCase(base, reportedType) {
+            // Your rule: RNA bases lowercase, DNA bases uppercase
+            if (!base) return base;
+            if (reportedType === "RNA") return base.toLowerCase();
+            return base.toUpperCase();
+        }
+
+        function detectWarnings(sequence_raw_compact, reportedType, intMap) {
+            const warnings = [];
+
+            const hasT = /T/.test(sequence_raw_compact);
+            const hasU = /U/.test(sequence_raw_compact);
+
+            // Contradictions from letters vs reported
+            if (reportedType === "RNA" && hasT) warnings.push("REPORTED_RNA_BUT_HAS_T");
+            if (reportedType === "DNA" && hasU) warnings.push("REPORTED_DNA_BUT_HAS_U");
+
+            // Mixed letters
+            if (hasT && hasU) warnings.push("MIXED_T_AND_U_IN_RAW");
+
+            // Digits present but no Int.Mod mapping
+            const hasDigits = /[5-8]/.test(sequence_raw_compact);
+            if (hasDigits) {
+                const needed = ["5","6","7","8"].filter(k => sequence_raw_compact.includes(k));
+                const missing = needed.filter(k => !intMap[k]);
+                if (missing.length > 0) warnings.push("DIGITS_PRESENT_BUT_INTMOD_INCOMPLETE");
+            }
+
+            // Int.Mod contradictions with reported type (U vs T in mapping)
+            const mapVals = Object.values(intMap || {}).join(" ");
+            const mapHasU = /\bU\b/i.test(mapVals) || /dU\b/i.test(mapVals);
+            const mapHasT = /\bT\b/i.test(mapVals) || /dT\b/i.test(mapVals);
+            if (reportedType === "DNA" && mapHasU) warnings.push("INTMOD_SUGGESTS_U_WITH_REPORTED_DNA");
+            if (reportedType === "RNA" && mapHasT) warnings.push("INTMOD_SUGGESTS_T_WITH_REPORTED_RNA");
+
+            // Normalize JS 'and'
+            return warnings;
+        }
+
+        // Fix JS 'and' tokens inserted above
+        // (we keep everything inside replacement string, so do it with actual JS below)
+        function detectWarnings2(sequence_raw_compact, reportedType, intMap) {
+            const warnings = [];
+            const hasT = /T/.test(sequence_raw_compact);
+            const hasU = /U/.test(sequence_raw_compact);
+
+            if (reportedType === "RNA" && hasT) warnings.push("REPORTED_RNA_BUT_HAS_T");
+            if (reportedType === "DNA" && hasU) warnings.push("REPORTED_DNA_BUT_HAS_U");
+            if (hasT && hasU) warnings.push("MIXED_T_AND_U_IN_RAW");
+
+            const hasDigits = /[5-8]/.test(sequence_raw_compact);
+            if (hasDigits) {
+                const needed = ["5","6","7","8"].filter(k => sequence_raw_compact.includes(k));
+                const missing = needed.filter(k => !intMap[k]);
+                if (missing.length > 0) warnings.push("DIGITS_PRESENT_BUT_INTMOD_INCOMPLETE");
+            }
+
+            const mapVals = Object.values(intMap || {}).join(" ");
+            const mapHasU = /\bU\b/i.test(mapVals) || /dU\b/i.test(mapVals);
+            const mapHasT = /\bT\b/i.test(mapVals) || /dT\b/i.test(mapVals);
+            if (reportedType === "DNA" && mapHasU) warnings.push("INTMOD_SUGGESTS_U_WITH_REPORTED_DNA");
+            if (reportedType === "RNA" && mapHasT) warnings.push("INTMOD_SUGGESTS_T_WITH_REPORTED_RNA");
+
+            return warnings;
+        }
+
+        function suggestChemistryCode(reportedType, intMap, warnings) {
+            if (warnings.includes("MIXED_T_AND_U_IN_RAW") ||
+                warnings.includes("REPORTED_RNA_BUT_HAS_T") ||
+                warnings.includes("REPORTED_DNA_BUT_HAS_U") ||
+                warnings.includes("INTMOD_SUGGESTS_U_WITH_REPORTED_DNA") ||
+                warnings.includes("INTMOD_SUGGESTS_T_WITH_REPORTED_RNA")) {
+                return "MIXED";
+            }
+            const vals = Object.values(intMap || {}).join(" ");
+            if (/2'\s*[-]?\s*OMe/i.test(vals)) return "RNA_2OMe";
+            if (/2'\s*[-]?\s*F/i.test(vals)) return "DNA_2F";
+            if (/Locked\s+Nuc\s+Acid/i.test(vals) || /\+\s*[ACGTU]/.test(vals)) return "DNA_LNA";
+            return reportedType === "RNA" ? "RNA_STD" : "DNA_STD";
+        }
+
+        function decodeSequenceNorm(sequence_raw_compact, reportedType, intMap) {
+            let out = "";
+            const digits = new Set(["5","6","7","8"]);
+            for (const ch of sequence_raw_compact) {
+                if (digits.has(ch)) {
+                    const defn = intMap[ch];
+                    if (!defn) {
+                        out += ch; // keep as-is; PI will resolve
+                        continue;
+                    }
+                    const pb = intModToPrefixBase(defn);
+                    if (!pb) {
+                        out += ch;
+                        continue;
+                    }
+                    const baseCased = applyCase(pb.base, reportedType);
+                    out += pb.prefix + baseCased;
+                } else if (/[ACGTU]/.test(ch)) {
+                    out += applyCase(ch, reportedType);
+                } else {
+                    // Preserve unexpected characters (rare)
+                    out += ch;
+                }
+            }
+            return out;
+        }
+
+        function extractField(block, re) {
+            const m = block.match(re);
+            return m ? normSpace(m[1]) : null;
+        }
+
+        function parseMods(block) {
+            const five = extractField(block, /\b5'[-\s]*Mod\.?\s*[:]?\s*([^\n]+)/i);
+            const three = extractField(block, /\b3'[-\s]*Mod\.?\s*[:]?\s*([^\n]+)/i);
+
+            // For now: fluorophore = 5' mod, quencher = 3' mod
+            // Biomers often prints "6-Fam (qPCR Probe)" and "TQ2"
+            const fluorophore = five ? five.replace(/\s*\(.*?\)\s*/g, "").trim() : null;
+            const quencher = three ? three.replace(/\s*\(.*?\)\s*/g, "").trim() : null;
+            return { fluorophore, quencher, mod5: five, mod3: three };
+        }
+
+        function parseQC(block) {
+            const mw_calc = extractField(block, /\bMW\s*Calc\.?\s*[:]?\s*([0-9]+(?:\.[0-9]+)?)/i);
+            const mw_found = extractField(block, /\bMW\s*Found\.?\s*[:]?\s*([0-9]+(?:\.[0-9]+)?)/i);
+            const yield_od = extractField(block, /\bYield\s+in\s+OD\s*[:]?\s*([0-9]+(?:\.[0-9]+)?)/i);
+            const amount_nmol = extractField(block, /\bAmount\s+in\s+nmol\s*[:]?\s*([0-9]+(?:\.[0-9]+)?)/i);
+            const mass_ug = extractField(block, /\bMass\s+in\s+µg\s*[:]?\s*([0-9]+(?:\.[0-9]+)?)/i);
+            return { mw_calc, mw_found, yield_od, amount_nmol, mass_ug };
+        }
+
+        const items = [];
+        for (let idx = 0; idx < headers.length; idx++) {
+            const h = headers[idx];
+            const start = h.pos;
+            const end = (idx + 1 < headers.length) ? headers[idx + 1].pos : text.length;
+            const block = text.slice(start, end);
+
+            const canonical_id = h.canonical_id;
+            const reported_polymer_type = h.reported_polymer_type;
+
+            const seqm = block.match(/5'\s*[-–]?\s*([^\n]+?)\s*[-–]?\s*3'/i);
+            const sequence_raw = seqm ? normSpace(seqm[1]) : null;
+
+            const sequence_compact = sequence_raw ? compactSeq(sequence_raw).toUpperCase() : "";
+            const int_mod_map = parseIntModMap(block);
+
+            const warnings = sequence_raw ? detectWarnings2(sequence_compact, reported_polymer_type, int_mod_map) : ["NO_SEQUENCE_FOUND"];
+
+            const sequence_norm_suggested = sequence_raw ? decodeSequenceNorm(sequence_compact, reported_polymer_type, int_mod_map) : null;
+            const chemistry_code_suggested = suggestChemistryCode(reported_polymer_type, int_mod_map, warnings);
+
+            const mods = parseMods(block);
+            const qc = parseQC(block);
+
+            const requires_pi_confirmation = warnings.length > 0;
+
+            items.push({
+                canonical_id,
+                reported_polymer_type,
+                reported_polymer_confidence: "high",
+                sequence_raw,
+                int_mod_map,
+                sequence_norm_suggested,
+                chemistry_code_suggested,
+                fluorophore: mods.fluorophore,
+                quencher: mods.quencher,
+                qc: qc,
+                warnings,
+                requires_pi_confirmation
+            });
+        }
+
+        return res.json({
+            status: "ok",
+            supplier: "biomers",
             filename: req.file.originalname,
             size_bytes: req.file.size,
-            parsed_probes: [
-                {
-                    canonical_id: "PROBE-EXAMPLE-001",
-                    display_name: "Example Probe",
-                    sequence: "ATCGATCGATCG",
-                    length_nt: 12
-                }
-            ],
-            parsed_syntheses: [
-                {
-                    probe_canonical_id: "PROBE-EXAMPLE-001",
-                    order_number: "ORD-2026-0001",
-                    batch_key: "BATCH-A"
-                }
-            ]
+            order_no,
+            po_no,
+            item_count: items.length,
+            items,
+            text_preview: text.slice(0, 4000)
         });
+
+
     } catch (err) {
         console.error("[OLIGO] upload-pdf error:", err);
         res.status(500).json({ error: "Server error" });
