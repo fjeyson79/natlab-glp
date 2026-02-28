@@ -29,3 +29,6 @@ glp-weekly-snapshot-*.json
 public/*.bak*
 server.js.bak*
 GLP Weekly v3 GROUP.json
+
+# local backups
+*.bak_*

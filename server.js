@@ -12087,6 +12087,155 @@ app.post('/api/meetings/update-details', requirePI, async (req, res) => {
     }
 });
 
+// =====================================================
+// OLIGO-ID ROUTES (Phase 1)
+// =====================================================
+
+function oligoNormalizeSequence(seq) {
+    if (!seq) return null;
+    return String(seq).replace(/\s+/g, "").toLowerCase();
+}
+
+function isUuid(v) {
+    return typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+}
+
+// GET /api/oligo/catalog – list all probes with synthesis count
+app.get("/api/oligo/catalog", requirePI, async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT pc.id, pc.canonical_id, pc.display_name, pc.length_nt, pc.status, pc.finalized_at,
+                   COUNT(ps.id)::int AS synthesis_count
+            FROM probe_catalog pc
+            LEFT JOIN probe_syntheses ps ON ps.probe_id = pc.id
+            GROUP BY pc.id
+            ORDER BY pc.created_at DESC
+        `);
+        res.json({ probes: result.rows });
+    } catch (err) {
+        console.error("[OLIGO] catalog list error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// GET /api/oligo/catalog/:id – probe details + syntheses
+app.get("/api/oligo/catalog/:id", requirePI, async (req, res) => {
+    try {
+        const probeId = String(req.params.id || "").trim();
+        if (!isUuid(probeId)) return res.status(400).json({ error: "Invalid probe ID" });
+
+        const probeResult = await pool.query(
+            `SELECT id, canonical_id, display_name, sequence, length_nt, status, finalized_at, created_at
+             FROM probe_catalog WHERE id = `,
+            [probeId]
+        );
+        if (probeResult.rows.length === 0) return res.status(404).json({ error: "Probe not found" });
+
+        const synthResult = await pool.query(
+            `SELECT id, order_number, order_item, batch_key, review_status, created_at
+             FROM probe_syntheses WHERE probe_id = 
+             ORDER BY created_at DESC`,
+            [probeId]
+        );
+
+        res.json({ probe: probeResult.rows[0], syntheses: synthResult.rows });
+    } catch (err) {
+        console.error("[OLIGO] catalog detail error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// POST /api/oligo/catalog – create new probe (draft = finalized_at is NULL)
+app.post("/api/oligo/catalog", requirePI, async (req, res) => {
+    try {
+        const canonical_id = String(req.body?.canonical_id || "").trim();
+        const display_name = String(req.body?.display_name || "").trim();
+        const sequence_raw = String(req.body?.sequence || "").trim();
+
+        if (!canonical_id) return res.status(400).json({ error: "canonical_id is required" });
+        if (!display_name) return res.status(400).json({ error: "display_name is required" });
+        if (!sequence_raw) return res.status(400).json({ error: "sequence is required" });
+
+        const sequence = sequence_raw.replace(/\s+/g, "").toUpperCase();
+        const sequence_norm = oligoNormalizeSequence(sequence);
+        const length_nt = sequence.length;
+
+        const actor = (req.session?.user?.researcher_id || req.session?.user?.id || null);
+
+        const result = await pool.query(
+            `INSERT INTO probe_catalog (canonical_id, display_name, sequence, sequence_norm, length_nt, status, created_by)
+             VALUES (, , , , , ACTIVE, )
+             RETURNING id, canonical_id, display_name, sequence, length_nt, status, finalized_at, created_at`,
+            [canonical_id, display_name, sequence, sequence_norm, length_nt, actor]
+        );
+
+        res.json({ probe: result.rows[0] });
+    } catch (err) {
+        if (err.code === "23505") {
+            return res.status(409).json({ error: "A probe with this canonical_id or sequence already exists" });
+        }
+        console.error("[OLIGO] catalog create error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// POST /api/oligo/catalog/:id/finalize – lock identity (sets finalized_at)
+app.post("/api/oligo/catalog/:id/finalize", requirePI, async (req, res) => {
+    try {
+        const probeId = String(req.params.id || "").trim();
+        if (!isUuid(probeId)) return res.status(400).json({ error: "Invalid probe ID" });
+
+        const result = await pool.query(
+            `UPDATE probe_catalog
+             SET finalized_at = NOW(), finalized_by = COALESCE(finalized_by, )
+             WHERE id =  AND finalized_at IS NULL
+             RETURNING id, canonical_id, status, finalized_at`,
+            [probeId, (req.session?.user?.researcher_id || req.session?.user?.id || null)]
+        );
+        if (result.rows.length === 0) {
+            return res.status(400).json({ error: "Probe not found or already finalized" });
+        }
+        res.json({ probe: result.rows[0] });
+    } catch (err) {
+        console.error("[OLIGO] finalize error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// POST /api/oligo/upload-pdf – stub extractor
+app.post("/api/oligo/upload-pdf", requirePI, upload.single("file"), async (req, res) => {
+    try {
+        if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+        if (req.file.mimetype !== "application/pdf") {
+            return res.status(400).json({ error: "Only PDF files are accepted" });
+        }
+
+        res.json({
+            status: "stub",
+            message: "PDF extractor not yet implemented. This is a placeholder response.",
+            filename: req.file.originalname,
+            size_bytes: req.file.size,
+            parsed_probes: [
+                {
+                    canonical_id: "PROBE-EXAMPLE-001",
+                    display_name: "Example Probe",
+                    sequence: "ATCGATCGATCG",
+                    length_nt: 12
+                }
+            ],
+            parsed_syntheses: [
+                {
+                    probe_canonical_id: "PROBE-EXAMPLE-001",
+                    order_number: "ORD-2026-0001",
+                    batch_key: "BATCH-A"
+                }
+            ]
+        });
+    } catch (err) {
+        console.error("[OLIGO] upload-pdf error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
 
 app.listen(PORT, "0.0.0.0", () => console.log("[STARTUP] Server listening on port " + PORT));
 

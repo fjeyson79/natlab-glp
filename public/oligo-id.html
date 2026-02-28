@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Oligo-ID | NAT-Lab GLP</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: Arial, sans-serif;
+            background: #0f1117;
+            color: #e0e0e0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ── Header ── */
+        .oligo-header {
+            background: linear-gradient(135deg, #1a365d 0%, #2d5a87 100%);
+            color: white;
+            padding: 12px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+        .oligo-header h1 { font-size: 18px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+        .oligo-header .back-link {
+            color: rgba(255,255,255,0.8);
+            text-decoration: none;
+            font-size: 13px;
+            padding: 6px 12px;
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 6px;
+            transition: all 0.2s;
+        }
+        .oligo-header .back-link:hover { background: rgba(255,255,255,0.1); color: white; }
+
+        /* ── Layout ── */
+        .oligo-layout {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* ── Left Panel – Mode Selector ── */
+        .oligo-modes {
+            width: 180px;
+            min-width: 180px;
+            background: #161922;
+            border-right: 1px solid #2a2d3a;
+            padding: 16px 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .oligo-modes h3 {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1.2px;
+            color: #6b7280;
+            margin-bottom: 8px;
+            padding: 0 6px;
+        }
+        .mode-btn {
+            display: block;
+            width: 100%;
+            padding: 10px 14px;
+            border: none;
+            border-radius: 6px;
+            background: transparent;
+            color: #9ca3af;
+            font-size: 13px;
+            font-weight: 500;
+            text-align: left;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .mode-btn:hover { background: #1e2130; color: #d1d5db; }
+        .mode-btn.active { background: #2d5a87; color: #fff; }
+
+        /* ── Center Panel – List ── */
+        .oligo-list {
+            width: 280px;
+            min-width: 280px;
+            background: #13151c;
+            border-right: 1px solid #2a2d3a;
+            display: flex;
+            flex-direction: column;
+        }
+        .oligo-list-header {
+            padding: 12px;
+            border-bottom: 1px solid #2a2d3a;
+        }
+        .oligo-search {
+            width: 100%;
+            padding: 8px 12px;
+            background: #1e2130;
+            border: 1px solid #2a2d3a;
+            border-radius: 6px;
+            color: #e0e0e0;
+            font-size: 13px;
+        }
+        .oligo-search:focus { outline: none; border-color: #2d5a87; }
+        .oligo-search::placeholder { color: #4b5563; }
+        .oligo-table-wrap {
+            flex: 1;
+            overflow-y: auto;
+        }
+        .oligo-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+        .oligo-table th {
+            background: #1a1d2a;
+            padding: 8px 10px;
+            text-align: left;
+            color: #6b7280;
+            font-weight: 600;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            position: sticky;
+            top: 0;
+            border-bottom: 1px solid #2a2d3a;
+        }
+        .oligo-table td {
+            padding: 8px 10px;
+            border-bottom: 1px solid #1e2130;
+            color: #d1d5db;
+        }
+        .oligo-table tr { cursor: pointer; transition: background 0.1s; }
+        .oligo-table tbody tr:hover { background: #1e2130; }
+        .oligo-table tbody tr.selected { background: #1a365d; }
+        .oligo-list-empty {
+            padding: 30px 16px;
+            text-align: center;
+            color: #4b5563;
+            font-size: 13px;
+        }
+
+        /* ── Right Panel – Visualization ── */
+        .oligo-detail {
+            flex: 1;
+            background: #0f1117;
+            overflow-y: auto;
+            padding: 24px;
+        }
+
+        /* Dashboard cards */
+        .oligo-dash-cards {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .oligo-dash-card {
+            background: #161922;
+            border: 1px solid #2a2d3a;
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+        }
+        .oligo-dash-card .val { font-size: 28px; font-weight: 700; color: #fff; }
+        .oligo-dash-card .lbl { font-size: 11px; color: #6b7280; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+        /* Probe detail view */
+        .probe-detail-section {
+            background: #161922;
+            border: 1px solid #2a2d3a;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 16px;
+        }
+        .probe-detail-section h3 {
+            font-size: 13px;
+            color: #6b7280;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin-bottom: 12px;
+        }
+        .probe-field { display: flex; margin-bottom: 8px; }
+        .probe-field .k { width: 140px; color: #6b7280; font-size: 13px; flex-shrink: 0; }
+        .probe-field .v { color: #e0e0e0; font-size: 13px; font-weight: 500; }
+        .probe-sequence {
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            background: #1a1d2a;
+            padding: 12px;
+            border-radius: 6px;
+            word-break: break-all;
+            line-height: 1.6;
+            color: #93c5fd;
+        }
+        .synth-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+        .synth-table th {
+            text-align: left;
+            padding: 8px 10px;
+            color: #6b7280;
+            font-size: 10px;
+            text-transform: uppercase;
+            border-bottom: 1px solid #2a2d3a;
+        }
+        .synth-table td {
+            padding: 8px 10px;
+            border-bottom: 1px solid #1e2130;
+            color: #d1d5db;
+        }
+
+        /* Status badge */
+        .oligo-status {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+        .oligo-status.draft { background: #1e2130; color: #9ca3af; }
+        .oligo-status.finalized { background: #064e3b; color: #6ee7b7; }
+        .oligo-status.retired { background: #451a03; color: #fbbf24; }
+
+        /* Extract mode */
+        .extract-zone {
+            background: #161922;
+            border: 2px dashed #2a2d3a;
+            border-radius: 10px;
+            padding: 40px 24px;
+            text-align: center;
+            transition: all 0.2s;
+        }
+        .extract-zone:hover { border-color: #2d5a87; }
+        .extract-zone .icon-large { font-size: 36px; margin-bottom: 12px; }
+        .extract-zone p { color: #6b7280; font-size: 13px; margin-bottom: 16px; }
+        .extract-controls { display: flex; gap: 10px; justify-content: center; align-items: center; }
+        .extract-controls input[type="file"] { display: none; }
+        .extract-controls label {
+            padding: 8px 20px;
+            background: #1e2130;
+            border: 1px solid #2a2d3a;
+            border-radius: 6px;
+            color: #d1d5db;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .extract-controls label:hover { background: #2a2d3a; }
+        .extract-file-name { margin-top: 10px; font-size: 12px; color: #6ee7b7; }
+        .btn-extract {
+            padding: 8px 24px;
+            background: #2d5a87;
+            border: none;
+            border-radius: 6px;
+            color: #fff;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .btn-extract:hover { background: #1a365d; }
+        .btn-extract:disabled { background: #333; color: #666; cursor: not-allowed; }
+        .extract-result {
+            margin-top: 20px;
+            background: #1a1d2a;
+            border-radius: 8px;
+            padding: 16px;
+            display: none;
+        }
+        .extract-result h4 { font-size: 12px; color: #6b7280; margin-bottom: 8px; text-transform: uppercase; }
+        .extract-result pre {
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            color: #93c5fd;
+            white-space: pre-wrap;
+            word-break: break-word;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        /* Placeholder for unimplemented modes */
+        .mode-placeholder {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 300px;
+            color: #4b5563;
+        }
+        .mode-placeholder .ph-icon { font-size: 40px; margin-bottom: 12px; opacity: 0.5; }
+        .mode-placeholder p { font-size: 14px; }
+        .mode-placeholder .ph-sub { font-size: 12px; margin-top: 4px; color: #374151; }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #2a2d3a; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #3a3d4a; }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <div class="oligo-header">
+        <h1>&#9898; Oligo-ID</h1>
+        <a href="pi-dashboard.html" class="back-link">Back to PI Portal</a>
+    </div>
+
+    <!-- Layout -->
+    <div class="oligo-layout">
+        <!-- Left Panel: Mode Selector -->
+        <div class="oligo-modes">
+            <h3>Mode</h3>
+            <button class="mode-btn active" data-mode="extract" onclick="oligoSetMode('extract')">Extract</button>
+            <button class="mode-btn" data-mode="create" onclick="oligoSetMode('create')">Create</button>
+            <button class="mode-btn" data-mode="library" onclick="oligoSetMode('library')">Library</button>
+            <button class="mode-btn" data-mode="manage" onclick="oligoSetMode('manage')">Manage</button>
+        </div>
+
+        <!-- Center Panel: Search & List -->
+        <div class="oligo-list">
+            <div class="oligo-list-header">
+                <input type="text" class="oligo-search" id="oligoSearch" placeholder="Search ID or name..." oninput="oligoFilterList()">
+            </div>
+            <div class="oligo-table-wrap">
+                <table class="oligo-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Name</th>
+                            <th>Len</th>
+                            <th>St</th>
+                            <th>#</th>
+                        </tr>
+                    </thead>
+                    <tbody id="oligoListBody">
+                    </tbody>
+                </table>
+                <div class="oligo-list-empty" id="oligoListEmpty">No probes found</div>
+            </div>
+        </div>
+
+        <!-- Right Panel: Visualization -->
+        <div class="oligo-detail" id="oligoDetail">
+            <!-- Populated by JS -->
+        </div>
+    </div>
+
+    <script>
+    /* =========================================================
+       Oligo-ID  –  Phase 1 Frontend Logic
+       ========================================================= */
+    (function() {
+        'use strict';
+
+        let catalog = [];
+        let filteredCatalog = [];
+        let selectedProbeId = null;
+        let currentMode = 'extract';
+
+        // ── Auth ──
+        async function checkAuth() {
+            try {
+                const r = await fetch('/api/di/me', { credentials: 'include' });
+                if (r.status === 401) { window.location.href = 'access.html'; return; }
+                const d = await r.json();
+                const user = d.user || d;
+                const role = (user.role || '').toUpperCase();
+                if (role !== 'PI' && role !== 'ADMIN') {
+                    window.location.href = 'upload.html';
+                    return;
+                }
+                loadCatalog();
+            } catch (e) {
+                window.location.href = 'access.html';
+            }
+        }
+
+        // ── Catalog ──
+        async function loadCatalog() {
+            try {
+                const r = await fetch('/api/oligo/catalog', { credentials: 'include' });
+                if (!r.ok) { catalog = []; renderList(); renderDashboard(); return; }
+                const d = await r.json();
+                catalog = d.probes || [];
+            } catch (e) {
+                catalog = [];
+            }
+            filteredCatalog = catalog.slice();
+            renderList();
+            renderDashboard();
+        }
+
+        // ── List ──
+        function renderList() {
+            const body = document.getElementById('oligoListBody');
+            const empty = document.getElementById('oligoListEmpty');
+            if (filteredCatalog.length === 0) {
+                body.innerHTML = '';
+                empty.style.display = 'block';
+                return;
+            }
+            empty.style.display = 'none';
+            body.innerHTML = filteredCatalog.map(p => {
+                const sel = p.id === selectedProbeId ? ' selected' : '';
+                const st = statusClass(p.status);
+                return `<tr class="${sel}" onclick="window._oligoSelectProbe(${p.id})">
+                    <td>${esc(p.canonical_id)}</td>
+                    <td>${esc(p.display_name || '-')}</td>
+                    <td>${p.length_nt || '-'}</td>
+                    <td><span class="oligo-status ${st}">${esc(p.status || 'draft')}</span></td>
+                    <td>${p.synthesis_count || 0}</td>
+                </tr>`;
+            }).join('');
+        }
+
+        window._oligoSelectProbe = async function(id) {
+            selectedProbeId = id;
+            renderList();
+            try {
+                const r = await fetch('/api/oligo/catalog/' + id, { credentials: 'include' });
+                if (!r.ok) throw new Error('Failed to load');
+                const d = await r.json();
+                renderProbeDetail(d.probe, d.syntheses || []);
+            } catch (e) {
+                document.getElementById('oligoDetail').innerHTML = '<div class="mode-placeholder"><p>Failed to load probe details</p></div>';
+            }
+        };
+
+        window.oligoFilterList = function() {
+            const q = (document.getElementById('oligoSearch').value || '').toLowerCase().trim();
+            if (!q) { filteredCatalog = catalog.slice(); }
+            else {
+                filteredCatalog = catalog.filter(p =>
+                    (p.canonical_id || '').toLowerCase().includes(q) ||
+                    (p.display_name || '').toLowerCase().includes(q)
+                );
+            }
+            renderList();
+        };
+
+        // ── Mode switching ──
+        window.oligoSetMode = function(mode) {
+            currentMode = mode;
+            document.querySelectorAll('.mode-btn').forEach(b => {
+                b.classList.toggle('active', b.dataset.mode === mode);
+            });
+            selectedProbeId = null;
+            renderList();
+            renderModeView();
+        };
+
+        function renderModeView() {
+            const el = document.getElementById('oligoDetail');
+            switch (currentMode) {
+                case 'extract': renderExtractMode(el); break;
+                case 'create': renderPlaceholder(el, 'Create', 'Create new probe identities. Coming soon.'); break;
+                case 'library': renderPlaceholder(el, 'Library', 'Manage probe libraries. Coming soon.'); break;
+                case 'manage': renderPlaceholder(el, 'Manage', 'Administration and audit tools. Coming soon.'); break;
+                default: renderDashboard();
+            }
+        }
+
+        // ── Dashboard (default right panel) ──
+        function renderDashboard() {
+            const el = document.getElementById('oligoDetail');
+            const totalProbes = catalog.length;
+            const totalSynth = catalog.reduce((s, p) => s + (parseInt(p.synthesis_count) || 0), 0);
+            // library count not available in Phase 1
+            el.innerHTML = `
+                <div class="oligo-dash-cards">
+                    <div class="oligo-dash-card"><div class="val">${totalProbes}</div><div class="lbl">Total Probes</div></div>
+                    <div class="oligo-dash-card"><div class="val">${totalSynth}</div><div class="lbl">Total Syntheses</div></div>
+                    <div class="oligo-dash-card"><div class="val">0</div><div class="lbl">Total Libraries</div></div>
+                </div>
+                <div class="probe-detail-section">
+                    <h3>Getting Started</h3>
+                    <p style="color:#9ca3af;font-size:13px;line-height:1.6;">
+                        Use <strong>Extract</strong> mode to upload a supplier PDF and parse probe data.<br>
+                        Use the search panel to browse existing probes in the catalog.<br>
+                        Click any probe row to view its details and synthesis history.
+                    </p>
+                </div>
+            `;
+        }
+
+        // ── Probe Detail ──
+        function renderProbeDetail(probe, syntheses) {
+            const el = document.getElementById('oligoDetail');
+            const st = statusClass(probe.status);
+            let synthRows = '';
+            if (syntheses.length > 0) {
+                synthRows = syntheses.map(s => `<tr>
+                    <td>${esc(s.order_number || '-')}</td>
+                    <td>${esc(s.batch_key || '-')}</td>
+                    <td><span class="oligo-status ${statusClass(s.review_status)}">${esc(s.review_status || '-')}</span></td>
+                </tr>`).join('');
+            } else {
+                synthRows = '<tr><td colspan="3" style="color:#4b5563;text-align:center;">No syntheses recorded</td></tr>';
+            }
+            el.innerHTML = `
+                <div class="probe-detail-section">
+                    <h3>Probe Identity</h3>
+                    <div class="probe-field"><span class="k">Canonical ID</span><span class="v">${esc(probe.canonical_id)}</span></div>
+                    <div class="probe-field"><span class="k">Display Name</span><span class="v">${esc(probe.display_name || '-')}</span></div>
+                    <div class="probe-field"><span class="k">Length (nt)</span><span class="v">${probe.length_nt || '-'}</span></div>
+                    <div class="probe-field"><span class="k">Status</span><span class="v"><span class="oligo-status ${st}">${esc(probe.status || 'draft')}</span></span></div>
+                    <div class="probe-field"><span class="k">Finalized</span><span class="v">${probe.finalized_at ? new Date(probe.finalized_at).toLocaleString() : 'Not finalized'}</span></div>
+                </div>
+                ${probe.sequence ? `<div class="probe-detail-section"><h3>Sequence</h3><div class="probe-sequence">${esc(probe.sequence)}</div></div>` : ''}
+                <div class="probe-detail-section">
+                    <h3>Syntheses</h3>
+                    <table class="synth-table">
+                        <thead><tr><th>Order #</th><th>Batch Key</th><th>Review Status</th></tr></thead>
+                        <tbody>${synthRows}</tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        // ── Extract Mode ──
+        function renderExtractMode(el) {
+            el.innerHTML = `
+                <div class="probe-detail-section">
+                    <h3>Extract Probes from PDF</h3>
+                    <p style="color:#9ca3af;font-size:13px;margin-bottom:16px;">Upload a supplier PDF to extract probe and synthesis information.</p>
+                    <div class="extract-zone" id="extractZone">
+                        <div class="icon-large">&#128196;</div>
+                        <p>Select a PDF file from your supplier</p>
+                        <div class="extract-controls">
+                            <label for="extractFile">Choose File</label>
+                            <input type="file" id="extractFile" accept=".pdf" onchange="window._oligoFileSelected(this)">
+                            <button class="btn-extract" id="extractBtn" disabled onclick="window._oligoUploadPdf()">Upload</button>
+                        </div>
+                        <div class="extract-file-name" id="extractFileName"></div>
+                    </div>
+                    <div class="extract-result" id="extractResult">
+                        <h4>Parsed Result</h4>
+                        <pre id="extractResultPre"></pre>
+                    </div>
+                </div>
+            `;
+        }
+
+        window._oligoFileSelected = function(input) {
+            const name = input.files && input.files[0] ? input.files[0].name : '';
+            document.getElementById('extractFileName').textContent = name;
+            document.getElementById('extractBtn').disabled = !name;
+        };
+
+        window._oligoUploadPdf = async function() {
+            const fileInput = document.getElementById('extractFile');
+            if (!fileInput.files || !fileInput.files[0]) return;
+            const btn = document.getElementById('extractBtn');
+            btn.disabled = true;
+            btn.textContent = 'Uploading...';
+            try {
+                const fd = new FormData();
+                fd.append('file', fileInput.files[0]);
+                const r = await fetch('/api/oligo/upload-pdf', { method: 'POST', credentials: 'include', body: fd });
+                const d = await r.json();
+                const result = document.getElementById('extractResult');
+                const pre = document.getElementById('extractResultPre');
+                result.style.display = 'block';
+                pre.textContent = JSON.stringify(d, null, 2);
+            } catch (e) {
+                const result = document.getElementById('extractResult');
+                const pre = document.getElementById('extractResultPre');
+                result.style.display = 'block';
+                pre.textContent = 'Error: ' + e.message;
+            }
+            btn.disabled = false;
+            btn.textContent = 'Upload';
+        };
+
+        // ── Placeholder ──
+        function renderPlaceholder(el, title, desc) {
+            el.innerHTML = `<div class="mode-placeholder">
+                <div class="ph-icon">&#128295;</div>
+                <p>${title}</p>
+                <div class="ph-sub">${desc}</div>
+            </div>`;
+        }
+
+        // ── Helpers ──
+        function statusClass(s) {
+            s = (s || '').toLowerCase();
+            if (s === 'finalized') return 'finalized';
+            if (s === 'retired') return 'retired';
+            return 'draft';
+        }
+
+        function esc(s) {
+            if (s == null) return '';
+            return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+
+        // ── Init ──
+        checkAuth();
+        renderModeView();
+    })();
+    </script>
+</body>
+</html>
