@@ -12464,108 +12464,31 @@ app.post("/api/oligo/upload-pdf", requirePI, upload.single("file"), async (req, 
         }
 
         function parseMods(block) {
+            const five = extractField(block, /(^|\n)\s*5'\s*[-–]?\s*Mod\.?\s*[:]?\s*([^\n]+)/im);
+            const three = extractField(block, /(^|\n)\s*3'\s*[-–]?\s*Mod\.?\s*[:]?\s*([^\n]+)/im);
 
-            const lines = (block || "").split(/\r?\n/).map(l => (l || "").trim());
-
-            function isLabelLine(t) {
-                return /^(Scale|Purific\.|5'-Mod\.|3'-Mod\.|Delivery state|Int\.\s*Mod\.|Length|MW\s*Calc\.|MW\s*Found|Tm|GC\s*Content|Ext\.?Coeff\.?|Yield|Vol\.f\.100pmol|Conc\.|Dissolved|Product|Aliquots)\b/i.test(t || "");
-            }
-
-            function valueFromLineOrNext(labelRe) {
-                for (let i = 0; i < lines.length; i++) {
-                    const t = lines[i] || "";
-                    if (!labelRe.test(t)) continue;
-
-                    // If value is on same line after ":" take it
-                    const inline = t.split(":").slice(1).join(":").trim();
-                    if (inline && !isLabelLine(inline)) return inline;
-
-                    // Otherwise take next non-empty, non-label
-                    for (let j = i + 1; j < Math.min(lines.length, i + 12); j++) {
-                        const v = (lines[j] || "").trim();
-                        if (!v) continue;
-                        if (isLabelLine(v)) return null;
-                        return v;
-                    }
-                    return null;
-                }
-                return null;
-            }
-
-            const fiveRaw = valueFromLineOrNext(/^5'-Mod\./i);
-            const threeRaw = valueFromLineOrNext(/^3'-Mod\./i);
-
-            const stripParen = (x) => x ? x.replace(/\s*\(.*?\)\s*/g, "").trim() : null;
-
-            function norm5(x) {
-                if (!x) return null;
-                const t = stripParen(x);
-                // 6-Fam, 6-FAM, 6 Fam -> 6_FAM
-                if (/^6\s*[-_ ]?\s*fam\b/i.test(t)) return "6_FAM";
-                return t.replace(/\s+/g, "_").replace(/-+/g, "_");
-            }
-            function norm3(x) {
-                if (!x) return null;
-                const t = stripParen(x);
-                return t.replace(/\s+/g, "_").replace(/-+/g, "_");
-            }
-
-            return {
-                fluorophore: norm5(fiveRaw),
-                quencher: norm3(threeRaw),
-                mod5_raw: fiveRaw || null,
-                mod3_raw: threeRaw || null
-            };
+            // For now: fluorophore = 5' mod, quencher = 3' mod
+            // Biomers often prints "6-Fam (qPCR Probe)" and "TQ2"
+            const fluorophore = five ? five.replace(/\s*\(.*?\)\s*/g, "").trim() : null;
+            const quencher = three ? three.replace(/\s*\(.*?\)\s*/g, "").trim() : null;
+            return { fluorophore, quencher, mod5: five, mod3: three };
         }
 
-        
-            function parseAliquots(block) {
-                const out = [];
-                const m = (block || "").match(/Aliquots:\s*Aliquots\s*dried\s*:\s*([^\n]+)/i);
-                if (!m) return out;
-                const tail = m[1];
+        function parseQC(block) {
 
-                const reOne = /(\d+)\s*:\s*([0-9]+(?:[.,][0-9]+)?)\s*OD\s*\(([^)]*)\)/g;
-                let mm;
-                while ((mm = reOne.exec(tail)) !== null) {
-                    const idx = parseInt(mm[1], 10);
-                    const od = mm[2].replace(".", ",");
-                    const inside = mm[3];
-
-                    const nm = inside.match(/([0-9]+(?:[.,][0-9]+)?)\s*nmol/i);
-                    const ug = inside.match(/([0-9]+(?:[.,][0-9]+)?)\s*µg/i);
-
-                    out.push({
-                        index: idx,
-                        OD: od,
-                        nmol: nm ? nm[1].replace(".", ",") : null,
-                        "μg": ug ? ug[1].replace(".", ",") : null
-                    });
-                }
-                return out;
-            }
-
-function parseQC(block) {
-
+            // QC block is label line, then value line(s), Biomers layout
             const lines = (block || "").split(/\r?\n/).map(l => (l || "").trim()).filter(l => l.length > 0);
 
-            function isLabelLine(t) {
-                return /^(Length|MW\s*Calc\.|MW\s*Found|Tm|GC\s*Content|Ext\.?Coeff\.?|Yield|Vol\.f\.100pmol|Conc\.|Dissolved|Product|Aliquots)\b/i.test(t || "");
-            }
-
-            function nextAfter(labelRe) {
+            function nextValueAfter(labelRe, maxLook = 8) {
                 for (let i = 0; i < lines.length; i++) {
-                    const t = lines[i];
-                    if (!labelRe.test(t)) continue;
-
-                    // inline value (rare)
-                    const inline = t.split(":").slice(1).join(":").trim();
-                    if (inline && !isLabelLine(inline)) return inline;
-
-                    for (let j = i + 1; j < Math.min(lines.length, i + 10); j++) {
+                    if (!labelRe.test(lines[i])) continue;
+                    for (let j = i + 1; j < Math.min(lines.length, i + 1 + maxLook); j++) {
                         const v = lines[j];
                         if (!v) continue;
-                        if (isLabelLine(v)) return null;
+
+                        // stop if we hit another label
+                        if (/^(Length|MW\s*Calc\.|MW\s*Found|Tm|GC\s*Content|Ext\.?Coeff\.?|Yield|Vol\.f\.100pmol|Conc\.|Dissolved|Product|Aliquots)\b/i.test(v)) return null;
+
                         return v;
                     }
                     return null;
@@ -12573,53 +12496,226 @@ function parseQC(block) {
                 return null;
             }
 
-            const length_raw = nextAfter(/^Length\b/i);
-            const mwc_raw    = nextAfter(/^MW\s*Calc\./i);
-            const mwf_raw    = nextAfter(/^MW\s*Found/i);
-            const tm_raw     = nextAfter(/^Tm\b/i);
-            const gc_raw     = nextAfter(/^GC\s*Content\b/i);
-            const ext_raw    = nextAfter(/^Ext\.?Coeff\.?/i);
+            const length_nt  = nextValueAfter(/^Length\b/i);
+            const mw_calc    = nextValueAfter(/^MW\s*Calc\./i);
+            const mw_found   = nextValueAfter(/^MW\s*Found/i);
+            const tm         = nextValueAfter(/^Tm\b/i);
+            const gc_content = nextValueAfter(/^GC\s*Content\b/i);
+            const ext_coeff  = nextValueAfter(/^Ext\.?Coeff\.?/i);
 
-            function firstNum(x) {
-                if (!x) return null;
-                const m = String(x).match(/([0-9]+(?:[.,][0-9]+)?)/);
-                return m ? m[1].replace(".", ",") : null;
-            }
-            function keepUnit(x, unit) {
-                const n = firstNum(x);
-                return n ? `${n} ${unit}` : null;
-            }
+            let yield_od = null;
+            let amount_nmol = null;
+            let mass_ug = null;
 
-            // Yield: lines after Yield include OD, nmol, µg
-            let y_od = null, y_nmol = null, y_ug = null;
             for (let i = 0; i < lines.length; i++) {
                 if (!/^Yield\b/i.test(lines[i])) continue;
+
                 const vals = [];
-                for (let j = i + 1; j < Math.min(lines.length, i + 18); j++) {
+                for (let j = i + 1; j < Math.min(lines.length, i + 14); j++) {
                     const v = lines[j];
+                    if (/^(Vol\.f\.100pmol|Conc\.|Dissolved|Product|Aliquots)\b/i.test(v)) break;
                     if (!v) continue;
-                    if (isLabelLine(v)) break;
                     vals.push(v);
                 }
-                const odLine   = vals.find(v => /\bOD\b/i.test(v));
-                const nmolLine = vals.find(v => /\bnmol\b/i.test(v));
-                const ugLine   = vals.find(v => /µg|\bug\b/i.test(v));
-                y_od   = odLine   ? firstNum(odLine)   : null;
-                y_nmol = nmolLine ? firstNum(nmolLine) : null;
-                y_ug   = ugLine   ? firstNum(ugLine)   : null;
+
+                yield_od = (vals.find(v => /\bOD\b/i.test(v)) || null);
+                amount_nmol = (vals.find(v => /\bnmol\b/i.test(v)) || null);
+                mass_ug = (vals.find(v => /μg|\bug\b/i.test(v)) || null);
                 break;
             }
 
             return {
-                Length: firstNum(length_raw),
-                MW_Calc: keepUnit(mwc_raw, "g/mol"),
-                MW_Found: keepUnit(mwf_raw, "g/mol"),
-                Tm: keepUnit(tm_raw, "°C"),
-                GC_content: gc_raw ? gc_raw.trim() : null,
-                Ext_Coeff: ext_raw ? String(ext_raw).match(/[0-9]+/) ? String(ext_raw).match(/[0-9]+/)[0] : null : null,
-                YIELD: { OD: y_od, nmol: y_nmol, "μg": y_ug }
+                length_nt,
+                mw_calc,
+                mw_found,
+                tm,
+                gc_content,
+                ext_coeff,
+                yield_od,
+                amount_nmol,
+                mass_ug
             };
         }
+
+
+        // ===== Biomers deterministic vertical parsers (template-first) =====
+        function parseVerticalSection(blockLines, startRegex, labelRegexToKeyList, stopRegex) {
+            let start = -1;
+            for (let i = 0; i < blockLines.length; i++) {
+                if (startRegex.test(blockLines[i])) { start = i; break; }
+            }
+            if (start < 0) return { keys: [], values: [], map: {} };
+
+            const keys = [];
+            let i = start;
+            for (; i < Math.min(blockLines.length, start + 60); i++) {
+                const t = blockLines[i];
+                let k = null;
+                for (const pair of labelRegexToKeyList) {
+                    if (pair[0].test(t)) { k = pair[1]; break; }
+                }
+                if (!k) break;
+                keys.push(k);
+            }
+
+            const values = [];
+            for (let j = i; j < Math.min(blockLines.length, i + 120); j++) {
+                const t = blockLines[j];
+                if (!t) continue;
+                if (/^[-–]+$/.test(t)) continue;
+                if (stopRegex && stopRegex.test(t)) break;
+                values.push(t);
+            }
+
+            const map = {};
+            for (let k = 0; k < keys.length; k++) map[keys[k]] = values[k] || null;
+            return { keys, values, map };
+        }
+
+        function parseSynthesisVertical(blockLines) {
+            // Scale -> Purific. -> 5'-Mod. -> 3'-Mod. -> Delivery state
+            const sec = parseVerticalSection(
+                blockLines,
+                /^Scale\b/i,
+                [
+                    [/^Scale\b/i, "scale"],
+                    [/^Purific\.?\b/i, "purification"],
+                    [/^5'-Mod\.?\s*:?$/i, "mod5"],
+                    [/^3'-Mod\.?\s*:?$/i, "mod3"],
+                    [/^Delivery\s*state\b/i, "delivery_state"]
+                ],
+                /^(Int\.\s*Mod\.|Length\b|MW\s*Calc\.|MW\s*Found|Tm\b|GC\s*Content|Ext\.?Coeff\.?|Yield\b|Aliquots\b|Product\b)\b/i
+            );
+            return {
+                scale: sec.map.scale || null,
+                purification: sec.map.purification || null,
+                mod5: sec.map.mod5 || null,
+                mod3: sec.map.mod3 || null,
+                delivery_state: sec.map.delivery_state || null // captured, but dropped from output template
+            };
+        }
+
+        function parseQCVertical(blockLines) {
+            // Length -> MW Calc. -> MW Found -> Tm -> GC Content -> Ext.Coeff. -> Yield
+            const sec = parseVerticalSection(
+                blockLines,
+                /^Length\b/i,
+                [
+                    [/^Length\b/i, "length"],
+                    [/^MW\s*Calc\.?/i, "mw_calc"],
+                    [/^MW\s*Found\b/i, "mw_found"],
+                    [/^Tm\b/i, "tm"],
+                    [/^GC\s*Content\b/i, "gc_content"],
+                    [/^Ext\.?\s*Coeff\.?/i, "ext_coeff"],
+                    [/^Yield\b/i, "yield"]
+                ],
+                /^(Vol\.f\.100pmol|Conc\.|Dissolved|Product|Aliquots\b)\b/i
+            );
+
+            const firstNum = (x) => {
+                if (!x) return null;
+                const m = String(x).match(/[0-9]+(?:[.,][0-9]+)?/);
+                return m ? m[0] : null;
+            };
+
+            const mwFmt = (x) => {
+                const n = firstNum(x);
+                return n ? `${n}_g/mol` : null;
+            };
+
+            const tmFmt = (x) => {
+                const n = firstNum(x);
+                return n ? `${n}_°C` : null;
+            };
+
+            const gcFmt = (x) => {
+                if (!x) return null;
+                // Keep comma decimals, keep percent sign if present
+                const t = String(x).replace(/\s+/g, "");
+                const n = firstNum(t);
+                if (!n) return null;
+                return t.endsWith("%") ? t : `${n}%`;
+            };
+
+            const extFmt = (x) => {
+                const n = firstNum(x);
+                return n ? n : null;
+            };
+
+            return {
+                Length: firstNum(sec.map.length),
+                MW_Calc: mwFmt(sec.map.mw_calc),
+                MW_Found: mwFmt(sec.map.mw_found),
+                Tm: tmFmt(sec.map.tm),
+                GC_content: gcFmt(sec.map.gc_content),
+                Ext_Coeff: extFmt(sec.map.ext_coeff),
+                _yield_label_seen: sec.keys.indexOf("yield") >= 0
+            };
+        }
+
+        function parseYield(blockLines) {
+            // Scan lines after "Yield" for OD, nmol, μg, keep numeric strings with comma decimals
+            const firstNum = (x) => {
+                if (!x) return null;
+                const m = String(x).match(/[0-9]+(?:[.,][0-9]+)?/);
+                return m ? m[0] : null;
+            };
+
+            for (let i = 0; i < blockLines.length; i++) {
+                if (!/^Yield\b/i.test(blockLines[i])) continue;
+                const window = [];
+                for (let j = i + 1; j < Math.min(blockLines.length, i + 30); j++) {
+                    const t = blockLines[j];
+                    if (/^(Vol\.f\.100pmol|Conc\.|Dissolved|Product|Aliquots\b)\b/i.test(t)) break;
+                    if (/^(Length|MW\s*Calc\.|MW\s*Found|Tm|GC\s*Content|Ext\.?Coeff\.?|Yield)\b/i.test(t)) continue;
+                    window.push(t);
+                }
+                const od = window.find(v => /\bOD\b/i.test(v)) || null;
+                const nmol = window.find(v => /\bnmol\b/i.test(v)) || null;
+                const ug = window.find(v => /μg|\bug\b/i.test(v)) || null;
+                return { OD: firstNum(od), nmol: firstNum(nmol), "μg": firstNum(ug) };
+            }
+            return { OD: null, nmol: null, "μg": null };
+        }
+
+        function parseAliquots(blockLines) {
+            const out = [];
+            for (let i = 0; i < blockLines.length; i++) {
+                if (!/^Aliquots\b/i.test(blockLines[i])) continue;
+                for (let j = i + 1; j < Math.min(blockLines.length, i + 60); j++) {
+                    const t = blockLines[j];
+                    const mm = t.match(/^\s*(\d+)\s*\.\s*.*?OD\s*:\s*([0-9]+(?:[.,][0-9]+)?)\s*,?\s*nmol\s*:\s*([0-9]+(?:[.,][0-9]+)?)\s*,?\s*(?:μg|ug)\s*:\s*([0-9]+(?:[.,][0-9]+)?)\s*\.?\s*$/i);
+                    if (!mm) continue;
+                    out.push({ index: parseInt(mm[1], 10), OD: mm[2], nmol: mm[3], "μg": mm[4] });
+                }
+                break;
+            }
+            return out;
+        }
+
+        function deriveName(mod5, mod3, type) {
+            if (!mod5 || !mod3 || !type) return null;
+            const m5u = String(mod5).toUpperCase();
+            const left = m5u.includes("FAM") ? "Fam" : String(mod5).replace(/_/g, "");
+            return `${left}-${type}-${mod3}`;
+        }
+
+        function cleanIntMods(intMap) {
+            const cleanOne = (x) => {
+                const t = (x || "").trim();
+                if (!t) return "None";
+                if (/^none$/i.test(t)) return "None";
+                if (/solvent/i.test(t)) return "None";
+                return t;
+            };
+            return {
+                "5": cleanOne(intMap && intMap["5"]),
+                "6": cleanOne(intMap && intMap["6"]),
+                "7": cleanOne(intMap && intMap["7"]),
+                "8": cleanOne(intMap && intMap["8"])
+            };
+        }
+        // ===== End Biomers deterministic vertical parsers =====
 
         const items = [];
         for (let idx = 0; idx < headers.length; idx++) {
@@ -12631,19 +12727,7 @@ function parseQC(block) {
             const canonical_id = h.canonical_id;
             const reported_polymer_type = h.reported_polymer_type;
 
-            
-
-            // Biomers header line: "<canonical_id> <DNA|RNA> <SynthesisOligoNo>"
-            let synthesis_oligo_no = null;
-            try {
-                const reSyn = new RegExp(String(canonical_id).replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s+" + String(reported_polymer_type).replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s+([0-9]+)");
-                const sm = block.match(reSyn);
-                synthesis_oligo_no = sm ? sm[1] : null;
-            } catch (e) {
-                synthesis_oligo_no = null;
-            }
-
-const seqm = block.match(/5'\s*[-–]?\s*([^\n]+?)\s*[-–]?\s*3'/i);
+            const seqm = block.match(/5'\s*[-–]?\s*([^\n]+?)\s*[-–]?\s*3'/i);
             const sequence_raw = seqm ? normSpace(seqm[1]) : null;
 
             const sequence_compact = sequence_raw ? compactSeq(sequence_raw).toUpperCase() : "";
@@ -12656,21 +12740,68 @@ const seqm = block.match(/5'\s*[-–]?\s*([^\n]+?)\s*[-–]?\s*3'/i);
 
             const mods = parseMods(block);
             const qc = parseQC(block);
-            const aliquots = parseAliquots(block);
 
             const requires_pi_confirmation = warnings.length > 0;
 
+            // ===== Template-first extraction (no raw PDF labels as values) =====
+            const blockLines = (block || "").split(/\r?\n/).map(l => (l || "").trim()).filter(l => l.length > 0);
+
+            const syn = parseSynthesisVertical(blockLines);
+            const qcR = parseQCVertical(blockLines);
+            const yld = parseYield(blockLines);
+            const ali = parseAliquots(blockLines);
+
+            // Normalize ends mods to strict codes
+            const normMod = (x) => {
+                if (!x) return null;
+                return String(x).trim()
+                    .replace(/\s+/g, "_")
+                    .replace(/-/g, "_")
+                    .replace(/[()]/g, "")
+                    .replace(/_+/g, "_");
+            };
+
+            const mod5 = normMod(syn.mod5);
+            const mod3 = normMod(syn.mod3);
+
+            // SynthesisOligo# from block if present
+            const synNoMatch = block.match(/Synthesis\s*Oligo#\s*:?\s*([0-9]+)/i);
+            const syn_oligo_no = synNoMatch ? synNoMatch[1] : null;
+
+            const internal_mods = cleanIntMods(int_mod_map);
+
+            const seq_lower = sequence_raw ? compactSeq(sequence_raw).toLowerCase() : null;
+            const sequence_5to3 = seq_lower ? `5’_${seq_lower}_3’` : null;
+
             items.push({
-                canonical_id,
-                reported_polymer_type,
-                reported_polymer_confidence: "high",
-                sequence_raw,
-                int_mod_map,
-                sequence_norm_suggested,
-                chemistry_code_suggested,
-                fluorophore: mods.fluorophore,
-                quencher: mods.quencher,
-                qc: qc,
+                ID_INFO: {
+                    Name: deriveName(mod5, mod3, reported_polymer_type || null),
+                    "Order#": canonical_id,
+                    Type: reported_polymer_type || null,
+                    "SynthesisOligo#": syn_oligo_no
+                },
+                SEQUENCE_INFO: {
+                    sequence_5to3
+                },
+                SYNTHESIS_INFO: {
+                    Scale: syn.scale,
+                    Purification: syn.purification
+                },
+                SYNTHESIS_MODIFICATIONS_ENDS: {
+                    "5_mod": mod5,
+                    "3_mod": mod3
+                },
+                SYNTHESIS_MODIFICATIONS_INTERNAL: internal_mods,
+                SYNTHESIS_REPORT: {
+                    Length: qcR.Length,
+                    MW_Calc: qcR.MW_Calc,
+                    MW_Found: qcR.MW_Found,
+                    Tm: qcR.Tm,
+                    GC_content: qcR.GC_content,
+                    Ext_Coeff: qcR.Ext_Coeff
+                },
+                SYNTHESIS_YIELD: yld,
+                ALIQUOTS: ali,
                 warnings,
                 requires_pi_confirmation
             });
