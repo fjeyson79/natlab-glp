@@ -12563,17 +12563,155 @@ app.post("/api/oligo/upload-pdf", requirePI, upload.single("file"), async (req, 
 
             const requires_pi_confirmation = warnings.length > 0;
 
+            // ===== Build strict template (Solvent is ignored) =====
+            const lines = (block || "").split(/\r?\n/).map(l => (l || "").trim());
+
+            function nextValueAfterLabel(labelRe, maxLook = 10) {
+                for (let i = 0; i < lines.length; i++) {
+                    const t = lines[i];
+                    if (!labelRe.test(t)) continue;
+
+                    // If label and value are on the same line: "Scale: L"
+                    const same = t.match(/:\s*(.+)\s*$/);
+                    if (same && same[1]) return same[1].trim();
+
+                    // Otherwise look down for the next non label value line
+                    for (let j = i + 1; j < Math.min(lines.length, i + 1 + maxLook); j++) {
+                        const v = (lines[j] || "").trim();
+                        if (!v) continue;
+                        // stop if we hit another label header
+                        if (/^(Scale|Purific\.?|5'-Mod\.?|3'-Mod\.?|Delivery state|Int\.\s*Mod\.|Length|MW|Tm|GC|Ext\.|Yield|Aliquots)\b/i.test(v)) return null;
+                        return v;
+                    }
+                    return null;
+                }
+                return null;
+            }
+
+            function firstNumber(x) {
+                if (!x) return null;
+                const m = String(x).match(/[0-9]+(?:[.,][0-9]+)?/);
+                return m ? m[0] : null;
+            }
+
+            function cleanInternal(x) {
+                const t = (x || "").trim();
+                if (!t) return "None";
+                if (/^none$/i.test(t)) return "None";
+                if (/solvent/i.test(t)) return "None";
+                return t;
+            }
+
+            function normEndCode(x) {
+                if (!x) return null;
+                return String(x).trim()
+                    .replace(/\s+/g, "_")
+                    .replace(/-/g, "_")
+                    .replace(/[()]/g, "")
+                    .replace(/_+/g, "_");
+            }
+
+            function namePartFromEndMod(x) {
+                if (!x) return null;
+                const u = String(x).toUpperCase();
+                if (u.includes("FAM")) return "Fam";
+                return String(x).replace(/_/g, "").trim();
+            }
+
+            // ID_INFO
+            const synthesis_oligo_no =
+                (block.match(/Synthesis\s*Oligo#\s*:?\s*([0-9]+)/i) || [null, null])[1]
+                || nextValueAfterLabel(/^Synthesis\s*Oligo#\b/i);
+
+            const mod5_code = normEndCode(mods.mod5 || mods.fluorophore);
+            const mod3_code = normEndCode(mods.mod3 || mods.quencher);
+
+            const name_composed = (() => {
+                const a = namePartFromEndMod(mod5_code);
+                const b = (reported_polymer_type || "").trim() || null;
+                const c = namePartFromEndMod(mod3_code);
+                if (a && b && c) return `${a}-${b}-${c}`;
+                return null;
+            })();
+
+            // SEQUENCE_INFO
+            const seq_lower = sequence_raw ? compactSeq(sequence_raw).toLowerCase() : null;
+            const sequence_5to3 = seq_lower ? `5’_${seq_lower}_3’` : null;
+
+            // SYNTHESIS_INFO
+            const scale_val = nextValueAfterLabel(/^Scale\b/i);
+            const purification_val = nextValueAfterLabel(/^Purific\.?\b/i);
+
+            // SYNTHESIS_MODIFICATIONS_INTERNAL (Solvent dropped)
+            const internal_mods = {
+                "5": cleanInternal(int_mod_map["5"]),
+                "6": cleanInternal(int_mod_map["6"]),
+                "7": cleanInternal(int_mod_map["7"]),
+                "8": cleanInternal(int_mod_map["8"])
+            };
+
+            // SYNTHESIS_REPORT + YIELD
+            const mw_calc_out = qc.mw_calc ? String(qc.mw_calc).replace(/\s+/g, "_") : null;
+            const mw_found_out = qc.mw_found ? String(qc.mw_found).replace(/\s+/g, "_") : null;
+
+            const tm_out = qc.tm ? String(qc.tm).replace(/\s+/g, "_") : null;
+            const gc_out = qc.gc_content ? String(qc.gc_content).replace(/\s+/g, "_") : null;
+
+            // Ext.Coeff sometimes comes with extra text, keep just the first number if present
+            const ext_out = qc.ext_coeff ? (firstNumber(qc.ext_coeff) || String(qc.ext_coeff).trim()) : null;
+
+            // Yield values without units
+            const od_out = firstNumber(qc.yield_od);
+            const nmol_out = firstNumber(qc.amount_nmol);
+            const ug_out = firstNumber(qc.mass_ug);
+
+            // Aliquots parsing (optional, empty if not present)
+            const aliquots = [];
+            for (let i = 0; i < lines.length; i++) {
+                if (!/^Aliquots\b/i.test(lines[i])) continue;
+                for (let j = i + 1; j < Math.min(lines.length, i + 20); j++) {
+                    const t = lines[j];
+                    // Accept either "1. OD: ..." or "1.OD:..." formats
+                    const mm = t.match(/^\s*(\d+)\s*\.\s*.*?OD\s*:\s*([0-9]+(?:[.,][0-9]+)?)\s*,?\s*nmol\s*:\s*([0-9]+(?:[.,][0-9]+)?)\s*,?\s*(?:μg|ug)\s*:\s*([0-9]+(?:[.,][0-9]+)?)\s*\.?\s*$/i);
+                    if (!mm) continue;
+                    aliquots.push({ index: parseInt(mm[1], 10), OD: mm[2], nmol: mm[3], ug: mm[4] });
+                }
+                break;
+            }
+
             items.push({
-                canonical_id,
-                reported_polymer_type,
-                reported_polymer_confidence: "high",
-                sequence_raw,
-                int_mod_map,
-                sequence_norm_suggested,
-                chemistry_code_suggested,
-                fluorophore: mods.fluorophore,
-                quencher: mods.quencher,
-                qc: qc,
+                ID_INFO: {
+                    Name: name_composed,
+                    "Order#": canonical_id,
+                    Type: reported_polymer_type || null,
+                    "SynthesisOligo#": synthesis_oligo_no || null
+                },
+                SEQUENCE_INFO: {
+                    sequence_5to3
+                },
+                SYNTHESIS_INFO: {
+                    Scale: scale_val || null,
+                    Purification: purification_val || null
+                },
+                SYNTHESIS_MODIFICATIONS_ENDS: {
+                    "5_mod": mod5_code || null,
+                    "3_mod": mod3_code || null
+                },
+                SYNTHESIS_MODIFICATIONS_INTERNAL: internal_mods,
+                SYNTHESIS_REPORT: {
+                    Length: firstNumber(qc.length_nt) || null,
+                    MW_Calc: mw_calc_out,
+                    MW_Found: mw_found_out,
+                    Tm: tm_out,
+                    GC_content: gc_out,
+                    Ext_Coeff: ext_out
+                },
+                SYNTHESIS_YIELD: {
+                    OD: od_out,
+                    nmol: nmol_out,
+                    "μg": ug_out
+                },
+                ALIQUOTS: aliquots,
                 warnings,
                 requires_pi_confirmation
             });
