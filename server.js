@@ -12460,12 +12460,12 @@ app.post("/api/oligo/upload-pdf", requirePI, upload.single("file"), async (req, 
 
         function extractField(block, re) {
             const m = block.match(re);
-            return m ? normSpace(m[1]) : null;
+            return m ? normSpace(m[m.length - 1]) : null;
         }
 
         function parseMods(block) {
-            const five = extractField(block, /\b5'[-\s]*Mod\.?\s*[:]?\s*([^\n]+)/i);
-            const three = extractField(block, /\b3'[-\s]*Mod\.?\s*[:]?\s*([^\n]+)/i);
+            const five = extractField(block, /(^|\n)\s*5'\s*[-–]?\s*Mod\.?\s*[:]?\s*([^\n]+)/im);
+            const three = extractField(block, /(^|\n)\s*3'\s*[-–]?\s*Mod\.?\s*[:]?\s*([^\n]+)/im);
 
             // For now: fluorophore = 5' mod, quencher = 3' mod
             // Biomers often prints "6-Fam (qPCR Probe)" and "TQ2"
@@ -12475,12 +12475,66 @@ app.post("/api/oligo/upload-pdf", requirePI, upload.single("file"), async (req, 
         }
 
         function parseQC(block) {
-            const mw_calc = extractField(block, /\bMW\s*Calc\.?\s*[:]?\s*([0-9]+(?:\.[0-9]+)?)/i);
-            const mw_found = extractField(block, /\bMW\s*Found\.?\s*[:]?\s*([0-9]+(?:\.[0-9]+)?)/i);
-            const yield_od = extractField(block, /\bYield\s+in\s+OD\s*[:]?\s*([0-9]+(?:\.[0-9]+)?)/i);
-            const amount_nmol = extractField(block, /\bAmount\s+in\s+nmol\s*[:]?\s*([0-9]+(?:\.[0-9]+)?)/i);
-            const mass_ug = extractField(block, /\bMass\s+in\s+µg\s*[:]?\s*([0-9]+(?:\.[0-9]+)?)/i);
-            return { mw_calc, mw_found, yield_od, amount_nmol, mass_ug };
+
+            // QC block is label line, then value line(s), Biomers layout
+            const lines = (block || "").split(/\r?\n/).map(l => (l || "").trim()).filter(l => l.length > 0);
+
+            function nextValueAfter(labelRe, maxLook = 8) {
+                for (let i = 0; i < lines.length; i++) {
+                    if (!labelRe.test(lines[i])) continue;
+                    for (let j = i + 1; j < Math.min(lines.length, i + 1 + maxLook); j++) {
+                        const v = lines[j];
+                        if (!v) continue;
+
+                        // stop if we hit another label
+                        if (/^(Length|MW\s*Calc\.|MW\s*Found|Tm|GC\s*Content|Ext\.?Coeff\.?|Yield|Vol\.f\.100pmol|Conc\.|Dissolved|Product|Aliquots)\b/i.test(v)) return null;
+
+                        return v;
+                    }
+                    return null;
+                }
+                return null;
+            }
+
+            const length_nt  = nextValueAfter(/^Length\b/i);
+            const mw_calc    = nextValueAfter(/^MW\s*Calc\./i);
+            const mw_found   = nextValueAfter(/^MW\s*Found/i);
+            const tm         = nextValueAfter(/^Tm\b/i);
+            const gc_content = nextValueAfter(/^GC\s*Content\b/i);
+            const ext_coeff  = nextValueAfter(/^Ext\.?Coeff\.?/i);
+
+            let yield_od = null;
+            let amount_nmol = null;
+            let mass_ug = null;
+
+            for (let i = 0; i < lines.length; i++) {
+                if (!/^Yield\b/i.test(lines[i])) continue;
+
+                const vals = [];
+                for (let j = i + 1; j < Math.min(lines.length, i + 14); j++) {
+                    const v = lines[j];
+                    if (/^(Vol\.f\.100pmol|Conc\.|Dissolved|Product|Aliquots)\b/i.test(v)) break;
+                    if (!v) continue;
+                    vals.push(v);
+                }
+
+                yield_od = (vals.find(v => /\bOD\b/i.test(v)) || null);
+                amount_nmol = (vals.find(v => /\bnmol\b/i.test(v)) || null);
+                mass_ug = (vals.find(v => /μg|\bug\b/i.test(v)) || null);
+                break;
+            }
+
+            return {
+                length_nt,
+                mw_calc,
+                mw_found,
+                tm,
+                gc_content,
+                ext_coeff,
+                yield_od,
+                amount_nmol,
+                mass_ug
+            };
         }
 
         const items = [];
