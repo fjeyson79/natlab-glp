@@ -12260,6 +12260,20 @@ app.post("/api/oligo/upload-pdf", requirePI, upload.single("file"), async (req, 
             return res.status(400).json({ error: "Only PDF files are accepted" });
         }
 
+        // Step 2: SHA256 enforcement (duplicate Pack guard)
+        const crypto = require("crypto");
+        const supplier = "biomers";
+        const file_sha256 = crypto.createHash("sha256").update(req.file.buffer).digest("hex");
+
+        const dup = await pool.query(
+            "SELECT id FROM oligo_pdf_imports WHERE supplier = $1 AND file_sha256 = $2 LIMIT 1",
+            [supplier, file_sha256]
+        );
+        if (dup.rows.length > 0) {
+            return res.status(409).json({ error: "Duplicate PDF already uploaded", import_id: dup.rows[0].id });
+        }
+
+
         
         // Biomers PDF preview extractor (no DB writes here).
         // Truth: sequence_raw is never questioned. PI confirms/overrides sequence_norm + chemistry_code.
@@ -12296,6 +12310,7 @@ app.post("/api/oligo/upload-pdf", requirePI, upload.single("file"), async (req, 
                 supplier: "biomers",
                 filename: req.file.originalname,
                 size_bytes: req.file.size,
+                file_sha256,
                 order_no,
                 po_no,
                 items: [],
