@@ -12831,7 +12831,7 @@ app.post("/api/oligo/upload-pdf", requirePI, upload.single("file"), async (req, 
         // Store PDF in R2 first, DB requires file_storage_key not null
         await uploadToR2(buf, r2Key, "application/pdf");
 
-        const uploadedBy = (req.session?.user?.researcher_id || req.session?.user?.id || null);
+        const uploadedBy = String(req.session?.user?.institution_email || req.session?.user?.email || req.session?.user?.researcher_id || req.session?.user?.id || "unknown");
         const client = await pool.connect();
         let import_id = null;
         let committed = false;
@@ -12897,7 +12897,7 @@ app.post("/api/oligo/upload-pdf", requirePI, upload.single("file"), async (req, 
                         import_id, supplier, canonical_id, polymer_type, synthesis_oligo_no,
                         sequence_5to3, mod_5, mod_3,
                         int_mod_5, int_mod_6, int_mod_7, int_mod_8,
-                        it, warnings, requires_pi_confirmation
+                        JSON.stringify(it), JSON.stringify(warnings), requires_pi_confirmation
                     ]
                 );
             }
