@@ -12821,17 +12821,102 @@ app.post("/api/oligo/upload-pdf", requirePI, upload.single("file"), async (req, 
             });
         }
 
-        return res.json({
-            status: "ok",
-            supplier: "biomers",
-            filename: req.file.originalname,
-            size_bytes: req.file.size,
-            order_no,
-            po_no,
-            item_count: items.length,
-            items,
-            text_preview: text.slice(0, 4000)
-        });
+        // Step 3: Persist Pack + Items (transaction)
+        if (!r2Enabled()) return res.status(503).json({ error: "R2 storage not configured" });
+
+        const parse_version = "biomers_pdf_v1";
+        const safeFilename = String(req.file.originalname || "upload.pdf").replace(/[^\w.\-]+/g, "_");
+        const r2Key = "oligo/imports/" + supplier + "/" + file_sha256 + "/" + safeFilename;
+
+        // Store PDF in R2 first, DB requires file_storage_key not null
+        await uploadToR2(buf, r2Key, "application/pdf");
+
+        const uploadedBy = (req.session?.user?.researcher_id || req.session?.user?.id || null);
+        const client = await pool.connect();
+        let import_id = null;
+        let committed = false;
+
+        try {
+            await client.query("BEGIN");
+
+            const pack = await client.query(
+                `INSERT INTO oligo_pdf_imports (
+                    supplier, original_filename, file_storage_key, file_sha256,
+                    po_no, order_no, parse_version, uploaded_by
+                 ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+                 RETURNING id`,
+                [supplier, safeFilename, r2Key, file_sha256, po_no, order_no, parse_version, uploadedBy]
+            );
+            import_id = pack.rows[0].id;
+
+            for (let i = 0; i < items.length; i++) {
+                const it = items[i] || {};
+                const idInfo = it.ID_INFO || {};
+                const seqInfo = it.SEQUENCE_INFO || {};
+                const ends = it.SYNTHESIS_MODIFICATIONS_ENDS || {};
+                const ints = it.SYNTHESIS_MODIFICATIONS_INTERNAL || {};
+
+                const canonical_id = String(idInfo["Order#"] || "UNKNOWN").trim();
+                const polymer_type = String(idInfo.Type || "UNKNOWN").trim();
+
+                // Must be not null and unique per supplier
+                let synthesis_oligo_no = (idInfo["SynthesisOligo#"] != null) ? String(idInfo["SynthesisOligo#"]).trim() : "";
+                if (!synthesis_oligo_no) synthesis_oligo_no = "MISSING_" + file_sha256.substring(0, 12) + "_" + String(i + 1);
+
+                // Must be not null
+                let sequence_5to3 = (seqInfo.sequence_5to3 != null) ? String(seqInfo.sequence_5to3).trim() : "";
+                if (!sequence_5to3) sequence_5to3 = "MISSING_SEQUENCE";
+
+                // Must be not null
+                let mod_5 = (ends["5_mod"] != null) ? String(ends["5_mod"]).trim() : "";
+                let mod_3 = (ends["3_mod"] != null) ? String(ends["3_mod"]).trim() : "";
+                if (!mod_5) mod_5 = "None";
+                if (!mod_3) mod_3 = "None";
+
+                const int_mod_5 = String(ints["5"] || "None");
+                const int_mod_6 = String(ints["6"] || "None");
+                const int_mod_7 = String(ints["7"] || "None");
+                const int_mod_8 = String(ints["8"] || "None");
+
+                const warnings = Array.isArray(it.warnings) ? it.warnings : [];
+                const requires_pi_confirmation = !!it.requires_pi_confirmation || warnings.length > 0;
+
+                await client.query(
+                    `INSERT INTO oligo_pdf_import_items (
+                        import_id, supplier, canonical_id, polymer_type, synthesis_oligo_no,
+                        sequence_5to3, mod_5, mod_3,
+                        int_mod_5, int_mod_6, int_mod_7, int_mod_8,
+                        template_json, warnings, requires_pi_confirmation
+                     ) VALUES (
+                        $1,$2,$3,$4,$5,
+                        $6,$7,$8,
+                        $9,$10,$11,$12,
+                        $13,$14,$15
+                     )`,
+                    [
+                        import_id, supplier, canonical_id, polymer_type, synthesis_oligo_no,
+                        sequence_5to3, mod_5, mod_3,
+                        int_mod_5, int_mod_6, int_mod_7, int_mod_8,
+                        it, warnings, requires_pi_confirmation
+                    ]
+                );
+            }
+
+            await client.query("COMMIT");
+            committed = true;
+            return res.json({ status: "ok", import_id, item_count: items.length });
+
+        } catch (e) {
+            try { await client.query("ROLLBACK"); } catch (_) {}
+            throw e;
+        } finally {
+            client.release();
+            // If DB failed after R2 upload, best-effort cleanup
+            if (!committed) {
+                try { await deleteFromR2(r2Key); }
+                catch (e) { console.warn("[OLIGO] R2 cleanup warning:", e?.message || e); }
+            }
+        }
 
 
     } catch (err) {
