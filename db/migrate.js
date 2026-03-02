@@ -514,6 +514,52 @@ async function migrate() {
             )`,
             `CREATE INDEX IF NOT EXISTS idx_probe_pdfs_probe ON probe_pdfs (probe_id)`,
 
+            // ==================== OLIGO PDF PACKS (Pack Architecture) ====================
+
+            `CREATE TABLE IF NOT EXISTS oligo_pdf_imports (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                supplier TEXT NOT NULL,
+                original_filename TEXT NOT NULL,
+                file_storage_key TEXT NOT NULL,
+                file_sha256 TEXT NOT NULL,
+                po_no TEXT,
+                order_no TEXT,
+                parse_version TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'PENDING',
+                uploaded_by TEXT NOT NULL,
+                uploaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE (supplier, file_sha256)
+            )`,
+
+            `CREATE TABLE IF NOT EXISTS oligo_pdf_import_items (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                import_id UUID NOT NULL REFERENCES oligo_pdf_imports(id) ON DELETE CASCADE,
+                supplier TEXT NOT NULL,
+                canonical_id TEXT NOT NULL,
+                polymer_type TEXT NOT NULL,
+                synthesis_oligo_no TEXT NOT NULL,
+                sequence_5to3 TEXT NOT NULL,
+                mod_5 TEXT NOT NULL,
+                mod_3 TEXT NOT NULL,
+                int_mod_5 TEXT NOT NULL,
+                int_mod_6 TEXT NOT NULL,
+                int_mod_7 TEXT NOT NULL,
+                int_mod_8 TEXT NOT NULL,
+                template_json JSONB NOT NULL,
+                template_json_pi JSONB,
+                warnings JSONB DEFAULT '[]'::jsonb,
+                requires_pi_confirmation BOOLEAN NOT NULL DEFAULT false,
+                decision_status TEXT DEFAULT 'PENDING',
+                decided_by TEXT,
+                decided_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE (import_id, canonical_id),
+                UNIQUE (supplier, synthesis_oligo_no)
+            )`,
+
+            `CREATE INDEX IF NOT EXISTS idx_oligo_pdf_import_items_import_id ON oligo_pdf_import_items(import_id)`,
+            `CREATE INDEX IF NOT EXISTS idx_oligo_pdf_import_items_supplier ON oligo_pdf_import_items(supplier)`,
+
             `CREATE TABLE IF NOT EXISTS probe_audit_log (
                 id BIGSERIAL PRIMARY KEY,
                 entity_type TEXT NOT NULL,
