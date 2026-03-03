@@ -83,7 +83,7 @@ const inventoryUpload = multer({
 
 // =====================================================
 // R2 STORAGE (S3-compatible) - minimal implementation
-// Stores object key in di_submissions.drive_file_id as: r2:<key>
+// Stores object key in di_submissions.r2_object_key (raw key, no prefix)
 // =====================================================
 
 function r2Enabled() {
@@ -142,11 +142,18 @@ async function streamToBuffer(stream) {
 }
 
 function isR2Id(value) {
-  return typeof value === 'string' && value.startsWith('r2:');
+  return typeof value === 'string' && /^r2:/i.test(value);
 }
 
 function r2KeyFromId(value) {
-  return value.replace(/^r2:/, '');
+  return value.replace(/^r2:/i, '');
+}
+
+// Normalize a stored key to a raw R2 key: strips leading "r2:" prefix and whitespace.
+// Handles both new rows (already raw) and any legacy rows still carrying the prefix.
+function normalizeR2Key(k) {
+  if (!k) return null;
+  return k.trim().replace(/^r2:/i, '').trim() || null;
 }
 
 // ─── NATLAB Naming v3 Parser ───
@@ -941,16 +948,14 @@ app.post('/api/di/legacy-upload', requireAuth, upload.single('file'), async (req
 
         console.log(`[LEGACY] Uploading file to R2: key=${key}`);
         await uploadToR2(file.buffer, key, file.mimetype);
-        const fileId = 'r2:' + key;
-
         const submissionResult = await pool.query(
             `INSERT INTO di_submissions
-             (researcher_id, affiliation, file_type, original_filename, drive_file_id, r2_object_key,
+             (researcher_id, affiliation, file_type, original_filename, r2_object_key,
               status, record_origin, original_created_at, legacy_note)
-             VALUES ($1, $2, $3, $4, $5, $6, 'SUBMITTED', 'legacy_pre2026', $7, $8)
+             VALUES ($1, $2, $3, $4, $5, 'SUBMITTED', 'legacy_pre2026', $6, $7)
              RETURNING submission_id`,
             [user.researcher_id, user.affiliation, normalizedType, file.originalname,
-             fileId, key, parsedDate.toISOString(), (legacy_note || '').trim() || null]
+             key, parsedDate.toISOString(), (legacy_note || '').trim() || null]
         );
 
         console.log(`[LEGACY] Draft uploaded: ${submissionResult.rows[0].submission_id} by ${user.researcher_id}`);
@@ -1113,7 +1118,7 @@ app.get('/api/di/my-files', requireAuth, async (req, res) => {
         const hasLegacy = await checkLegacyColumns();
         const legacyCol = hasLegacy ? ', record_origin' : ", NULL as record_origin";
         const result = await pool.query(
-            `SELECT submission_id, file_type, original_filename, status, created_at, signed_at, drive_file_id
+            `SELECT submission_id, file_type, original_filename, status, created_at, signed_at, r2_object_key
                     ${legacyCol}
              FROM di_submissions
              WHERE researcher_id = $1 AND status != 'DISCARDED'
@@ -1134,14 +1139,11 @@ app.get('/api/di/my-files', requireAuth, async (req, res) => {
 
         for (const file of result.rows) {
             const status = file.status || 'PENDING';
-            const fileId = file.drive_file_id;
-
-            // Check if file is stored in R2 (has r2: prefix)
-            const hasR2File = fileId && typeof fileId === 'string' && fileId.startsWith('r2:');
+            const key = file.r2_object_key || null;
 
             // Generate proper URLs - use backend download endpoint for R2 files
-            const viewUrl = hasR2File ? `/api/di/download/${file.submission_id}` : null;
-            const downloadUrl = hasR2File ? `/api/di/download/${file.submission_id}?download=true` : null;
+            const viewUrl = key ? `/api/di/download/${file.submission_id}` : null;
+            const downloadUrl = key ? `/api/di/download/${file.submission_id}?download=true` : null;
 
             const fileNode = {
                 name: file.original_filename,
@@ -1151,7 +1153,7 @@ app.get('/api/di/my-files', requireAuth, async (req, res) => {
                 fileType: file.file_type,
                 date: file.created_at,
                 signedAt: file.signed_at,
-                r2ObjectKey: hasR2File ? fileId.replace(/^r2:/, '') : null,
+                r2ObjectKey: key,
                 viewUrl: viewUrl,
                 downloadUrl: downloadUrl
             };
@@ -1278,11 +1280,9 @@ app.post('/api/di/upload', requireAuth, upload.single('file'), async (req, res) 
         console.log('[UPLOAD] Uploading file to R2: key=' + key);
         await uploadToR2(file.buffer, key, file.mimetype);
 
-        const fileId = 'r2:' + key;
-
         const submissionResult = await pool.query(
-            'INSERT INTO di_submissions (researcher_id, affiliation, file_type, original_filename, drive_file_id, r2_object_key, presentation_type, presentation_other) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING submission_id',
-            [user.researcher_id, user.affiliation, normalizedType, file.originalname, fileId, key, presentationType, presentationOther]
+            'INSERT INTO di_submissions (researcher_id, affiliation, file_type, original_filename, r2_object_key, presentation_type, presentation_other) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING submission_id',
+            [user.researcher_id, user.affiliation, normalizedType, file.originalname, key, presentationType, presentationOther]
         );
 
         const submissionId = submissionResult.rows[0].submission_id;
@@ -1311,7 +1311,7 @@ app.post('/api/di/upload', requireAuth, upload.single('file'), async (req, res) 
                 formData.append('fileType', normalizedType);
                 formData.append('original_filename', file.originalname);
                 formData.append('submission_id', submissionId);
-                formData.append('drive_file_id', fileId);
+                formData.append('r2_object_key', key);
                 formData.append('file', file.buffer, { filename: file.originalname, contentType: file.mimetype });
 
                 const webhookRes = await fetch(webhookUrl, { method: 'POST', body: formData, headers: formData.getHeaders() });
@@ -1326,7 +1326,7 @@ app.post('/api/di/upload', requireAuth, upload.single('file'), async (req, res) 
         return res.json({
             success: true,
             submission_id: submissionId,
-            drive_file_id: fileId,
+            r2_object_key: key,
             view_url: '/api/di/download/' + submissionId,
             download_url: '/api/di/download/' + submissionId + '?download=true',
             message: 'File uploaded successfully'
@@ -1639,11 +1639,11 @@ app.post('/api/di/extract-text', async (req, res) => {
         }
 
         const submission = result.rows[0];
-        const fileId = submission.drive_file_id;
+        const key = normalizeR2Key(submission.r2_object_key);
 
         // Check if file is stored in R2
-        if (!fileId || !isR2Id(fileId)) {
-            console.error(`[EXTRACT-TEXT] No R2 file for submission ${submission_id}, fileId=${fileId}`);
+        if (!key) {
+            console.error(`[EXTRACT-TEXT] No R2 file for submission ${submission_id}`);
             return res.status(404).json({
                 error: 'File not found in storage',
                 message: 'PDF file is not available for text extraction'
@@ -1655,7 +1655,6 @@ app.post('/api/di/extract-text', async (req, res) => {
         }
 
         // Download PDF from R2
-        const key = r2KeyFromId(fileId);
         console.log(`[EXTRACT-TEXT] Downloading PDF from R2: ${key}`);
 
         let pdfBuffer;
@@ -1890,7 +1889,7 @@ app.get('/api/di/download/:id', async (req, res) => {
     try {
         // Get submission
         const result = await pool.query(
-            'SELECT drive_file_id, original_filename, status, signed_pdf_path FROM di_submissions WHERE submission_id = $1',
+            'SELECT r2_object_key, original_filename, status FROM di_submissions WHERE submission_id = $1',
             [id]
         );
 
@@ -1900,18 +1899,15 @@ app.get('/api/di/download/:id', async (req, res) => {
         }
 
         const submission = result.rows[0];
-        console.log(`[DOWNLOAD] Found submission: status=${submission.status}, drive_file_id=${submission.drive_file_id || 'NULL'}, signed_pdf_path=${submission.signed_pdf_path || 'NULL'}`);
+        const key = normalizeR2Key(submission.r2_object_key);
+        console.log(`[DOWNLOAD] Found submission: status=${submission.status}, r2_object_key=${key || 'NULL'}`);
 
-        // Determine which file ID to use (prefer signed version if available)
-        const fileId = submission.signed_pdf_path || submission.drive_file_id;
-
-// If stored in R2, stream it back (no public bucket needed)
-if (fileId && isR2Id(fileId)) {
+// If stored in R2, stream it back
+if (key) {
   if (!r2Enabled()) {
     return res.status(503).json({ error: 'R2_NOT_CONFIGURED', message: 'R2 is not configured on the server.' });
   }
 
-  const key = r2KeyFromId(fileId);
   console.log(`[DOWNLOAD] Serving from R2: ${key}`);
 
   try {
@@ -2020,18 +2016,15 @@ async function performApproval(submissionId, approvalComment) {
     if (result.rows.length === 0) return { success: false, error: 'Submission not found', status: 404 };
 
     const submission = result.rows[0];
-    const fileId = (submission.drive_file_id || '').trim();
-    const isR2 = fileId.startsWith('r2:');
-    console.log(`[APPROVE] id=${submissionId} fileId=${fileId} isR2=${isR2}`);
+    const originalKey = normalizeR2Key(submission.r2_object_key);
+    console.log(`[APPROVE] id=${submissionId} key=${originalKey}`);
 
-    if (!isR2) return { success: false, error: 'Drive not configured. Only R2 supported.', status: 400 };
-    if (!fileId) return { success: false, error: 'No file associated.', status: 400 };
+    if (!originalKey) return { success: false, error: 'No file associated.', status: 400 };
     if (submission.status === 'APPROVED') return { success: false, error: 'Already approved.', status: 409 };
     if (submission.status === 'DISCARDED') return { success: false, error: 'Cannot approve a discarded submission.', status: 409 };
 
     const signedAt = new Date().toISOString();
     const signerName = 'Frank J. Hernandez';
-    const originalKey = fileId.replace(/^r2:/, '');
 
     const r2Obj = await downloadFromR2(originalKey);
     const chunks = []; for await (const c of r2Obj.Body) chunks.push(c);
@@ -2042,7 +2035,7 @@ async function performApproval(submissionId, approvalComment) {
     const safeFilename = submission.original_filename.replace('.pdf', '_APPROVED.pdf').replace(/[^\w.\-]+/g, '_');
     const approvedKey = originalKey.replace('/Submitted/', '/Approved/').replace(/[^/]+$/, safeFilename);
     await uploadToR2(stampedBuffer, approvedKey, 'application/pdf');
-    const newFileId = 'r2:' + approvedKey;
+    const signedPdfPath = 'r2:' + approvedKey;
 
     try { await deleteFromR2(originalKey); } catch (e) { console.warn('[APPROVE] Delete warning:', e.message); }
 
@@ -2053,8 +2046,8 @@ async function performApproval(submissionId, approvalComment) {
     const verificationCode = `NATLAB-${submissionId}-${signatureHash.substring(0, 8).toUpperCase()}`;
 
     await pool.query(
-        `UPDATE di_submissions SET status='APPROVED', signed_at=$1, signer_name=$2, drive_file_id=$3, r2_object_key=$4, signed_pdf_path=$3, signature_hash=$5, verification_code=$6, approval_comment=$8 WHERE submission_id=$7`,
-        [signedAt, signerName, newFileId, approvedKey, signatureHash, verificationCode, submissionId, approvalComment || null]
+        `UPDATE di_submissions SET status='APPROVED', signed_at=$1, signer_name=$2, r2_object_key=$3, signed_pdf_path=$4, signature_hash=$5, verification_code=$6, approval_comment=$7 WHERE submission_id=$8`,
+        [signedAt, signerName, approvedKey, signedPdfPath, signatureHash, verificationCode, approvalComment || null, submissionId]
     );
 
     const researcherResult = await pool.query(
@@ -2082,19 +2075,16 @@ async function performApproval(submissionId, approvalComment) {
 }
 
 async function performRevision(submissionId, comments) {
-    const result = await pool.query('SELECT drive_file_id, researcher_id, original_filename, affiliation, file_type, created_at, status FROM di_submissions WHERE submission_id = $1', [submissionId]);
+    const result = await pool.query('SELECT r2_object_key, researcher_id, original_filename, affiliation, file_type, created_at, status FROM di_submissions WHERE submission_id = $1', [submissionId]);
     if (result.rows.length === 0) return { success: false, error: 'Submission not found', status: 404 };
 
     const submission = result.rows[0];
     if (submission.status === 'DISCARDED') return { success: false, error: 'Cannot revise a discarded submission.', status: 409 };
-    const fileId = (submission.drive_file_id || '').trim();
-    const isR2 = fileId.startsWith('r2:');
-    console.log(`[REVISE] id=${submissionId} fileId=${fileId} isR2=${isR2}`);
+    const key = normalizeR2Key(submission.r2_object_key);
+    console.log(`[REVISE] id=${submissionId} key=${key}`);
 
-    if (!isR2 && fileId) return { success: false, error: 'Drive not configured. Only R2 supported.', status: 400 };
-
-    if (isR2) {
-        try { await deleteFromR2(fileId.replace(/^r2:/, '')); } catch (e) { console.warn('[REVISE] Delete warning:', e.message); }
+    if (key) {
+        try { await deleteFromR2(key); } catch (e) { console.warn('[REVISE] Delete warning:', e.message); }
     }
 
     await pool.query(
@@ -2556,7 +2546,7 @@ app.get('/api/di/directory', requirePI, async (req, res) => {
         // Get all submissions
         const submissionsResult = await pool.query(
             `SELECT s.submission_id, s.researcher_id, s.affiliation, s.file_type,
-                    s.original_filename, s.status, s.created_at, s.drive_file_id,
+                    s.original_filename, s.status, s.created_at, s.r2_object_key,
                     EXTRACT(YEAR FROM s.created_at) as year
              FROM di_submissions s
              WHERE s.status != 'DISCARDED'
@@ -2597,7 +2587,7 @@ app.get('/api/di/directory', requirePI, async (req, res) => {
                 status: sub.status,
                 fileType: sub.file_type,
                 date: sub.created_at,
-                driveFileId: sub.drive_file_id,
+                r2ObjectKey: sub.r2_object_key,
 });
             yearMap[year].researchers[sub.researcher_id].count++;
         }
@@ -2725,22 +2715,22 @@ app.delete('/api/di/submissions/:id', requirePI, async (req, res) => {
   try {
     const submissionId = req.params.id;
 
-    // Fetch stored key (drive_file_id is used as storage key for backward compatibility)
+    // Fetch stored key before deleting
     const existing = await pool.query(
-      'SELECT drive_file_id FROM di_submissions WHERE submission_id = ',
+      'SELECT r2_object_key FROM di_submissions WHERE submission_id = $1',
       [submissionId]
     );
 
     // Delete DB record
     const del = await pool.query(
-      'DELETE FROM di_submissions WHERE submission_id =  RETURNING submission_id',
+      'DELETE FROM di_submissions WHERE submission_id = $1 RETURNING submission_id',
       [submissionId]
     );
 
     if (del.rowCount === 0) return res.status(404).json({ error: 'Not found' });
 
-    // Best-effort delete from R2 if helper exists
-    const key = existing.rows?.[0]?.drive_file_id;
+    // Best-effort delete from R2
+    const key = normalizeR2Key(existing.rows?.[0]?.r2_object_key);
     if (key && typeof deleteFromR2 === 'function') {
       try { await deleteFromR2(key); }
       catch (e) { console.warn('[R2] delete failed:', e?.message || e); }
@@ -2854,7 +2844,7 @@ app.get('/api/di/group-documents/:id/download', requireAuth, async (req, res) =>
         }
 
         try {
-            const obj = await downloadFromR2(doc.r2_object_key);
+            const obj = await downloadFromR2(normalizeR2Key(doc.r2_object_key));
 
             res.setHeader('Content-Type', obj.ContentType || 'application/octet-stream');
             res.setHeader('Content-Disposition', `attachment; filename="${doc.filename}"`);
@@ -2984,7 +2974,7 @@ app.delete('/api/di/group-documents/:id', requirePI, async (req, res) => {
         );
 
         // Best-effort delete from R2
-        const key = docResult.rows[0].r2_object_key;
+        const key = normalizeR2Key(docResult.rows[0].r2_object_key);
         if (key && r2Enabled()) {
             try {
                 await deleteFromR2(key);
@@ -3045,8 +3035,7 @@ app.get('/api/di/lab-files', requirePI, async (req, res) => {
     try {
         const result = await pool.query(
             `SELECT s.submission_id, s.researcher_id, s.original_filename, s.file_type,
-                    s.status, s.created_at, s.signed_at, s.drive_file_id,
-                    COALESCE(s.drive_file_id, s.signed_pdf_path) as r2_object_key,
+                    s.status, s.created_at, s.signed_at, s.r2_object_key,
                     a.name as researcher_name
              FROM di_submissions s
              LEFT JOIN di_allowlist a ON s.researcher_id = a.researcher_id
@@ -3095,7 +3084,7 @@ app.get('/api/di/lab-files-enriched', requirePI, async (req, res) => {
             ? `SELECT s.submission_id, s.researcher_id, s.original_filename, s.file_type,
                       s.status, s.created_at, s.signed_at, s.ai_review,
                       s.pi_dragon_seal,
-                      COALESCE(s.drive_file_id, s.signed_pdf_path) as r2_object_key,
+                      s.r2_object_key,
                       a.name as researcher_name, a.affiliation,
                       COALESCE(sop_c.cnt, 0)::int as linked_sop_count,
                       COALESCE(pres_c.cnt, 0)::int as linked_pres_count
@@ -3113,7 +3102,7 @@ app.get('/api/di/lab-files-enriched', requirePI, async (req, res) => {
             : `SELECT s.submission_id, s.researcher_id, s.original_filename, s.file_type,
                       s.status, s.created_at, s.signed_at, s.ai_review,
                       s.pi_dragon_seal,
-                      COALESCE(s.drive_file_id, s.signed_pdf_path) as r2_object_key,
+                      s.r2_object_key,
                       a.name as researcher_name, a.affiliation,
                       0 as linked_sop_count, 0 as linked_pres_count
                       ${legacyCols}
@@ -3367,7 +3356,7 @@ app.get('/api/di/vision/files', requireAuth, async (req, res) => {
         const result = await pool.query(`
             SELECT s.submission_id, s.researcher_id, s.original_filename, s.file_type,
                    s.status, s.created_at, s.signed_at,
-                   COALESCE(s.drive_file_id, s.signed_pdf_path) as r2_object_key,
+                   s.r2_object_key,
                    a.name as researcher_name, a.affiliation
                    ${sopCountCol}${presCountCol}
             FROM di_submissions s
@@ -3725,7 +3714,7 @@ app.post('/api/di/bulk-download', requirePI, async (req, res) => {
 
         // Fetch file metadata
         const result = await pool.query(
-            `SELECT submission_id, original_filename, drive_file_id, signed_pdf_path
+            `SELECT submission_id, original_filename, r2_object_key
              FROM di_submissions
              WHERE submission_id = ANY($1::uuid[])`,
             [submission_ids]
@@ -3753,10 +3742,9 @@ app.post('/api/di/bulk-download', requirePI, async (req, res) => {
 
         // Add files from R2
         for (const file of result.rows) {
-            const fileId = file.signed_pdf_path || file.drive_file_id;
-            if (!fileId) continue;
+            const key = normalizeR2Key(file.r2_object_key);
+            if (!key) continue;
 
-            const key = fileId.replace(/^r2:/, '');
             try {
                 const obj = await downloadFromR2(key);
                 const buffer = await streamToBuffer(obj.Body);
@@ -4405,7 +4393,7 @@ app.get('/api/di/supervision/researchers/:researcher_id/files', requireSuperviso
 
         // Get all submissions for this researcher (same query pattern as my-files)
         const result = await pool.query(
-            `SELECT submission_id, file_type, original_filename, status, created_at, signed_at, drive_file_id
+            `SELECT submission_id, file_type, original_filename, status, created_at, signed_at, r2_object_key
              FROM di_submissions
              WHERE researcher_id = $1 AND status != 'DISCARDED'
              ORDER BY created_at DESC`,
@@ -4419,8 +4407,7 @@ app.get('/api/di/supervision/researchers/:researcher_id/files', requireSuperviso
 
         for (const file of result.rows) {
             const status = file.status || 'PENDING';
-            const fileId = file.drive_file_id;
-            const hasR2File = fileId && typeof fileId === 'string' && fileId.startsWith('r2:');
+            const key = file.r2_object_key || null;
 
             const fileNode = {
                 name: file.original_filename,
@@ -4430,9 +4417,9 @@ app.get('/api/di/supervision/researchers/:researcher_id/files', requireSuperviso
                 fileType: file.file_type,
                 date: file.created_at,
                 signedAt: file.signed_at,
-                r2ObjectKey: hasR2File ? fileId.replace(/^r2:/, '') : null,
-                viewUrl: hasR2File ? `/api/di/download/${file.submission_id}` : null,
-                downloadUrl: hasR2File ? `/api/di/download/${file.submission_id}?download=true` : null
+                r2ObjectKey: key,
+                viewUrl: key ? `/api/di/download/${file.submission_id}` : null,
+                downloadUrl: key ? `/api/di/download/${file.submission_id}?download=true` : null
             };
 
             if (status === 'APPROVED') {
@@ -5192,14 +5179,13 @@ app.post('/api/di/inventory/upload', requireAuth, requireInternal, inventoryUplo
         const key = `di/${user.affiliation}/Inventory/Imports/${year}/${dateStamp}_${user.researcher_id}_${safeOriginal}`;
 
         await uploadToR2(file.buffer, key, 'text/csv');
-        const fileId = 'r2:' + key;
 
         // Insert into di_submissions with status SUBMITTED
         const result = await pool.query(
-            `INSERT INTO di_submissions (researcher_id, affiliation, file_type, original_filename, drive_file_id, r2_object_key, status)
-             VALUES ($1, $2, 'INVENTORY', $3, $4, $5, 'SUBMITTED')
+            `INSERT INTO di_submissions (researcher_id, affiliation, file_type, original_filename, r2_object_key, status)
+             VALUES ($1, $2, 'INVENTORY', $3, $4, 'SUBMITTED')
              RETURNING submission_id`,
-            [user.researcher_id, user.affiliation, file.originalname, fileId, key]
+            [user.researcher_id, user.affiliation, file.originalname, key]
         );
 
         const submissionId = result.rows[0].submission_id;
@@ -5258,13 +5244,12 @@ app.get('/api/di/inventory/import/preview/:id', requirePI, async (req, res) => {
             return res.status(400).json({ error: 'Submission is not in SUBMITTED state' });
         }
 
-        const fileId = (submission.drive_file_id || '').trim();
-        if (!fileId.startsWith('r2:')) {
+        const r2Key = normalizeR2Key(submission.r2_object_key);
+        if (!r2Key) {
             return res.status(400).json({ error: 'No R2 file associated with this submission' });
         }
 
         // Download and parse CSV from R2
-        const r2Key = fileId.replace(/^r2:/, '');
         const r2Obj = await downloadFromR2(r2Key);
         const chunks = [];
         for await (const c of r2Obj.Body) chunks.push(c);
@@ -5316,13 +5301,12 @@ app.post('/api/di/inventory/import/approve/:id', requirePI, async (req, res) => 
             return res.status(400).json({ error: 'Submission is not in SUBMITTED state' });
         }
 
-        const fileId = (submission.drive_file_id || '').trim();
-        if (!fileId.startsWith('r2:')) {
+        const r2Key = normalizeR2Key(submission.r2_object_key);
+        if (!r2Key) {
             return res.status(400).json({ error: 'No R2 file associated' });
         }
 
         // Re-parse CSV from R2 (authoritative at approval time)
-        const r2Key = fileId.replace(/^r2:/, '');
         const r2Obj = await downloadFromR2(r2Key);
         const chunks = [];
         for await (const c of r2Obj.Body) chunks.push(c);
@@ -5423,9 +5407,9 @@ app.post('/api/di/inventory/import/revise/:id', requirePI, async (req, res) => {
         }
 
         // Delete CSV from R2 (same as SOP/DATA revise pattern)
-        const fileId = (submission.drive_file_id || '').trim();
-        if (fileId.startsWith('r2:')) {
-            try { await deleteFromR2(fileId.replace(/^r2:/, '')); } catch (e) { console.warn('[INVENTORY] Delete warning:', e.message); }
+        const r2Key = normalizeR2Key(submission.r2_object_key);
+        if (r2Key) {
+            try { await deleteFromR2(r2Key); } catch (e) { console.warn('[INVENTORY] Delete warning:', e.message); }
         }
 
         // Update submission
@@ -7527,7 +7511,7 @@ app.get('/api/di/training/document-versions/:versionId/view', requireAuth, async
         const v = await pool.query('SELECT r2_object_key, original_filename FROM di_training_document_versions WHERE id = $1', [req.params.versionId]);
         if (v.rows.length === 0) return res.status(404).json({ error: 'Version not found' });
 
-        const r2Obj = await downloadFromR2(v.rows[0].r2_object_key);
+        const r2Obj = await downloadFromR2(normalizeR2Key(v.rows[0].r2_object_key));
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `inline; filename="${v.rows[0].original_filename}"`);
         if (r2Obj.Body.pipe) { r2Obj.Body.pipe(res); } else { res.send(Buffer.from(await r2Obj.Body.transformToByteArray())); }
@@ -12775,7 +12759,23 @@ app.post("/api/oligo/imports/:import_id/finalize", requirePI, async (req, res) =
     }
 });
 
-app.listen(PORT, "0.0.0.0", () => console.log("[STARTUP] Server listening on port " + PORT));
+app.listen(PORT, "0.0.0.0", async () => {
+    console.log("[STARTUP] Server listening on port " + PORT);
+    // Safety check: warn if any di_submissions row has no r2_object_key
+    try {
+        const nullKeyRows = await pool.query(
+            `SELECT COUNT(*) as cnt FROM di_submissions WHERE r2_object_key IS NULL AND status != 'DISCARDED'`
+        );
+        const cnt = parseInt(nullKeyRows.rows[0]?.cnt || '0', 10);
+        if (cnt > 0) {
+            console.warn(`[STARTUP] WARNING: ${cnt} active di_submissions row(s) have r2_object_key IS NULL — these files cannot be downloaded. Review manually.`);
+        } else {
+            console.log("[STARTUP] Storage check: all active di_submissions have r2_object_key set.");
+        }
+    } catch (e) {
+        console.warn("[STARTUP] Storage check skipped (DB not ready):", e.message);
+    }
+});
 
 
 
