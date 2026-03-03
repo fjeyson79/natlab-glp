@@ -770,6 +770,7 @@ async function migrate() {
 
         console.log('\nMigration completed successfully!');
         await pool.query(`UPDATE glp_migration_state SET last_success_at = NOW() WHERE id = 1`);
+        await pool.query(`UPDATE glp_migration_state SET last_error_at = NULL, last_error_text = NULL WHERE id = 1`);
 
         // Schema sanity checks (minimal, fast)
         try {
