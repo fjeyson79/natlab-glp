@@ -779,16 +779,7 @@ async function migrate() {
                     to_regclass('public.di_submissions') IS NOT NULL AS has_di_submissions,
                     to_regclass('public.oligo_pdf_imports') IS NOT NULL AS has_oligo_imports,
                     to_regclass('public.oligo_pdf_import_items') IS NOT NULL AS has_oligo_items
-            `);
-
-            const c = schemaChecks.rows[0] || {};
-            const ok = !!(c.has_di_submissions && c.has_oligo_imports && c.has_oligo_items);
-
-            await pool.query(
-                "UPDATE glp_migration_state SET schema_ok = $1, schema_check_text = $2 WHERE id = 1",
-                [ok, JSON.stringify(c)]
-            );
-        } catch (e) {
+            `);        } catch (e) {
             console.warn("Schema check failed:", e && e.message ? e.message : String(e));
         }
 
