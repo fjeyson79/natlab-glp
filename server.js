@@ -12522,6 +12522,259 @@ app.post("/api/oligo/import-master", requirePI, oligoCsvUpload.single("file"), a
     }
 });
 
+// =====================================================
+// OLIGO-ID REVIEW ROUTES (Step 6)
+// =====================================================
+
+// GET /api/oligo/imports – list packs with item counts
+app.get("/api/oligo/imports", requirePI, async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT
+                p.id, p.supplier, p.uploaded_at, p.uploaded_by,
+                p.original_filename, p.order_no, p.po_no, p.parse_version,
+                p.status, p.finalized_by, p.finalized_at,
+                COUNT(i.id)::int AS total_items,
+                COUNT(i.id) FILTER (WHERE i.decision_status = 'APPROVED')::int AS approved,
+                COUNT(i.id) FILTER (WHERE i.decision_status = 'REJECTED')::int AS rejected,
+                COUNT(i.id) FILTER (WHERE i.decision_status = 'PENDING')::int AS pending,
+                COUNT(i.id) FILTER (WHERE i.requires_pi_confirmation = TRUE)::int AS requires_pi_confirmation_count
+            FROM oligo_pdf_imports p
+            LEFT JOIN oligo_pdf_import_items i ON i.import_id = p.id
+            GROUP BY p.id
+            ORDER BY p.uploaded_at DESC
+        `);
+        res.json({ imports: result.rows });
+    } catch (err) {
+        console.error("[OLIGO] imports list error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// GET /api/oligo/imports/:import_id – pack metadata + items
+app.get("/api/oligo/imports/:import_id", requirePI, async (req, res) => {
+    try {
+        const importId = String(req.params.import_id || "").trim();
+        if (!isUuid(importId)) return res.status(400).json({ error: "Invalid import ID" });
+
+        const packResult = await pool.query(
+            `SELECT id, supplier, uploaded_at, uploaded_by, original_filename,
+                    order_no, po_no, parse_version, status, finalized_by, finalized_at
+             FROM oligo_pdf_imports WHERE id = $1`,
+            [importId]
+        );
+        if (packResult.rows.length === 0) return res.status(404).json({ error: "Import not found" });
+
+        const itemsResult = await pool.query(
+            `SELECT id, canonical_id, polymer_type, synthesis_oligo_no, sequence_5to3,
+                    mod_5, mod_3, int_mod_5, int_mod_6, int_mod_7, int_mod_8,
+                    warnings, requires_pi_confirmation, decision_status, decided_by, decided_at,
+                    template_json, template_json_pi, created_at
+             FROM oligo_pdf_import_items WHERE import_id = $1 ORDER BY created_at`,
+            [importId]
+        );
+
+        res.json({ pack: packResult.rows[0], items: itemsResult.rows });
+    } catch (err) {
+        console.error("[OLIGO] import detail error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// PATCH /api/oligo/import-items/:item_id/template-pi – store PI-corrected template
+app.patch("/api/oligo/import-items/:item_id/template-pi", requirePI, async (req, res) => {
+    try {
+        const itemId = String(req.params.item_id || "").trim();
+        if (!isUuid(itemId)) return res.status(400).json({ error: "Invalid item ID" });
+
+        const template_json_pi = req.body?.template_json_pi;
+        if (template_json_pi === undefined) return res.status(400).json({ error: "template_json_pi is required" });
+        if (typeof template_json_pi !== "object" || template_json_pi === null) {
+            return res.status(400).json({ error: "template_json_pi must be a JSON object" });
+        }
+
+        // Guard: pack must not be finalized
+        const guard = await pool.query(
+            `SELECT p.finalized_at FROM oligo_pdf_import_items i
+             JOIN oligo_pdf_imports p ON p.id = i.import_id
+             WHERE i.id = $1`,
+            [itemId]
+        );
+        if (guard.rows.length === 0) return res.status(404).json({ error: "Item not found" });
+        if (guard.rows[0].finalized_at) return res.status(409).json({ error: "Pack is already finalized" });
+
+        // requires_pi_confirmation = true if PI template differs from parsed template
+        const result = await pool.query(
+            `UPDATE oligo_pdf_import_items
+             SET template_json_pi = $1,
+                 requires_pi_confirmation = ($1::jsonb IS DISTINCT FROM template_json)
+             WHERE id = $2
+             RETURNING id, template_json_pi, requires_pi_confirmation`,
+            [JSON.stringify(template_json_pi), itemId]
+        );
+
+        res.json({ item: result.rows[0] });
+    } catch (err) {
+        console.error("[OLIGO] template-pi error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// PATCH /api/oligo/import-items/:item_id/decision – approve / reject / set pending
+app.patch("/api/oligo/import-items/:item_id/decision", requirePI, async (req, res) => {
+    try {
+        const itemId = String(req.params.item_id || "").trim();
+        if (!isUuid(itemId)) return res.status(400).json({ error: "Invalid item ID" });
+
+        const decision_status = String(req.body?.decision_status || "").trim().toUpperCase();
+        if (!["PENDING", "APPROVED", "REJECTED"].includes(decision_status)) {
+            return res.status(400).json({ error: "decision_status must be PENDING, APPROVED, or REJECTED" });
+        }
+
+        // Guard: pack must not be finalized
+        const guard = await pool.query(
+            `SELECT p.finalized_at FROM oligo_pdf_import_items i
+             JOIN oligo_pdf_imports p ON p.id = i.import_id
+             WHERE i.id = $1`,
+            [itemId]
+        );
+        if (guard.rows.length === 0) return res.status(404).json({ error: "Item not found" });
+        if (guard.rows[0].finalized_at) return res.status(409).json({ error: "Pack is already finalized" });
+
+        const actor = req.session?.user?.researcher_id || req.session?.user?.id || null;
+        const result = await pool.query(
+            `UPDATE oligo_pdf_import_items
+             SET decision_status = $1, decided_by = $2, decided_at = NOW()
+             WHERE id = $3
+             RETURNING id, decision_status, decided_by, decided_at`,
+            [decision_status, actor, itemId]
+        );
+
+        res.json({ item: result.rows[0] });
+    } catch (err) {
+        console.error("[OLIGO] decision error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// POST /api/oligo/imports/:import_id/finalize – lock pack + publish APPROVED items
+app.post("/api/oligo/imports/:import_id/finalize", requirePI, async (req, res) => {
+    try {
+        const importId = String(req.params.import_id || "").trim();
+        if (!isUuid(importId)) return res.status(400).json({ error: "Invalid import ID" });
+
+        const status = String(req.body?.status || "").trim().toUpperCase();
+        if (!["APPROVED", "REJECTED"].includes(status)) {
+            return res.status(400).json({ error: "status must be APPROVED or REJECTED" });
+        }
+
+        const actor = req.session?.user?.researcher_id || req.session?.user?.id || null;
+
+        const client = await pool.connect();
+        try {
+            await client.query("BEGIN");
+
+            // Lock pack row
+            const packResult = await client.query(
+                `SELECT id, status, finalized_at FROM oligo_pdf_imports WHERE id = $1 FOR UPDATE`,
+                [importId]
+            );
+            if (packResult.rows.length === 0) {
+                await client.query("ROLLBACK");
+                return res.status(404).json({ error: "Import not found" });
+            }
+            if (packResult.rows[0].finalized_at) {
+                await client.query("ROLLBACK");
+                return res.status(409).json({ error: "Pack is already finalized" });
+            }
+
+            // Strict: all items must be decided before finalizing
+            const pendingCheck = await client.query(
+                `SELECT COUNT(*)::int AS pending_count FROM oligo_pdf_import_items
+                 WHERE import_id = $1 AND decision_status = 'PENDING'`,
+                [importId]
+            );
+            if (pendingCheck.rows[0].pending_count > 0) {
+                await client.query("ROLLBACK");
+                return res.status(409).json({
+                    error: `${pendingCheck.rows[0].pending_count} item(s) still PENDING. Decide all items before finalizing.`
+                });
+            }
+
+            // Fetch APPROVED items
+            const approvedItems = await client.query(
+                `SELECT id, canonical_id, sequence_5to3, supplier, synthesis_oligo_no,
+                        template_json, template_json_pi
+                 FROM oligo_pdf_import_items
+                 WHERE import_id = $1 AND decision_status = 'APPROVED'`,
+                [importId]
+            );
+
+            // Publish: upsert probe_catalog + insert probe_syntheses per APPROVED item
+            for (const item of approvedItems.rows) {
+                // Effective template: PI override if provided, else parsed
+                const effective = (item.template_json_pi !== null && item.template_json_pi !== undefined)
+                    ? item.template_json_pi
+                    : item.template_json;
+
+                const canonical_id = item.canonical_id;
+
+                // Upsert probe_catalog by canonical_id; if conflict use existing row
+                let probe_id;
+                const insertProbe = await client.query(
+                    `INSERT INTO probe_catalog
+                        (canonical_id, display_name, sequence, sequence_norm, chemistry_code,
+                         oligo_kind, status, created_by)
+                     VALUES ($1,$2,$3,NULL,'STD','OLIGO','ACTIVE',$4)
+                     ON CONFLICT (canonical_id) DO NOTHING
+                     RETURNING id`,
+                    [canonical_id, canonical_id, (item.sequence_5to3 || null), actor]
+                );
+                if (insertProbe.rows.length > 0) {
+                    probe_id = insertProbe.rows[0].id;
+                } else {
+                    const existRow = await client.query(
+                        `SELECT id FROM probe_catalog WHERE canonical_id = $1`,
+                        [canonical_id]
+                    );
+                    if (existRow.rows.length === 0) throw new Error("probe_catalog conflict but not found: " + canonical_id);
+                    probe_id = existRow.rows[0].id;
+                }
+
+                // Insert synthesis record linking back to import item
+                await client.query(
+                    `INSERT INTO probe_syntheses
+                        (probe_id, supplier, synthesis_oligo_no,
+                         source_import_id, source_import_item_id, review_status, created_by)
+                     VALUES ($1,$2,$3,$4,$5,'PENDING',$6)`,
+                    [probe_id, item.supplier, item.synthesis_oligo_no, importId, item.id, actor]
+                );
+            }
+
+            // Finalize the pack
+            await client.query(
+                `UPDATE oligo_pdf_imports
+                 SET status = $1, finalized_by = $2, finalized_at = NOW()
+                 WHERE id = $3`,
+                [status, actor, importId]
+            );
+
+            await client.query("COMMIT");
+            console.log(`[OLIGO] finalize import ${importId}: status=${status} published=${approvedItems.rows.length} actor=${actor}`);
+            res.json({ success: true, status, published_count: approvedItems.rows.length });
+
+        } catch (e) {
+            try { await client.query("ROLLBACK"); } catch (_) {}
+            throw e;
+        } finally {
+            client.release();
+        }
+    } catch (err) {
+        console.error("[OLIGO] imports finalize error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
 app.listen(PORT, "0.0.0.0", () => console.log("[STARTUP] Server listening on port " + PORT));
 
 

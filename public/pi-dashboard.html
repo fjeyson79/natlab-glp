@@ -2041,6 +2041,32 @@
         .oto-preview-kv strong { color:#374151; }
         .oto-senior-project { border:1px solid #e5e7eb; border-radius:6px; padding:6px 8px; margin-bottom:4px; background:#fafbfc; }
 
+/* ── Oligo Review tab ── */
+.or-split { display:flex; gap:16px; align-items:flex-start; }
+.or-packs-col { width:360px; flex-shrink:0; }
+.or-items-col { flex:1; min-width:0; }
+.or-status-pill { display:inline-block; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:700; letter-spacing:.4px; }
+.or-status-pill.PENDING { background:#fef3c7; color:#92400e; }
+.or-status-pill.APPROVED { background:#d1fae5; color:#065f46; }
+.or-status-pill.REJECTED { background:#fee2e2; color:#991b1b; }
+.or-pack-row { cursor:pointer; }
+.or-pack-row.selected td { background:#dbeafe !important; }
+.or-warn-pill { display:inline-block; background:#fef9c3; color:#854d0e; border:1px solid #fde047; border-radius:8px; padding:1px 6px; font-size:10px; font-weight:600; }
+.or-drawer-overlay { position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:2000; display:flex; justify-content:flex-end; }
+.or-drawer { width:540px; max-width:95vw; background:#fff; height:100%; overflow-y:auto; padding:24px; box-shadow:-4px 0 20px rgba(0,0,0,.15); display:flex; flex-direction:column; gap:14px; }
+.or-drawer h3 { font-size:15px; color:#1a365d; margin:0; }
+.or-drawer-close { position:absolute; top:16px; right:20px; border:none; background:none; font-size:20px; cursor:pointer; color:#6b7280; }
+.or-field-label { font-size:11px; font-weight:700; color:#6b7280; text-transform:uppercase; letter-spacing:.5px; margin-bottom:2px; }
+.or-mono { font-family:monospace; font-size:12px; background:#f3f4f6; border-radius:4px; padding:6px 8px; word-break:break-all; }
+.or-btn { display:inline-flex; align-items:center; gap:4px; padding:5px 14px; border:none; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; }
+.or-btn-approve { background:#10b981; color:#fff; }
+.or-btn-reject  { background:#ef4444; color:#fff; }
+.or-btn-pending { background:#f59e0b; color:#fff; }
+.or-btn-finalize { background:#1a365d; color:#fff; font-size:13px; padding:7px 20px; }
+.or-btn:disabled { opacity:.5; cursor:default; }
+.or-filters { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; align-items:center; }
+.or-filters select, .or-filters input { padding:4px 8px; border:1px solid #d1d5db; border-radius:5px; font-size:12px; }
+
 </style>
 </head>
 <body>
@@ -2064,6 +2090,7 @@
         <button class="tab-btn" data-tab="purchases-inventory">Inventory</button>
         <button class="tab-btn" data-tab="backup">Backup</button>
         <button class="tab-btn" data-tab="oligo-id" onclick="window.location.href='oligo-id.html'">Oligo-ID</button>
+        <button class="tab-btn" data-tab="oligo-review">Oligo Review <span class="badge" id="oligoReviewBadge" style="display:none;">0</span></button>
 
     </div>
 
@@ -3516,6 +3543,146 @@
         </div>
     </div>
 
+    <!-- ==================== OLIGO REVIEW TAB ==================== -->
+    <div class="tab-content" id="tab-oligo-review">
+        <div class="or-split">
+            <!-- Left: pack list -->
+            <div class="or-packs-col">
+                <div class="panel">
+                    <div class="panel-header" style="display:flex;align-items:center;justify-content:space-between;">
+                        <h2 style="font-size:15px;margin:0;">&#128230; Import Packs</h2>
+                        <button class="btn btn-sm btn-secondary" onclick="orLoadPacks()">Refresh</button>
+                    </div>
+                    <div id="orPacksBody" style="overflow-x:auto;">
+                        <p style="color:#999;font-size:13px;padding:10px;">Select tab to load…</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: items for selected pack -->
+            <div class="or-items-col">
+                <div class="panel" id="orItemsPanel" style="display:none;">
+                    <div class="panel-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+                        <div>
+                            <h2 style="font-size:15px;margin:0;">Items — <span id="orPackLabel" style="color:#2563eb;"></span></h2>
+                            <div style="font-size:11px;color:#6b7280;margin-top:2px;" id="orPackMeta"></div>
+                        </div>
+                        <div style="display:flex;gap:8px;align-items:center;">
+                            <button class="or-btn or-btn-finalize" id="orFinalizeBtn" onclick="orFinalizeModal()" style="display:none;">Finalize Pack</button>
+                        </div>
+                    </div>
+
+                    <!-- Item filters -->
+                    <div class="or-filters" style="padding:0 16px 10px;">
+                        <input id="orSearch" type="text" placeholder="Search canonical_id / synthesis no…" style="width:200px;" oninput="orRenderItems()">
+                        <select id="orFilterDecision" onchange="orRenderItems()">
+                            <option value="">All decisions</option>
+                            <option value="PENDING">Pending</option>
+                            <option value="APPROVED">Approved</option>
+                            <option value="REJECTED">Rejected</option>
+                        </select>
+                        <label style="font-size:12px;display:flex;align-items:center;gap:4px;">
+                            <input type="checkbox" id="orFilterPI" onchange="orRenderItems()"> PI confirm only
+                        </label>
+                        <span id="orItemCountLabel" style="font-size:12px;color:#6b7280;margin-left:auto;"></span>
+                    </div>
+
+                    <div id="orItemsBody" style="overflow-x:auto;"></div>
+                </div>
+
+                <!-- Placeholder when no pack selected -->
+                <div class="panel" id="orNoPack" style="color:#9ca3af;font-size:13px;text-align:center;padding:40px;">
+                    Select a pack on the left to review its items.
+                </div>
+            </div>
+        </div>
+
+        <!-- Item detail drawer (full-height overlay) -->
+        <div class="or-drawer-overlay" id="orDrawerOverlay" style="display:none;" onclick="orDrawerClose(event)">
+            <div class="or-drawer" id="orDrawer" onclick="event.stopPropagation()">
+                <div style="position:relative;">
+                    <h3 id="orDrawerTitle">Item Detail</h3>
+                    <button class="or-drawer-close" onclick="orDrawerClose()">&#10005;</button>
+                </div>
+
+                <!-- Decision buttons -->
+                <div id="orDrawerDecisionBar" style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <button class="or-btn or-btn-approve" onclick="orSetDecision('APPROVED')">&#10003; Approve</button>
+                    <button class="or-btn or-btn-reject"  onclick="orSetDecision('REJECTED')">&#10007; Reject</button>
+                    <button class="or-btn or-btn-pending" onclick="orSetDecision('PENDING')">&#8635; Set Pending</button>
+                </div>
+
+                <!-- Warnings -->
+                <div id="orDrawerWarnings" style="display:none;">
+                    <div class="or-field-label">Warnings</div>
+                    <div id="orDrawerWarningsList"></div>
+                </div>
+
+                <!-- Field display -->
+                <div class="or-field-label">canonical_id</div>
+                <div class="or-mono" id="orDrawerCanonical"></div>
+
+                <div class="or-field-label">synthesis_oligo_no</div>
+                <div class="or-mono" id="orDrawerSynthNo"></div>
+
+                <div class="or-field-label">sequence_5to3</div>
+                <div class="or-mono" id="orDrawerSeq"></div>
+
+                <div style="display:flex;gap:12px;">
+                    <div style="flex:1;">
+                        <div class="or-field-label">5′ mod</div>
+                        <div class="or-mono" id="orDrawerMod5"></div>
+                    </div>
+                    <div style="flex:1;">
+                        <div class="or-field-label">3′ mod</div>
+                        <div class="or-mono" id="orDrawerMod3"></div>
+                    </div>
+                </div>
+
+                <div>
+                    <div class="or-field-label">Internal mods (pos 5–8)</div>
+                    <div class="or-mono" id="orDrawerIntMods"></div>
+                </div>
+
+                <!-- template_json_pi editor -->
+                <div>
+                    <div class="or-field-label" style="display:flex;align-items:center;justify-content:space-between;">
+                        <span>PI Template Override (template_json_pi)</span>
+                        <button class="btn btn-sm btn-secondary" style="font-size:11px;padding:2px 8px;" onclick="orSaveTemplatePi()">Save</button>
+                    </div>
+                    <textarea id="orDrawerTemplatePi" rows="8"
+                        style="width:100%;font-family:monospace;font-size:11px;border:1px solid #d1d5db;border-radius:5px;padding:6px;resize:vertical;"
+                        placeholder="Paste corrected JSON here (leave blank to use parsed template)"></textarea>
+                    <div id="orDrawerTemplatePiMsg" style="font-size:11px;color:#6b7280;margin-top:2px;"></div>
+                </div>
+
+                <!-- Parsed template (read-only) -->
+                <div>
+                    <div class="or-field-label">Parsed template_json (read-only)</div>
+                    <pre id="orDrawerTemplateJson"
+                        style="font-size:10px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:4px;padding:8px;overflow-x:auto;max-height:200px;margin:0;"></pre>
+                </div>
+            </div>
+        </div>
+
+        <!-- Finalize confirmation modal -->
+        <div id="orFinalizeOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:3000;display:none;align-items:center;justify-content:center;">
+            <div style="background:#fff;border-radius:10px;padding:24px;max-width:400px;width:90%;box-shadow:0 8px 30px rgba(0,0,0,.2);">
+                <h3 style="margin:0 0 12px;font-size:15px;color:#1a365d;">Finalize Pack</h3>
+                <p style="font-size:13px;color:#374151;margin-bottom:16px;">
+                    Choose final pack status. APPROVED items will be published to the probe catalog.
+                    This action cannot be undone.
+                </p>
+                <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;">
+                    <button class="btn btn-secondary" onclick="orFinalizeOverlayClose()">Cancel</button>
+                    <button class="or-btn or-btn-reject" onclick="orDoFinalize('REJECTED')">Mark Pack REJECTED</button>
+                    <button class="or-btn or-btn-approve" onclick="orDoFinalize('APPROVED')">Publish &amp; APPROVE</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- ==================== END OLIGO REVIEW TAB ==================== -->
+
     <script>
         // =====================================================
         // GLOBAL STATE & INIT
@@ -3573,6 +3740,7 @@
                   if (tabId === 'glp-console') glpcInit();
                   if (tabId === 'purchases-inventory') { loadAllPurchaseRequests(); loadAllInventoryV2(); loadPONumbers(); }
                   if (tabId === 'training') { loadTrainingDocuments(); loadPendingTrainingPacks(); loadSealedTrainingPacks(); }
+                  if (tabId === 'oligo-review') orInit();
               });
           });
 
@@ -3594,6 +3762,7 @@
               if (tabId === 'glp-console') glpcInit();
               if (tabId === 'purchases-inventory') { loadAllPurchaseRequests(); loadAllInventoryV2(); loadPONumbers(); }
               if (tabId === 'training') { loadTrainingDocuments(); loadPendingTrainingPacks(); loadSealedTrainingPacks(); }
+              if (tabId === 'oligo-review') orInit();
           }
 
 function dicInitEmbedModeFromUrl() {
@@ -10572,6 +10741,321 @@ function dicBuildPdfViewerSrc(fileUrl) {
         }
         // Init InternalDocs dropdown (PI-only) after page scripts load
         try { setTimeout(() => { try { dicInitInternalDocs(); } catch (e) {} }, 0); } catch (e) {}
+
+        // =====================================================
+        // OLIGO REVIEW (Step 6)
+        // =====================================================
+        let orPacks = [];           // all loaded packs
+        let orCurrentPack = null;   // selected pack object
+        let orCurrentItems = [];    // items for selected pack
+        let orCurrentItem = null;   // item open in drawer
+        let orInitDone = false;
+
+        function orInit() {
+            if (!orInitDone) { orInitDone = true; orLoadPacks(); }
+        }
+
+        // ── Helpers ─────────────────────────────────────────
+        function orEsc(s) {
+            return String(s == null ? "" : s)
+                .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        }
+
+        function orPill(status) {
+            const s = String(status || "PENDING");
+            return `<span class="or-status-pill ${s}">${orEsc(s)}</span>`;
+        }
+
+        function orFmt(ts) {
+            if (!ts) return "—";
+            return new Date(ts).toLocaleDateString();
+        }
+
+        // ── Pack list ────────────────────────────────────────
+        async function orLoadPacks() {
+            const body = document.getElementById("orPacksBody");
+            body.innerHTML = '<p style="color:#999;font-size:13px;padding:10px;">Loading…</p>';
+            try {
+                const r = await fetch("/api/oligo/imports", { credentials: "include" });
+                if (!r.ok) throw new Error(await r.text());
+                const data = await r.json();
+                orPacks = data.imports || [];
+
+                // Update badge
+                const pending = orPacks.filter(p => !p.finalized_at).length;
+                const badge = document.getElementById("oligoReviewBadge");
+                if (badge) { badge.textContent = pending; badge.style.display = pending > 0 ? "" : "none"; }
+
+                orRenderPacks();
+            } catch (err) {
+                body.innerHTML = `<p style="color:#dc3545;font-size:12px;padding:10px;">Error: ${orEsc(err.message)}</p>`;
+            }
+        }
+
+        function orRenderPacks() {
+            const body = document.getElementById("orPacksBody");
+            if (orPacks.length === 0) {
+                body.innerHTML = '<p style="color:#999;font-size:13px;padding:10px;">No import packs yet.</p>';
+                return;
+            }
+            let h = `<table class="data-table" style="font-size:12px;width:100%;">
+                <thead><tr>
+                    <th>Supplier / Order</th><th>Status</th><th title="Approved / Total">A/T</th><th>Date</th>
+                </tr></thead><tbody>`;
+            for (const p of orPacks) {
+                const sel = orCurrentPack && orCurrentPack.id === p.id ? " selected" : "";
+                const label = (p.order_no || p.original_filename || p.id.slice(0, 8));
+                h += `<tr class="or-pack-row${sel}" onclick="orSelectPack('${orEsc(p.id)}')">
+                    <td><span title="${orEsc(p.original_filename)}">${orEsc(p.supplier.toUpperCase())} / ${orEsc(label)}</span></td>
+                    <td>${orPill(p.status)}</td>
+                    <td>${p.approved}/${p.total_items}</td>
+                    <td>${orFmt(p.uploaded_at)}</td>
+                </tr>`;
+            }
+            h += "</tbody></table>";
+            body.innerHTML = h;
+        }
+
+        async function orSelectPack(packId) {
+            const pack = orPacks.find(p => p.id === packId);
+            if (!pack) return;
+            orCurrentPack = pack;
+            orRenderPacks(); // re-highlight
+
+            // Show items panel
+            document.getElementById("orItemsPanel").style.display = "";
+            document.getElementById("orNoPack").style.display = "none";
+
+            // Update header
+            document.getElementById("orPackLabel").textContent =
+                (pack.order_no || pack.po_no || pack.original_filename || packId.slice(0, 8));
+            document.getElementById("orPackMeta").textContent =
+                `${pack.supplier.toUpperCase()} · ${pack.total_items} items · uploaded ${orFmt(pack.uploaded_at)} by ${pack.uploaded_by}`;
+
+            // Show/hide finalize button
+            const finBtn = document.getElementById("orFinalizeBtn");
+            finBtn.style.display = pack.finalized_at ? "none" : "";
+
+            const itemsBody = document.getElementById("orItemsBody");
+            itemsBody.innerHTML = '<p style="padding:10px;color:#999;font-size:13px;">Loading…</p>';
+
+            try {
+                const r = await fetch(`/api/oligo/imports/${packId}`, { credentials: "include" });
+                if (!r.ok) throw new Error(await r.text());
+                const data = await r.json();
+                orCurrentItems = data.items || [];
+                orRenderItems();
+            } catch (err) {
+                itemsBody.innerHTML = `<p style="color:#dc3545;font-size:12px;padding:10px;">Error: ${orEsc(err.message)}</p>`;
+            }
+        }
+
+        function orRenderItems() {
+            const body = document.getElementById("orItemsBody");
+            const search = (document.getElementById("orSearch")?.value || "").toLowerCase();
+            const decFilter = document.getElementById("orFilterDecision")?.value || "";
+            const piFilter = document.getElementById("orFilterPI")?.checked || false;
+
+            let items = orCurrentItems.filter(it => {
+                if (decFilter && it.decision_status !== decFilter) return false;
+                if (piFilter && !it.requires_pi_confirmation) return false;
+                if (search) {
+                    const hay = ((it.canonical_id || "") + " " + (it.synthesis_oligo_no || "")).toLowerCase();
+                    if (!hay.includes(search)) return false;
+                }
+                return true;
+            });
+
+            const countEl = document.getElementById("orItemCountLabel");
+            if (countEl) countEl.textContent = `${items.length} / ${orCurrentItems.length} items`;
+
+            if (items.length === 0) {
+                body.innerHTML = '<p style="padding:10px;color:#999;font-size:13px;">No items match filters.</p>';
+                return;
+            }
+
+            let h = `<table class="data-table" style="font-size:12px;">
+                <thead><tr>
+                    <th>canonical_id</th><th>SynthOligo#</th><th>Seq (20)</th>
+                    <th>Decision</th><th>PI&#9888;</th><th></th>
+                </tr></thead><tbody>`;
+            for (const it of items) {
+                const warnBadge = (it.warnings && it.warnings.length > 0)
+                    ? `<span class="or-warn-pill" title="${it.warnings.length} warning(s)">&#9888;${it.warnings.length}</span>` : "";
+                const piFlag = it.requires_pi_confirmation ? "&#9888;" : "";
+                const seq = it.sequence_5to3 ? (it.sequence_5to3.slice(0, 20) + (it.sequence_5to3.length > 20 ? "…" : "")) : "—";
+                h += `<tr style="cursor:pointer;" onclick="orOpenDrawer('${orEsc(it.id)}')">
+                    <td>${orEsc(it.canonical_id)} ${warnBadge}</td>
+                    <td>${orEsc(it.synthesis_oligo_no || "—")}</td>
+                    <td><span style="font-family:monospace;font-size:11px;">${orEsc(seq)}</span></td>
+                    <td>${orPill(it.decision_status)}</td>
+                    <td style="text-align:center;color:#f59e0b;">${piFlag}</td>
+                    <td><button class="btn btn-sm btn-secondary" style="font-size:11px;padding:2px 8px;"
+                        onclick="event.stopPropagation();orOpenDrawer('${orEsc(it.id)}')">Review</button></td>
+                </tr>`;
+            }
+            h += "</tbody></table>";
+            body.innerHTML = h;
+        }
+
+        // ── Item drawer ──────────────────────────────────────
+        function orOpenDrawer(itemId) {
+            const it = orCurrentItems.find(x => x.id === itemId);
+            if (!it) return;
+            orCurrentItem = it;
+
+            document.getElementById("orDrawerTitle").textContent =
+                `${it.canonical_id} — ${it.synthesis_oligo_no || "no synth#"}`;
+            document.getElementById("orDrawerCanonical").textContent = it.canonical_id || "—";
+            document.getElementById("orDrawerSynthNo").textContent   = it.synthesis_oligo_no || "—";
+            document.getElementById("orDrawerSeq").textContent       = it.sequence_5to3 || "—";
+            document.getElementById("orDrawerMod5").textContent      = it.mod_5 || "—";
+            document.getElementById("orDrawerMod3").textContent      = it.mod_3 || "—";
+            document.getElementById("orDrawerIntMods").textContent   =
+                `5:${it.int_mod_5||"—"}  6:${it.int_mod_6||"—"}  7:${it.int_mod_7||"—"}  8:${it.int_mod_8||"—"}`;
+
+            // Warnings
+            const warns = Array.isArray(it.warnings) ? it.warnings : [];
+            const warnDiv = document.getElementById("orDrawerWarnings");
+            if (warns.length > 0) {
+                warnDiv.style.display = "";
+                document.getElementById("orDrawerWarningsList").innerHTML = warns.map(w =>
+                    `<div style="font-size:11px;padding:3px 6px;margin-bottom:3px;border-radius:4px;background:${w.severity==='error'?'#fee2e2':'#fef9c3'};color:${w.severity==='error'?'#991b1b':'#92400e'};">
+                        [${orEsc(w.severity||'')}] ${orEsc(w.code||'')} — ${orEsc(w.message||'')}
+                    </div>`
+                ).join("");
+            } else {
+                warnDiv.style.display = "none";
+            }
+
+            // template_json_pi
+            const piTpl = document.getElementById("orDrawerTemplatePi");
+            piTpl.value = it.template_json_pi ? JSON.stringify(it.template_json_pi, null, 2) : "";
+            document.getElementById("orDrawerTemplatePiMsg").textContent = "";
+
+            // template_json (read-only)
+            try {
+                document.getElementById("orDrawerTemplateJson").textContent =
+                    JSON.stringify(it.template_json, null, 2);
+            } catch (_) {
+                document.getElementById("orDrawerTemplateJson").textContent = String(it.template_json);
+            }
+
+            // Decision buttons: disable if pack finalized
+            const locked = orCurrentPack && orCurrentPack.finalized_at;
+            document.getElementById("orDrawerDecisionBar").querySelectorAll("button").forEach(b => {
+                b.disabled = !!locked;
+            });
+            document.getElementById("orDrawerTemplatePi").disabled = !!locked;
+
+            document.getElementById("orDrawerOverlay").style.display = "flex";
+        }
+
+        function orDrawerClose(evt) {
+            if (evt && evt.target !== document.getElementById("orDrawerOverlay")) return;
+            document.getElementById("orDrawerOverlay").style.display = "none";
+            orCurrentItem = null;
+        }
+
+        // ── Decisions ────────────────────────────────────────
+        async function orSetDecision(status) {
+            if (!orCurrentItem) return;
+            try {
+                const r = await fetch(`/api/oligo/import-items/${orCurrentItem.id}/decision`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({ decision_status: status })
+                });
+                const data = await r.json();
+                if (!r.ok) throw new Error(data.error || "Failed");
+
+                // Update local state
+                orCurrentItem.decision_status = data.item.decision_status;
+                orCurrentItem.decided_by = data.item.decided_by;
+                orCurrentItem.decided_at = data.item.decided_at;
+                const idx = orCurrentItems.findIndex(x => x.id === orCurrentItem.id);
+                if (idx !== -1) orCurrentItems[idx] = { ...orCurrentItems[idx], ...data.item };
+
+                orRenderItems();
+                // Close drawer after deciding
+                document.getElementById("orDrawerOverlay").style.display = "none";
+                orCurrentItem = null;
+            } catch (err) {
+                alert("Error: " + err.message);
+            }
+        }
+
+        async function orSaveTemplatePi() {
+            if (!orCurrentItem) return;
+            const raw = document.getElementById("orDrawerTemplatePi").value.trim();
+            const msgEl = document.getElementById("orDrawerTemplatePiMsg");
+            let parsed;
+            try {
+                parsed = raw ? JSON.parse(raw) : null;
+            } catch (_) {
+                msgEl.textContent = "Invalid JSON — fix before saving.";
+                msgEl.style.color = "#dc3545";
+                return;
+            }
+            if (parsed === null) {
+                msgEl.textContent = "Nothing to save (field is empty).";
+                msgEl.style.color = "#6b7280";
+                return;
+            }
+            try {
+                const r = await fetch(`/api/oligo/import-items/${orCurrentItem.id}/template-pi`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({ template_json_pi: parsed })
+                });
+                const data = await r.json();
+                if (!r.ok) throw new Error(data.error || "Failed");
+                orCurrentItem.template_json_pi = data.item.template_json_pi;
+                orCurrentItem.requires_pi_confirmation = data.item.requires_pi_confirmation;
+                const idx = orCurrentItems.findIndex(x => x.id === orCurrentItem.id);
+                if (idx !== -1) orCurrentItems[idx] = { ...orCurrentItems[idx], ...data.item };
+                msgEl.textContent = "Saved.";
+                msgEl.style.color = "#10b981";
+                orRenderItems();
+            } catch (err) {
+                msgEl.textContent = "Error: " + err.message;
+                msgEl.style.color = "#dc3545";
+            }
+        }
+
+        // ── Finalize pack ────────────────────────────────────
+        function orFinalizeModal() {
+            const overlay = document.getElementById("orFinalizeOverlay");
+            overlay.style.display = "flex";
+        }
+
+        function orFinalizeOverlayClose() {
+            document.getElementById("orFinalizeOverlay").style.display = "none";
+        }
+
+        async function orDoFinalize(status) {
+            if (!orCurrentPack) return;
+            orFinalizeOverlayClose();
+            try {
+                const r = await fetch(`/api/oligo/imports/${orCurrentPack.id}/finalize`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({ status })
+                });
+                const data = await r.json();
+                if (!r.ok) throw new Error(data.error || "Failed");
+                alert(`Pack finalized as ${status}. ${data.published_count} item(s) published to probe catalog.`);
+                // Reload
+                await orLoadPacks();
+                if (orCurrentPack) await orSelectPack(orCurrentPack.id);
+            } catch (err) {
+                alert("Error: " + err.message);
+            }
+        }
+
     </script>
 <script src="/js/presentation-mode.js"></script>
 </body>
