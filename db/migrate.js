@@ -4,6 +4,11 @@ const { Pool } = require('pg');
 const fs = require('fs');
 const path = require('path');
 
+const BASELINE_FILE_MIGRATION_VERSION = 28;
+// If schema_migrations is empty, we assume historical migrations were applied via inline SQL list.
+// We therefore mark files <= BASELINE as already applied to avoid re-applying them.
+
+
 async function runSqlFileMigrations(pool) {
     // Tracks applied file migrations
     await pool.query(`
@@ -22,6 +27,25 @@ async function runSqlFileMigrations(pool) {
     const files = fs.readdirSync(dir)
         .filter(f => /^[0-9]{3}_.+\.sql$/i.test(f))
         .sort();
+
+    // One-time baseline: if schema_migrations is empty, mark legacy files as applied.
+    const smCount = await pool.query(`SELECT COUNT(*)::int AS n FROM schema_migrations`);
+    if ((smCount.rows[0]?.n || 0) === 0) {
+        const legacy = [];
+        for (const f of files) {
+            const m = f.match(/^([0-9]{3})_/);
+            if (!m) continue;
+            const v = parseInt(m[1], 10);
+            if (v <= BASELINE_FILE_MIGRATION_VERSION) legacy.push(f);
+        }
+        if (legacy.length > 0) {
+            console.log(`\n[sql-migrations] Baseline: marking ${legacy.length} file(s) <= ${BASELINE_FILE_MIGRATION_VERSION} as applied (no execution).`);
+            for (const f of legacy) {
+                await pool.query(`INSERT INTO schema_migrations (filename) VALUES ($1) ON CONFLICT DO NOTHING`, [f]);
+            }
+        }
+    }
+
 
     for (const file of files) {
         const already = await pool.query(
