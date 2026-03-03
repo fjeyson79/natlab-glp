@@ -636,6 +636,42 @@ async function migrate() {
             `CREATE INDEX IF NOT EXISTS idx_oligo_pdf_import_items_import_id ON oligo_pdf_import_items(import_id)`,
             `CREATE INDEX IF NOT EXISTS idx_oligo_pdf_import_items_supplier ON oligo_pdf_import_items(supplier)`,
 
+// ==================== OLIGO-ID PHASE 2 (synthesis linkage) ====================
+            // Additive: pack finalization fields
+            `ALTER TABLE oligo_pdf_imports ADD COLUMN IF NOT EXISTS finalized_by TEXT`,
+            `ALTER TABLE oligo_pdf_imports ADD COLUMN IF NOT EXISTS finalized_at TIMESTAMPTZ`,
+
+            // Additive: link each synthesis row to its source import + item (Option 1)
+            `ALTER TABLE probe_syntheses ADD COLUMN IF NOT EXISTS synthesis_oligo_no TEXT`,
+            `ALTER TABLE probe_syntheses ADD COLUMN IF NOT EXISTS source_import_id UUID`,
+            `ALTER TABLE probe_syntheses ADD COLUMN IF NOT EXISTS source_import_item_id UUID`,
+
+            // Add foreign keys only if missing (Postgres lacks ADD CONSTRAINT IF NOT EXISTS)
+            `DO $$ BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint WHERE conname = 'probe_syntheses_source_import_id_fkey'
+                ) THEN
+                    ALTER TABLE probe_syntheses
+                        ADD CONSTRAINT probe_syntheses_source_import_id_fkey
+                        FOREIGN KEY (source_import_id) REFERENCES oligo_pdf_imports(id);
+                END IF;
+            EXCEPTION WHEN duplicate_object THEN NULL; END $$;`,
+
+            `DO $$ BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint WHERE conname = 'probe_syntheses_source_import_item_id_fkey'
+                ) THEN
+                    ALTER TABLE probe_syntheses
+                        ADD CONSTRAINT probe_syntheses_source_import_item_id_fkey
+                        FOREIGN KEY (source_import_item_id) REFERENCES oligo_pdf_import_items(id);
+                END IF;
+            EXCEPTION WHEN duplicate_object THEN NULL; END $$;`,
+
+            // Indexes for fast “show me all syntheses for this import/item/synthesis_no”
+            `CREATE INDEX IF NOT EXISTS idx_probe_syntheses_source_import_id ON probe_syntheses(source_import_id)`,
+            `CREATE INDEX IF NOT EXISTS idx_probe_syntheses_source_import_item_id ON probe_syntheses(source_import_item_id)`,
+            `CREATE INDEX IF NOT EXISTS idx_probe_syntheses_synthesis_oligo_no ON probe_syntheses(synthesis_oligo_no)`,
+
             `CREATE TABLE IF NOT EXISTS probe_audit_log (
                 id BIGSERIAL PRIMARY KEY,
                 entity_type TEXT NOT NULL,
