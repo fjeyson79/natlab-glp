@@ -5140,7 +5140,7 @@ function dicInitEmbedModeFromUrl() {
                         `;
 
                         researcherFiles.forEach(f => {
-                            const hasFile = f.r2_object_key || f.drive_file_id;
+                            const hasFile = !!f.r2_object_key;
                             html += `
                                 <div class="tree-item tree-file" style="padding-left:60px;" data-file-id="${f.submission_id}">
                                     <input type="checkbox" class="file-checkbox" data-id="${f.submission_id}" onclick="toggleLabFileSelection(event, '${f.submission_id}')">
