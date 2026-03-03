@@ -85,8 +85,21 @@ const pool = new Pool({
 
 async function migrate() {
     console.log('Running database migrations...');
+    const LOCK_KEY = 20260101;
 
     try {
+        await pool.query('SELECT pg_advisory_lock($1)', [LOCK_KEY]);
+
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS glp_migration_state (
+                id INTEGER PRIMARY KEY DEFAULT 1,
+                last_success_at TIMESTAMPTZ,
+                last_error_at TIMESTAMPTZ,
+                last_error_text TEXT
+            )
+        `);
+        await pool.query(`INSERT INTO glp_migration_state (id) VALUES (1) ON CONFLICT DO NOTHING`);
+
         // Add new columns to di_submissions if they don't exist
         const migrations = [
             `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS sender_email VARCHAR(255)`,
@@ -745,13 +758,25 @@ async function migrate() {
             }
         }
 
-        await runSqlFileMigrations(pool);
+        if (process.env.ENABLE_SQL_MIGRATIONS === "1") {
+            await runSqlFileMigrations(pool);
+        } else {
+            console.log("SQL file migrations disabled.");
+        }
 
         console.log('\nMigration completed successfully!');
+        await pool.query(`UPDATE glp_migration_state SET last_success_at = NOW() WHERE id = 1`);
 
     } catch (err) {
         console.error('Migration error:', err);
+        try {
+            await pool.query(
+                `UPDATE glp_migration_state SET last_error_at = NOW(), last_error_text = $1 WHERE id = 1`,
+                [err.message || String(err)]
+            );
+        } catch (_) {}
     } finally {
+        try { await pool.query('SELECT pg_advisory_unlock($1)', [LOCK_KEY]); } catch (_) {}
         await pool.end();
     }
 }
