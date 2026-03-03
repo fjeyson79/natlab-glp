@@ -1,6 +1,58 @@
 require('dotenv').config();
 const { Pool } = require('pg');
 
+const fs = require('fs');
+const path = require('path');
+
+async function runSqlFileMigrations(pool) {
+    // Tracks applied file migrations
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+            filename TEXT PRIMARY KEY,
+            applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    `);
+
+    const dir = path.join(__dirname, '..', 'migrations');
+    if (!fs.existsSync(dir)) {
+        console.log('No migrations directory found at:', dir);
+        return;
+    }
+
+    const files = fs.readdirSync(dir)
+        .filter(f => /^[0-9]{3}_.+\.sql$/i.test(f))
+        .sort();
+
+    for (const file of files) {
+        const already = await pool.query(
+            `SELECT 1 FROM schema_migrations WHERE filename = $1`,
+            [file]
+        );
+        if (already.rows.length > 0) {
+            continue;
+        }
+
+        const fullPath = path.join(dir, file);
+        const sql = fs.readFileSync(fullPath, 'utf-8');
+
+        console.log(`\nApplying file migration: ${file}`);
+        try {
+            await pool.query('BEGIN');
+            await pool.query(sql);
+            await pool.query(
+                `INSERT INTO schema_migrations (filename) VALUES ($1)`,
+                [file]
+            );
+            await pool.query('COMMIT');
+            console.log(`  OK: ${file}`);
+        } catch (err) {
+            try { await pool.query('ROLLBACK'); } catch (_) {}
+            console.error(`  ERROR in ${file}:`, err.message || err);
+            throw err;
+        }
+    }
+}
+
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false },
@@ -632,6 +684,8 @@ async function migrate() {
                 }
             }
         }
+
+        await runSqlFileMigrations(pool);
 
         console.log('\nMigration completed successfully!');
 
