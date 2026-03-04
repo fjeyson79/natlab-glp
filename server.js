@@ -12376,6 +12376,9 @@ app.post("/api/oligo/upload-pdf", requirePI, upload.single("file"), async (req, 
 
     } catch (err) {
         console.error("[OLIGO] upload-pdf error:", err);
+        if (err && err.code === "23505") {
+            return res.status(409).json({ error: "Duplicate PDF already uploaded" });
+        }
         res.status(500).json({ error: "Server error" });
     }
 });
