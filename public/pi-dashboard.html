@@ -2090,8 +2090,6 @@
         <button class="tab-btn" data-tab="purchases-inventory">Inventory</button>
         <button class="tab-btn" data-tab="backup">Backup</button>
         <button class="tab-btn" data-tab="oligo-id" onclick="window.location.href='oligo-id.html'">Oligo-ID</button>
-        <button class="tab-btn" data-tab="oligo-review">Oligo Review <span class="badge" id="oligoReviewBadge" style="display:none;">0</span></button>
-
     </div>
 
     <!-- ==================== DASHBOARD TAB ==================== -->
@@ -3543,146 +3541,7 @@
         </div>
     </div>
 
-    <!-- ==================== OLIGO REVIEW TAB ==================== -->
-    <div class="tab-content" id="tab-oligo-review">
-        <div class="or-split">
-            <!-- Left: pack list -->
-            <div class="or-packs-col">
-                <div class="panel">
-                    <div class="panel-header" style="display:flex;align-items:center;justify-content:space-between;">
-                        <h2 style="font-size:15px;margin:0;">&#128230; Import Packs</h2>
-                        <button class="btn btn-sm btn-secondary" onclick="orLoadPacks()">Refresh</button>
-                    </div>
-                    <div id="orPacksBody" style="overflow-x:auto;">
-                        <p style="color:#999;font-size:13px;padding:10px;">Select tab to load…</p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Right: items for selected pack -->
-            <div class="or-items-col">
-                <div class="panel" id="orItemsPanel" style="display:none;">
-                    <div class="panel-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
-                        <div>
-                            <h2 style="font-size:15px;margin:0;">Items — <span id="orPackLabel" style="color:#2563eb;"></span></h2>
-                            <div style="font-size:11px;color:#6b7280;margin-top:2px;" id="orPackMeta"></div>
-                        </div>
-                        <div style="display:flex;gap:8px;align-items:center;">
-                            <button class="or-btn or-btn-finalize" id="orFinalizeBtn" onclick="orFinalizeModal()" style="display:none;">Finalize Pack</button>
-                        </div>
-                    </div>
-
-                    <!-- Item filters -->
-                    <div class="or-filters" style="padding:0 16px 10px;">
-                        <input id="orSearch" type="text" placeholder="Search canonical_id / synthesis no…" style="width:200px;" oninput="orRenderItems()">
-                        <select id="orFilterDecision" onchange="orRenderItems()">
-                            <option value="">All decisions</option>
-                            <option value="PENDING">Pending</option>
-                            <option value="APPROVED">Approved</option>
-                            <option value="REJECTED">Rejected</option>
-                        </select>
-                        <label style="font-size:12px;display:flex;align-items:center;gap:4px;">
-                            <input type="checkbox" id="orFilterPI" onchange="orRenderItems()"> PI confirm only
-                        </label>
-                        <span id="orItemCountLabel" style="font-size:12px;color:#6b7280;margin-left:auto;"></span>
-                    </div>
-
-                    <div id="orItemsBody" style="overflow-x:auto;"></div>
-                </div>
-
-                <!-- Placeholder when no pack selected -->
-                <div class="panel" id="orNoPack" style="color:#9ca3af;font-size:13px;text-align:center;padding:40px;">
-                    Select a pack on the left to review its items.
-                </div>
-            </div>
-        </div>
-
-        <!-- Item detail drawer (full-height overlay) -->
-        <div class="or-drawer-overlay" id="orDrawerOverlay" style="display:none;" onclick="orDrawerClose(event)">
-            <div class="or-drawer" id="orDrawer" onclick="event.stopPropagation()">
-                <div style="position:relative;">
-                    <h3 id="orDrawerTitle">Item Detail</h3>
-                    <button class="or-drawer-close" onclick="orDrawerClose()">&#10005;</button>
-                </div>
-
-                <!-- Decision buttons -->
-                <div id="orDrawerDecisionBar" style="display:flex;gap:8px;flex-wrap:wrap;">
-                    <button class="or-btn or-btn-approve" onclick="orSetDecision('APPROVED')">&#10003; Approve</button>
-                    <button class="or-btn or-btn-reject"  onclick="orSetDecision('REJECTED')">&#10007; Reject</button>
-                    <button class="or-btn or-btn-pending" onclick="orSetDecision('PENDING')">&#8635; Set Pending</button>
-                </div>
-
-                <!-- Warnings -->
-                <div id="orDrawerWarnings" style="display:none;">
-                    <div class="or-field-label">Warnings</div>
-                    <div id="orDrawerWarningsList"></div>
-                </div>
-
-                <!-- Field display -->
-                <div class="or-field-label">canonical_id</div>
-                <div class="or-mono" id="orDrawerCanonical"></div>
-
-                <div class="or-field-label">synthesis_oligo_no</div>
-                <div class="or-mono" id="orDrawerSynthNo"></div>
-
-                <div class="or-field-label">sequence_5to3</div>
-                <div class="or-mono" id="orDrawerSeq"></div>
-
-                <div style="display:flex;gap:12px;">
-                    <div style="flex:1;">
-                        <div class="or-field-label">5′ mod</div>
-                        <div class="or-mono" id="orDrawerMod5"></div>
-                    </div>
-                    <div style="flex:1;">
-                        <div class="or-field-label">3′ mod</div>
-                        <div class="or-mono" id="orDrawerMod3"></div>
-                    </div>
-                </div>
-
-                <div>
-                    <div class="or-field-label">Internal mods (pos 5–8)</div>
-                    <div class="or-mono" id="orDrawerIntMods"></div>
-                </div>
-
-                <!-- template_json_pi editor -->
-                <div>
-                    <div class="or-field-label" style="display:flex;align-items:center;justify-content:space-between;">
-                        <span>PI Template Override (template_json_pi)</span>
-                        <button class="btn btn-sm btn-secondary" style="font-size:11px;padding:2px 8px;" onclick="orSaveTemplatePi()">Save</button>
-                    </div>
-                    <textarea id="orDrawerTemplatePi" rows="8"
-                        style="width:100%;font-family:monospace;font-size:11px;border:1px solid #d1d5db;border-radius:5px;padding:6px;resize:vertical;"
-                        placeholder="Paste corrected JSON here (leave blank to use parsed template)"></textarea>
-                    <div id="orDrawerTemplatePiMsg" style="font-size:11px;color:#6b7280;margin-top:2px;"></div>
-                </div>
-
-                <!-- Parsed template (read-only) -->
-                <div>
-                    <div class="or-field-label">Parsed template_json (read-only)</div>
-                    <pre id="orDrawerTemplateJson"
-                        style="font-size:10px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:4px;padding:8px;overflow-x:auto;max-height:200px;margin:0;"></pre>
-                </div>
-            </div>
-        </div>
-
-        <!-- Finalize confirmation modal -->
-        <div id="orFinalizeOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:3000;display:none;align-items:center;justify-content:center;">
-            <div style="background:#fff;border-radius:10px;padding:24px;max-width:400px;width:90%;box-shadow:0 8px 30px rgba(0,0,0,.2);">
-                <h3 style="margin:0 0 12px;font-size:15px;color:#1a365d;">Finalize Pack</h3>
-                <p style="font-size:13px;color:#374151;margin-bottom:16px;">
-                    Choose final pack status. APPROVED items will be published to the probe catalog.
-                    This action cannot be undone.
-                </p>
-                <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;">
-                    <button class="btn btn-secondary" onclick="orFinalizeOverlayClose()">Cancel</button>
-                    <button class="or-btn or-btn-reject" onclick="orDoFinalize('REJECTED')">Mark Pack REJECTED</button>
-                    <button class="or-btn or-btn-approve" onclick="orDoFinalize('APPROVED')">Publish &amp; APPROVE</button>
-                </div>
-            </div>
-        </div>
-    </div>
-    <!-- ==================== END OLIGO REVIEW TAB ==================== -->
-
+    
     <script>
         // =====================================================
         // GLOBAL STATE & INIT
@@ -3740,7 +3599,6 @@
                   if (tabId === 'glp-console') glpcInit();
                   if (tabId === 'purchases-inventory') { loadAllPurchaseRequests(); loadAllInventoryV2(); loadPONumbers(); }
                   if (tabId === 'training') { loadTrainingDocuments(); loadPendingTrainingPacks(); loadSealedTrainingPacks(); }
-                  if (tabId === 'oligo-review') orInit();
               });
           });
 
@@ -3762,7 +3620,6 @@
               if (tabId === 'glp-console') glpcInit();
               if (tabId === 'purchases-inventory') { loadAllPurchaseRequests(); loadAllInventoryV2(); loadPONumbers(); }
               if (tabId === 'training') { loadTrainingDocuments(); loadPendingTrainingPacks(); loadSealedTrainingPacks(); }
-              if (tabId === 'oligo-review') orInit();
           }
 
 function dicInitEmbedModeFromUrl() {
