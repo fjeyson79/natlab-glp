@@ -135,6 +135,10 @@ async function migrate() {
             // ==================== INVENTORY SYSTEM ====================
 
             // Extend di_submissions file_type CHECK to include INVENTORY and PRESENTATION
+            // Widen di_submissions columns to avoid VARCHAR(10) failures (e.g., PRESENTATION)
+            `ALTER TABLE di_submissions ALTER COLUMN file_type TYPE VARCHAR(20)`,
+            `ALTER TABLE di_submissions ALTER COLUMN affiliation TYPE VARCHAR(20)`,
+
             `ALTER TABLE di_submissions DROP CONSTRAINT IF EXISTS di_submissions_file_type_check`,
             `ALTER TABLE di_submissions ADD CONSTRAINT di_submissions_file_type_check CHECK (file_type IN ('SOP', 'DATA', 'INVENTORY', 'PRESENTATION'))`,
 
