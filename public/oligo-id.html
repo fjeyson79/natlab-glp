@@ -548,8 +548,8 @@
             document.querySelectorAll('.nav-btn').forEach(b => {
                 b.classList.toggle('active', b.dataset.view === view);
             });
-            const main = document.getElementById('mainArea');
-            if (!main) { console.warn('[OLIGO-ID] mainArea not ready'); return; }
+            const main = document.getElementById('mainArea') || document.querySelector('main.oligo-main') || document.querySelector('.oligo-main');
+            if (!main) { console.warn('[OLIGO-ID] main area not found'); return; }
             main.innerHTML = '';
             switch (view) {
                 case 'registry':   renderRegistry(main); break;
