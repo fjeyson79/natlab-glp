@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Oligo-ID | NAT-Lab GLP</title>
+    <title>Oligonucleotide Registry | NAT-Lab GLP</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -24,6 +24,7 @@
             justify-content: space-between;
             align-items: center;
             box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            flex-shrink: 0;
         }
         .oligo-header h1 { font-size: 18px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
         .oligo-header .back-link {
@@ -42,31 +43,33 @@
             display: flex;
             flex: 1;
             overflow: hidden;
+            height: calc(100vh - 50px);
         }
 
-        /* ── Left Panel – Mode Selector ── */
-        .oligo-modes {
-            width: 180px;
-            min-width: 180px;
+        /* ── Left nav ── */
+        .oligo-nav {
+            width: 190px;
+            min-width: 190px;
             background: #161922;
             border-right: 1px solid #2a2d3a;
             padding: 16px 10px;
             display: flex;
             flex-direction: column;
-            gap: 6px;
+            gap: 4px;
+            flex-shrink: 0;
         }
-        .oligo-modes h3 {
+        .oligo-nav h3 {
             font-size: 10px;
             text-transform: uppercase;
             letter-spacing: 1.2px;
             color: #6b7280;
-            margin-bottom: 8px;
-            padding: 0 6px;
+            margin: 0 6px 10px;
         }
-        .mode-btn {
+        .nav-divider { height: 1px; background: #2a2d3a; margin: 8px 0; }
+        .nav-btn {
             display: block;
             width: 100%;
-            padding: 10px 14px;
+            padding: 9px 14px;
             border: none;
             border-radius: 6px;
             background: transparent;
@@ -77,319 +80,455 @@
             cursor: pointer;
             transition: all 0.15s;
         }
-        .mode-btn:hover { background: #1e2130; color: #d1d5db; }
-        .mode-btn.active { background: #2d5a87; color: #fff; }
-
-        /* ── Center Panel – List ── */
-        .oligo-list {
-            width: 280px;
-            min-width: 280px;
-            background: #13151c;
-            border-right: 1px solid #2a2d3a;
-            display: flex;
-            flex-direction: column;
-        }
-        .oligo-list-header {
-            padding: 12px;
-            border-bottom: 1px solid #2a2d3a;
-        }
-        .oligo-search {
-            width: 100%;
-            padding: 8px 12px;
-            background: #1e2130;
-            border: 1px solid #2a2d3a;
-            border-radius: 6px;
-            color: #e0e0e0;
-            font-size: 13px;
-        }
-        .oligo-search:focus { outline: none; border-color: #2d5a87; }
-        .oligo-search::placeholder { color: #4b5563; }
-        .oligo-table-wrap {
-            flex: 1;
-            overflow-y: auto;
-        }
-        .oligo-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 12px;
-        }
-        .oligo-table th {
-            background: #1a1d2a;
-            padding: 8px 10px;
-            text-align: left;
-            color: #6b7280;
-            font-weight: 600;
+        .nav-btn:hover { background: #1e2130; color: #d1d5db; }
+        .nav-btn.active { background: #2d5a87; color: #fff; }
+        .nav-btn .nav-badge {
+            float: right;
+            background: #ef4444;
+            color: #fff;
             font-size: 10px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            position: sticky;
-            top: 0;
-            border-bottom: 1px solid #2a2d3a;
+            font-weight: 700;
+            padding: 1px 6px;
+            border-radius: 999px;
+            display: none;
         }
-        .oligo-table td {
-            padding: 8px 10px;
-            border-bottom: 1px solid #1e2130;
-            color: #d1d5db;
-        }
-        .oligo-table tr { cursor: pointer; transition: background 0.1s; }
-        .oligo-table tbody tr:hover { background: #1e2130; }
-        .oligo-table tbody tr.selected { background: #1a365d; }
-        .oligo-list-empty {
-            padding: 30px 16px;
-            text-align: center;
-            color: #4b5563;
-            font-size: 13px;
-        }
+        .nav-btn .nav-badge.visible { display: inline-block; }
 
-        /* ── Right Panel – Visualization ── */
-        .oligo-detail {
+        /* ── Main area ── */
+        .oligo-main {
             flex: 1;
-            background: #0f1117;
             overflow-y: auto;
-            padding: 24px;
+            background: #0f1117;
         }
 
-        /* Dashboard cards */
-        .oligo-dash-cards {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 16px;
-            margin-bottom: 24px;
-        }
-        .oligo-dash-card {
-            background: #161922;
-            border: 1px solid #2a2d3a;
-            border-radius: 10px;
-            padding: 20px;
-            text-align: center;
-        }
-        .oligo-dash-card .val { font-size: 28px; font-weight: 700; color: #fff; }
-        .oligo-dash-card .lbl { font-size: 11px; color: #6b7280; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
-
-        /* Probe detail view */
-        .probe-detail-section {
+        /* ── Shared components ── */
+        .panel {
             background: #161922;
             border: 1px solid #2a2d3a;
             border-radius: 10px;
             padding: 20px;
             margin-bottom: 16px;
         }
-        .probe-detail-section h3 {
-            font-size: 13px;
+        .panel-title {
+            font-size: 12px;
             color: #6b7280;
             text-transform: uppercase;
             letter-spacing: 0.8px;
-            margin-bottom: 12px;
+            margin-bottom: 14px;
+            font-weight: 600;
         }
-        .probe-field { display: flex; margin-bottom: 8px; }
-        .probe-field .k { width: 140px; color: #6b7280; font-size: 13px; flex-shrink: 0; }
-        .probe-field .v { color: #e0e0e0; font-size: 13px; font-weight: 500; }
-        .probe-sequence {
-            font-family: 'Courier New', monospace;
-            font-size: 13px;
-            background: #1a1d2a;
-            padding: 12px;
-            border-radius: 6px;
-            word-break: break-all;
-            line-height: 1.6;
-            color: #93c5fd;
-        }
-        .synth-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 12px;
-        }
-        .synth-table th {
-            text-align: left;
-            padding: 8px 10px;
-            color: #6b7280;
-            font-size: 10px;
-            text-transform: uppercase;
-            border-bottom: 1px solid #2a2d3a;
-        }
-        .synth-table td {
-            padding: 8px 10px;
-            border-bottom: 1px solid #1e2130;
-            color: #d1d5db;
-        }
-
-        /* Status badge */
-        .oligo-status {
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 10px;
-            font-size: 10px;
-            font-weight: 700;
-            text-transform: uppercase;
-        }
-        .oligo-status.draft { background: #1e2130; color: #9ca3af; }
-        .oligo-status.finalized { background: #064e3b; color: #6ee7b7; }
-        .oligo-status.retired { background: #451a03; color: #fbbf24; }
-
-        /* Extract mode */
-        .extract-zone {
-            background: #161922;
-            border: 2px dashed #2a2d3a;
-            border-radius: 10px;
-            padding: 40px 24px;
-            text-align: center;
-            transition: all 0.2s;
-        }
-        .extract-zone:hover { border-color: #2d5a87; }
-        .extract-zone .icon-large { font-size: 36px; margin-bottom: 12px; }
-        .extract-zone p { color: #6b7280; font-size: 13px; margin-bottom: 16px; }
-        .extract-controls { display: flex; gap: 10px; justify-content: center; align-items: center; }
-        .extract-controls input[type="file"] { display: none; }
-        .extract-controls label {
-            padding: 8px 20px;
-            background: #1e2130;
-            border: 1px solid #2a2d3a;
-            border-radius: 6px;
-            color: #d1d5db;
-            font-size: 13px;
-            cursor: pointer;
-            transition: all 0.15s;
-        }
-        .extract-controls label:hover { background: #2a2d3a; }
-        .extract-file-name { margin-top: 10px; font-size: 12px; color: #6ee7b7; }
-        .btn-extract {
-            padding: 8px 24px;
-            background: #2d5a87;
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 7px 16px;
             border: none;
-            border-radius: 6px;
-            color: #fff;
+            border-radius: 7px;
             font-size: 13px;
             font-weight: 500;
             cursor: pointer;
             transition: all 0.15s;
         }
-        .btn-extract:hover { background: #1a365d; }
-        .btn-extract:disabled { background: #333; color: #666; cursor: not-allowed; }
-        .extract-result {
-            margin-top: 20px;
-            background: #1a1d2a;
-            border-radius: 8px;
-            padding: 16px;
-            display: none;
+        .btn-primary { background: #2d5a87; color: #fff; }
+        .btn-primary:hover { background: #1a365d; }
+        .btn-secondary { background: #1e2130; border: 1px solid #2a2d3a; color: #d1d5db; }
+        .btn-secondary:hover { background: #2a2d3a; }
+        .btn-danger { background: #7f1d1d; color: #fca5a5; }
+        .btn-danger:hover { background: #991b1b; }
+        .btn-sm { padding: 4px 10px; font-size: 12px; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .field-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+        .field-lbl { width: 120px; color: #6b7280; font-size: 12px; flex-shrink: 0; }
+        .field-val { color: #e0e0e0; font-size: 13px; font-weight: 500; }
+        .mono { font-family: 'Courier New', monospace; font-size: 12px; }
+        .pill {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
         }
-        .extract-result h4 { font-size: 12px; color: #6b7280; margin-bottom: 8px; text-transform: uppercase; }
-        .extract-result pre {
-            font-family: 'Courier New', monospace;
-            font-size: 12px;
-            color: #93c5fd;
-            white-space: pre-wrap;
-            word-break: break-word;
-            max-height: 400px;
-            overflow-y: auto;
+        .pill-active, .pill-ACTIVE { background: #064e3b; color: #6ee7b7; }
+        .pill-draft, .pill-DRAFT { background: #1e2130; color: #9ca3af; }
+        .pill-retired, .pill-RETIRED { background: #451a03; color: #fbbf24; }
+        .pill-none { background: #1e2130; color: #6b7280; }
+        .pill-attached { background: #1e3a5f; color: #93c5fd; }
+        .pill-confirmed { background: #064e3b; color: #6ee7b7; }
+        .pill-mismatch { background: #451a03; color: #fbbf24; }
+        input[type="text"], input[type="search"], select, textarea {
+            background: #1e2130;
+            border: 1px solid #2a2d3a;
+            border-radius: 7px;
+            color: #e0e0e0;
+            font-size: 13px;
+            padding: 7px 10px;
         }
-
-        /* Placeholder for unimplemented modes */
-        .mode-placeholder {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 300px;
+        input[type="text"]:focus, input[type="search"]:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: #2d5a87;
+        }
+        select option { background: #1e2130; }
+        table.data-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        table.data-table th {
+            text-align: left;
+            padding: 8px 10px;
+            color: #6b7280;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid #2a2d3a;
+            background: #13151c;
+            position: sticky;
+            top: 0;
+        }
+        table.data-table td {
+            padding: 8px 10px;
+            border-bottom: 1px solid #1e2130;
+            color: #d1d5db;
+            vertical-align: middle;
+        }
+        table.data-table tr:hover td { background: rgba(255,255,255,0.025); }
+        .empty-state {
+            text-align: center;
+            padding: 40px;
             color: #4b5563;
+            font-size: 13px;
         }
-        .mode-placeholder .ph-icon { font-size: 40px; margin-bottom: 12px; opacity: 0.5; }
-        .mode-placeholder p { font-size: 14px; }
-        .mode-placeholder .ph-sub { font-size: 12px; margin-top: 4px; color: #374151; }
 
-        /* Scrollbar */
-        ::-webkit-scrollbar { width: 6px; }
+        /* ── Scrollbars ── */
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #2a2d3a; border-radius: 3px; }
-        ::-webkit-scrollbar-thumb:hover { background: #3a3d4a; }
 
-        /* ── Review mode (Pack review inside Oligo-ID) ── */
-        .or-split { display:flex; gap:16px; height: calc(100vh - 70px); }
-        .or-packs-col, .or-items-col { flex:1; min-width:0; }
-        .or-items-col { flex:2; }
-        .or-mono { font-family:monospace; font-size:12px; background:#1a1d2a; border:1px solid #2a2d3a; border-radius:6px; padding:8px 10px; word-break:break-all; color:#d1d5db; }
-        .or-btn { display:inline-flex; align-items:center; gap:6px; padding:6px 14px; border:none; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; }
-        .or-btn-approve { background:#10b981; color:#fff; }
-        .or-btn-reject  { background:#ef4444; color:#fff; }
-        .or-btn-pending { background:#f59e0b; color:#111827; }
-        .or-btn-finalize { background:#2d5a87; color:#fff; font-size:13px; padding:8px 18px; }
-        .or-btn:disabled { opacity:.5; cursor:default; }
-        .or-filters { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin: 10px 0 12px; }
-        .or-filters select, .or-filters input { padding:6px 10px; background:#1e2130; border:1px solid #2a2d3a; border-radius:8px; color:#e5e7eb; font-size:12px; }
-        .or-drawer-overlay { position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:4000; display:none; }
-        .or-drawer { position:absolute; right:0; top:0; height:100%; width:min(520px, 95vw); background:#0f1117; border-left:1px solid #2a2d3a; padding:18px; overflow-y:auto; }
-        .or-drawer-close { position:absolute; right:14px; top:12px; border:none; background:transparent; color:#9ca3af; font-size:18px; cursor:pointer; }
-        .or-field-label { font-size:10px; letter-spacing:0.8px; color:#6b7280; text-transform:uppercase; margin-top:12px; margin-bottom:6px; }
-        .or-table { width:100%; border-collapse:collapse; font-size:12px; }
-        .or-table th { text-align:left; font-size:10px; color:#6b7280; text-transform:uppercase; letter-spacing:.5px; padding:8px 10px; border-bottom:1px solid #2a2d3a; background:#13151c; position:sticky; top:0; }
-        .or-table td { padding:8px 10px; border-bottom:1px solid #1e2130; color:#d1d5db; }
-        .or-row { cursor:pointer; }
-        .or-row:hover { background:#1e2130; }
-        .or-pill { display:inline-block; padding:2px 8px; border-radius:999px; font-size:10px; font-weight:700; }
-        .or-pill-PENDING { background:#2a2d3a; color:#d1d5db; }
-        .or-pill-APPROVED { background:#064e3b; color:#6ee7b7; }
-        .or-pill-REJECTED { background:#451a03; color:#fbbf24; }
+        /* ═══════════════════════════════════════════
+           REGISTRY GRID (probe tiles)
+           ═══════════════════════════════════════════ */
+        #view-registry {
+            padding: 20px;
+        }
+        .registry-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 18px;
+        }
+        .registry-toolbar input[type="search"] { width: 220px; }
+        .registry-toolbar select { width: 160px; }
+        .registry-count { margin-left: auto; font-size: 12px; color: #6b7280; }
 
-</style>
+        /* Probe grid */
+        .probe-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            gap: 12px;
+        }
+
+        /* Probe tile */
+        .probe-tile {
+            background: #161922;
+            border: 1px solid #2a2d3a;
+            border-radius: 10px;
+            overflow: hidden;
+            cursor: pointer;
+            transition: border-color 0.15s, transform 0.1s;
+            position: relative;
+        }
+        .probe-tile:hover {
+            border-color: #2d5a87;
+            transform: translateY(-1px);
+        }
+        .probe-tile:hover .tile-hover-overlay { opacity: 1; pointer-events: auto; }
+
+        /* Tile ribbon */
+        .tile-ribbon {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 7px 10px 6px;
+            border-bottom: 1px solid #1e2130;
+        }
+        .tile-category {
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 2px 7px;
+            border-radius: 999px;
+        }
+        .cat-probe { background: #1e2a3a; color: #60a5fa; }
+        .cat-lib78 { background: #2d1a5c; color: #c4b5fd; }
+        .cat-lib24 { background: #1a3a2d; color: #6ee7b7; }
+        .cat-libmaldi { background: #3a1a1a; color: #fca5a5; }
+        .cat-libother { background: #2a2a1a; color: #fde68a; }
+        .tile-synth-count { font-size: 11px; color: #6b7280; }
+
+        /* Tile sequence band */
+        .tile-seq-band {
+            padding: 8px 10px 6px;
+            background: #13151c;
+        }
+        .tile-mods-row {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            flex-wrap: nowrap;
+            overflow: hidden;
+        }
+        .mod-cap {
+            font-size: 9px;
+            color: #9ca3af;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .seq-tiles {
+            display: inline-flex;
+            gap: 2px;
+            flex-wrap: nowrap;
+            overflow: hidden;
+        }
+        .nt {
+            width: 20px;
+            height: 22px;
+            border-radius: 4px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            font-weight: 700;
+            font-family: monospace;
+            color: rgba(255,255,255,0.9);
+            flex-shrink: 0;
+            position: relative;
+        }
+        .nt.has-int-mod { text-decoration: underline; text-underline-offset: 2px; }
+        .nt-dna { background: #c93b3b; }
+        .nt-rna { background: #2f6fed; }
+        .nt-fluoro { background: #7a4de8; }
+        .nt-ome { background: #1fa971; }
+        .nt-lna { background: #f2a23a; }
+        .nt-unknown { background: #374151; }
+        .seq-ellipsis {
+            font-size: 10px;
+            color: #4b5563;
+            align-self: flex-end;
+            padding-bottom: 4px;
+            flex-shrink: 0;
+        }
+
+        /* Tile identity block */
+        .tile-identity {
+            padding: 8px 10px 4px;
+        }
+        .tile-name {
+            font-size: 12px;
+            font-weight: 600;
+            color: #e0e0e0;
+            margin-bottom: 4px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .tile-meta {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2px 8px;
+            font-size: 10px;
+            color: #6b7280;
+        }
+        .tile-meta span { color: #9ca3af; }
+
+        /* Chemistry bars */
+        .tile-chem {
+            padding: 4px 10px 8px;
+        }
+        .chem-bar-row {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            margin-bottom: 3px;
+        }
+        .chem-bar-label { font-size: 9px; color: #6b7280; width: 46px; flex-shrink: 0; text-align: right; }
+        .chem-bar-track { flex: 1; height: 5px; background: #1a1d2a; border-radius: 999px; overflow: hidden; }
+        .chem-bar-fill { height: 100%; border-radius: 999px; }
+
+        /* Stock dot */
+        .tile-stock {
+            position: absolute;
+            bottom: 8px;
+            right: 10px;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+        .stock-ok { background: #10b981; }
+        .stock-low { background: #f59e0b; }
+        .stock-none { background: #ef4444; }
+        .stock-unknown { background: #374151; }
+
+        /* Hover overlay */
+        .tile-hover-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(15,17,23,0.92);
+            border-radius: 10px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+            padding: 12px;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.15s;
+        }
+        .tile-hover-info {
+            font-size: 11px;
+            color: #9ca3af;
+            text-align: center;
+            line-height: 1.6;
+        }
+        .tile-hover-btns { display: flex; gap: 6px; }
+
+        /* ═══════════════════════════════════════════
+           PROBE PAGE
+           ═══════════════════════════════════════════ */
+        #view-probe { padding: 20px; }
+        .probe-page-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .probe-seq-full {
+            padding: 10px 12px;
+            background: #13151c;
+            border-radius: 8px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 2px;
+            align-items: center;
+        }
+        .synth-list-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            border-bottom: 1px solid #1e2130;
+            cursor: pointer;
+            border-radius: 7px;
+            transition: background 0.1s;
+        }
+        .synth-list-row:hover { background: #1e2130; }
+        .synth-key { font-family: monospace; font-size: 13px; color: #93c5fd; }
+        .synth-meta { font-size: 11px; color: #6b7280; }
+        .synth-detail {
+            background: #13151c;
+            border-radius: 8px;
+            padding: 14px;
+            margin-top: 10px;
+        }
+
+        /* ═══════════════════════════════════════════
+           DATA SOURCES
+           ═══════════════════════════════════════════ */
+        #view-data-sources { padding: 20px; }
+        .upload-zone {
+            border: 2px dashed #2a2d3a;
+            border-radius: 10px;
+            padding: 30px 20px;
+            text-align: center;
+            transition: border-color 0.2s;
+        }
+        .upload-zone:hover { border-color: #2d5a87; }
+        .upload-zone .upload-icon { font-size: 32px; margin-bottom: 10px; opacity: 0.6; }
+        .upload-zone p { color: #6b7280; font-size: 13px; margin-bottom: 14px; }
+        .upload-zone input[type="file"] { display: none; }
+        .upload-file-name { font-size: 12px; color: #6ee7b7; margin-top: 8px; }
+        .upload-progress { margin-top: 12px; font-size: 12px; color: #9ca3af; }
+
+        /* ═══════════════════════════════════════════
+           LIBRARY
+           ═══════════════════════════════════════════ */
+        #view-library { padding: 20px; }
+
+        /* ═══════════════════════════════════════════
+           DUPLICATES
+           ═══════════════════════════════════════════ */
+        #view-duplicates { padding: 20px; }
+
+        /* ═══════════════════════════════════════════
+           REVIEW MODE (existing PDF pack review)
+           ═══════════════════════════════════════════ */
+        #view-review { padding: 20px; }
+        .or-split { display: flex; gap: 16px; }
+        .or-packs-col { width: 320px; flex-shrink: 0; }
+        .or-items-col { flex: 1; min-width: 0; }
+        .or-mono { font-family: monospace; font-size: 12px; background: #1a1d2a; border: 1px solid #2a2d3a; border-radius: 6px; padding: 6px 8px; word-break: break-all; color: #d1d5db; }
+        .or-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border: none; border-radius: 7px; font-size: 12px; font-weight: 700; cursor: pointer; }
+        .or-btn-approve { background: #10b981; color: #fff; }
+        .or-btn-reject  { background: #ef4444; color: #fff; }
+        .or-btn-pending { background: #f59e0b; color: #111827; }
+        .or-btn-finalize { background: #2d5a87; color: #fff; font-size: 13px; padding: 8px 18px; }
+        .or-btn:disabled { opacity: 0.5; cursor: default; }
+        .or-pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; }
+        .or-pill-PENDING { background: #2a2d3a; color: #d1d5db; }
+        .or-pill-APPROVED { background: #064e3b; color: #6ee7b7; }
+        .or-pill-REJECTED { background: #451a03; color: #fbbf24; }
+        .or-drawer-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 4000; display: none; }
+        .or-drawer { position: absolute; right: 0; top: 0; height: 100%; width: min(520px,95vw); background: #0f1117; border-left: 1px solid #2a2d3a; padding: 18px; overflow-y: auto; }
+        .or-drawer-close { position: absolute; right: 14px; top: 12px; border: none; background: transparent; color: #9ca3af; font-size: 18px; cursor: pointer; }
+        .or-field-label { font-size: 10px; letter-spacing: 0.8px; color: #6b7280; text-transform: uppercase; margin-top: 12px; margin-bottom: 6px; }
+
+    </style>
 </head>
 <body>
-    <!-- Header -->
     <div class="oligo-header">
-        <h1>&#9898; Oligo-ID</h1>
+        <h1>&#9675; Oligonucleotide Registry</h1>
         <a href="pi-dashboard.html" class="back-link">Back to PI Portal</a>
     </div>
 
-    <!-- Layout -->
     <div class="oligo-layout">
-        <!-- Left Panel: Mode Selector -->
-        <div class="oligo-modes">
-            <h3>Mode</h3>
-            <button class="mode-btn active" data-mode="extract" onclick="oligoSetMode('extract')">Extract</button>
-            <button class="mode-btn" data-mode="create" onclick="oligoSetMode('create')">Create</button>
-            <button class="mode-btn" data-mode="library" onclick="oligoSetMode('library')">Library</button>
-            <button class="mode-btn" data-mode="manage" onclick="oligoSetMode('manage')">Manage</button>
-            <button class="mode-btn" data-mode="review" onclick="oligoSetMode('review')">Review</button>
-        </div>
+        <!-- Left nav -->
+        <nav class="oligo-nav">
+            <h3>OLIGO-ID</h3>
+            <button class="nav-btn active" data-view="registry" onclick="setView('registry')">Registry</button>
+            <button class="nav-btn" data-view="data-sources" onclick="setView('data-sources')">Data Sources</button>
+            <button class="nav-btn" data-view="library" onclick="setView('library')">Library</button>
+            <button class="nav-btn" data-view="duplicates" onclick="setView('duplicates')">
+                Duplicates
+                <span class="nav-badge" id="dupBadge">0</span>
+            </button>
+            <div class="nav-divider"></div>
+            <button class="nav-btn" data-view="review" onclick="setView('review')">Pack Review</button>
+        </nav>
 
-        <!-- Center Panel: Search & List -->
-        <div class="oligo-list">
-            <div class="oligo-list-header">
-                <input type="text" class="oligo-search" id="oligoSearch" placeholder="Search ID or name..." oninput="oligoFilterList()">
-            </div>
-            <div class="oligo-table-wrap">
-                <table class="oligo-table">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Name</th>
-                            <th>Len</th>
-                            <th>St</th>
-                            <th>#</th>
-                        </tr>
-                    </thead>
-                    <tbody id="oligoListBody">
-                    </tbody>
-                </table>
-                <div class="oligo-list-empty" id="oligoListEmpty">No probes found</div>
-            </div>
-        </div>
-
-        <!-- Right Panel: Visualization -->
-        <div class="oligo-detail" id="oligoDetail">
-            <!-- Populated by JS -->
-        </div>
+        <!-- Main -->
+        <main class="oligo-main" id="mainArea">
+            <!-- Views injected by JS -->
+        </main>
     </div>
 
     <script>
     /* =========================================================
-       Oligo-ID  –  Phase 1 Frontend Logic
+       Oligonucleotide Registry – Frontend
        ========================================================= */
-    (function() {
+    (function () {
         'use strict';
 
-        let catalog = [];
-        let filteredCatalog = [];
-        let selectedProbeId = null;
-        let currentMode = 'extract';
+        // ── State ──
+        let currentView = 'registry';
+        let registryProbes = [];
+        let currentProbeId = null;
+        let dataSources = [];
+        let libDefs = [];
+        let libCandidates = [];
+        let duplicates = [];
+        let orPacks = [];
+        let orItems = [];
+        let orCurrentPack = null;
+        let orCurrentItem = null;
 
         // ── Auth ──
         async function checkAuth() {
@@ -397,587 +536,973 @@
                 const r = await fetch('/api/di/me', { credentials: 'include' });
                 if (r.status === 401) { window.location.href = 'access.html'; return; }
                 const d = await r.json();
-                const user = d.user || d;
-                const role = (user.role || '').toUpperCase();
-                if (role !== 'PI' && role !== 'ADMIN') {
-                    window.location.href = 'upload.html';
-                    return;
+                const role = ((d.user || d).role || '').toUpperCase();
+                if (role !== 'PI' && role !== 'ADMIN') { window.location.href = 'upload.html'; return; }
+                setView('registry');
+            } catch (e) { window.location.href = 'access.html'; }
+        }
+
+        // ── View router ──
+        window.setView = function (view, extra) {
+            currentView = view;
+            document.querySelectorAll('.nav-btn').forEach(b => {
+                b.classList.toggle('active', b.dataset.view === view);
+            });
+            const main = document.getElementById('mainArea');
+            main.innerHTML = '';
+            switch (view) {
+                case 'registry':   renderRegistry(main); break;
+                case 'probe':      renderProbePage(main, extra); break;
+                case 'data-sources': renderDataSources(main); break;
+                case 'library':    renderLibrary(main); break;
+                case 'duplicates': renderDuplicates(main); break;
+                case 'review':     renderReviewView(main); break;
+            }
+        };
+
+        // ══════════════════════════════════════════
+        // CHEMISTRY HELPERS
+        // ══════════════════════════════════════════
+
+        const CHEM_DNA    = { cls: 'nt-dna',     color: '#c93b3b', label: 'DNA' };
+        const CHEM_RNA    = { cls: 'nt-rna',     color: '#2f6fed', label: 'RNA' };
+        const CHEM_FLUORO = { cls: 'nt-fluoro',  color: '#7a4de8', label: "2'-F" };
+        const CHEM_OME    = { cls: 'nt-ome',     color: '#1fa971', label: "2'-OMe" };
+        const CHEM_LNA    = { cls: 'nt-lna',     color: '#f2a23a', label: 'LNA' };
+        const CHEM_UNK    = { cls: 'nt-unknown', color: '#374151', label: '?' };
+
+        function chemFromCode(code) {
+            const c = (code || '').toUpperCase();
+            if (c.includes('2OMe') || c.includes('RNA_2OMe') || c === 'RNA_OMET') return CHEM_OME;
+            if (c.includes('2F') || c.includes('DNA_2F')) return CHEM_FLUORO;
+            if (c.includes('LNA') || c.includes('DNA_LNA')) return CHEM_LNA;
+            if (c.startsWith('RNA')) return CHEM_RNA;
+            if (c.startsWith('DNA') || c === 'STD') return CHEM_DNA;
+            return CHEM_DNA;
+        }
+
+        // Parse sequence string into per-base chemistry tiles
+        // Prefix chars: m = 2'OMe, f = 2'F, l = LNA, uppercase = DNA, lowercase = RNA
+        function parseSeqToTiles(seq) {
+            if (!seq) return [];
+            // Strip 5'/3' wrapper: "5'_ATCG_3'" -> "ATCG"
+            let s = seq.replace(/^5['_]+/i, '').replace(/[_']+3['_]*$/i, '').replace(/^5[':]*/i, '');
+            const tiles = [];
+            let i = 0;
+            while (i < s.length) {
+                const ch = s[i];
+                if (ch === 'm' || ch === 'f' || ch === 'l') {
+                    // Prefix modifier + base letter
+                    const base = s[i + 1] || '';
+                    let chem;
+                    if (ch === 'm') chem = CHEM_OME;
+                    else if (ch === 'f') chem = CHEM_FLUORO;
+                    else chem = CHEM_LNA;
+                    tiles.push({ base: base.toUpperCase() || ch, chem });
+                    i += 2;
+                } else if (/[A-Z]/.test(ch)) {
+                    tiles.push({ base: ch, chem: CHEM_DNA });
+                    i++;
+                } else if (/[a-z]/.test(ch)) {
+                    tiles.push({ base: ch.toUpperCase(), chem: CHEM_RNA });
+                    i++;
+                } else {
+                    i++;
                 }
-                loadCatalog();
-            } catch (e) {
-                window.location.href = 'access.html';
             }
+            return tiles;
         }
 
-        // ── Catalog ──
-        async function loadCatalog() {
+        // Fallback: generate tiles from raw uppercase sequence + chemistry_code
+        function seqToTilesFallback(seq, chemCode) {
+            if (!seq) return [];
+            const defaultChem = chemFromCode(chemCode);
+            const s = seq.replace(/\s+/g, '').replace(/^5['_\-]*/i, '').replace(/[_'\-]3[']*$/i, '');
+            return s.split('').filter(c => /[A-Za-z]/.test(c)).map(c => ({ base: c.toUpperCase(), chem: defaultChem }));
+        }
+
+        function getTiles(probe) {
+            if (!probe.sequence) return [];
+            const seq = probe.sequence_norm || probe.sequence;
+            let tiles = parseSeqToTiles(seq);
+            if (tiles.length === 0) tiles = seqToTilesFallback(probe.sequence, probe.chemistry_code);
+            return tiles;
+        }
+
+        function renderNtTiles(tiles, maxCount, intModPositions) {
+            const intMods = intModPositions || {};
+            const shown = maxCount ? tiles.slice(0, maxCount) : tiles;
+            const hasMore = maxCount && tiles.length > maxCount;
+            let html = '<span class="seq-tiles">';
+            shown.forEach((t, i) => {
+                const hasInt = !!intMods[i + 1];
+                html += `<span class="nt ${t.chem.cls}${hasInt ? ' has-int-mod' : ''}"
+                    title="Pos ${i + 1}: ${t.base} (${t.chem.label})">${t.base}</span>`;
+            });
+            html += '</span>';
+            if (hasMore) html += '<span class="seq-ellipsis">…</span>';
+            return html;
+        }
+
+        function chemComposition(tiles) {
+            const counts = {};
+            for (const t of tiles) {
+                const lbl = t.chem.label;
+                counts[lbl] = (counts[lbl] || 0) + 1;
+            }
+            return counts;
+        }
+
+        function renderChemBars(tiles) {
+            const comp = chemComposition(tiles);
+            const total = tiles.length || 1;
+            const chems = [
+                { label: 'DNA',   color: '#c93b3b' },
+                { label: 'RNA',   color: '#2f6fed' },
+                { label: "2'-F",  color: '#7a4de8' },
+                { label: "2'-OMe",color: '#1fa971' },
+                { label: 'LNA',   color: '#f2a23a' },
+            ];
+            let html = '';
+            for (const ch of chems) {
+                const n = comp[ch.label] || 0;
+                if (!n) continue;
+                const pct = Math.round((n / total) * 100);
+                html += `<div class="chem-bar-row">
+                    <div class="chem-bar-label">${esc(ch.label)}</div>
+                    <div class="chem-bar-track">
+                        <div class="chem-bar-fill" style="width:${pct}%;background:${ch.color};"></div>
+                    </div>
+                    <div style="font-size:9px;color:#4b5563;width:28px;text-align:right;">${n}</div>
+                </div>`;
+            }
+            return html || '<div style="font-size:11px;color:#4b5563;">No chemistry data</div>';
+        }
+
+        // ══════════════════════════════════════════
+        // REGISTRY VIEW
+        // ══════════════════════════════════════════
+
+        function renderRegistry(el) {
+            el.id = 'view-registry';
+            el.innerHTML = `
+                <div style="padding:20px;">
+                    <div class="registry-toolbar">
+                        <input type="search" id="regSearch" placeholder="Search probe ID, name, sequence…" oninput="regFilter()">
+                        <select id="regFilterLib" onchange="regFilter()">
+                            <option value="">All libraries</option>
+                        </select>
+                        <select id="regFilterChem" onchange="regFilter()">
+                            <option value="">All chemistry</option>
+                            <option value="DNA_STD">DNA</option>
+                            <option value="RNA_STD">RNA</option>
+                            <option value="RNA_2OMe">2'-OMe</option>
+                            <option value="DNA_2F">2'-Fluoro</option>
+                            <option value="DNA_LNA">LNA</option>
+                        </select>
+                        <span class="registry-count" id="regCount">Loading…</span>
+                    </div>
+                    <div class="probe-grid" id="probeGrid">
+                        <div class="empty-state">Loading probes…</div>
+                    </div>
+                </div>`;
+            loadRegistry();
+        }
+
+        async function loadRegistry() {
             try {
-                const r = await fetch('/api/oligo/catalog', { credentials: 'include' });
-                if (!r.ok) { catalog = []; renderList(); renderDashboard(); return; }
+                const r = await fetch('/api/oligo/registry', { credentials: 'include' });
+                if (!r.ok) throw new Error('Failed to load registry');
                 const d = await r.json();
-                catalog = d.probes || [];
+                registryProbes = d.probes || [];
             } catch (e) {
-                catalog = [];
+                registryProbes = [];
             }
-            filteredCatalog = catalog.slice();
-            renderList();
-            renderDashboard();
+            // Also load lib defs for filter
+            try {
+                const r2 = await fetch('/api/oligo/library-definitions', { credentials: 'include' });
+                if (r2.ok) { const d2 = await r2.json(); libDefs = d2.definitions || []; }
+            } catch (_) {}
+            populateLibFilter();
+            regFilter();
         }
 
-        // ── List ──
-        function renderList() {
-            if (currentMode === 'review') { renderPackList(); return; }
-            const body = document.getElementById('oligoListBody');
-            const empty = document.getElementById('oligoListEmpty');
-            if (filteredCatalog.length === 0) {
-                body.innerHTML = '';
-                empty.style.display = 'block';
+        function populateLibFilter() {
+            const sel = document.getElementById('regFilterLib');
+            if (!sel) return;
+            libDefs.forEach(l => {
+                const opt = document.createElement('option');
+                opt.value = l.id;
+                opt.textContent = l.name;
+                sel.appendChild(opt);
+            });
+        }
+
+        window.regFilter = function () {
+            const q = (document.getElementById('regSearch')?.value || '').toLowerCase().trim();
+            const libId = document.getElementById('regFilterLib')?.value || '';
+            const chem  = document.getElementById('regFilterChem')?.value || '';
+
+            let shown = registryProbes.filter(p => {
+                if (q) {
+                    const hay = [p.canonical_id, p.display_name, p.sequence, p.library_name].filter(Boolean).join(' ').toLowerCase();
+                    if (!hay.includes(q)) return false;
+                }
+                if (libId && p.library_def_id !== libId) return false;
+                if (chem && !(p.chemistry_code || '').includes(chem.split('_')[0])) return false;
+                return true;
+            });
+
+            const countEl = document.getElementById('regCount');
+            if (countEl) countEl.textContent = `${shown.length} probe${shown.length !== 1 ? 's' : ''}`;
+
+            const grid = document.getElementById('probeGrid');
+            if (!grid) return;
+
+            if (shown.length === 0) {
+                grid.innerHTML = '<div class="empty-state">No probes found. Import an Excel file in Data Sources to begin.</div>';
                 return;
             }
-            empty.style.display = 'none';
-            body.innerHTML = filteredCatalog.map(p => {
-                const sel = p.id === selectedProbeId ? ' selected' : '';
-                const st = statusClass(p.status);
-                return `<tr class="${sel}" onclick="window._oligoSelectProbe(${p.id})">
-                    <td>${esc(p.canonical_id)}</td>
-                    <td>${esc(p.display_name || '-')}</td>
-                    <td>${p.length_nt || '-'}</td>
-                    <td><span class="oligo-status ${st}">${esc(p.status || 'draft')}</span></td>
-                    <td>${p.synthesis_count || 0}</td>
-                </tr>`;
-            }).join('');
-        }
 
-        window._oligoSelectProbe = async function(id) {
-            selectedProbeId = id;
-            renderList();
-            try {
-                const r = await fetch('/api/oligo/catalog/' + id, { credentials: 'include' });
-                if (!r.ok) throw new Error('Failed to load');
-                const d = await r.json();
-                renderProbeDetail(d.probe, d.syntheses || []);
-            } catch (e) {
-                document.getElementById('oligoDetail').innerHTML = '<div class="mode-placeholder"><p>Failed to load probe details</p></div>';
-            }
+            grid.innerHTML = shown.map(p => renderProbeTile(p)).join('');
         };
 
-        window.oligoFilterList = function() {
-            const q = (document.getElementById('oligoSearch').value || '').toLowerCase().trim();
-            if (!q) { filteredCatalog = catalog.slice(); }
-            else {
-                filteredCatalog = catalog.filter(p =>
-                    (p.canonical_id || '').toLowerCase().includes(q) ||
-                    (p.display_name || '').toLowerCase().includes(q)
-                );
-            }
-            renderList();
-        };
-
-        // ── Mode switching ──
-        window.oligoSetMode = function(mode) {
-            currentMode = mode;
-            document.querySelectorAll('.mode-btn').forEach(b => {
-                b.classList.toggle('active', b.dataset.mode === mode);
-            });
-            selectedProbeId = null;
-            renderList();
-            renderModeView();
-            if (currentMode === 'review') reviewEnter(); else reviewExit();
-        };
-
-        function renderModeView() {
-            const el = document.getElementById('oligoDetail');
-            switch (currentMode) {
-                case 'extract': renderExtractMode(el); break;
-                case 'create': renderPlaceholder(el, 'Create', 'Create new probe identities. Coming soon.'); break;
-                case 'library': renderPlaceholder(el, 'Library', 'Manage probe libraries. Coming soon.'); break;
-                case 'manage': renderPlaceholder(el, 'Manage', 'Administration and audit tools. Coming soon.'); break;
-                case 'review': renderReviewMode(el); break;
-                default: renderDashboard();
-            }
+        function categoryClass(p) {
+            const lib = (p.library_name || '').toLowerCase();
+            if (lib.includes('78')) return 'cat-lib78';
+            if (lib.includes('24')) return 'cat-lib24';
+            if (lib.includes('maldi')) return 'cat-libmaldi';
+            if (p.library_def_id) return 'cat-libother';
+            return 'cat-probe';
         }
 
-        // ── Dashboard (default right panel) ──
-        function renderDashboard() {
-            const el = document.getElementById('oligoDetail');
-            const totalProbes = catalog.length;
-            const totalSynth = catalog.reduce((s, p) => s + (parseInt(p.synthesis_count) || 0), 0);
-            // library count not available in Phase 1
-            el.innerHTML = `
-                <div class="oligo-dash-cards">
-                    <div class="oligo-dash-card"><div class="val">${totalProbes}</div><div class="lbl">Total Probes</div></div>
-                    <div class="oligo-dash-card"><div class="val">${totalSynth}</div><div class="lbl">Total Syntheses</div></div>
-                    <div class="oligo-dash-card"><div class="val">0</div><div class="lbl">Total Libraries</div></div>
-                </div>
-                <div class="probe-detail-section">
-                    <h3>Getting Started</h3>
-                    <p style="color:#9ca3af;font-size:13px;line-height:1.6;">
-                        Use <strong>Extract</strong> mode to upload a supplier PDF and parse probe data.<br>
-                        Use the search panel to browse existing probes in the catalog.<br>
-                        Click any probe row to view its details and synthesis history.
-                    </p>
-                </div>
-            `;
+        function categoryLabel(p) {
+            if (p.library_name) return esc(p.library_name);
+            return 'Probe';
         }
 
-        // ── Probe Detail ──
-        function renderProbeDetail(probe, syntheses) {
-            const el = document.getElementById('oligoDetail');
-            const st = statusClass(probe.status);
-            let synthRows = '';
-            if (syntheses.length > 0) {
-                synthRows = syntheses.map(s => `<tr>
-                    <td>${esc(s.order_number || '-')}</td>
-                    <td>${esc(s.batch_key || '-')}</td>
-                    <td><span class="oligo-status ${statusClass(s.review_status)}">${esc(s.review_status || '-')}</span></td>
-                </tr>`).join('');
-            } else {
-                synthRows = '<tr><td colspan="3" style="color:#4b5563;text-align:center;">No syntheses recorded</td></tr>';
-            }
-            el.innerHTML = `
-                <div class="probe-detail-section">
-                    <h3>Probe Identity</h3>
-                    <div class="probe-field"><span class="k">Canonical ID</span><span class="v">${esc(probe.canonical_id)}</span></div>
-                    <div class="probe-field"><span class="k">Display Name</span><span class="v">${esc(probe.display_name || '-')}</span></div>
-                    <div class="probe-field"><span class="k">Length (nt)</span><span class="v">${probe.length_nt || '-'}</span></div>
-                    <div class="probe-field"><span class="k">Status</span><span class="v"><span class="oligo-status ${st}">${esc(probe.status || 'draft')}</span></span></div>
-                    <div class="probe-field"><span class="k">Finalized</span><span class="v">${probe.finalized_at ? new Date(probe.finalized_at).toLocaleString() : 'Not finalized'}</span></div>
-                </div>
-                ${probe.sequence ? `<div class="probe-detail-section"><h3>Sequence</h3><div class="probe-sequence">${esc(probe.sequence)}</div></div>` : ''}
-                <div class="probe-detail-section">
-                    <h3>Syntheses</h3>
-                    <table class="synth-table">
-                        <thead><tr><th>Order #</th><th>Batch Key</th><th>Review Status</th></tr></thead>
-                        <tbody>${synthRows}</tbody>
-                    </table>
-                </div>
-            `;
+        function stockClass(p) {
+            const n = parseInt(p.stock_count) || 0;
+            const s = parseInt(p.synthesis_count) || 0;
+            if (s === 0) return 'stock-unknown';
+            if (n >= 2) return 'stock-ok';
+            if (n === 1) return 'stock-low';
+            return 'stock-none';
         }
 
-        // ── Extract Mode ──
-        function renderExtractMode(el) {
-            el.innerHTML = `
-                <div class="probe-detail-section">
-                    <h3>Extract Probes from PDF</h3>
-                    <p style="color:#9ca3af;font-size:13px;margin-bottom:16px;">Upload a supplier PDF to extract probe and synthesis information.</p>
-                    <div class="extract-zone" id="extractZone">
-                        <div class="icon-large">&#128196;</div>
-                        <p>Select a PDF file from your supplier</p>
-                        <div class="extract-controls">
-                            <label for="extractFile">Choose File</label>
-                            <input type="file" id="extractFile" accept=".pdf" onchange="window._oligoFileSelected(this)">
-                            <button class="btn-extract" id="extractBtn" disabled onclick="window._oligoUploadPdf()">Upload</button>
-                        </div>
-                        <div class="extract-file-name" id="extractFileName"></div>
-                    </div>
-                    <div class="extract-result" id="extractResult">
-                        <h4>Parsed Result</h4>
-                        <pre id="extractResultPre"></pre>
+        function renderProbeTile(p) {
+            const tiles = getTiles(p);
+            const intMods = { /* position map not yet resolved at grid level */ };
+            const seqHtml = tiles.length > 0 ? renderNtTiles(tiles, 12, intMods) : `<span style="color:#4b5563;font-size:11px;">No sequence</span>`;
+            const chemHtml = tiles.length > 0 ? renderChemBars(tiles) : '';
+            const mod5 = esc(p.mod5 && p.mod5 !== 'none' ? p.mod5 : '');
+            const mod3 = esc(p.mod3 && p.mod3 !== 'none' ? p.mod3 : '');
+            const length = p.length_nt || (p.sequence ? p.sequence.replace(/[^A-Za-z]/g,'').length : '—');
+            const synCount = parseInt(p.synthesis_count) || 0;
+            const name = esc(p.display_name || p.canonical_id || '—');
+
+            const lastDate = p.last_synthesis_date ? new Date(p.last_synthesis_date).toLocaleDateString() : '—';
+
+            return `<div class="probe-tile" onclick="openProbe('${p.id}')">
+                <div class="tile-ribbon">
+                    <span class="tile-category ${categoryClass(p)}">${categoryLabel(p)}</span>
+                    <span class="tile-synth-count">&#9879; ${synCount}</span>
+                </div>
+                <div class="tile-seq-band">
+                    <div class="tile-mods-row">
+                        ${mod5 ? `<span class="mod-cap">${mod5} —</span>` : ''}
+                        ${seqHtml}
+                        ${mod3 ? `<span class="mod-cap">— ${mod3}</span>` : ''}
                     </div>
                 </div>
-            `;
-        }
-
-        window._oligoFileSelected = function(input) {
-            const name = input.files && input.files[0] ? input.files[0].name : '';
-            document.getElementById('extractFileName').textContent = name;
-            document.getElementById('extractBtn').disabled = !name;
-        };
-
-        window._oligoUploadPdf = async function() {
-            const fileInput = document.getElementById('extractFile');
-            if (!fileInput.files || !fileInput.files[0]) return;
-            const btn = document.getElementById('extractBtn');
-            btn.disabled = true;
-            btn.textContent = 'Uploading...';
-            try {
-                const fd = new FormData();
-                fd.append('file', fileInput.files[0]);
-                const r = await fetch('/api/oligo/upload-pdf', { method: 'POST', credentials: 'include', body: fd });
-                const d = await r.json();
-                const result = document.getElementById('extractResult');
-                const pre = document.getElementById('extractResultPre');
-                result.style.display = 'block';
-                pre.textContent = JSON.stringify(d, null, 2);
-            } catch (e) {
-                const result = document.getElementById('extractResult');
-                const pre = document.getElementById('extractResultPre');
-                result.style.display = 'block';
-                pre.textContent = 'Error: ' + e.message;
-            }
-            btn.disabled = false;
-            btn.textContent = 'Upload';
-        };
-
-        // ── Placeholder ──
-        function renderPlaceholder(el, title, desc) {
-            el.innerHTML = `<div class="mode-placeholder">
-                <div class="ph-icon">&#128295;</div>
-                <p>${title}</p>
-                <div class="ph-sub">${desc}</div>
+                <div class="tile-identity">
+                    <div class="tile-name">${name}</div>
+                    <div class="tile-meta">
+                        <div>MW <span>${esc(p.mw_value || '—')}</span></div>
+                        <div>Len <span>${length}</span></div>
+                        <div>5' <span>${esc(p.mod5 || 'none')}</span></div>
+                        <div>3' <span>${esc(p.mod3 || 'none')}</span></div>
+                    </div>
+                </div>
+                ${chemHtml ? `<div class="tile-chem">${chemHtml}</div>` : ''}
+                <div class="tile-stock ${stockClass(p)}" title="Stock"></div>
+                <div class="tile-hover-overlay">
+                    <div class="tile-hover-info">
+                        Len: ${length} &nbsp;|&nbsp; Synths: ${synCount}<br>
+                        Last: ${lastDate}
+                    </div>
+                    <div class="tile-hover-btns">
+                        <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();copySeq('${esc(p.sequence || '')}')">Copy seq</button>
+                        <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openProbe('${p.id}')">Open</button>
+                    </div>
+                </div>
             </div>`;
         }
 
-        // =====================================================
-        // REVIEW MODE (Packs + Items) inside Oligo-ID
-        // =====================================================
-        let orPacks = [];
-        let orItems = [];
-        let orCurrentPack = null;
-        let orCurrentItem = null;
+        window.openProbe = function (id) {
+            currentProbeId = id;
+            setView('probe', id);
+        };
 
-        function _setCenterHeadersForPacks() {
-            const th = document.querySelectorAll('.oligo-table thead th');
-            if (!th || th.length < 5) return;
-            th[0].textContent = 'Order';
-            th[1].textContent = 'Supplier';
-            th[2].textContent = 'PDF';
-            th[3].textContent = 'Status';
-            th[4].textContent = 'Items';
+        window.copySeq = function (seq) {
+            navigator.clipboard?.writeText(seq).catch(() => {});
+        };
+
+        // ══════════════════════════════════════════
+        // PROBE PAGE
+        // ══════════════════════════════════════════
+
+        function renderProbePage(el, probeId) {
+            el.id = 'view-probe';
+            el.innerHTML = `<div style="padding:20px;">
+                <div class="probe-page-header">
+                    <button class="btn btn-secondary btn-sm" onclick="setView('registry')">&larr; Registry</button>
+                    <div style="font-size:14px;font-weight:600;color:#e0e0e0;" id="probePageTitle">Loading…</div>
+                </div>
+                <div id="probePageBody"><div class="empty-state">Loading…</div></div>
+            </div>`;
+            loadProbePage(probeId);
         }
 
-        function _setCenterHeadersForCatalog() {
-            const th = document.querySelectorAll('.oligo-table thead th');
-            if (!th || th.length < 5) return;
-            th[0].textContent = 'ID';
-            th[1].textContent = 'Name';
-            th[2].textContent = 'Len';
-            th[3].textContent = 'St';
-            th[4].textContent = '#';
-        }
+        async function loadProbePage(probeId) {
+            try {
+                const r = await fetch(`/api/oligo/registry/${probeId}`, { credentials: 'include' });
+                if (!r.ok) throw new Error('Not found');
+                const d = await r.json();
+                const p = d.probe;
+                const synths = d.syntheses || [];
 
-        function reviewEnter() {
-            _setCenterHeadersForPacks();
-            const s = document.getElementById('oligoSearch');
-            if (s) s.placeholder = 'Search packs by supplier or order number...';
-            if (!orPacks || orPacks.length === 0) {
-                orLoadPacks().catch(() => {});
-            } else {
-                renderPackList();
+                document.getElementById('probePageTitle').textContent = p.display_name || p.canonical_id;
+
+                const tiles = getTiles(p);
+                const intMods = buildIntModMap(p);
+                const seqFullHtml = tiles.length > 0
+                    ? renderNtTiles(tiles, 0, intMods)
+                    : `<span style="color:#4b5563;font-size:11px;">${esc(p.sequence || 'No sequence')}</span>`;
+
+                const mod5 = p.mod5 && p.mod5 !== 'none' ? `<span class="mod-cap" style="margin-right:8px;">${esc(p.mod5)} —</span>` : '';
+                const mod3 = p.mod3 && p.mod3 !== 'none' ? `<span class="mod-cap" style="margin-left:8px;">— ${esc(p.mod3)}</span>` : '';
+
+                const chemHtml = tiles.length > 0 ? renderChemBars(tiles) : '';
+                const libName = p.library_name ? `<span class="pill cat-libother" style="font-size:11px;">${esc(p.library_name)}</span>` : '';
+
+                const synthRows = synths.map(s => {
+                    const key = [s.order_number, s.oligo_number].filter(Boolean).join('_') || esc(s.id.substring(0, 8));
+                    const dateStr = s.synthesis_date ? new Date(s.synthesis_date).toLocaleDateString() : '—';
+                    const certPill = `<span class="pill pill-${esc(s.certificate_status || 'none')}">${esc(s.certificate_status || 'none')}</span>`;
+                    return `<div class="synth-list-row" onclick="toggleSynthDetail(this,'${s.id}','${esc(s.order_number||'')}','${esc(s.oligo_number||'')}','${esc(s.supplier||'')}','${dateStr}','${esc(s.amount_nmol||'')}','${esc(s.mw_value||'')}','${esc(s.certificate_status||'none')}')">
+                        <span class="synth-key">${esc(key)}</span>
+                        <span class="synth-meta">${esc(s.supplier || '—')} &nbsp; ${dateStr}</span>
+                        <span style="margin-left:auto;">${certPill}</span>
+                    </div>`;
+                }).join('') || '<div class="empty-state">No syntheses recorded</div>';
+
+                document.getElementById('probePageBody').innerHTML = `
+                    <div class="panel">
+                        <div class="panel-title">Sequence</div>
+                        <div class="probe-seq-full">
+                            ${mod5}${seqFullHtml}${mod3}
+                        </div>
+                        <div style="margin-top:8px;">
+                            <button class="btn btn-secondary btn-sm" onclick="copySeq('${esc(p.sequence || '')}')">Copy sequence</button>
+                        </div>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                        <div class="panel">
+                            <div class="panel-title">Identity</div>
+                            <div class="field-row"><span class="field-lbl">Canonical ID</span><span class="field-val mono">${esc(p.canonical_id)}</span></div>
+                            <div class="field-row"><span class="field-lbl">Length</span><span class="field-val">${p.length_nt || '—'} nt</span></div>
+                            <div class="field-row"><span class="field-lbl">5' Mod</span><span class="field-val">${esc(p.mod5 || 'none')}</span></div>
+                            <div class="field-row"><span class="field-lbl">3' Mod</span><span class="field-val">${esc(p.mod3 || 'none')}</span></div>
+                            <div class="field-row"><span class="field-lbl">Int 5–8</span><span class="field-val mono" style="font-size:11px;">${[p.mod_int_5,p.mod_int_6,p.mod_int_7,p.mod_int_8].map(esc).join(' / ')}</span></div>
+                            <div class="field-row"><span class="field-lbl">Library</span><span class="field-val">${libName || '—'}</span></div>
+                            <div class="field-row"><span class="field-lbl">Status</span><span class="field-val"><span class="pill pill-${esc(p.status)}">${esc(p.status)}</span></span></div>
+                        </div>
+                        <div class="panel">
+                            <div class="panel-title">Chemistry Composition</div>
+                            ${chemHtml || '<div class="empty-state" style="padding:20px;">No chemistry data</div>'}
+                        </div>
+                    </div>
+                    <div class="panel">
+                        <div class="panel-title">Synthesis Records</div>
+                        <div id="synthListArea">${synthRows}</div>
+                    </div>`;
+
+            } catch (e) {
+                document.getElementById('probePageBody').innerHTML = `<div class="empty-state">Failed to load probe: ${esc(e.message)}</div>`;
             }
         }
 
-        function reviewExit() {
-            _setCenterHeadersForCatalog();
-            const s = document.getElementById('oligoSearch');
-            if (s) s.placeholder = 'Search ID or name...';
+        function buildIntModMap(p) {
+            const m = {};
+            if (p.mod_int_5 && p.mod_int_5 !== 'none') m[5] = p.mod_int_5;
+            if (p.mod_int_6 && p.mod_int_6 !== 'none') m[6] = p.mod_int_6;
+            if (p.mod_int_7 && p.mod_int_7 !== 'none') m[7] = p.mod_int_7;
+            if (p.mod_int_8 && p.mod_int_8 !== 'none') m[8] = p.mod_int_8;
+            return m;
         }
 
-        function renderReviewMode(el) {
-            el.innerHTML = `
-                <div class="probe-detail-section">
-                    <h3>Pack Review</h3>
-                    <p style="color:#9ca3af;font-size:13px;line-height:1.6;">
-                        Review extracted items per supplier PDF pack. Approve or reject items, optionally override template JSON, then finalize the pack.
+        window.toggleSynthDetail = function (row, id, orderNo, oligoNo, supplier, date, amountNmol, mw, certStatus) {
+            const existing = row.nextElementSibling;
+            if (existing && existing.classList.contains('synth-detail')) {
+                existing.remove();
+                return;
+            }
+            const div = document.createElement('div');
+            div.className = 'synth-detail';
+            div.innerHTML = `
+                <div class="field-row"><span class="field-lbl">Order #</span><span class="field-val mono">${esc(orderNo)}</span></div>
+                <div class="field-row"><span class="field-lbl">Oligo #</span><span class="field-val mono">${esc(oligoNo)}</span></div>
+                <div class="field-row"><span class="field-lbl">Supplier</span><span class="field-val">${esc(supplier)}</span></div>
+                <div class="field-row"><span class="field-lbl">Date</span><span class="field-val">${esc(date)}</span></div>
+                <div class="field-row"><span class="field-lbl">Yield (nmol)</span><span class="field-val">${esc(amountNmol || '—')}</span></div>
+                <div class="field-row"><span class="field-lbl">MW</span><span class="field-val">${esc(mw || '—')}</span></div>
+                <div class="field-row"><span class="field-lbl">Certificate</span><span class="field-val"><span class="pill pill-${esc(certStatus)}">${esc(certStatus)}</span></span></div>`;
+            row.parentNode.insertBefore(div, row.nextSibling);
+        };
+
+        // ══════════════════════════════════════════
+        // DATA SOURCES VIEW
+        // ══════════════════════════════════════════
+
+        function renderDataSources(el) {
+            el.id = 'view-data-sources';
+            el.innerHTML = `<div style="padding:20px;">
+                <div class="panel">
+                    <div class="panel-title">Import Excel / CSV Data Source</div>
+                    <div class="upload-zone" id="dsUploadZone">
+                        <div class="upload-icon">&#128196;</div>
+                        <p>Upload a supplier Excel or CSV file to import probe and synthesis data.</p>
+                        <div style="display:flex;gap:10px;justify-content:center;align-items:center;flex-wrap:wrap;">
+                            <div>
+                                <label style="font-size:12px;color:#6b7280;display:block;margin-bottom:4px;">Supplier</label>
+                                <input type="text" id="dsSupplier" placeholder="e.g. biomers, idt, sigma" style="width:160px;">
+                            </div>
+                            <div style="display:flex;flex-direction:column;align-items:flex-start;">
+                                <label class="btn btn-secondary" for="dsFileInput" style="cursor:pointer;margin-top:20px;">Choose File (.xlsx / .csv)</label>
+                                <input type="file" id="dsFileInput" accept=".xlsx,.csv" onchange="dsFileSelected(this)" style="display:none;">
+                            </div>
+                            <button class="btn btn-primary" id="dsUploadBtn" disabled onclick="dsUpload()" style="margin-top:20px;">Import</button>
+                        </div>
+                        <div class="upload-file-name" id="dsFileName"></div>
+                    </div>
+                    <div id="dsUploadProgress" class="upload-progress" style="display:none;"></div>
+                    <div id="dsUploadResult" style="display:none;margin-top:16px;"></div>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-title">Imported Data Sources</div>
+                    <div id="dsTable"><div class="empty-state">Loading…</div></div>
+                </div>
+            </div>`;
+            loadDataSources();
+        }
+
+        async function loadDataSources() {
+            try {
+                const r = await fetch('/api/oligo/data-sources', { credentials: 'include' });
+                if (!r.ok) throw new Error('Failed');
+                const d = await r.json();
+                dataSources = d.data_sources || [];
+            } catch (_) { dataSources = []; }
+            renderDsTable();
+        }
+
+        function renderDsTable() {
+            const el = document.getElementById('dsTable');
+            if (!el) return;
+            if (dataSources.length === 0) {
+                el.innerHTML = '<div class="empty-state">No data sources imported yet.</div>';
+                return;
+            }
+            el.innerHTML = `<table class="data-table">
+                <thead><tr>
+                    <th>File Name</th><th>Supplier</th><th>Orders</th><th>Oligos</th>
+                    <th>Date Range</th><th>Imported</th><th>Status</th>
+                </tr></thead>
+                <tbody>${dataSources.map(ds => {
+                    const dateRange = [ds.date_range_start, ds.date_range_end].filter(Boolean).map(d => new Date(d).toLocaleDateString()).join(' – ') || '—';
+                    const importedAt = ds.imported_at ? new Date(ds.imported_at).toLocaleString() : '—';
+                    return `<tr>
+                        <td class="mono">${esc(ds.file_name)}</td>
+                        <td>${esc(ds.supplier)}</td>
+                        <td>${ds.orders_detected || 0}</td>
+                        <td>${ds.oligos_detected || 0}</td>
+                        <td style="font-size:11px;">${esc(dateRange)}</td>
+                        <td style="font-size:11px;">${esc(importedAt)}</td>
+                        <td><span class="pill pill-active">${esc(ds.status)}</span></td>
+                    </tr>`;
+                }).join('')}</tbody>
+            </table>`;
+        }
+
+        window.dsFileSelected = function (inp) {
+            const name = inp.files?.[0]?.name || '';
+            document.getElementById('dsFileName').textContent = name;
+            document.getElementById('dsUploadBtn').disabled = !name;
+        };
+
+        window.dsUpload = async function () {
+            const inp = document.getElementById('dsFileInput');
+            const supplier = (document.getElementById('dsSupplier').value || '').trim();
+            if (!inp.files?.[0]) return;
+            if (!supplier) { alert('Please enter a supplier name'); return; }
+
+            const btn = document.getElementById('dsUploadBtn');
+            const prog = document.getElementById('dsUploadProgress');
+            const resultEl = document.getElementById('dsUploadResult');
+            btn.disabled = true;
+            prog.style.display = 'block';
+            prog.textContent = 'Uploading and processing…';
+            resultEl.style.display = 'none';
+
+            try {
+                const fd = new FormData();
+                fd.append('file', inp.files[0]);
+                fd.append('supplier', supplier);
+                const r = await fetch('/api/oligo/excel-upload', { method: 'POST', credentials: 'include', body: fd });
+                const d = await r.json();
+                prog.style.display = 'none';
+                resultEl.style.display = 'block';
+
+                if (!r.ok) {
+                    resultEl.innerHTML = `<div style="color:#f87171;font-size:13px;">Error: ${esc(d.error)}</div>`;
+                    return;
+                }
+
+                resultEl.innerHTML = `<div style="background:#064e3b;border:1px solid #10b981;border-radius:8px;padding:14px;font-size:13px;color:#6ee7b7;">
+                    <strong>Import complete</strong><br>
+                    ${d.oligos_detected} oligos from ${d.orders_detected} orders<br>
+                    Probes: ${d.probes_inserted} new, ${d.probes_reused} existing<br>
+                    Syntheses: ${d.syntheses_inserted} inserted${d.duplicates_detected ? `, <span style="color:#fbbf24;">${d.duplicates_detected} duplicate(s) detected</span>` : ''}<br>
+                    ${d.library_candidates?.length ? `<span style="color:#93c5fd;">Library candidates detected: ${d.library_candidates.join(', ')}</span><br>` : ''}
+                    <button class="btn btn-primary btn-sm" style="margin-top:10px;" onclick="setView('registry')">View Registry</button>
+                    ${d.duplicates_detected ? `<button class="btn btn-secondary btn-sm" style="margin-top:10px;margin-left:6px;" onclick="setView('duplicates')">Review Duplicates</button>` : ''}
+                    ${d.library_candidates?.length ? `<button class="btn btn-secondary btn-sm" style="margin-top:10px;margin-left:6px;" onclick="setView('library')">Classify Libraries</button>` : ''}
+                </div>`;
+
+                await loadDataSources();
+                if (d.duplicates_detected > 0) updateDupBadge(d.duplicates_detected);
+
+            } catch (e) {
+                prog.style.display = 'none';
+                resultEl.style.display = 'block';
+                resultEl.innerHTML = `<div style="color:#f87171;font-size:13px;">Error: ${esc(e.message)}</div>`;
+            } finally {
+                btn.disabled = false;
+            }
+        };
+
+        // ══════════════════════════════════════════
+        // LIBRARY VIEW
+        // ══════════════════════════════════════════
+
+        function renderLibrary(el) {
+            el.id = 'view-library';
+            el.innerHTML = `<div style="padding:20px;">
+                <div class="panel">
+                    <div class="panel-title">Library Candidates</div>
+                    <p style="color:#9ca3af;font-size:13px;margin-bottom:14px;">Orders with 20 or more probes are flagged as potential libraries. Assign a library type to classify all probes in that order.</p>
+                    <div id="libCandidatesArea"><div class="empty-state">Loading…</div></div>
+                </div>
+                <div class="panel">
+                    <div class="panel-title">Library Definitions</div>
+                    <div id="libDefsArea"><div class="empty-state">Loading…</div></div>
+                </div>
+            </div>`;
+            loadLibrary();
+        }
+
+        async function loadLibrary() {
+            try {
+                const [r1, r2] = await Promise.all([
+                    fetch('/api/oligo/library-candidates', { credentials: 'include' }),
+                    fetch('/api/oligo/library-definitions', { credentials: 'include' })
+                ]);
+                if (r1.ok) libCandidates = (await r1.json()).candidates || [];
+                if (r2.ok) libDefs = (await r2.json()).definitions || [];
+            } catch (_) {}
+            renderLibCandidates();
+            renderLibDefs();
+        }
+
+        function renderLibCandidates() {
+            const el = document.getElementById('libCandidatesArea');
+            if (!el) return;
+            if (libCandidates.length === 0) {
+                el.innerHTML = '<div class="empty-state">No library candidates detected. Import an Excel file with 20+ probes per order.</div>';
+                return;
+            }
+            el.innerHTML = `<table class="data-table">
+                <thead><tr><th>Order #</th><th>Supplier</th><th>Probes</th><th>Date Range</th><th>Assign Library</th></tr></thead>
+                <tbody>${libCandidates.map(c => {
+                    const dateRange = [c.date_start, c.date_end].filter(Boolean).map(d => new Date(d).toLocaleDateString()).join(' – ') || '—';
+                    const defOpts = libDefs.map(l => `<option value="${esc(l.id)}">${esc(l.name)}</option>`).join('');
+                    return `<tr>
+                        <td class="mono">${esc(c.order_number)}</td>
+                        <td>${esc(c.supplier)}</td>
+                        <td>${c.probe_count}</td>
+                        <td style="font-size:11px;">${esc(dateRange)}</td>
+                        <td>
+                            <div style="display:flex;gap:6px;align-items:center;">
+                                <select id="libSel_${esc(c.order_number)}_${esc(c.supplier)}" style="width:150px;">
+                                    <option value="">— Single probes —</option>
+                                    ${defOpts}
+                                </select>
+                                <button class="btn btn-primary btn-sm" onclick="libAssign('${esc(c.order_number)}','${esc(c.supplier)}')">Assign</button>
+                            </div>
+                        </td>
+                    </tr>`;
+                }).join('')}</tbody>
+            </table>`;
+        }
+
+        function renderLibDefs() {
+            const el = document.getElementById('libDefsArea');
+            if (!el) return;
+            if (libDefs.length === 0) {
+                el.innerHTML = '<div class="empty-state">No library definitions.</div>';
+                return;
+            }
+            el.innerHTML = `<div style="display:flex;gap:8px;flex-wrap:wrap;">
+                ${libDefs.map(l => `<span style="background:#1e2130;border:1px solid #2a2d3a;border-radius:7px;padding:6px 14px;font-size:13px;color:#d1d5db;">${esc(l.name)}</span>`).join('')}
+            </div>`;
+        }
+
+        window.libAssign = async function (orderNo, supplier) {
+            const selId = `libSel_${orderNo}_${supplier}`;
+            const sel = document.getElementById(selId);
+            if (!sel) return;
+            const libDefId = sel.value || null;
+            try {
+                const r = await fetch('/api/oligo/library-classify', {
+                    method: 'POST', credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ order_number: orderNo, supplier, library_def_id: libDefId })
+                });
+                const d = await r.json();
+                if (!r.ok) { alert(d.error); return; }
+                alert(`Assigned ${d.probes_updated} probe(s).`);
+                loadLibrary();
+            } catch (e) { alert('Error: ' + e.message); }
+        };
+
+        // ══════════════════════════════════════════
+        // DUPLICATES VIEW
+        // ══════════════════════════════════════════
+
+        function renderDuplicates(el) {
+            el.id = 'view-duplicates';
+            el.innerHTML = `<div style="padding:20px;">
+                <div class="panel">
+                    <div class="panel-title">Duplicate Synthesis Queue</div>
+                    <p style="color:#9ca3af;font-size:13px;margin-bottom:14px;">
+                        These synthesis records were detected as duplicates during import (same supplier + order number + oligo number already exists). They are marked as discarded but not yet confirmed. Review and confirm to finalize.
                     </p>
+                    <div style="margin-bottom:14px;" id="dupConfirmArea"></div>
+                    <div id="dupTableArea"><div class="empty-state">Loading…</div></div>
                 </div>
+            </div>`;
+            loadDuplicates();
+        }
 
-                <div class="probe-detail-section" id="orItemsPanel" style="display:none;">
-                    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-                        <div>
-                            <h3 style="margin:0;">Items for <span id="orPackLabel" style="color:#93c5fd;"></span></h3>
-                            <div style="font-size:11px;color:#6b7280;margin-top:4px;" id="orPackMeta"></div>
-                        </div>
-                        <div style="display:flex;gap:8px;align-items:center;">
-                            <button class="or-btn or-btn-finalize" id="orFinalizeBtn" onclick="orFinalizeModal()" style="display:none;">Finalize Pack</button>
+        async function loadDuplicates() {
+            try {
+                const r = await fetch('/api/oligo/duplicates', { credentials: 'include' });
+                if (!r.ok) throw new Error('Failed');
+                const d = await r.json();
+                duplicates = d.duplicates || [];
+            } catch (_) { duplicates = []; }
+            renderDupTable();
+            updateDupBadge(duplicates.length);
+        }
+
+        function renderDupTable() {
+            const el = document.getElementById('dupTableArea');
+            if (!el) return;
+            const ca = document.getElementById('dupConfirmArea');
+            if (ca) {
+                if (duplicates.length > 0) {
+                    ca.innerHTML = `<button class="btn btn-danger" onclick="discardAllDups()">Discard all duplicates (${duplicates.length})</button>`;
+                } else {
+                    ca.innerHTML = '';
+                }
+            }
+            if (duplicates.length === 0) {
+                el.innerHTML = '<div class="empty-state">No pending duplicate confirmations.</div>';
+                return;
+            }
+            el.innerHTML = `<table class="data-table">
+                <thead><tr><th>Supplier</th><th>Order #</th><th>Oligo #</th><th>Date</th><th>Probe</th></tr></thead>
+                <tbody>${duplicates.map(d => `<tr>
+                    <td>${esc(d.supplier)}</td>
+                    <td class="mono">${esc(d.order_number)}</td>
+                    <td class="mono">${esc(d.oligo_number)}</td>
+                    <td style="font-size:11px;">${d.synthesis_date ? new Date(d.synthesis_date).toLocaleDateString() : '—'}</td>
+                    <td class="mono" style="font-size:11px;">${esc(d.canonical_id)}</td>
+                </tr>`).join('')}</tbody>
+            </table>`;
+        }
+
+        window.discardAllDups = async function () {
+            if (!confirm(`Confirm: permanently mark ${duplicates.length} duplicate(s) as discarded?`)) return;
+            try {
+                const r = await fetch('/api/oligo/duplicates/discard-all', {
+                    method: 'POST', credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const d = await r.json();
+                if (!r.ok) { alert(d.error); return; }
+                alert(`${d.confirmed_count} duplicate(s) confirmed as discarded.`);
+                loadDuplicates();
+            } catch (e) { alert('Error: ' + e.message); }
+        };
+
+        function updateDupBadge(count) {
+            const badge = document.getElementById('dupBadge');
+            if (!badge) return;
+            badge.textContent = count;
+            badge.classList.toggle('visible', count > 0);
+        }
+
+        // ══════════════════════════════════════════
+        // REVIEW VIEW (PDF pack review)
+        // ══════════════════════════════════════════
+
+        function renderReviewView(el) {
+            el.id = 'view-review';
+            el.innerHTML = `<div style="padding:20px;">
+                <div class="or-split">
+                    <div class="or-packs-col">
+                        <div class="panel">
+                            <div class="panel-title">PDF Import Packs</div>
+                            <input type="search" id="orSearch" placeholder="Filter packs…" style="width:100%;margin-bottom:10px;" oninput="orRenderPacks()">
+                            <div id="orPacksBody"><div class="empty-state">Loading…</div></div>
                         </div>
                     </div>
-
-                    <div class="or-filters">
-                        <input id="orSearch" type="text" placeholder="Search canonical_id or synthesis no" style="width:220px;" oninput="orRenderItems()">
-                        <select id="orFilterDecision" onchange="orRenderItems()">
-                            <option value="">All decisions</option>
-                            <option value="PENDING">Pending</option>
-                            <option value="APPROVED">Approved</option>
-                            <option value="REJECTED">Rejected</option>
-                        </select>
-                        <label style="font-size:12px;display:flex;align-items:center;gap:6px;color:#9ca3af;">
-                            <input type="checkbox" id="orFilterPI" onchange="orRenderItems()"> PI confirm only
-                        </label>
-                        <span id="orItemCountLabel" style="font-size:12px;color:#6b7280;margin-left:auto;"></span>
+                    <div class="or-items-col">
+                        <div class="panel" id="orItemsPanel" style="display:none;">
+                            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
+                                <div>
+                                    <div class="panel-title" style="margin-bottom:2px;">Items: <span id="orPackLabel" style="color:#93c5fd;"></span></div>
+                                    <div style="font-size:11px;color:#6b7280;" id="orPackMeta"></div>
+                                </div>
+                                <button class="or-btn or-btn-finalize" id="orFinalizeBtn" onclick="orFinalizeModal()" style="display:none;">Finalize Pack</button>
+                            </div>
+                            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+                                <input id="orItemSearch" type="text" placeholder="Search…" style="width:180px;" oninput="orRenderItems()">
+                                <select id="orFilterDec" onchange="orRenderItems()">
+                                    <option value="">All</option>
+                                    <option value="PENDING">Pending</option>
+                                    <option value="APPROVED">Approved</option>
+                                    <option value="REJECTED">Rejected</option>
+                                </select>
+                                <span id="orItemCountLbl" style="font-size:11px;color:#6b7280;margin-left:auto;align-self:center;"></span>
+                            </div>
+                            <div id="orItemsBody"></div>
+                        </div>
+                        <div class="panel" id="orNoPack" style="color:#6b7280;font-size:13px;">
+                            Select a pack on the left to review its items.
+                        </div>
                     </div>
-
-                    <div id="orItemsBody"></div>
-                </div>
-
-                <div class="probe-detail-section" id="orNoPack" style="color:#6b7280;">
-                    Select a pack on the left to review its items.
                 </div>
 
                 <div class="or-drawer-overlay" id="orDrawerOverlay" onclick="orDrawerClose(event)">
                     <div class="or-drawer" id="orDrawer" onclick="event.stopPropagation()">
                         <div style="position:relative;">
-                            <h3 id="orDrawerTitle" style="margin:0 0 10px;">Item Detail</h3>
+                            <h3 id="orDrawerTitle" style="margin:0 0 10px;font-size:14px;">Item Detail</h3>
                             <button class="or-drawer-close" onclick="orDrawerClose()">×</button>
                         </div>
-
                         <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                            <button class="or-btn or-btn-approve" onclick="orSetDecision('APPROVED')">✓ Approve</button>
-                            <button class="or-btn or-btn-reject" onclick="orSetDecision('REJECTED')">✗ Reject</button>
-                            <button class="or-btn or-btn-pending" onclick="orSetDecision('PENDING')">↻ Pending</button>
+                            <button class="or-btn or-btn-approve" onclick="orSetDecision('APPROVED')">Approve</button>
+                            <button class="or-btn or-btn-reject" onclick="orSetDecision('REJECTED')">Reject</button>
+                            <button class="or-btn or-btn-pending" onclick="orSetDecision('PENDING')">Pending</button>
                         </div>
-
                         <div class="or-field-label">canonical_id</div>
                         <div class="or-mono" id="orDrawerCanonical"></div>
-
                         <div class="or-field-label">synthesis_oligo_no</div>
                         <div class="or-mono" id="orDrawerSynthNo"></div>
-
                         <div class="or-field-label">sequence_5to3</div>
                         <div class="or-mono" id="orDrawerSeq"></div>
-
-                        <div style="display:flex;gap:12px;">
-                            <div style="flex:1;min-width:0;">
-                                <div class="or-field-label">5 mod</div>
+                        <div style="display:flex;gap:10px;">
+                            <div style="flex:1;">
+                                <div class="or-field-label">5' mod</div>
                                 <div class="or-mono" id="orDrawerMod5"></div>
                             </div>
-                            <div style="flex:1;min-width:0;">
-                                <div class="or-field-label">3 mod</div>
+                            <div style="flex:1;">
+                                <div class="or-field-label">3' mod</div>
                                 <div class="or-mono" id="orDrawerMod3"></div>
                             </div>
                         </div>
-
-                        <div class="or-field-label">Internal mods</div>
-                        <div class="or-mono" id="orDrawerIntMods"></div>
-
-                        <div class="or-field-label" style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
-                            <span>PI Template Override template_json_pi</span>
+                        <div class="or-field-label" style="display:flex;align-items:center;justify-content:space-between;">
+                            <span>PI Template Override</span>
                             <button class="or-btn" style="background:#1e2130;color:#e5e7eb;" onclick="orSaveTemplatePi()">Save</button>
                         </div>
-                        <textarea id="orDrawerTemplatePi" rows="8"
-                            style="width:100%;font-family:monospace;font-size:11px;background:#0f1117;border:1px solid #2a2d3a;border-radius:8px;padding:10px;color:#e5e7eb;resize:vertical;"
-                            placeholder="Paste corrected JSON here, leave blank to use parsed template"></textarea>
-                        <div id="orDrawerTemplatePiMsg" style="font-size:11px;color:#6b7280;margin-top:6px;"></div>
-
-                        <div class="or-field-label">Parsed template_json read only</div>
-                        <pre id="orDrawerTemplateJson"
-                            style="font-size:10px;background:#13151c;border:1px solid #2a2d3a;border-radius:8px;padding:10px;overflow-x:auto;max-height:220px;margin:0;color:#d1d5db;"></pre>
+                        <textarea id="orDrawerTemplatePi" rows="8" style="width:100%;font-family:monospace;font-size:11px;background:#0f1117;border:1px solid #2a2d3a;border-radius:8px;padding:10px;color:#e5e7eb;resize:vertical;" placeholder="Paste corrected JSON here"></textarea>
+                        <div id="orDrawerTemplatePiMsg" style="font-size:11px;color:#6b7280;margin-top:4px;"></div>
+                        <div class="or-field-label">Parsed template_json (read-only)</div>
+                        <pre id="orDrawerTemplateJson" style="font-size:10px;background:#13151c;border:1px solid #2a2d3a;border-radius:8px;padding:10px;overflow-x:auto;max-height:200px;margin:0;color:#d1d5db;"></pre>
                     </div>
                 </div>
 
                 <div id="orFinalizeOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:4500;align-items:center;justify-content:center;">
-                    <div style="background:#0f1117;border:1px solid #2a2d3a;border-radius:12px;padding:22px;max-width:420px;width:92%;">
-                        <h3 style="margin:0 0 12px;font-size:15px;color:#e5e7eb;">Finalize Pack</h3>
-                        <p style="font-size:13px;color:#9ca3af;margin-bottom:16px;line-height:1.5;">
-                            Choose final pack status. Approved items will be published to the probe catalog. This action cannot be undone.
-                        </p>
+                    <div style="background:#0f1117;border:1px solid #2a2d3a;border-radius:12px;padding:22px;max-width:400px;width:92%;">
+                        <h3 style="margin:0 0 12px;font-size:15px;">Finalize Pack</h3>
+                        <p style="font-size:13px;color:#9ca3af;margin-bottom:16px;line-height:1.5;">Approved items will be published to the probe catalog. This cannot be undone.</p>
                         <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;">
                             <button class="or-btn" style="background:#1e2130;color:#e5e7eb;" onclick="orFinalizeOverlayClose()">Cancel</button>
-                            <button class="or-btn or-btn-reject" onclick="orDoFinalize('REJECTED')">Mark Pack REJECTED</button>
-                            <button class="or-btn or-btn-approve" onclick="orDoFinalize('APPROVED')">Publish and APPROVE</button>
+                            <button class="or-btn or-btn-reject" onclick="orDoFinalize('REJECTED')">Mark REJECTED</button>
+                            <button class="or-btn or-btn-approve" onclick="orDoFinalize('APPROVED')">Publish APPROVED</button>
                         </div>
                     </div>
                 </div>
-            `;
-        }
-
-        function renderPackList() {
-            const tbody = document.getElementById('oligoListBody');
-            const empty = document.getElementById('oligoListEmpty');
-            const q = (document.getElementById('oligoSearch').value || '').toLowerCase().trim();
-
-            const packs = (orPacks || []).filter(p => {
-                if (!q) return True;
-                const hay = ((p.supplier || '') + ' ' + (p.order_number || '') + ' ' + (p.id || '')).toLowerCase();
-                return hay.includes(q);
-            });
-
-            if (!packs.length) {
-                tbody.innerHTML = '';
-                empty.style.display = 'block';
-                empty.textContent = 'No packs found';
-                return;
-            }
-
-            empty.style.display = 'none';
-
-            tbody.innerHTML = packs.map(p => {
-                const st = String(p.status || 'PENDING').toUpperCase();
-                const pillClass = 'or-pill-' + st;
-                const order = esc(p.order_number || '-');
-                const supplier = esc(p.supplier || '-');
-                const pdf = (p.file_name || p.source_filename || '').toString();
-                const pdfShort = pdf ? esc(pdf.length > 18 ? (pdf.slice(0,18) + '…') : pdf) : '-';
-                const itemCount = (p.item_count != null) ? String(p.item_count) : '-';
-                return `<tr class="or-row" onclick="orSelectPack('${p.id}')">
-                    <td>${order}</td>
-                    <td>${supplier}</td>
-                    <td style="color:#9ca3af;">${pdfShort}</td>
-                    <td><span class="or-pill ${pillClass}">${st}</span></td>
-                    <td>${itemCount}</td>
-                </tr>`;
-            }).join('');
+            </div>`;
+            orLoadPacks();
         }
 
         async function orLoadPacks() {
             const r = await fetch('/api/oligo/imports', { credentials: 'include' });
-            if (!r.ok) throw new Error('Failed to load packs');
+            if (!r.ok) { document.getElementById('orPacksBody').innerHTML = '<div class="empty-state">Failed to load packs</div>'; return; }
             const d = await r.json();
-            orPacks = d.packs || d || [];
-            renderPackList();
+            orPacks = d.imports || d.packs || [];
+            orRenderPacks();
         }
 
-        window.orSelectPack = async function(packId) {
-            const pack = (orPacks || []).find(p => String(p.id) === String(packId));
-            orCurrentPack = pack || { id: packId };
+        window.orRenderPacks = function () {
+            const el = document.getElementById('orPacksBody');
+            if (!el) return;
+            const q = (document.getElementById('orSearch')?.value || '').toLowerCase();
+            const packs = (orPacks || []).filter(p => !q || ((p.order_no || '') + (p.supplier || '') + (p.original_filename || '')).toLowerCase().includes(q));
+            if (!packs.length) { el.innerHTML = '<div class="empty-state">No packs found</div>'; return; }
+            el.innerHTML = `<table class="data-table"><thead><tr><th>Order</th><th>Supplier</th><th>Status</th><th>Items</th></tr></thead><tbody>
+                ${packs.map(p => `<tr style="cursor:pointer;" onclick="orSelectPack('${p.id}')">
+                    <td class="mono" style="font-size:11px;">${esc(p.order_no || '—')}</td>
+                    <td>${esc(p.supplier || '—')}</td>
+                    <td><span class="or-pill or-pill-${esc((p.status||'PENDING').toUpperCase())}">${esc(p.status||'PENDING')}</span></td>
+                    <td>${p.total_items || 0}</td>
+                </tr>`).join('')}
+            </tbody></table>`;
+        };
 
+        window.orSelectPack = async function (packId) {
+            orCurrentPack = (orPacks || []).find(p => p.id === packId) || { id: packId };
             document.getElementById('orNoPack').style.display = 'none';
             document.getElementById('orItemsPanel').style.display = 'block';
-            document.getElementById('orPackLabel').textContent = (orCurrentPack.order_number || orCurrentPack.id || 'pack');
-
+            document.getElementById('orPackLabel').textContent = orCurrentPack.order_no || packId;
             const meta = [];
-            if (orCurrentPack.supplier) meta.push('Supplier ' + orCurrentPack.supplier);
-            if (orCurrentPack.created_at) meta.push('Uploaded ' + new Date(orCurrentPack.created_at).toLocaleString());
-            if (orCurrentPack.status) meta.push('Status ' + orCurrentPack.status);
-            document.getElementById('orPackMeta').textContent = meta.join(' , ');
-
+            if (orCurrentPack.supplier) meta.push('Supplier: ' + orCurrentPack.supplier);
+            if (orCurrentPack.uploaded_at) meta.push('Uploaded: ' + new Date(orCurrentPack.uploaded_at).toLocaleString());
+            document.getElementById('orPackMeta').textContent = meta.join('  |  ');
+            document.getElementById('orFinalizeBtn').style.display = orCurrentPack.finalized_at ? 'none' : 'inline-flex';
             const r = await fetch(`/api/oligo/imports/${packId}`, { credentials: 'include' });
-            if (!r.ok) throw new Error('Failed to load pack');
+            if (!r.ok) return;
             const d = await r.json();
             orItems = d.items || [];
-
-            document.getElementById('orFinalizeBtn').style.display = 'inline-flex';
             orRenderItems();
         };
 
-        window.orRenderItems = function() {
-            const body = document.getElementById('orItemsBody');
-            const q = (document.getElementById('orSearch').value || '').toLowerCase().trim();
-            const dec = (document.getElementById('orFilterDecision').value || '').toUpperCase();
-            const piOnly = !!document.getElementById('orFilterPI').checked;
-
+        window.orRenderItems = function () {
+            const el = document.getElementById('orItemsBody');
+            if (!el) return;
+            const q = (document.getElementById('orItemSearch')?.value || '').toLowerCase();
+            const dec = (document.getElementById('orFilterDec')?.value || '').toUpperCase();
             let items = (orItems || []).slice();
-
-            if (q) {
-                items = items.filter(it => {
-                    const hay = ((it.canonical_id || '') + ' ' + (it.synthesis_oligo_no || '') + ' ' + (it.sequence_5to3 || '')).toLowerCase();
-                    return hay.includes(q);
-                });
-            }
-            if (dec) items = items.filter(it => String((it.decision || 'PENDING')).toUpperCase() === dec);
-            if (piOnly) items = items.filter(it => !!it.pi_confirmed);
-
-            document.getElementById('orItemCountLabel').textContent = `${items.length} items`;
-
-            body.innerHTML = `
-                <table class="or-table">
-                    <thead><tr><th>canonical_id</th><th>SynthOligo</th><th>Seq</th><th>Decision</th><th>PI</th></tr></thead>
-                    <tbody>
-                        ${items.map(it => {
-                            const d = String((it.decision || 'PENDING')).toUpperCase();
-                            const pill = `or-pill-${d}`;
-                            const seq = (it.sequence_5to3 || '');
-                            const seqShort = seq.length > 20 ? (seq.slice(0,20) + '…') : seq;
-                            return `<tr class="or-row" onclick="orOpenItem(${it.id})">
-                                <td>${esc(it.canonical_id || '-')}</td>
-                                <td>${esc(it.synthesis_oligo_no || '-')}</td>
-                                <td style="font-family:monospace;color:#93c5fd;">${esc(seqShort)}</td>
-                                <td><span class="or-pill ${pill}">${d}</span></td>
-                                <td>${it.pi_confirmed ? '✓' : ''}</td>
-                            </tr>`;
-                        }).join('')}
-                    </tbody>
-                </table>
-            `;
+            if (q) items = items.filter(it => ((it.canonical_id||'')+(it.synthesis_oligo_no||'')).toLowerCase().includes(q));
+            if (dec) items = items.filter(it => (it.decision_status||'PENDING') === dec);
+            document.getElementById('orItemCountLbl').textContent = `${items.length} items`;
+            el.innerHTML = `<table class="data-table"><thead><tr><th>canonical_id</th><th>SynthOligo#</th><th>Seq</th><th>Decision</th></tr></thead><tbody>
+                ${items.map(it => {
+                    const ds = it.decision_status || 'PENDING';
+                    const seq = (it.sequence_5to3 || '');
+                    const seqShort = seq.length > 22 ? seq.slice(0,22)+'…' : seq;
+                    return `<tr style="cursor:pointer;" onclick="orOpenItem('${it.id}')">
+                        <td class="mono" style="font-size:11px;">${esc(it.canonical_id||'—')}</td>
+                        <td class="mono" style="font-size:11px;">${esc(it.synthesis_oligo_no||'—')}</td>
+                        <td class="mono" style="font-size:11px;color:#93c5fd;">${esc(seqShort)}</td>
+                        <td><span class="or-pill or-pill-${esc(ds)}">${esc(ds)}</span></td>
+                    </tr>`;
+                }).join('')}
+            </tbody></table>`;
         };
 
-        window.orOpenItem = function(itemId) {
-            const it = (orItems || []).find(x => Number(x.id) === Number(itemId));
+        window.orOpenItem = function (itemId) {
+            const it = (orItems || []).find(x => x.id === itemId);
             if (!it) return;
             orCurrentItem = it;
-
-            document.getElementById('orDrawerTitle').textContent = `${it.canonical_id || 'item'} , ${it.synthesis_oligo_no || 'no synth'}`;
-            document.getElementById('orDrawerCanonical').textContent = it.canonical_id || '-';
-            document.getElementById('orDrawerSynthNo').textContent = it.synthesis_oligo_no || '-';
-            document.getElementById('orDrawerSeq').textContent = it.sequence_5to3 || '-';
-            document.getElementById('orDrawerMod5').textContent = it.mod_5 || it.five_mod || it.mod5 || '-';
-            document.getElementById('orDrawerMod3').textContent = it.mod_3 || it.three_mod || it.mod3 || '-';
-            document.getElementById('orDrawerIntMods').textContent = it.internal_mods || it.int_mods || '-';
-
-            const tj = it.template_json || it.template_json_parsed || it.template_json_raw;
-            document.getElementById('orDrawerTemplateJson').textContent = tj ? JSON.stringify(tj, null, 2) : '-';
+            document.getElementById('orDrawerTitle').textContent = `${it.canonical_id || 'item'} / ${it.synthesis_oligo_no || '—'}`;
+            document.getElementById('orDrawerCanonical').textContent = it.canonical_id || '—';
+            document.getElementById('orDrawerSynthNo').textContent = it.synthesis_oligo_no || '—';
+            document.getElementById('orDrawerSeq').textContent = it.sequence_5to3 || '—';
+            document.getElementById('orDrawerMod5').textContent = it.mod_5 || '—';
+            document.getElementById('orDrawerMod3').textContent = it.mod_3 || '—';
+            const tj = it.template_json;
+            document.getElementById('orDrawerTemplateJson').textContent = tj ? JSON.stringify(tj, null, 2) : '—';
             document.getElementById('orDrawerTemplatePi').value = it.template_json_pi ? JSON.stringify(it.template_json_pi, null, 2) : '';
             document.getElementById('orDrawerTemplatePiMsg').textContent = '';
-
             document.getElementById('orDrawerOverlay').style.display = 'block';
         };
 
-        window.orDrawerClose = function(ev) {
-            if (ev && ev.target && ev.target.id !== 'orDrawerOverlay') return;
+        window.orDrawerClose = function (ev) {
+            if (ev && ev.target?.id !== 'orDrawerOverlay') return;
             document.getElementById('orDrawerOverlay').style.display = 'none';
         };
 
-        window.orSetDecision = async function(decision) {
+        window.orSetDecision = async function (dec) {
             if (!orCurrentItem) return;
             const r = await fetch(`/api/oligo/import-items/${orCurrentItem.id}/decision`, {
-                method: 'POST',
-                credentials: 'include',
+                method: 'PATCH', credentials: 'include',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ decision })
+                body: JSON.stringify({ decision_status: dec })
             });
             if (!r.ok) { alert('Failed to set decision'); return; }
             const d = await r.json();
-            orCurrentItem.decision = d.decision || decision;
+            orCurrentItem.decision_status = d.item?.decision_status || dec;
+            const idx = orItems.findIndex(x => x.id === orCurrentItem.id);
+            if (idx >= 0) orItems[idx].decision_status = orCurrentItem.decision_status;
             orRenderItems();
         };
 
-        window.orSaveTemplatePi = async function() {
+        window.orSaveTemplatePi = async function () {
             if (!orCurrentItem) return;
-            const ta = document.getElementById('orDrawerTemplatePi');
+            const raw = (document.getElementById('orDrawerTemplatePi').value || '').trim();
             const msg = document.getElementById('orDrawerTemplatePiMsg');
             let template_json_pi = null;
-            const raw = (ta.value || '').trim();
             if (raw) {
                 try { template_json_pi = JSON.parse(raw); }
-                except Exception:
-                    msg.textContent = 'Invalid JSON';
-                    msg.style.color = '#fbbf24';
-                    return;
+                catch (e) { msg.textContent = 'Invalid JSON'; msg.style.color = '#fbbf24'; return; }
             }
             const r = await fetch(`/api/oligo/import-items/${orCurrentItem.id}/template-pi`, {
-                method: 'POST',
-                credentials: 'include',
+                method: 'PATCH', credentials: 'include',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ template_json_pi })
             });
             if (!r.ok) { msg.textContent = 'Save failed'; msg.style.color = '#f87171'; return; }
             orCurrentItem.template_json_pi = template_json_pi;
-            msg.textContent = 'Saved';
-            msg.style.color = '#6ee7b7';
+            msg.textContent = 'Saved'; msg.style.color = '#6ee7b7';
         };
 
-        window.orFinalizeModal = function() {
+        window.orFinalizeModal = function () {
             document.getElementById('orFinalizeOverlay').style.display = 'flex';
         };
-        window.orFinalizeOverlayClose = function() {
+        window.orFinalizeOverlayClose = function () {
             document.getElementById('orFinalizeOverlay').style.display = 'none';
         };
-        window.orDoFinalize = async function(status) {
+        window.orDoFinalize = async function (status) {
             if (!orCurrentPack) return;
             const r = await fetch(`/api/oligo/imports/${orCurrentPack.id}/finalize`, {
-                method: 'POST',
-                credentials: 'include',
+                method: 'POST', credentials: 'include',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status })
             });
-            if (!r.ok) { alert('Finalize failed'); return; }
-            window.orFinalizeOverlayClose();
+            if (!r.ok) { const d = await r.json(); alert(d.error || 'Finalize failed'); return; }
+            orFinalizeOverlayClose();
             await orLoadPacks();
-            if (orCurrentPack && orCurrentPack.id) await window.orSelectPack(orCurrentPack.id);
+            if (orCurrentPack?.id) await window.orSelectPack(orCurrentPack.id);
         };
 
-        // =====================================================
-        // END REVIEW MODE
-        // =====================================================
-
-
-        // ── Helpers ──
-        function statusClass(s) {
-            s = (s || '').toLowerCase();
-            if (s === 'finalized') return 'finalized';
-            if (s === 'retired') return 'retired';
-            return 'draft';
-        }
+        // ══════════════════════════════════════════
+        // HELPERS
+        // ══════════════════════════════════════════
 
         function esc(s) {
             if (s == null) return '';
@@ -986,7 +1511,7 @@
 
         // ── Init ──
         checkAuth();
-        renderModeView();
+
     })();
     </script>
 </body>

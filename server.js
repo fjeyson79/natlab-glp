@@ -12762,6 +12762,571 @@ app.post("/api/oligo/imports/:import_id/finalize", requirePI, async (req, res) =
     }
 });
 
+// =====================================================
+// OLIGO-ID EXCEL REGISTRY ROUTES (migration 030)
+// =====================================================
+
+// Cached existence check for oligo_data_sources
+let oligoDataSourcesExists = null;
+let oligoDataSourcesLastCheck = 0;
+async function checkOligoDataSourcesTable() {
+    const now = Date.now();
+    if (oligoDataSourcesExists === null || oligoDataSourcesExists === false || (now - oligoDataSourcesLastCheck > ROLE_COLUMN_CHECK_INTERVAL)) {
+        try {
+            const r = await pool.query(`SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_name='oligo_data_sources'`);
+            oligoDataSourcesExists = r.rows.length > 0;
+            oligoDataSourcesLastCheck = now;
+        } catch (e) { oligoDataSourcesExists = false; }
+    }
+    return oligoDataSourcesExists;
+}
+
+// Excel/CSV upload multer (isolated to OLIGO-ID)
+const oligoExcelUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 20 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+        const name = (file.originalname || '').toLowerCase();
+        if (name.endsWith('.xlsx') || name.endsWith('.csv')) return cb(null, true);
+        return cb(new Error('Only .xlsx and .csv files are accepted'), false);
+    }
+});
+
+// Certificate PDF upload multer (isolated to OLIGO-ID)
+const oligoCertUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 10 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+        if ((file.originalname || '').toLowerCase().endsWith('.pdf')) return cb(null, true);
+        return cb(new Error('Only PDF files are accepted'), false);
+    }
+});
+
+// ── Probe identity helpers ──
+
+function oligoNormMod(v) {
+    const s = String(v || '').trim();
+    if (!s || s === '-' || s.toUpperCase() === 'NONE' || s.toUpperCase() === 'N/A') return 'none';
+    return s;
+}
+
+function oligoComputeIdentityHash(seq, mod5, mod3, int5, int6, int7, int8) {
+    const crypto = require('crypto');
+    const sig = `${seq}|${mod5}|${mod3}|${int5}|${int6}|${int7}|${int8}`;
+    return crypto.createHash('sha256').update(sig).digest('hex');
+}
+
+function oligoParseExcelBuffer(buffer, filename) {
+    const XLSX = require('xlsx');
+    const isCSV = (filename || '').toLowerCase().endsWith('.csv');
+    let wb;
+    if (isCSV) {
+        const text = buffer.toString('utf-8');
+        wb = XLSX.read(text, { type: 'string', raw: false });
+    } else {
+        wb = XLSX.read(buffer, { type: 'buffer', raw: false, cellDates: true });
+    }
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, { defval: null, raw: false });
+    return rows;
+}
+
+function oligoNormalizeExcelRow(raw) {
+    // Case-insensitive field lookup
+    const get = (keys) => {
+        for (const k of keys) {
+            for (const rk of Object.keys(raw)) {
+                if (rk.trim().toUpperCase() === k.toUpperCase()) return raw[rk];
+            }
+        }
+        return null;
+    };
+
+    const orderNo    = String(get(['ORDERNO', 'ORDER_NO', 'ORDER NO', 'Order No', 'Order']) || '').trim();
+    const oligoNo    = String(get(['OLIGONO', 'OLIGO_NO', 'OLIGO NO', 'Oligo No', 'Oligo']) || '').trim();
+    const seqRaw     = String(get(['SEQUENCE', 'Sequence', 'SEQ']) || '').trim();
+    const sequence   = seqRaw.replace(/\s+/g, '').toUpperCase();
+    const mod5s      = oligoNormMod(get(['MOD5S', 'MOD5', '5MOD', "5'MOD", "5' MOD", "5'_MOD"]));
+    const mod3s      = oligoNormMod(get(['MOD3S', 'MOD3', '3MOD', "3'MOD", "3' MOD", "3'_MOD"]));
+    const modi5      = oligoNormMod(get(['MODI5', 'INT_MOD5', 'INTMOD5', 'INT MOD 5']));
+    const modi6      = oligoNormMod(get(['MODI6', 'INT_MOD6', 'INTMOD6', 'INT MOD 6']));
+    const modi7      = oligoNormMod(get(['MODI7', 'INT_MOD7', 'INTMOD7', 'INT MOD 7']));
+    const modi8      = oligoNormMod(get(['MODI8', 'INT_MOD8', 'INTMOD8', 'INT MOD 8']));
+    const mw         = parseFloat(get(['MW', 'mol weight', 'MW (g/mol)']) || '') || null;
+    const amountNmol = parseFloat(get(['AMOUNTNMOL', 'AMOUNT_NMOL', 'AMOUNT NMOL', 'nmol', 'Amount (nmol)']) || '') || null;
+
+    // CREATEDATE parsing
+    let createDate = null;
+    const cdRaw = get(['CREATEDATE', 'CREATE_DATE', 'CREATE DATE', 'Date', 'DATE']);
+    if (cdRaw) {
+        if (cdRaw instanceof Date) {
+            createDate = cdRaw;
+        } else {
+            const parsed = new Date(cdRaw);
+            if (!isNaN(parsed)) createDate = parsed;
+        }
+    }
+
+    return { orderNo, oligoNo, sequence, mod5s, mod3s, modi5, modi6, modi7, modi8, mw, amountNmol, createDate };
+}
+
+// POST /api/oligo/excel-upload  – parse xlsx/csv and run import pipeline
+app.post("/api/oligo/excel-upload", requirePI, oligoExcelUpload.single("file"), async (req, res) => {
+    try {
+        if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+
+        const tableReady = await checkOligoDataSourcesTable();
+        if (!tableReady) return res.status(503).json({ error: "oligo_data_sources table not available. Run migration 030 first." });
+
+        const probeCatalogReady = await checkProbeCatalogTable();
+        if (!probeCatalogReady) return res.status(503).json({ error: "probe_catalog table not available. Run migration 029 first." });
+
+        const supplier = String(req.body?.supplier || 'unknown').trim().toLowerCase();
+        const actor    = req.session?.user?.researcher_id || req.session?.user?.id || 'unknown';
+
+        // SHA256 dedup guard
+        const crypto = require('crypto');
+        const file_sha256 = crypto.createHash('sha256').update(req.file.buffer).digest('hex');
+        const dupCheck = await pool.query(
+            `SELECT id, file_name FROM oligo_data_sources WHERE file_sha256 = $1 LIMIT 1`,
+            [file_sha256]
+        );
+        if (dupCheck.rows.length > 0) {
+            return res.status(409).json({ error: 'Duplicate file already imported', data_source_id: dupCheck.rows[0].id });
+        }
+
+        // Parse file
+        let rawRows;
+        try {
+            rawRows = oligoParseExcelBuffer(req.file.buffer, req.file.originalname);
+        } catch (parseErr) {
+            return res.status(400).json({ error: 'Failed to parse file: ' + parseErr.message });
+        }
+        if (!rawRows || rawRows.length === 0) {
+            return res.status(400).json({ error: 'File contains no data rows' });
+        }
+
+        // Normalize rows
+        const rows = rawRows.map(r => oligoNormalizeExcelRow(r)).filter(r => r.sequence && r.orderNo && r.oligoNo);
+        if (rows.length === 0) {
+            return res.status(400).json({ error: 'No valid rows found. Ensure columns ORDERNO, OLIGONO, SEQUENCE are present.' });
+        }
+
+        // Compute file stats
+        const dates = rows.map(r => r.createDate).filter(Boolean);
+        const dateRangeStart = dates.length ? new Date(Math.min(...dates.map(d => d.getTime()))) : null;
+        const dateRangeEnd   = dates.length ? new Date(Math.max(...dates.map(d => d.getTime()))) : null;
+        const ordersSet = new Set(rows.map(r => r.orderNo));
+        const ordersDetected = ordersSet.size;
+        const oligosDetected = rows.length;
+
+        // Library detection: orders with ≥20 rows are library candidates
+        const orderCounts = {};
+        for (const r of rows) { orderCounts[r.orderNo] = (orderCounts[r.orderNo] || 0) + 1; }
+        const libraryCandidates = Object.entries(orderCounts).filter(([, n]) => n >= 20).map(([o]) => o);
+
+        const client = await pool.connect();
+        let committed = false;
+        let dataSourceId = null;
+        let insertedProbes = 0, reusedProbes = 0, insertedSynths = 0, duplicateSynths = 0;
+        const duplicateQueue = [];
+
+        try {
+            await client.query("BEGIN");
+
+            // Create data source record
+            const dsResult = await client.query(
+                `INSERT INTO oligo_data_sources
+                    (file_name, supplier, orders_detected, oligos_detected, date_range_start, date_range_end, imported_by, file_sha256)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+                [req.file.originalname, supplier, ordersDetected, oligosDetected,
+                 dateRangeStart, dateRangeEnd, actor, file_sha256]
+            );
+            dataSourceId = dsResult.rows[0].id;
+
+            // Process each row
+            for (const row of rows) {
+                const { orderNo, oligoNo, sequence, mod5s, mod3s, modi5, modi6, modi7, modi8, mw, amountNmol, createDate } = row;
+
+                // Compute probe identity hash
+                const identityHash = oligoComputeIdentityHash(sequence, mod5s, mod3s, modi5, modi6, modi7, modi8);
+
+                // Upsert probe_catalog by identity_hash (excel source uses identity_hash, not canonical_id uniqueness)
+                let probeId;
+                const existingProbe = await client.query(
+                    `SELECT id FROM probe_catalog WHERE identity_hash = $1 LIMIT 1`,
+                    [identityHash]
+                );
+                if (existingProbe.rows.length > 0) {
+                    probeId = existingProbe.rows[0].id;
+                    reusedProbes++;
+                } else {
+                    // New probe
+                    const seqNorm = sequence.toLowerCase();
+                    const lengthNt = sequence.replace(/[^A-Za-z]/g, '').length;
+                    const canonicalId = `EXL_${orderNo}_${oligoNo}`.replace(/[^\w\-]/g, '_');
+                    const insertProbe = await client.query(
+                        `INSERT INTO probe_catalog
+                            (canonical_id, display_name, sequence, sequence_norm, length_nt,
+                             mod5, mod3, mod_int_5, mod_int_6, mod_int_7, mod_int_8,
+                             identity_hash, chemistry_code, oligo_kind, status, created_by)
+                         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'STD','OLIGO','ACTIVE',$13)
+                         ON CONFLICT (identity_hash) WHERE identity_hash IS NOT NULL DO NOTHING
+                         RETURNING id`,
+                        [canonicalId, canonicalId, sequence, seqNorm, lengthNt,
+                         mod5s, mod3s, modi5, modi6, modi7, modi8,
+                         identityHash, actor]
+                    );
+                    if (insertProbe.rows.length > 0) {
+                        probeId = insertProbe.rows[0].id;
+                        insertedProbes++;
+                    } else {
+                        // Race condition: someone else inserted between our check and insert
+                        const retry = await client.query(`SELECT id FROM probe_catalog WHERE identity_hash=$1 LIMIT 1`, [identityHash]);
+                        probeId = retry.rows[0]?.id;
+                        reusedProbes++;
+                    }
+                }
+
+                if (!probeId) continue;
+
+                // Insert synthesis record – detect duplicates via partial unique index
+                try {
+                    await client.query(
+                        `INSERT INTO probe_syntheses
+                            (probe_id, supplier, order_number, oligo_number, synthesis_date,
+                             amount_nmol, mw_value, source_file_id, excel_status,
+                             certificate_status, review_status, created_by)
+                         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'active','none','PENDING',$9)`,
+                        [probeId, supplier, orderNo, oligoNo,
+                         createDate ? createDate.toISOString().split('T')[0] : null,
+                         amountNmol, mw, dataSourceId, actor]
+                    );
+                    insertedSynths++;
+                } catch (synthErr) {
+                    if (synthErr.code === '23505') {
+                        // Duplicate synthesis – insert as discarded
+                        const existSynth = await client.query(
+                            `SELECT id FROM probe_syntheses WHERE supplier=$1 AND order_number=$2 AND oligo_number=$3 LIMIT 1`,
+                            [supplier, orderNo, oligoNo]
+                        );
+                        const existId = existSynth.rows[0]?.id || null;
+                        duplicateSynths++;
+                        duplicateQueue.push({ supplier, order_number: orderNo, oligo_number: oligoNo, existing_id: existId });
+                    } else {
+                        throw synthErr;
+                    }
+                }
+            }
+
+            await client.query("COMMIT");
+            committed = true;
+
+        } catch (e) {
+            try { await client.query("ROLLBACK"); } catch (_) {}
+            throw e;
+        } finally {
+            client.release();
+        }
+
+        console.log(`[OLIGO-EXCEL] file=${req.file.originalname} supplier=${supplier} probes_new=${insertedProbes} probes_reused=${reusedProbes} synths=${insertedSynths} dupes=${duplicateSynths} actor=${actor}`);
+
+        res.json({
+            success: true,
+            data_source_id: dataSourceId,
+            orders_detected: ordersDetected,
+            oligos_detected: oligosDetected,
+            probes_inserted: insertedProbes,
+            probes_reused: reusedProbes,
+            syntheses_inserted: insertedSynths,
+            duplicates_detected: duplicateSynths,
+            library_candidates: libraryCandidates,
+            duplicate_queue: duplicateQueue
+        });
+
+    } catch (err) {
+        console.error("[OLIGO-EXCEL] upload error:", err);
+        if (err.code === '23505') return res.status(409).json({ error: 'Duplicate file already imported' });
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// GET /api/oligo/data-sources – list imported Excel/CSV data sources
+app.get("/api/oligo/data-sources", requirePI, async (req, res) => {
+    try {
+        const tableReady = await checkOligoDataSourcesTable();
+        if (!tableReady) return res.json({ data_sources: [] });
+        const result = await pool.query(`
+            SELECT id, file_name, supplier, orders_detected, oligos_detected,
+                   date_range_start, date_range_end, imported_at, imported_by, status
+            FROM oligo_data_sources
+            ORDER BY imported_at DESC
+        `);
+        res.json({ data_sources: result.rows });
+    } catch (err) {
+        console.error("[OLIGO] data-sources list error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// GET /api/oligo/duplicates – list synthesis records pending discard confirmation
+app.get("/api/oligo/duplicates", requirePI, async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT ps.id, ps.probe_id, ps.supplier, ps.order_number, ps.oligo_number,
+                   ps.synthesis_date, ps.amount_nmol, ps.excel_status, ps.discard_reason,
+                   ps.discard_confirmed_by, ps.discard_confirmed_at, ps.created_at,
+                   pc.canonical_id, pc.display_name, pc.sequence
+            FROM probe_syntheses ps
+            JOIN probe_catalog pc ON pc.id = ps.probe_id
+            WHERE ps.excel_status = 'discarded' AND ps.discard_confirmed_at IS NULL
+            ORDER BY ps.created_at DESC
+        `);
+        res.json({ duplicates: result.rows });
+    } catch (err) {
+        console.error("[OLIGO] duplicates list error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// POST /api/oligo/duplicates/discard-all – confirm and mark all pending duplicates
+app.post("/api/oligo/duplicates/discard-all", requirePI, async (req, res) => {
+    try {
+        const actor = req.session?.user?.researcher_id || req.session?.user?.id || 'unknown';
+        const result = await pool.query(`
+            UPDATE probe_syntheses
+            SET discard_confirmed_by = $1, discard_confirmed_at = NOW()
+            WHERE excel_status = 'discarded' AND discard_confirmed_at IS NULL
+            RETURNING id
+        `, [actor]);
+        res.json({ success: true, confirmed_count: result.rows.length });
+    } catch (err) {
+        console.error("[OLIGO] discard-all error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// GET /api/oligo/library-definitions – list available library types
+app.get("/api/oligo/library-definitions", requirePI, async (req, res) => {
+    try {
+        const result = await pool.query(`SELECT id, name, description FROM oligo_library_definitions ORDER BY name`);
+        res.json({ definitions: result.rows });
+    } catch (err) {
+        console.error("[OLIGO] library-definitions error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// GET /api/oligo/library-candidates – orders with ≥20 probes (since last import)
+app.get("/api/oligo/library-candidates", requirePI, async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT ps.order_number, ps.supplier,
+                   COUNT(DISTINCT ps.id)::int AS synth_count,
+                   COUNT(DISTINCT ps.probe_id)::int AS probe_count,
+                   MIN(ps.synthesis_date) AS date_start,
+                   MAX(ps.synthesis_date) AS date_end
+            FROM probe_syntheses ps
+            WHERE ps.order_number IS NOT NULL AND ps.excel_status = 'active'
+            GROUP BY ps.order_number, ps.supplier
+            HAVING COUNT(DISTINCT ps.id) >= 20
+            ORDER BY synth_count DESC
+        `);
+        res.json({ candidates: result.rows });
+    } catch (err) {
+        console.error("[OLIGO] library-candidates error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// POST /api/oligo/library-classify – assign library_def_id to all probes in an order
+app.post("/api/oligo/library-classify", requirePI, async (req, res) => {
+    try {
+        const order_number = String(req.body?.order_number || '').trim();
+        const supplier     = String(req.body?.supplier || '').trim().toLowerCase();
+        const library_def_id = req.body?.library_def_id || null;  // null = clear library
+
+        if (!order_number || !supplier) return res.status(400).json({ error: "order_number and supplier are required" });
+
+        // Validate library_def_id if provided
+        if (library_def_id && !isUuid(library_def_id)) return res.status(400).json({ error: "Invalid library_def_id" });
+
+        // Find all probes linked to this order via syntheses
+        const probeIds = await pool.query(`
+            SELECT DISTINCT probe_id FROM probe_syntheses
+            WHERE order_number = $1 AND supplier = $2 AND probe_id IS NOT NULL
+        `, [order_number, supplier]);
+
+        if (probeIds.rows.length === 0) return res.status(404).json({ error: "No probes found for this order" });
+
+        const ids = probeIds.rows.map(r => r.probe_id);
+        await pool.query(
+            `UPDATE probe_catalog SET library_def_id = $1 WHERE id = ANY($2::uuid[])`,
+            [library_def_id, ids]
+        );
+
+        res.json({ success: true, probes_updated: ids.length });
+    } catch (err) {
+        console.error("[OLIGO] library-classify error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// POST /api/oligo/certificate-upload – attach a PDF certificate to an existing synthesis record
+// PDF must NOT create probes or syntheses. Only attaches to existing records.
+app.post("/api/oligo/certificate-upload", requirePI, oligoCertUpload.single("file"), async (req, res) => {
+    try {
+        if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+
+        const supplier      = String(req.body?.supplier || '').trim().toLowerCase();
+        const order_number  = String(req.body?.order_number || '').trim();
+        const oligo_number  = String(req.body?.oligo_number || '').trim();
+
+        if (!supplier || !order_number || !oligo_number) {
+            return res.status(400).json({ error: "supplier, order_number, and oligo_number are required" });
+        }
+
+        // Lookup existing synthesis – no creation allowed
+        const synth = await pool.query(`
+            SELECT ps.id, ps.probe_id, ps.certificate_pdf_key, ps.certificate_status,
+                   pc.sequence, pc.mod5, pc.mod3
+            FROM probe_syntheses ps
+            JOIN probe_catalog pc ON pc.id = ps.probe_id
+            WHERE ps.supplier = $1 AND ps.order_number = $2 AND ps.oligo_number = $3
+              AND ps.excel_status = 'active'
+            LIMIT 1
+        `, [supplier, order_number, oligo_number]);
+
+        if (synth.rows.length === 0) {
+            return res.status(404).json({
+                error: "No matching synthesis record found. PDFs can only be attached to existing records created by Excel import.",
+                supplier, order_number, oligo_number
+            });
+        }
+
+        const synthRow = synth.rows[0];
+
+        if (!r2Enabled()) return res.status(503).json({ error: "R2 storage not configured" });
+
+        const crypto = require('crypto');
+        const sha256 = crypto.createHash('sha256').update(req.file.buffer).digest('hex');
+        const safeFilename = (req.file.originalname || 'cert.pdf').replace(/[^\w.\-]+/g, '_');
+        const r2Key = `oligo/certs/${supplier}/${order_number}/${oligo_number}/${sha256}/${safeFilename}`;
+
+        await uploadToR2(req.file.buffer, r2Key, 'application/pdf');
+
+        // Optional sequence validation via PDF parse
+        let certificate_status = 'attached';
+        try {
+            const pdfParse = require('pdf-parse');
+            const parsed = await pdfParse(req.file.buffer);
+            const text = parsed.text || '';
+            // Simple check: does the PDF mention the order number and oligo number?
+            const hasOrder = text.includes(order_number);
+            const hasOligo = text.includes(oligo_number);
+            if (hasOrder && hasOligo) certificate_status = 'confirmed';
+            else if (!hasOrder && !hasOligo) certificate_status = 'mismatch';
+        } catch (_) {
+            // Parse failure is non-fatal; keep 'attached'
+        }
+
+        await pool.query(`
+            UPDATE probe_syntheses
+            SET certificate_pdf_key = $1, certificate_status = $2
+            WHERE id = $3
+        `, [r2Key, certificate_status, synthRow.id]);
+
+        res.json({ success: true, synthesis_id: synthRow.id, certificate_status, r2_key: r2Key });
+
+    } catch (err) {
+        console.error("[OLIGO] certificate-upload error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// GET /api/oligo/registry – probe grid data (enhanced catalog for registry UI)
+app.get("/api/oligo/registry", requirePI, async (req, res) => {
+    try {
+        const m030Ready = await checkOligoDataSourcesTable();
+        if (!m030Ready) {
+            // Migration 030 not yet applied – return legacy catalog without new columns
+            const r = await pool.query(`
+                SELECT pc.id, pc.canonical_id, pc.display_name, pc.sequence, pc.length_nt,
+                       pc.chemistry_code, pc.oligo_kind, pc.status, pc.finalized_at,
+                       NULL AS mod5, NULL AS mod3, NULL AS mod_int_5, NULL AS mod_int_6,
+                       NULL AS mod_int_7, NULL AS mod_int_8, NULL AS library_def_id, NULL AS library_name,
+                       COUNT(ps.id)::int AS synthesis_count, 0 AS stock_count,
+                       NULL AS last_synthesis_date
+                FROM probe_catalog pc
+                LEFT JOIN probe_syntheses ps ON ps.probe_id = pc.id
+                GROUP BY pc.id
+                ORDER BY pc.created_at DESC LIMIT 1000
+            `);
+            return res.json({ probes: r.rows });
+        }
+        const result = await pool.query(`
+            SELECT
+                pc.id, pc.canonical_id, pc.display_name, pc.sequence, pc.length_nt,
+                pc.mod5, pc.mod3, pc.mod_int_5, pc.mod_int_6, pc.mod_int_7, pc.mod_int_8,
+                pc.chemistry_code, pc.oligo_kind, pc.library_def_id, pc.status, pc.finalized_at,
+                ld.name AS library_name,
+                COUNT(ps.id) FILTER (WHERE ps.excel_status = 'active' OR ps.excel_status IS NULL)::int AS synthesis_count,
+                COUNT(pst.id) FILTER (WHERE pst.status = 'IN_STOCK')::int AS stock_count,
+                MAX(ps.synthesis_date) AS last_synthesis_date
+            FROM probe_catalog pc
+            LEFT JOIN oligo_library_definitions ld ON ld.id = pc.library_def_id
+            LEFT JOIN probe_syntheses ps ON ps.probe_id = pc.id
+            LEFT JOIN probe_synthesis_tubes pst ON pst.synthesis_id = ps.id
+            GROUP BY pc.id, ld.name
+            ORDER BY pc.created_at DESC
+            LIMIT 1000
+        `);
+        res.json({ probes: result.rows });
+    } catch (err) {
+        console.error("[OLIGO] registry error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// GET /api/oligo/registry/:id – full probe detail for probe page
+app.get("/api/oligo/registry/:id", requirePI, async (req, res) => {
+    try {
+        const probeId = String(req.params.id || '').trim();
+        if (!isUuid(probeId)) return res.status(400).json({ error: "Invalid probe ID" });
+
+        const probe = await pool.query(`
+            SELECT pc.id, pc.canonical_id, pc.display_name, pc.sequence, pc.length_nt,
+                   pc.mod5, pc.mod3, pc.mod_int_5, pc.mod_int_6, pc.mod_int_7, pc.mod_int_8,
+                   pc.chemistry_code, pc.oligo_kind, pc.library_def_id, pc.status, pc.finalized_at,
+                   ld.name AS library_name
+            FROM probe_catalog pc
+            LEFT JOIN oligo_library_definitions ld ON ld.id = pc.library_def_id
+            WHERE pc.id = $1
+        `, [probeId]);
+        if (probe.rows.length === 0) return res.status(404).json({ error: "Probe not found" });
+
+        const syntheses = await pool.query(`
+            SELECT ps.id, ps.supplier, ps.order_number, ps.oligo_number, ps.synthesis_date,
+                   ps.amount_nmol, ps.mw_value, ps.excel_status, ps.certificate_status,
+                   ps.certificate_pdf_key, ps.review_status, ps.created_at,
+                   ods.file_name AS source_file_name,
+                   COUNT(pst.id)::int AS tube_count,
+                   COUNT(pst.id) FILTER (WHERE pst.status='IN_STOCK')::int AS tubes_in_stock
+            FROM probe_syntheses ps
+            LEFT JOIN oligo_data_sources ods ON ods.id = ps.source_file_id
+            LEFT JOIN probe_synthesis_tubes pst ON pst.synthesis_id = ps.id
+            WHERE ps.probe_id = $1
+            GROUP BY ps.id, ods.file_name
+            ORDER BY ps.synthesis_date DESC NULLS LAST, ps.created_at DESC
+        `, [probeId]);
+
+        res.json({ probe: probe.rows[0], syntheses: syntheses.rows });
+    } catch (err) {
+        console.error("[OLIGO] registry detail error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
 app.listen(PORT, "0.0.0.0", async () => {
     console.log("[STARTUP] Server listening on port " + PORT);
     // Safety check: warn if any di_submissions row has no r2_object_key

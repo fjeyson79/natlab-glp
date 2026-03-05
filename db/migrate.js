@@ -750,6 +750,68 @@ async function migrate() {
             `DROP TRIGGER IF EXISTS trg_probe_identity_immutable ON probe_catalog`,
             `CREATE TRIGGER trg_probe_identity_immutable BEFORE UPDATE ON probe_catalog FOR EACH ROW EXECUTE FUNCTION probe_identity_immutable()`,
 
+            // ==================== OLIGO-ID EXCEL REGISTRY (migration 030) ====================
+
+            // oligo_data_sources – tracks each Excel/CSV file imported into the registry
+            `CREATE TABLE IF NOT EXISTS oligo_data_sources (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                file_name TEXT NOT NULL,
+                supplier TEXT NOT NULL,
+                orders_detected INT DEFAULT 0,
+                oligos_detected INT DEFAULT 0,
+                date_range_start DATE,
+                date_range_end DATE,
+                imported_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                imported_by TEXT,
+                status TEXT NOT NULL DEFAULT 'active',
+                file_sha256 TEXT
+            )`,
+            `CREATE UNIQUE INDEX IF NOT EXISTS uq_oligo_data_sources_sha ON oligo_data_sources(file_sha256) WHERE file_sha256 IS NOT NULL`,
+            `CREATE INDEX IF NOT EXISTS idx_oligo_data_sources_imported ON oligo_data_sources(imported_at DESC)`,
+
+            // oligo_library_definitions – named library classifications
+            `CREATE TABLE IF NOT EXISTS oligo_library_definitions (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                name TEXT NOT NULL,
+                description TEXT,
+                created_by TEXT,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE (name)
+            )`,
+            // Seed standard library types
+            `INSERT INTO oligo_library_definitions (name) VALUES ('78 Library') ON CONFLICT (name) DO NOTHING`,
+            `INSERT INTO oligo_library_definitions (name) VALUES ('24 Library') ON CONFLICT (name) DO NOTHING`,
+            `INSERT INTO oligo_library_definitions (name) VALUES ('MALDI Library') ON CONFLICT (name) DO NOTHING`,
+            `INSERT INTO oligo_library_definitions (name) VALUES ('Single probes') ON CONFLICT (name) DO NOTHING`,
+
+            // Additive columns on probe_catalog for excel-sourced identity
+            `ALTER TABLE probe_catalog ADD COLUMN IF NOT EXISTS mod5 TEXT`,
+            `ALTER TABLE probe_catalog ADD COLUMN IF NOT EXISTS mod3 TEXT`,
+            `ALTER TABLE probe_catalog ADD COLUMN IF NOT EXISTS mod_int_5 TEXT`,
+            `ALTER TABLE probe_catalog ADD COLUMN IF NOT EXISTS mod_int_6 TEXT`,
+            `ALTER TABLE probe_catalog ADD COLUMN IF NOT EXISTS mod_int_7 TEXT`,
+            `ALTER TABLE probe_catalog ADD COLUMN IF NOT EXISTS mod_int_8 TEXT`,
+            `ALTER TABLE probe_catalog ADD COLUMN IF NOT EXISTS identity_hash TEXT`,
+            `ALTER TABLE probe_catalog ADD COLUMN IF NOT EXISTS library_def_id UUID`,
+            `CREATE UNIQUE INDEX IF NOT EXISTS uq_probe_catalog_identity_hash ON probe_catalog(identity_hash) WHERE identity_hash IS NOT NULL`,
+
+            // Additive columns on probe_syntheses for excel-sourced synthesis records
+            `ALTER TABLE probe_syntheses ADD COLUMN IF NOT EXISTS oligo_number TEXT`,
+            `ALTER TABLE probe_syntheses ADD COLUMN IF NOT EXISTS synthesis_date DATE`,
+            `ALTER TABLE probe_syntheses ADD COLUMN IF NOT EXISTS amount_nmol NUMERIC`,
+            `ALTER TABLE probe_syntheses ADD COLUMN IF NOT EXISTS mw_value NUMERIC`,
+            `ALTER TABLE probe_syntheses ADD COLUMN IF NOT EXISTS source_file_id UUID`,
+            `ALTER TABLE probe_syntheses ADD COLUMN IF NOT EXISTS excel_status TEXT DEFAULT 'active'`,
+            `ALTER TABLE probe_syntheses ADD COLUMN IF NOT EXISTS discard_reason TEXT`,
+            `ALTER TABLE probe_syntheses ADD COLUMN IF NOT EXISTS discard_confirmed_by TEXT`,
+            `ALTER TABLE probe_syntheses ADD COLUMN IF NOT EXISTS discard_confirmed_at TIMESTAMPTZ`,
+            `ALTER TABLE probe_syntheses ADD COLUMN IF NOT EXISTS certificate_pdf_key TEXT`,
+            `ALTER TABLE probe_syntheses ADD COLUMN IF NOT EXISTS certificate_status TEXT DEFAULT 'none'`,
+            // Unique partial index enforcing supplier+order_number+oligo_number uniqueness only for excel rows
+            `CREATE UNIQUE INDEX IF NOT EXISTS uq_probe_syntheses_excel_src ON probe_syntheses(supplier, order_number, oligo_number) WHERE oligo_number IS NOT NULL`,
+            `CREATE INDEX IF NOT EXISTS idx_probe_syntheses_source_file ON probe_syntheses(source_file_id)`,
+            `CREATE INDEX IF NOT EXISTS idx_probe_syntheses_excel_status ON probe_syntheses(excel_status)`,
+
         ];
 
         for (const sql of migrations) {
