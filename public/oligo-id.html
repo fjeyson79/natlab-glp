@@ -549,6 +549,7 @@
                 b.classList.toggle('active', b.dataset.view === view);
             });
             const main = document.getElementById('mainArea');
+            if (!main) { console.warn('[OLIGO-ID] mainArea not ready'); return; }
             main.innerHTML = '';
             switch (view) {
                 case 'registry':   renderRegistry(main); break;
@@ -1510,8 +1511,7 @@
         }
 
         // ── Init ──
-        checkAuth();
-
+        document.addEventListener('DOMContentLoaded', checkAuth);
     })();
     </script>
 </body>
