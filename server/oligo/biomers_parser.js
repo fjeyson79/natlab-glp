@@ -16,20 +16,47 @@ function compactSeq(x) { return String(x || "").replace(/\s+/g, "").trim(); }
 
 function parseIntModMap(block) {
     const map = {};
-    const lines = block.split(/\n/).map(l => l.trim()).filter(Boolean);
+    const lines = String(block || "").split(/\n/).map(l => String(l || "").trim()).filter(Boolean);
 
+    // Locate internal modifications section
     let start = -1;
     for (let i = 0; i < lines.length; i++) {
         if (/^Int\.?\s*Mod\.?/i.test(lines[i])) { start = i; break; }
     }
     if (start === -1) return map;
 
-    const chunk = lines.slice(start, start + 6).join(" ");
+    // Biomers library layout: values for 5,6,7,8 are typically the 4 lines AFTER "Solvent"
+    let solvent = -1;
+    for (let i = start; i < Math.min(lines.length, start + 40); i++) {
+        if (/^Solvent$/i.test(lines[i])) { solvent = i; break; }
+    }
+    if (solvent !== -1) {
+        const vals = lines.slice(solvent + 1, solvent + 5);
+        if (vals.length === 4) {
+            map["5"] = normSpace(vals[0]);
+            map["6"] = normSpace(vals[1]);
+            map["7"] = normSpace(vals[2]);
+            map["8"] = normSpace(vals[3]);
+            return map;
+        }
+    }
+
+    // Fallback: inline parsing, but normalize labels so values never become "Int. Mod. 5:" etc.
+    const chunk = lines.slice(start, start + 10)
+        .join(" ")
+        .replace(/Int\.?\s*Mod\.?\s*/ig, "")
+        .replace(/\bSolvent\b/ig, " ")
+        .replace(/\s+-\s+/g, " ");
+
     const re = /(\b[5-8])\s*:\s*([^:]+?)(?=(\b[5-8]\s*:)|$)/g;
     let m;
     while ((m = re.exec(chunk)) !== null) {
         const k = m[1];
         const v = normSpace(m[2]);
+        if (/^Int\.?\s*Mod\.?/i.test(v)) continue;
+        if (/^[5-8]\s*:\s*$/i.test(v)) continue;
+        if (/^Solvent$/i.test(v)) continue;
+        if (/^-+$/.test(v)) continue;
         map[k] = v;
     }
     return map;
@@ -185,7 +212,7 @@ function parseVerticalSection(blockLines, startRegex, labelRegexToKeyList, stopR
 
     const keys = [];
     let i = start;
-    for (; i < Math.min(blockLines.length, start + 60); i++) {
+    for (; i < Math.min(blockLines.length, start + 80); i++) {
         const t = blockLines[i];
         let k = null;
         for (const pair of labelRegexToKeyList) {
@@ -196,12 +223,31 @@ function parseVerticalSection(blockLines, startRegex, labelRegexToKeyList, stopR
     }
 
     const values = [];
-    for (let j = i; j < Math.min(blockLines.length, i + 120); j++) {
+    let started = false;
+    for (let j = i; j < Math.min(blockLines.length, i + 180); j++) {
         const t = blockLines[j];
         if (!t) continue;
-        if (/^[-–]+$/.test(t)) continue;
-        if (stopRegex && stopRegex.test(t)) break;
+        if (/^-{2,}$/.test(t)) continue;
+        if (/^(Delivery state|Dried|Solvent)$/i.test(t)) continue;
+
+        // In Biomers PDFs, stopRegex patterns can appear as label-column rows.
+        // Skip them until values have started, then stop at the next stopRegex hit.
+        if (stopRegex && stopRegex.test(t)) {
+            if (started) break;
+            continue;
+        }
+
+        if (!started) {
+            if (/^(Product for research use only|Aliquots:|Order\s+[0-9]{6,}\b|biomers\.net\b)/i.test(t)) continue;
+        }
+        // Guard: sometimes the PDF repeats label-like tokens in the value column.
+        // Skip them until we have started collecting real values.
+        if (!started) {
+            if (/^(Delivery state|Scale:|Purific\.:|5\x27-?Mod\.:|3\x27-?Mod\.:)$/i.test(t)) continue;
+        }
+
         values.push(t);
+        started = true;
     }
 
     const map = {};
@@ -218,8 +264,7 @@ function parseSynthesisVertical(blockLines) {
             [/^Purific\.?\b/i,          "purification"],
             [/^5'-Mod\.?\s*:?$/i,       "mod5"],
             [/^3'-Mod\.?\s*:?$/i,       "mod3"],
-            [/^Delivery\s*state\b/i,    "delivery_state"]
-        ],
+                    ],
         /^(Int\.\s*Mod\.|Length\b|MW\s*Calc\.|MW\s*Found|Tm\b|GC\s*Content|Ext\.?Coeff\.?|Yield\b|Aliquots\b|Product\b)\b/i
     );
     return {
@@ -227,7 +272,6 @@ function parseSynthesisVertical(blockLines) {
         purification:   sec.map.purification   || null,
         mod5:           sec.map.mod5           || null,
         mod3:           sec.map.mod3           || null,
-        delivery_state: sec.map.delivery_state || null
     };
 }
 
@@ -244,8 +288,10 @@ function parseQCVertical(blockLines) {
             [/^Ext\.?\s*Coeff\.?/i, "ext_coeff"],
             [/^Yield\b/i,           "yield"]
         ],
-        /^(Vol\.f\.100pmol|Conc\.|Dissolved|Product|Aliquots\b)\b/i
+        /^(Vol\.f\.100pmol|Conc\.?|Dissolved|Product|Aliquots)/i
     );
+
+
 
     const firstNum = (x) => {
         if (!x) return null;
@@ -270,6 +316,9 @@ function parseQCVertical(blockLines) {
         Tm:             tmFmt(sec.map.tm),
         GC_content:     gcFmt(sec.map.gc_content),
         Ext_Coeff:      extFmt(sec.map.ext_coeff),
+        Yield_OD:       firstNum(sec.values[6]),
+        Yield_nmol:     firstNum(sec.values[7]),
+        Yield_ug:       firstNum(sec.values[8]),
         _yield_label_seen: sec.keys.indexOf("yield") >= 0
     };
 }
@@ -292,22 +341,81 @@ function parseYield(blockLines) {
         const od   = window.find(v => /\bOD\b/i.test(v))   || null;
         const nmol = window.find(v => /\bnmol\b/i.test(v)) || null;
         const ug   = window.find(v => /μg|\bug\b/i.test(v)) || null;
-        return { OD: firstNum(od), nmol: firstNum(nmol), "μg": firstNum(ug) };
+        return { OD: firstNum(od), nmol: firstNum(nmol), ug: firstNum(ug) };
     }
-    return { OD: null, nmol: null, "μg": null };
+    return { OD: null, nmol: null, ug: null };
 }
 
-function parseAliquots(blockLines) {
+function parseAliquotsLookback(lookbackText) {
     const out = [];
-    for (let i = 0; i < blockLines.length; i++) {
-        if (!/^Aliquots\b/i.test(blockLines[i])) continue;
-        for (let j = i + 1; j < Math.min(blockLines.length, i + 60); j++) {
-            const t = blockLines[j];
-            const mm = t.match(/^\s*(\d+)\s*\.\s*.*?OD\s*:\s*([0-9]+(?:[.,][0-9]+)?)\s*,?\s*nmol\s*:\s*([0-9]+(?:[.,][0-9]+)?)\s*,?\s*(?:μg|ug)\s*:\s*([0-9]+(?:[.,][0-9]+)?)\s*\.?\s*$/i);
-            if (!mm) continue;
-            out.push({ index: parseInt(mm[1], 10), OD: mm[2], nmol: mm[3], "μg": mm[4] });
-        }
-        break;
+    const t0 = String(lookbackText || "").replace(/\u00B5/g, "u");
+    const lower = t0.toLowerCase();
+
+    // In Biomers PDFs, the aliquots paragraph for an oligo is typically BEFORE the header.
+    // Therefore we take the LAST occurrence of "Aliquots" in the lookback window.
+    const posA = lower.lastIndexOf("aliquots");
+    if (posA < 0) return out;
+
+    let joined = t0.slice(posA);
+
+    // Keep only the aliquots paragraph, stop if the footer appears.
+    const posP = joined.toLowerCase().indexOf("product for research use only");
+    if (posP >= 0) joined = joined.slice(0, posP);
+
+    // Pure extraction: capture aliquot index and nmol
+    const re = /(\d+)\s*:\s*[\s\S]*?\(\s*([0-9]+(?:[\.,][0-9]+)?)\s*nmol\b/gi;
+    let m;
+    while ((m = re.exec(joined)) !== null) {
+        out.push({ index: parseInt(m[1], 10), nmol: m[2] });
+    }
+    return out;
+}
+
+
+function parseNameFromAliquotsLookback(lookbackText) {
+    const t0 = String(lookbackText || "").replace(/\u00B5/g, "u");
+    const lower = t0.toLowerCase();
+    const posA = lower.lastIndexOf("aliquots");
+    if (posA < 0) return null;
+
+    let chunk = t0.slice(posA);
+    const posP = chunk.toLowerCase().indexOf("product for research use only");
+    if (posP >= 0) chunk = chunk.slice(0, posP);
+
+    // Pure copy: take the trailing printed name after the aliquots list.
+    chunk = chunk.replace(/\s+/g, " ").trim();
+
+    let tail = chunk;
+    const i1 = tail.lastIndexOf(")");
+    const i2 = tail.lastIndexOf(";");
+    const cut = Math.max(i1, i2);
+    if (cut >= 0) tail = tail.slice(cut + 1);
+
+    tail = tail.replace(/^\s*[:;,-]?\s*/, "").trim();
+    if (!tail) return null;
+    if (/^aliquots\b/i.test(tail)) return null;
+
+    return tail;
+}
+
+function parseAliquots(blockLines, canonical_id) {
+    const out = [];
+    const joinedAll = (blockLines || []).join(" ");
+    const lower = joinedAll.toLowerCase();
+    const anchor = String(canonical_id || "").toLowerCase();
+    const posH = anchor ? lower.indexOf(anchor) : -1;
+    const posA = lower.indexOf("aliquots", posH >= 0 ? posH : 0);
+    let joined = posA >= 0 ? joinedAll.slice(posA) : joinedAll;
+    if (posA >= 0) {
+        const posP = lower.indexOf("product for research use only", posA);
+        if (posP > posA) joined = joinedAll.slice(posA, posP);
+    }
+    // Minimal robust parse: capture aliquot index and nmol from inline text.
+    // Example: "... 1: 16,65 OD (122,4nmol; ...); 2: 16,65 OD (122,4nmol; ...)"
+    const re = /(\d+)\s*:\s*[\s\S]*?\(\s*([0-9]+(?:[\.,][0-9]+)?)\s*nmol\b/gi;
+    let m;
+    while ((m = re.exec(joined)) !== null) {
+        out.push({ index: parseInt(m[1], 10), nmol: m[2] });
     }
     return out;
 }
@@ -413,8 +521,19 @@ async function parseBiomersPdf(pdfBuffer) {
     // Best-effort: order + PO
     let order_no = null;
     let po_no    = null;
-    const mOrder = text.match(/\bOrder\s*No\.?\s*[:#]?\s*([0-9]{6,})\b/i);
-    if (mOrder) order_no = mOrder[1];
+    // Order number can appear on the same line or on a later line.
+    let mOrder = text.match(/\bOrder\s*No\.?\s*[:#]?\s*([0-9]{6,})\b/i);
+    if (mOrder) {
+        order_no = mOrder[1];
+    } else {
+        mOrder = text.match(/\bOrder\s*No\.?\s*:\s*\n\s*([0-9]{6,})\b/i);
+        if (mOrder) order_no = mOrder[1];
+    }
+
+    if (!order_no) {
+        const mFooter = text.match(/\bOrder\s+([0-9]{6,})\b\s+Page\s+\d+\b/i);
+        if (mFooter) order_no = mFooter[1];
+    }
 
     const mPO = text.match(/\bP\.?O\.?\s*No\.?\s*[:#]?\s*([A-Za-z0-9\-_\/]+)\b/i);
     if (mPO) po_no = mPO[1];
@@ -473,12 +592,19 @@ async function parseBiomersPdf(pdfBuffer) {
 
         const requires_pi_confirmation = warnings.length > 0;
 
-        const blockLines = (block || "").split(/\r?\n/).map(l => (l || "").trim()).filter(l => l.length > 0);
+        const blockLines = (block || "")
+            .split(/\r?\n/)
+            .map(l => (l || "").replace(/\u00B5/g, "u").trim())
+            .filter(l => l.length > 0);
 
         const syn = parseSynthesisVertical(blockLines);
         const qcR = parseQCVertical(blockLines);
-        const yld = parseYield(blockLines);
-        const ali = parseAliquots(blockLines);
+        const yld = { OD: qcR.Yield_OD, nmol: qcR.Yield_nmol, ug: qcR.Yield_ug };
+        const lookbackStart = Math.max(0, start - 8000);
+        const lookbackText  = text.slice(lookbackStart, start);
+        const name_from_pdf = parseNameFromAliquotsLookback(lookbackText);
+        const aliLookback   = parseAliquotsLookback(lookbackText);
+        const ali           = (aliLookback && aliLookback.length > 0) ? aliLookback : parseAliquots(blockLines, canonical_id);
 
         const normMod = (x) => {
             if (!x) return null;
@@ -492,8 +618,14 @@ async function parseBiomersPdf(pdfBuffer) {
         const mod5 = normMod(syn.mod5);
         const mod3 = normMod(syn.mod3);
 
-        const synNoMatch  = block.match(/Synthesis\s*Oligo#\s*:?\s*([0-9]+)/i);
-        const syn_oligo_no = synNoMatch ? synNoMatch[1] : null;
+        // In this Biomers certificate layout, the synthesis oligo number is a standalone numeric line
+        // immediately after the header line (00304503_1 DNA) and name line.
+        let syn_oligo_no = null;
+        for (let k = 0; k < Math.min(blockLines.length, 12); k++) {
+            const t = blockLines[k];
+            const mm = t.match(/^\s*([0-9]{6,})\s*$/);
+            if (mm) { syn_oligo_no = mm[1]; break; }
+        }
 
         const internal_mods = cleanIntMods(int_mod_map);
 
@@ -502,8 +634,7 @@ async function parseBiomersPdf(pdfBuffer) {
 
         items.push({
             ID_INFO: {
-                Name:            deriveName(mod5, mod3, reported_polymer_type || null),
-                "Order#":        canonical_id,
+                Name:            (name_from_pdf ? name_from_pdf : deriveName(mod5, mod3, reported_polymer_type || null)),                "Order#":        canonical_id,
                 Type:            reported_polymer_type || null,
                 "SynthesisOligo#": syn_oligo_no
             },
