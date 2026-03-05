@@ -12951,6 +12951,7 @@ app.post("/api/oligo/excel-upload", requirePI, oligoExcelUpload.single("file"), 
 
                 // Compute probe identity hash
                 const identityHash = oligoComputeIdentityHash(sequence, mod5s, mod3s, modi5, modi6, modi7, modi8);
+                const chemCode = "IDH_" + String(identityHash).slice(0,8);
 
                 // Upsert probe_catalog by identity_hash (excel source uses identity_hash, not canonical_id uniqueness)
                 let probeId;
@@ -12971,12 +12972,12 @@ app.post("/api/oligo/excel-upload", requirePI, oligoExcelUpload.single("file"), 
                             (canonical_id, display_name, sequence, sequence_norm, length_nt,
                              mod5, mod3, mod_int_5, mod_int_6, mod_int_7, mod_int_8,
                              identity_hash, chemistry_code, oligo_kind, status, created_by)
-                         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'STD','OLIGO','ACTIVE',$13)
+                         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'OLIGO','ACTIVE',$14)
                          ON CONFLICT (identity_hash) WHERE identity_hash IS NOT NULL DO NOTHING
                          RETURNING id`,
                         [canonicalId, canonicalId, sequence, seqNorm, lengthNt,
                          mod5s, mod3s, modi5, modi6, modi7, modi8,
-                         identityHash, actor]
+                         identityHash, chemCode, actor]
                     );
                     if (insertProbe.rows.length > 0) {
                         probeId = insertProbe.rows[0].id;
