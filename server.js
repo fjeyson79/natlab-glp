@@ -12887,6 +12887,7 @@ app.post("/api/oligo/excel-upload", requirePI, oligoExcelUpload.single("file"), 
         // SHA256 dedup guard
         const crypto = require('crypto');
         const file_sha256 = crypto.createHash('sha256').update(req.file.buffer).digest('hex');
+        const _db = (process.env.DATABASE_URL || ""); const _host = (_db.includes("@")==true ? _db.split("@")[1].split("/")[0] : "unknown"); console.log("[OLIGO-EXCEL]", "bytes=", (req.file && req.file.buffer ? req.file.buffer.length : 0), "sha256=", file_sha256, "dbhost=", _host);
         const dupCheck = await pool.query(
             `SELECT id, file_name FROM oligo_data_sources WHERE file_sha256 = $1 LIMIT 1`,
             [file_sha256]
