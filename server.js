@@ -12846,7 +12846,7 @@ function oligoNormalizeExcelRow(raw) {
     const oligoNo    = String(get(['CHARGENO', 'CHARGE_NO', 'OLIGONO', 'OLIGO_NO', 'OLIGO NO']) || '').trim();
     const oligoName  = String(get(['OLIGONAME', 'OLIGO_NAME', 'OLIGO NAME', 'NAME']) || '').trim();
     const seqRaw     = String(get(['SEQUENCE', 'SEQ']) || '').trim();
-    const sequence   = seqRaw.replace(/\s+/g, '').toUpperCase().replace(/[^ACGTUN]/g, '');
+    const sequence   = seqRaw.replace(/\s+/g, '').trim();
     const mod5s      = oligoNormMod(get(['MOD5S', 'MOD5']));
     const mod3s      = oligoNormMod(get(['MOD3S', 'MOD3']));
     const modi5      = oligoNormMod(get(['MODI5']));
