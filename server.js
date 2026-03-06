@@ -13370,7 +13370,7 @@ app.get("/api/oligo/oligos", requirePI, async (req, res) => {
             LEFT JOIN probe_libraries pl ON pl.id = plm.library_id
             LEFT JOIN probe_syntheses ps ON ps.probe_id = pc.id
             GROUP BY pc.id
-            ORDER BY pc.display_name NULLS LAST, pc.created_at DESC
+            ORDER BY pc.created_at ASC, pc.id ASC
             LIMIT 2000
         `);
         res.json({ oligos: result.rows });

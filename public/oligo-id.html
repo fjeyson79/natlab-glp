@@ -381,6 +381,8 @@ const S = {
     searchQ: '',
     filterStatus: '',
     filterLib: '',
+    currentOligo: null,
+    selectedBatchIdx: 0,
 };
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
@@ -517,24 +519,24 @@ function regFilter() {
     let items = S.registryList;
     if (q) items = items.filter(o =>
         (o.display_name||'').toLowerCase().includes(q) ||
-        (o.canonical_id||'').toLowerCase().includes(q) ||
-        (o.sequence_norm||'').includes(q)
+        (o.sequence_norm||'').toLowerCase().includes(q)
     );
     if (st) items = items.filter(o => o.status === st);
     const list = document.getElementById('reg-list');
     if (!list) return;
     if (!items.length) { list.innerHTML = `<div class="empty-list">No oligonucleotides found</div>`; return; }
-    list.innerHTML = items.map(o => `
+    list.innerHTML = items.map(o => {
+        const seqPreview = (o.sequence_norm||'').substring(0, 32) + ((o.sequence_norm||'').length > 32 ? '…' : '');
+        const batchCount = o.synthesis_count || 0;
+        return `
         <div class="list-item${o.id === S.selectedOligoId ? ' selected' : ''}" onclick="selectOligo('${o.id}')">
-            <div class="list-item-name">${esc(o.display_name || o.canonical_id)}</div>
-            <div class="list-item-sub text-mono">${esc((o.sequence_norm||'').substring(0,32))}${(o.sequence_norm||'').length>32?'…':''}</div>
+            <div class="list-item-name">${esc(o.display_name || '—')}</div>
+            <div class="list-item-sub text-mono">${esc(seqPreview)}</div>
             <div class="list-item-meta">
-                <span class="tag ${statusColor(o.status)}">${o.status||'DRAFT'}</span>
-                ${o.library_names ? `<span class="tag">${esc(o.library_names)}</span>` : ''}
-                ${(o.synthesis_count||0) > 0 ? `<span class="tag gray">${o.synthesis_count} batch${o.synthesis_count>1?'es':''}</span>` : ''}
+                ${batchCount > 0 ? `<span class="tag gray">${batchCount} batch${batchCount > 1 ? 'es' : ''}</span>` : ''}
             </div>
-        </div>
-    `).join('');
+        </div>`;
+    }).join('');
 }
 
 function statusColor(s) {
@@ -549,106 +551,157 @@ async function selectOligo(id) {
     showDetail('Loading…', '', '<div style="padding:20px;"><div class="spinner"></div></div>', null);
     try {
         const data = await api('GET', `/api/oligo/oligos/${id}`);
-        renderOligoDetail(data.oligo);
+        // Merge related arrays into the oligo object for convenience
+        const o = data.oligo;
+        o.syntheses = data.syntheses || [];
+        o.libraries = data.libraries || [];
+        o.identity_docs = data.identity_docs || [];
+        renderOligoDetail(o);
     } catch (e) {
         showDetail('Error', '', `<div class="alert alert-error">${esc(e.message)}</div>`, null);
     }
 }
 
 function renderOligoDetail(o) {
-    const seqDisplay = o.sequence_norm ? `<div class="sequence-block">${esc(o.sequence_norm)}</div>` : '<span class="text-muted">—</span>';
-
-    const viewHtml = `
-        <div id="oligo-view-alert"></div>
-        <div class="section">
-            <div class="section-title">Identity</div>
-            <table class="kv-table">
-                <tr><td>Name</td><td><strong>${esc(o.display_name||'—')}</strong></td></tr>
-                <tr><td>Canonical ID</td><td>
-                    <span class="text-mono">${esc(o.canonical_id||'—')}</span>
-                    ${o.canonical_id ? `<button class="copy-btn" onclick="copyText('${esc(o.canonical_id)}')">copy</button>` : ''}
-                </td></tr>
-                <tr><td>Status</td><td><span class="tag ${statusColor(o.status)}">${o.status||'DRAFT'}</span></td></tr>
-                <tr><td>Chemistry code</td><td class="text-mono">${esc(o.chemistry_code||'—')}</td></tr>
-                <tr><td>Identity hash</td><td class="text-mono" style="font-size:11px;">${esc((o.identity_hash||'').substring(0,20))}…</td></tr>
-                <tr><td>Added</td><td>${fmtDate(o.created_at)}</td></tr>
-                ${o.notes ? `<tr><td>Notes</td><td>${esc(o.notes)}</td></tr>` : ''}
-            </table>
-        </div>
-
-        <div class="section">
-            <div class="section-title">Sequence (5'→3')</div>
-            ${seqDisplay}
-            <div style="margin-top:8px;font-size:11px;color:#6b7280;">${(o.sequence_norm||'').length} nt</div>
-        </div>
-
-        <div class="section">
-            <div class="section-title">Modifications</div>
-            <div class="mod-grid">
-                <div class="mod-cell"><div class="mod-cell-label">5' mod</div><div class="mod-cell-value ${!o.mod5||o.mod5==='-'?'none':''}">${o.mod5&&o.mod5!=='-'?esc(o.mod5):'none'}</div></div>
-                <div class="mod-cell"><div class="mod-cell-label">3' mod</div><div class="mod-cell-value ${!o.mod3||o.mod3==='-'?'none':''}">${o.mod3&&o.mod3!=='-'?esc(o.mod3):'none'}</div></div>
-                <div class="mod-cell"><div class="mod-cell-label">Int 5</div><div class="mod-cell-value ${!o.mod_int_5||o.mod_int_5==='-'?'none':''}">${o.mod_int_5&&o.mod_int_5!=='-'?esc(o.mod_int_5):'none'}</div></div>
-                <div class="mod-cell"><div class="mod-cell-label">Int 6</div><div class="mod-cell-value ${!o.mod_int_6||o.mod_int_6==='-'?'none':''}">${o.mod_int_6&&o.mod_int_6!=='-'?esc(o.mod_int_6):'none'}</div></div>
-                <div class="mod-cell"><div class="mod-cell-label">Int 7</div><div class="mod-cell-value ${!o.mod_int_7||o.mod_int_7==='-'?'none':''}">${o.mod_int_7&&o.mod_int_7!=='-'?esc(o.mod_int_7):'none'}</div></div>
-                <div class="mod-cell"><div class="mod-cell-label">Int 8</div><div class="mod-cell-value ${!o.mod_int_8||o.mod_int_8==='-'?'none':''}">${o.mod_int_8&&o.mod_int_8!=='-'?esc(o.mod_int_8):'none'}</div></div>
-            </div>
-        </div>
-
-        ${(o.libraries||[]).length ? `
-        <div class="section">
-            <div class="section-title">Library Memberships</div>
-            <table class="data-table">
-                <thead><tr><th>Library</th><th>Members</th></tr></thead>
-                <tbody>${(o.libraries||[]).map(l => `<tr><td>${esc(l.name)}</td><td>${l.member_count||'—'}</td></tr>`).join('')}</tbody>
-            </table>
-        </div>
-        ` : ''}
-
-        ${(o.syntheses||[]).length ? `
-        <div class="section">
-            <div class="section-title">Synthesis Batches</div>
-            <table class="data-table">
-                <thead><tr><th>Supplier</th><th>Order #</th><th>Oligo #</th><th>Date</th><th>Amount (nmol)</th><th>MW</th><th>Status</th></tr></thead>
-                <tbody>${(o.syntheses||[]).map(s => `
-                    <tr>
-                        <td>${esc(s.supplier||'—')}</td>
-                        <td class="text-mono">${esc(s.order_number||'—')}</td>
-                        <td class="text-mono">${esc(s.oligo_number||'—')}</td>
-                        <td>${fmtDate(s.synthesis_date)}</td>
-                        <td>${s.amount_nmol!=null?s.amount_nmol:'—'}</td>
-                        <td>${s.mw_value!=null?s.mw_value:'—'}</td>
-                        <td><span class="tag ${s.excel_status==='ACTIVE'?'green':s.excel_status==='DISCARDED'?'red':'gray'}">${esc(s.excel_status||'—')}</span></td>
-                    </tr>
-                `).join('')}</tbody>
-            </table>
-        </div>
-        ` : '<div class="section"><div class="section-title">Synthesis Batches</div><p class="text-muted" style="font-size:13px;">No synthesis batches recorded.</p></div>'}
-
-        ${(o.identity_docs||[]).length ? `
-        <div class="section">
-            <div class="section-title">Attached Documents</div>
-            <table class="data-table">
-                <thead><tr><th>Filename</th><th>Uploaded</th><th></th></tr></thead>
-                <tbody>${(o.identity_docs||[]).map(d => `
-                    <tr>
-                        <td>${esc(d.original_filename)}</td>
-                        <td>${fmtDate(d.uploaded_at)}</td>
-                        <td><button class="btn btn-secondary btn-sm" onclick="downloadDoc('${d.id}')">Download</button></td>
-                    </tr>
-                `).join('')}</tbody>
-            </table>
-        </div>
-        ` : ''}
-    `;
-
-    const actionsHtml = buildOligoActionsHtml(o);
-
+    S.currentOligo = o;
+    S.selectedBatchIdx = 0;
+    const batchCount = (o.syntheses || []).length;
+    const subtitle = batchCount > 0 ? `${batchCount} batch${batchCount > 1 ? 'es' : ''}` : 'No batches';
     showDetail(
-        o.display_name || o.canonical_id || 'Oligonucleotide',
-        o.canonical_id || '',
-        viewHtml,
-        actionsHtml
+        o.display_name || '—',
+        subtitle,
+        _buildOligoViewHtml(),
+        buildOligoActionsHtml(o)
     );
+}
+
+function selectBatch(idx) {
+    S.selectedBatchIdx = parseInt(idx, 10);
+    const pane = document.getElementById('detail-view-pane');
+    if (pane) pane.innerHTML = _buildOligoViewHtml();
+}
+
+function copyOligoSequence() {
+    copyText(S.currentOligo?.sequence_norm || '');
+}
+
+function _buildOligoViewHtml() {
+    const o = S.currentOligo;
+    const syntheses = o.syntheses || [];
+    const synth = syntheses[S.selectedBatchIdx] || null;
+
+    // Batch selector (only when multiple batches)
+    let batchSelectorHtml = '';
+    if (syntheses.length > 1) {
+        const options = syntheses.map((s, i) =>
+            `<option value="${i}"${i === S.selectedBatchIdx ? ' selected' : ''}>${esc(s.order_number || '—')} / ${esc(s.oligo_number || '—')}${s.synthesis_date ? ' (' + fmtDate(s.synthesis_date) + ')' : ''}</option>`
+        ).join('');
+        batchSelectorHtml = `
+        <div class="section">
+            <div class="section-title">Batch</div>
+            <select class="filter-select" style="width:100%;" onchange="selectBatch(this.value)">${options}</select>
+        </div>`;
+    }
+
+    // Aliquots display
+    let aliquotsHtml = '<p class="text-muted" style="font-size:12px;padding:4px 0;">—</p>';
+    if (synth?.aliquots_text) {
+        try {
+            const arr = JSON.parse(synth.aliquots_text);
+            if (Array.isArray(arr) && arr.length) {
+                aliquotsHtml = `<table class="data-table">
+                    <thead><tr><th>index</th><th>nmol</th></tr></thead>
+                    <tbody>${arr.map((a, i) => `<tr><td>${a.index != null ? a.index : (i + 1)}</td><td>${a.nmol != null ? a.nmol : (a.amount != null ? a.amount : '—')}</td></tr>`).join('')}</tbody>
+                </table>`;
+            } else {
+                aliquotsHtml = `<pre style="font-size:11px;color:#9ca3af;white-space:pre-wrap;">${esc(synth.aliquots_text)}</pre>`;
+            }
+        } catch (_) {
+            aliquotsHtml = `<pre style="font-size:11px;color:#9ca3af;white-space:pre-wrap;">${esc(synth.aliquots_text)}</pre>`;
+        }
+    }
+
+    return `
+        <div id="oligo-view-alert"></div>
+        ${batchSelectorHtml}
+
+        <div class="section">
+            <div class="section-title">ID_INFO</div>
+            <table class="kv-table">
+                <tr><td>Name</td><td><strong>${esc(o.display_name || '—')}</strong></td></tr>
+                <tr><td>Order#</td><td class="text-mono">${esc(synth?.order_number || '—')}</td></tr>
+                <tr><td>Type</td><td>${esc(o.oligo_kind || 'OLIGO')}</td></tr>
+                <tr><td>SynthesisOligo#</td><td class="text-mono">${esc(synth?.oligo_number || '—')}</td></tr>
+            </table>
+        </div>
+
+        <div class="section">
+            <div class="section-title">SEQUENCE_INFO</div>
+            <table class="kv-table">
+                <tr>
+                    <td>sequence_5to3</td>
+                    <td>
+                        <div style="display:flex;align-items:flex-start;gap:8px;">
+                            <div class="sequence-block" style="flex:1;">${esc(o.sequence_norm || '—')}</div>
+                            ${o.sequence_norm ? `<button class="copy-btn" onclick="copyOligoSequence()" title="Copy sequence">copy</button>` : ''}
+                        </div>
+                    </td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="section">
+            <div class="section-title">SYNTHESIS_INFO</div>
+            <table class="kv-table">
+                <tr><td>Scale</td><td>—</td></tr>
+                <tr><td>Purification</td><td>—</td></tr>
+            </table>
+        </div>
+
+        <div class="section">
+            <div class="section-title">SYNTHESIS_MODIFICATIONS_ENDS</div>
+            <table class="kv-table">
+                <tr><td>5_mod</td><td class="text-mono">${fmtMod(o.mod5)}</td></tr>
+                <tr><td>3_mod</td><td class="text-mono">${fmtMod(o.mod3)}</td></tr>
+            </table>
+        </div>
+
+        <div class="section">
+            <div class="section-title">SYNTHESIS_MODIFICATIONS_INTERNAL</div>
+            <table class="kv-table">
+                <tr><td>5</td><td class="text-mono">${fmtMod(o.mod_int_5)}</td></tr>
+                <tr><td>6</td><td class="text-mono">${fmtMod(o.mod_int_6)}</td></tr>
+                <tr><td>7</td><td class="text-mono">${fmtMod(o.mod_int_7)}</td></tr>
+                <tr><td>8</td><td class="text-mono">${fmtMod(o.mod_int_8)}</td></tr>
+            </table>
+        </div>
+
+        <div class="section">
+            <div class="section-title">SYNTHESIS_REPORT</div>
+            <table class="kv-table">
+                <tr><td>Length</td><td>${o.length_nt != null ? o.length_nt : '—'}</td></tr>
+                <tr><td>MW_Calc</td><td>—</td></tr>
+                <tr><td>MW_Found</td><td>${synth?.mw_value != null ? synth.mw_value : '—'}</td></tr>
+                <tr><td>Tm</td><td>—</td></tr>
+                <tr><td>GC_content</td><td>—</td></tr>
+                <tr><td>Ext_Coeff</td><td>—</td></tr>
+            </table>
+        </div>
+
+        <div class="section">
+            <div class="section-title">SYNTHESIS_YIELD</div>
+            <table class="kv-table">
+                <tr><td>OD</td><td>—</td></tr>
+                <tr><td>nmol</td><td>${synth?.amount_nmol != null ? synth.amount_nmol : '—'}</td></tr>
+                <tr><td>ug</td><td>—</td></tr>
+            </table>
+        </div>
+
+        <div class="section">
+            <div class="section-title">ALIQUOTS</div>
+            ${aliquotsHtml}
+        </div>
+    `;
 }
 
 function buildOligoActionsHtml(o) {
