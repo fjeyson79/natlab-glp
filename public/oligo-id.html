@@ -517,17 +517,31 @@ function regFilter() {
     const q = (document.getElementById('reg-search')?.value || '').toLowerCase();
     const st = document.getElementById('reg-status')?.value || '';
     let items = S.registryList;
-    if (q) items = items.filter(o =>
-        (o.display_name||'').toLowerCase().includes(q) ||
-        (o.sequence_norm||'').toLowerCase().includes(q)
-    );
+    if (q) items = items.filter(o => {
+        const synths = Array.isArray(o.syntheses) ? o.syntheses : [];
+        const synthHay = synths.map(s =>
+            [
+                s.order_number || '',
+                s.oligo_number || '',
+                s.synthesis_oligo_no || '',
+                s.supplier || ''
+            ].join(' ')
+        ).join(' ');
+        const hay = [
+            o.display_name || '',
+            o.canonical_id || '',
+            o.sequence_norm || '',
+            synthHay
+        ].join(' ').toLowerCase();
+        return hay.includes(q);
+    });
     if (st) items = items.filter(o => o.status === st);
     const list = document.getElementById('reg-list');
     if (!list) return;
     if (!items.length) { list.innerHTML = `<div class="empty-list">No oligonucleotides found</div>`; return; }
     list.innerHTML = items.map(o => {
         const seqPreview = (o.sequence_norm||'').substring(0, 32) + ((o.sequence_norm||'').length > 32 ? '…' : '');
-        const batchCount = o.synthesis_count || 0;
+        const batchCount = o.synthesis_count || (Array.isArray(o.syntheses) ? o.syntheses.length : 0);
         return `
         <div class="list-item${o.id === S.selectedOligoId ? ' selected' : ''}" onclick="selectOligo('${o.id}')">
             <div class="list-item-name">${esc(o.display_name || '—')}</div>
@@ -564,14 +578,25 @@ async function selectOligo(id) {
 
 function renderOligoDetail(o) {
     S.currentOligo = o;
+    S.currentOligo.syntheses = (o.syntheses || []).slice().sort((a, b) => {
+        const da = a?.synthesis_date ? String(a.synthesis_date) : '';
+        const db = b?.synthesis_date ? String(b.synthesis_date) : '';
+        if (da !== db) return db.localeCompare(da);
+        const oa = a?.oligo_number ? String(a.oligo_number) : '';
+        const ob = b?.oligo_number ? String(b.oligo_number) : '';
+        if (oa !== ob) return ob.localeCompare(oa, undefined, { numeric: true, sensitivity: 'base' });
+        const sa = a?.synthesis_oligo_no ? String(a.synthesis_oligo_no) : '';
+        const sb = b?.synthesis_oligo_no ? String(b.synthesis_oligo_no) : '';
+        return sb.localeCompare(sa, undefined, { numeric: true, sensitivity: 'base' });
+    });
     S.selectedBatchIdx = 0;
-    const batchCount = (o.syntheses || []).length;
+    const batchCount = (S.currentOligo.syntheses || []).length;
     const subtitle = batchCount > 0 ? `${batchCount} batch${batchCount > 1 ? 'es' : ''}` : 'No batches';
     showDetail(
         o.display_name || '—',
         subtitle,
         _buildOligoViewHtml(),
-        buildOligoActionsHtml(o)
+        buildOligoActionsHtml(S.currentOligo)
     );
 }
 
@@ -635,8 +660,8 @@ function _buildOligoViewHtml() {
         <div class="section">
             <div class="section-title">SYNTHESIS_INFO</div>
             <table class="kv-table">
-                <tr><td>Scale</td><td>—</td></tr>
-                <tr><td>Purification</td><td>—</td></tr>
+                <tr><td>Scale</td><td>${synth?.scale != null && synth?.scale !== '' ? esc(synth.scale) : '—'}</td></tr>
+                <tr><td>Purification</td><td>${synth?.purification != null && synth?.purification !== '' ? esc(synth.purification) : '—'}</td></tr>
             </table>
         </div>
 
@@ -673,9 +698,9 @@ function _buildOligoViewHtml() {
         <div class="section">
             <div class="section-title">SYNTHESIS_YIELD</div>
             <table class="kv-table">
-                <tr><td>OD</td><td>—</td></tr>
+                <tr><td>OD</td><td>${synth?.od_value != null ? synth.od_value : '—'}</td></tr>
                 <tr><td>nmol</td><td>${synth?.amount_nmol != null ? synth.amount_nmol : '—'}</td></tr>
-                <tr><td>ug</td><td>—</td></tr>
+                <tr><td>ug</td><td>${synth?.amount_ug != null ? synth.amount_ug : '—'}</td></tr>
             </table>
         </div>
 
