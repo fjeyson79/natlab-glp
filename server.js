@@ -12429,6 +12429,7 @@ app.post("/api/oligo/import-master", requirePI, oligoCsvUpload.single("file"), a
             }
 
             rows.push({
+                row_index: i + 1,
                 canonical_id: cid,
                 display_name: dname || null,
                 sequence: sequence,
@@ -12940,8 +12941,21 @@ app.post("/api/oligo/excel-upload", requirePI, oligoExcelUpload.single("file"), 
 
         // Library detection: orders with ≥12 rows are library candidates
         const orderCounts = {};
-        for (const r of rows) { orderCounts[r.orderNo] = (orderCounts[r.orderNo] || 0) + 1; }
-        const libraryCandidates = Object.entries(orderCounts).filter(([, n]) => n >= 12).map(([o]) => o);
+        const orderGroups = {};
+
+        for (const r of rows) {
+            orderCounts[r.orderNo] = (orderCounts[r.orderNo] || 0) + 1;
+
+            if (!orderGroups[r.orderNo]) orderGroups[r.orderNo] = [];
+            orderGroups[r.orderNo].push({ probe_id: r.probe_id });
+        }
+        const libraryCandidates = Object.entries(orderGroups || {})
+            .filter(([, items]) => items.length >= 12)
+            .map(([order_number, items]) => ({
+                order_number,
+                count: items.length,
+                probe_ids: items.map(i => i.probe_id)
+            }));
 
         const client = await pool.connect();
         let committed = false;
