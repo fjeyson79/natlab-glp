@@ -1101,7 +1101,7 @@ async function handleExcelUpload() {
 
 async function createLibFromOrder(orderNumber, supplier) {
     try {
-        const data = await api('POST', '/api/oligo/libraries/from-order', { order_number: orderNumber, supplier, name: `${orderNumber} Library` });
+        const data = await api('POST', '/api/oligo/libraries/from-order', { order_number: orderNumber, supplier, library_name: `${orderNumber} Library` });
         showAlert('src-upload-alert', 'success', `Library created with ${data.added||0} members.`);
     } catch (e) {
         showAlert('src-upload-alert', 'error', e.message);
