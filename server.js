@@ -12977,7 +12977,8 @@ app.post("/api/oligo/excel-upload", requirePI, oligoExcelUpload.single("file"), 
             dataSourceId = dsResult.rows[0].id;
 
             // Process each row
-            for (const row of rows) {
+            for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
+                const row = rows[rowIdx];
                 const { orderNo, oligoNo, oligoName, sequence, mod5s, mod3s, modi5, modi6, modi7, modi8, scale, purification, odValue, mw, amountNmol, amountUg, createDate } = row;
 
                 const seqNorm    = sequence.toLowerCase();
@@ -13041,11 +13042,11 @@ app.post("/api/oligo/excel-upload", requirePI, oligoExcelUpload.single("file"), 
                         `INSERT INTO probe_syntheses
                             (probe_id, supplier, order_number, oligo_number, synthesis_date,
                              scale, purification, od_value, amount_nmol, amount_ug, mw_value,
-                             source_file_id, excel_status, certificate_status, review_status, created_by)
-                         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'active','none','PENDING',$13)`,
+                             source_file_id, excel_status, certificate_status, review_status, created_by, import_row_index)
+                         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'active','none','PENDING',$13,$14)`,
                         [probeId, supplier, orderNo, oligoNo,
                          createDate ? createDate.toISOString().split('T')[0] : null,
-                         scale || null, purification || null, odValue, amountNmol, amountUg, mw, dataSourceId, actor]
+                         scale || null, purification || null, odValue, amountNmol, amountUg, mw, dataSourceId, actor, rowIdx]
                     );
                     insertedSynths++;
                 } catch (synthErr) {
@@ -13323,7 +13324,7 @@ app.get("/api/oligo/registry", requirePI, async (req, res) => {
             LEFT JOIN probe_syntheses ps ON ps.probe_id = pc.id
             LEFT JOIN probe_synthesis_tubes pst ON pst.synthesis_id = ps.id
             GROUP BY pc.id, ld.name
-            ORDER BY pc.created_at DESC
+            ORDER BY MIN(ps.import_row_index) NULLS LAST, MIN(ps.created_at) ASC
             LIMIT 1000
         `);
         res.json({ probes: result.rows });
@@ -13782,7 +13783,9 @@ app.post("/api/oligo/libraries/from-order", requirePI, async (req, res) => {
 
             const oligosR = await client.query(
                 `SELECT DISTINCT ps.probe_id FROM probe_syntheses ps
-                 WHERE ps.order_number=$1 AND ps.supplier=$2 AND ps.probe_id IS NOT NULL`,
+                 WHERE ps.order_number=$1 AND ps.supplier=$2
+                   AND ps.probe_id IS NOT NULL
+                   AND (ps.excel_status IS NULL OR ps.excel_status = 'active')`,
                 [orderNumber, supplier]
             );
             for (const row of oligosR.rows) {

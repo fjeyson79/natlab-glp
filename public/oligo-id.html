@@ -1102,7 +1102,7 @@ async function handleExcelUpload() {
 async function createLibFromOrder(orderNumber, supplier) {
     try {
         const data = await api('POST', '/api/oligo/libraries/from-order', { order_number: orderNumber, supplier, library_name: `${orderNumber} Library` });
-        showAlert('src-upload-alert', 'success', `Library created with ${data.added||0} members.`);
+        showAlert('src-upload-alert', 'success', `Library created with ${data.members_added||0} members.`);
     } catch (e) {
         showAlert('src-upload-alert', 'error', e.message);
     }
@@ -1396,7 +1396,7 @@ async function selectLibrary(id) {
     showDetail('Loading…', '', '<div style="padding:20px;"><div class="spinner"></div></div>', null);
     try {
         const data = await api('GET', `/api/oligo/libraries/${id}`);
-        renderLibraryDetail(data.library);
+        renderLibraryDetail({ ...data.library, members: data.members });
     } catch (e) {
         showDetail('Error', '', `<div class="alert alert-error">${esc(e.message)}</div>`, null);
     }
@@ -1404,11 +1404,12 @@ async function selectLibrary(id) {
 
 function renderLibraryDetail(lib) {
     const members = lib.members || [];
+    const libName = lib.library_name || lib.name || '';
     const viewHtml = `
         <div class="section">
             <div class="section-title">Library Info</div>
             <table class="kv-table">
-                <tr><td>Name</td><td><strong>${esc(lib.name)}</strong></td></tr>
+                <tr><td>Name</td><td><strong>${esc(libName)}</strong></td></tr>
                 ${lib.description ? `<tr><td>Description</td><td>${esc(lib.description)}</td></tr>` : ''}
                 <tr><td>Members</td><td>${members.length}</td></tr>
                 <tr><td>Created</td><td>${fmtDate(lib.created_at)}</td></tr>
@@ -1454,11 +1455,11 @@ function renderLibraryDetail(lib) {
         <hr class="divider">
         <div class="section">
             <div class="section-title">Danger Zone</div>
-            <button class="btn btn-danger btn-sm" onclick="deleteLibrary('${lib.id}','${esc(lib.name)}')">Delete Library</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteLibrary('${lib.id}','${esc(libName)}')">Delete Library</button>
         </div>
     `;
 
-    showDetail(lib.name, `${members.length} members`, viewHtml, actionsHtml);
+    showDetail(libName, `${members.length} members`, viewHtml, actionsHtml);
 }
 
 function libOligoSearch() {

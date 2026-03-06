@@ -815,6 +815,8 @@ async function migrate() {
             // Synthesis batch editable fields for QC and aliquot notes
             `ALTER TABLE probe_syntheses ADD COLUMN IF NOT EXISTS qc_notes TEXT`,
             `ALTER TABLE probe_syntheses ADD COLUMN IF NOT EXISTS aliquots_text TEXT`,
+            // Source row position for stable registry ordering (preserves Excel upload order)
+            `ALTER TABLE probe_syntheses ADD COLUMN IF NOT EXISTS import_row_index INTEGER`,
 
         ];
 
