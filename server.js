@@ -12984,7 +12984,7 @@ app.post("/api/oligo/excel-upload", requirePI, oligoExcelUpload.single("file"), 
                     // Update display_name and oligo_kind if blank/default
                     await client.query(
                         `UPDATE probe_catalog
-                         SET display_name = CASE WHEN (display_name IS NULL OR display_name = canonical_id) AND $1 != '' THEN $1 ELSE display_name END,
+                         SET display_name = CASE WHEN (display_name IS NULL OR display_name = canonical_id OR display_name ~ '^EXL_') AND $1 != '' THEN $1 ELSE display_name END,
                              oligo_kind = CASE WHEN oligo_kind IS NULL OR oligo_kind = 'OLIGO' THEN $3 ELSE oligo_kind END
                          WHERE id = $2`,
                         [displayName, probeId, oligoKind]
