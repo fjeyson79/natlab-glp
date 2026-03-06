@@ -1057,13 +1057,13 @@ async function handleExcelUpload() {
         const d = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
 
-        const { imported=0, updated=0, skipped=0, library_candidates=[], warnings=[] } = d;
-        let html = `<div class="alert alert-success">Import complete — ${imported} new, ${updated} updated, ${skipped} skipped.</div>`;
+        const { probes_inserted=0, probes_reused=0, syntheses_inserted=0, duplicates_detected=0, library_candidates=[], warnings=[] } = d;
+        let html = `<div class="alert alert-success">Import complete — ${probes_inserted} identities new, ${probes_reused} identities reused, ${syntheses_inserted} synthesis batches inserted, ${duplicates_detected} duplicates detected.</div>`;
         if (warnings.length) {
             html += `<div class="alert alert-warn">${warnings.length} warning(s):<ul style="margin-top:6px;padding-left:18px;">${warnings.slice(0,10).map(w=>`<li>${esc(w.message||w)}</li>`).join('')}</ul></div>`;
         }
         if (library_candidates.length) {
-            html += `<div class="alert alert-info">Library candidates detected (≥12 oligos per order):<ul style="margin-top:6px;padding-left:18px;">${library_candidates.map(c=>`<li>${esc(c.order_number)} — ${c.count} oligos</li>`).join('')}</ul><div style="margin-top:8px;">${library_candidates.map(c=>`<button class="btn btn-success btn-sm" onclick="createLibFromOrder('${esc(c.order_number)}','${supplier}')">Create library for ${esc(c.order_number)}</button>`).join(' ')}</div></div>`;
+            html += `<div class="alert alert-info">Library candidates detected (≥12 oligos per order):<ul style="margin-top:6px;padding-left:18px;">${library_candidates.map(orderNo=>`<li>${esc(orderNo)}</li>`).join('')}</ul><div style="margin-top:8px;">${library_candidates.map(orderNo=>`<button class="btn btn-success btn-sm" onclick="createLibFromOrder('${esc(orderNo)}','${supplier}')">Create library for ${esc(orderNo)}</button>`).join(' ')}</div></div>`;
         }
         if (progress) progress.innerHTML = html;
         loadSourceList();
