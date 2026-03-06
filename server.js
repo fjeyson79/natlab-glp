@@ -12969,7 +12969,7 @@ app.post("/api/oligo/excel-upload", requirePI, oligoExcelUpload.single("file"), 
                 // Primary display label: OLIGONAME from Excel; fall back to orderNo_oligoNo
                 const displayName = oligoName || `${orderNo}_${oligoNo}`;
                 // Infer polymer type from SCALE: starts with 'R' → RNA, otherwise DNA
-                const oligoKind  = scale && scale.toUpperCase().startsWith('R') ? 'RNA' : 'DNA';
+                const polymerType = scale && scale.toUpperCase().startsWith('R') ? 'RNA' : 'DNA';
                 // Canonical id: supplier-scoped order+oligo key
                 const canonicalId = `${supplier}_${orderNo}_${oligoNo}`.replace(/[^\w\-]/g, '_');
 
@@ -12981,13 +12981,13 @@ app.post("/api/oligo/excel-upload", requirePI, oligoExcelUpload.single("file"), 
                 );
                 if (existingProbe.rows.length > 0) {
                     probeId = existingProbe.rows[0].id;
-                    // Update display_name and oligo_kind if blank/default
+                    // Update display_name and polymer_type for reused identities
                     await client.query(
                         `UPDATE probe_catalog
                          SET display_name = CASE WHEN (display_name IS NULL OR display_name = canonical_id OR display_name ~ '^EXL_') AND $1 != '' THEN $1 ELSE display_name END,
-                             oligo_kind = CASE WHEN oligo_kind IS NULL OR oligo_kind = 'OLIGO' THEN $3 ELSE oligo_kind END
+                             polymer_type = CASE WHEN polymer_type IS NULL OR polymer_type = '' THEN $3 ELSE polymer_type END
                          WHERE id = $2`,
-                        [displayName, probeId, oligoKind]
+                        [displayName, probeId, polymerType]
                     );
                     reusedProbes++;
                 } else {
@@ -12995,13 +12995,13 @@ app.post("/api/oligo/excel-upload", requirePI, oligoExcelUpload.single("file"), 
                         `INSERT INTO probe_catalog
                             (canonical_id, display_name, sequence, sequence_norm, length_nt,
                              mod5, mod3, mod_int_5, mod_int_6, mod_int_7, mod_int_8,
-                             identity_hash, chemistry_code, oligo_kind, status, created_by)
-                         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'ACTIVE',$15)
+                             identity_hash, chemistry_code, oligo_kind, polymer_type, status, created_by)
+                         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'OLIGO',$14,'ACTIVE',$15)
                          ON CONFLICT (identity_hash) WHERE identity_hash IS NOT NULL DO NOTHING
                          RETURNING id`,
                         [canonicalId, displayName, sequence, seqNorm, lengthNt,
                          mod5s, mod3s, modi5, modi6, modi7, modi8,
-                         identityHash, chemCode, oligoKind, actor]
+                         identityHash, chemCode, polymerType, actor]
                     );
                     if (insertProbe.rows.length > 0) {
                         probeId = insertProbe.rows[0].id;
