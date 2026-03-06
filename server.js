@@ -12843,7 +12843,7 @@ function oligoNormalizeExcelRow(raw) {
     };
 
     const orderNo    = String(get(['ORDERNO', 'ORDER_NO', 'ORDER NO']) || '').trim();
-    const oligoNo    = String(get(['OLIGONO', 'OLIGO_NO', 'OLIGO NO']) || '').trim();
+    const oligoNo    = String(get(['CHARGENO', 'CHARGE_NO', 'OLIGONO', 'OLIGO_NO', 'OLIGO NO']) || '').trim();
     const oligoName  = String(get(['OLIGONAME', 'OLIGO_NAME', 'OLIGO NAME', 'NAME']) || '').trim();
     const seqRaw     = String(get(['SEQUENCE', 'SEQ']) || '').trim();
     const sequence   = seqRaw.replace(/\s+/g, '').toUpperCase().replace(/[^ACGTUN]/g, '');
@@ -12853,6 +12853,7 @@ function oligoNormalizeExcelRow(raw) {
     const modi6      = oligoNormMod(get(['MODI6']));
     const modi7      = oligoNormMod(get(['MODI7']));
     const modi8      = oligoNormMod(get(['MODI8']));
+    const scale      = String(get(['SCALE']) || '').trim();
     const mw         = parseFloat(String(get(['MW']) || '').replace(',', '.')) || null;
     const amountNmol = parseFloat(String(get(['AMOUNTNMOL']) || '').replace(',', '.')) || null;
 
@@ -12872,7 +12873,7 @@ function oligoNormalizeExcelRow(raw) {
         }
     }
 
-    return { orderNo, oligoNo, oligoName, sequence, mod5s, mod3s, modi5, modi6, modi7, modi8, mw, amountNmol, createDate };
+    return { orderNo, oligoNo, oligoName, sequence, mod5s, mod3s, modi5, modi6, modi7, modi8, mw, amountNmol, createDate, scale };
 }
 
 // POST /api/oligo/excel-upload  – parse xlsx/csv and run import pipeline
@@ -12957,7 +12958,7 @@ app.post("/api/oligo/excel-upload", requirePI, oligoExcelUpload.single("file"), 
 
             // Process each row
             for (const row of rows) {
-                const { orderNo, oligoNo, oligoName, sequence, mod5s, mod3s, modi5, modi6, modi7, modi8, mw, amountNmol, createDate } = row;
+                const { orderNo, oligoNo, oligoName, sequence, mod5s, mod3s, modi5, modi6, modi7, modi8, mw, amountNmol, createDate, scale } = row;
 
                 const seqNorm    = sequence.toLowerCase();
                 const lengthNt   = sequence.length;
@@ -12967,6 +12968,8 @@ app.post("/api/oligo/excel-upload", requirePI, oligoExcelUpload.single("file"), 
                 const chemCode   = 'IDH_' + identityHash.slice(0, 10);
                 // Primary display label: OLIGONAME from Excel; fall back to orderNo_oligoNo
                 const displayName = oligoName || `${orderNo}_${oligoNo}`;
+                // Infer polymer type from SCALE: starts with 'R' → RNA, otherwise DNA
+                const oligoKind  = scale && scale.toUpperCase().startsWith('R') ? 'RNA' : 'DNA';
                 // Canonical id: supplier-scoped order+oligo key
                 const canonicalId = `${supplier}_${orderNo}_${oligoNo}`.replace(/[^\w\-]/g, '_');
 
@@ -12978,13 +12981,14 @@ app.post("/api/oligo/excel-upload", requirePI, oligoExcelUpload.single("file"), 
                 );
                 if (existingProbe.rows.length > 0) {
                     probeId = existingProbe.rows[0].id;
-                    // Update display_name if blank and we now have one
-                    if (oligoName) {
-                        await client.query(
-                            `UPDATE probe_catalog SET display_name = $1 WHERE id = $2 AND (display_name IS NULL OR display_name = canonical_id)`,
-                            [displayName, probeId]
-                        );
-                    }
+                    // Update display_name and oligo_kind if blank/default
+                    await client.query(
+                        `UPDATE probe_catalog
+                         SET display_name = CASE WHEN (display_name IS NULL OR display_name = canonical_id) AND $1 != '' THEN $1 ELSE display_name END,
+                             oligo_kind = CASE WHEN oligo_kind IS NULL OR oligo_kind = 'OLIGO' THEN $3 ELSE oligo_kind END
+                         WHERE id = $2`,
+                        [displayName, probeId, oligoKind]
+                    );
                     reusedProbes++;
                 } else {
                     const insertProbe = await client.query(
@@ -12992,12 +12996,12 @@ app.post("/api/oligo/excel-upload", requirePI, oligoExcelUpload.single("file"), 
                             (canonical_id, display_name, sequence, sequence_norm, length_nt,
                              mod5, mod3, mod_int_5, mod_int_6, mod_int_7, mod_int_8,
                              identity_hash, chemistry_code, oligo_kind, status, created_by)
-                         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'OLIGO','ACTIVE',$14)
+                         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'ACTIVE',$15)
                          ON CONFLICT (identity_hash) WHERE identity_hash IS NOT NULL DO NOTHING
                          RETURNING id`,
                         [canonicalId, displayName, sequence, seqNorm, lengthNt,
                          mod5s, mod3s, modi5, modi6, modi7, modi8,
-                         identityHash, chemCode, actor]
+                         identityHash, chemCode, oligoKind, actor]
                     );
                     if (insertProbe.rows.length > 0) {
                         probeId = insertProbe.rows[0].id;
@@ -13360,7 +13364,7 @@ app.get("/api/oligo/oligos", requirePI, async (req, res) => {
         const result = await pool.query(`
             SELECT
                 pc.id, pc.canonical_id, pc.display_name, pc.sequence, pc.sequence_norm,
-                pc.length_nt, pc.mod5, pc.mod3, pc.mod_int_5, pc.mod_int_6,
+                pc.length_nt, pc.oligo_kind, pc.mod5, pc.mod3, pc.mod_int_5, pc.mod_int_6,
                 pc.mod_int_7, pc.mod_int_8, pc.chemistry_code, pc.status, pc.created_at,
                 STRING_AGG(DISTINCT pl.library_name, ', ' ORDER BY pl.library_name) AS library_names,
                 COUNT(DISTINCT ps.id) FILTER (WHERE ps.excel_status = 'active' OR ps.excel_status IS NULL)::int AS synthesis_count,
@@ -13388,7 +13392,7 @@ app.get("/api/oligo/oligos/:id", requirePI, async (req, res) => {
 
         const oligoR = await pool.query(
             `SELECT pc.id, pc.canonical_id, pc.display_name, pc.sequence, pc.sequence_norm,
-                    pc.length_nt, pc.mod5, pc.mod3, pc.mod_int_5, pc.mod_int_6,
+                    pc.length_nt, pc.oligo_kind, pc.mod5, pc.mod3, pc.mod_int_5, pc.mod_int_6,
                     pc.mod_int_7, pc.mod_int_8, pc.chemistry_code, pc.status, pc.finalized_at,
                     pc.created_at, pc.updated_at
              FROM probe_catalog pc WHERE pc.id = $1`, [id]);

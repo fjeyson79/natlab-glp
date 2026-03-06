@@ -603,24 +603,6 @@ function _buildOligoViewHtml() {
         </div>`;
     }
 
-    // Aliquots display
-    let aliquotsHtml = '<p class="text-muted" style="font-size:12px;padding:4px 0;">—</p>';
-    if (synth?.aliquots_text) {
-        try {
-            const arr = JSON.parse(synth.aliquots_text);
-            if (Array.isArray(arr) && arr.length) {
-                aliquotsHtml = `<table class="data-table">
-                    <thead><tr><th>index</th><th>nmol</th></tr></thead>
-                    <tbody>${arr.map((a, i) => `<tr><td>${a.index != null ? a.index : (i + 1)}</td><td>${a.nmol != null ? a.nmol : (a.amount != null ? a.amount : '—')}</td></tr>`).join('')}</tbody>
-                </table>`;
-            } else {
-                aliquotsHtml = `<pre style="font-size:11px;color:#9ca3af;white-space:pre-wrap;">${esc(synth.aliquots_text)}</pre>`;
-            }
-        } catch (_) {
-            aliquotsHtml = `<pre style="font-size:11px;color:#9ca3af;white-space:pre-wrap;">${esc(synth.aliquots_text)}</pre>`;
-        }
-    }
-
     return `
         <div id="oligo-view-alert"></div>
         ${batchSelectorHtml}
@@ -629,9 +611,9 @@ function _buildOligoViewHtml() {
             <div class="section-title">ID_INFO</div>
             <table class="kv-table">
                 <tr><td>Name</td><td><strong>${esc(o.display_name || '—')}</strong></td></tr>
-                <tr><td>Order#</td><td class="text-mono">${esc(synth?.order_number || '—')}</td></tr>
-                <tr><td>Type</td><td>${esc(o.oligo_kind || 'OLIGO')}</td></tr>
-                <tr><td>SynthesisOligo#</td><td class="text-mono">${esc(synth?.oligo_number || '—')}</td></tr>
+                <tr><td>Date</td><td>${synth?.synthesis_date ? fmtDate(synth.synthesis_date) : '—'}</td></tr>
+                <tr><td>Type</td><td>${esc(o.oligo_kind || '—')}</td></tr>
+                <tr><td>Synthesis#</td><td class="text-mono">${esc(synth?.oligo_number || '—')}</td></tr>
             </table>
         </div>
 
@@ -697,10 +679,6 @@ function _buildOligoViewHtml() {
             </table>
         </div>
 
-        <div class="section">
-            <div class="section-title">ALIQUOTS</div>
-            ${aliquotsHtml}
-        </div>
     `;
 }
 
