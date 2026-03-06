@@ -13412,8 +13412,9 @@ app.get("/api/oligo/oligos/:id", requirePI, async (req, res) => {
              ORDER BY pl.library_name`, [id]);
 
         const synthR = await pool.query(
-            `SELECT ps.id, ps.supplier, ps.order_number, ps.oligo_number,
-                    ps.synthesis_date, ps.amount_nmol, ps.mw_value, ps.qc_notes,
+            `SELECT ps.id, ps.supplier, ps.order_number, ps.synthesis_oligo_no, ps.oligo_number,
+                    ps.synthesis_date, ps.scale, ps.purification, ps.od_value,
+                    ps.amount_nmol, ps.amount_ug, ps.mw_value, ps.qc_notes,
                     ps.aliquots_text, ps.excel_status, ps.discard_reason,
                     ps.certificate_status, ps.certificate_pdf_key, ps.created_at,
                     ods.file_name AS source_file_name
