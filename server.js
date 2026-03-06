@@ -2070,7 +2070,7 @@ async function performApproval(submissionId, approvalComment) {
         });
     }
 
-    console.log(`[APPROVE] Success: ${submissionId} -> ${newFileId}`);
+    console.log(`[APPROVE] Success:  -> `);
     return { success: true, verification_code: verificationCode, filename: submission.original_filename };
 }
 
@@ -13382,20 +13382,27 @@ app.get("/api/oligo/registry/:id", requirePI, async (req, res) => {
 // GET /api/oligo/oligos – list all with library names and synthesis count
 app.get("/api/oligo/oligos", requirePI, async (req, res) => {
     try {
+        // Synthesis-centric: one row per active synthesis, ordered by source row position.
+        // This mirrors the Excel upload order exactly, including duplicate probe identities.
+        // Each row uses ps.id as the list key; pc.id is returned as probe_id for detail navigation.
         const result = await pool.query(`
             SELECT
-                pc.id, pc.canonical_id, pc.display_name, pc.sequence, pc.sequence_norm,
+                ps.id,
+                pc.id AS probe_id,
+                pc.canonical_id, pc.display_name, pc.sequence, pc.sequence_norm,
                 pc.length_nt, pc.oligo_kind, pc.mod5, pc.mod3, pc.mod_int_5, pc.mod_int_6,
                 pc.mod_int_7, pc.mod_int_8, pc.chemistry_code, pc.status, pc.created_at,
+                ps.order_number, ps.oligo_number, ps.supplier, ps.synthesis_date,
+                ps.import_row_index,
                 STRING_AGG(DISTINCT pl.library_name, ', ' ORDER BY pl.library_name) AS library_names,
-                COUNT(DISTINCT ps.id) FILTER (WHERE ps.excel_status = 'active' OR ps.excel_status IS NULL)::int AS synthesis_count,
-                MAX(ps.synthesis_date) AS last_synthesis_date
-            FROM probe_catalog pc
+                1::int AS synthesis_count
+            FROM probe_syntheses ps
+            JOIN probe_catalog pc ON pc.id = ps.probe_id
             LEFT JOIN probe_library_members plm ON plm.probe_id = pc.id
             LEFT JOIN probe_libraries pl ON pl.id = plm.library_id
-            LEFT JOIN probe_syntheses ps ON ps.probe_id = pc.id
-            GROUP BY pc.id
-            ORDER BY pc.created_at ASC, pc.id ASC
+            WHERE ps.excel_status = 'active' OR ps.excel_status IS NULL
+            GROUP BY ps.id, pc.id
+            ORDER BY ps.import_row_index ASC NULLS LAST, ps.created_at ASC
             LIMIT 2000
         `);
         res.json({ oligos: result.rows });
@@ -13700,12 +13707,13 @@ app.get("/api/oligo/libraries/:id", requirePI, async (req, res) => {
         const libR = await pool.query(`SELECT * FROM probe_libraries WHERE id=$1`, [id]);
         if (libR.rows.length === 0) return res.status(404).json({ error: "Library not found" });
         const memR = await pool.query(`
-            SELECT plm.id AS membership_id, pc.id AS oligo_id, pc.canonical_id,
-                   pc.display_name, pc.sequence, pc.length_nt, pc.mod5, pc.mod3, pc.status
+            SELECT plm.id AS membership_id, plm.synthesis_id, plm.sort_order,
+                   pc.id AS oligo_id, pc.canonical_id,
+                   pc.display_name, pc.sequence, pc.sequence_norm, pc.length_nt, pc.mod5, pc.mod3, pc.status
             FROM probe_library_members plm
             JOIN probe_catalog pc ON pc.id = plm.probe_id
             WHERE plm.library_id = $1
-            ORDER BY pc.display_name`, [id]);
+            ORDER BY plm.sort_order ASC NULLS LAST, plm.added_at ASC`, [id]);
         res.json({ library: libR.rows[0], members: memR.rows });
     } catch (err) {
         console.error("[OLIGO] library detail error:", err);
@@ -13736,7 +13744,7 @@ app.post("/api/oligo/libraries/:id/members", requirePI, async (req, res) => {
         const actor = req.session?.user?.researcher_id || req.session?.user?.id || 'unknown';
         const r = await pool.query(
             `INSERT INTO probe_library_members (library_id, probe_id, added_by)
-             VALUES ($1,$2,$3) ON CONFLICT (library_id, probe_id) DO NOTHING RETURNING id`,
+             VALUES ($1,$2,$3) ON CONFLICT (library_id, probe_id) WHERE synthesis_id IS NULL DO NOTHING RETURNING id`,
             [libId, oligoId, actor]
         );
         res.json({ success: true, already_member: r.rows.length === 0 });
@@ -13781,18 +13789,24 @@ app.post("/api/oligo/libraries/from-order", requirePI, async (req, res) => {
             );
             const libId = libR.rows[0].id;
 
+            // Select ALL synthesis rows for the order, preserving source row order.
+            // Do NOT use DISTINCT – duplicate probe identities are intentional.
             const oligosR = await client.query(
-                `SELECT DISTINCT ps.probe_id FROM probe_syntheses ps
+                `SELECT ps.id AS synthesis_id, ps.probe_id
+                 FROM probe_syntheses ps
                  WHERE ps.order_number=$1 AND ps.supplier=$2
                    AND ps.probe_id IS NOT NULL
-                   AND (ps.excel_status IS NULL OR ps.excel_status = 'active')`,
+                   AND (ps.excel_status IS NULL OR ps.excel_status = 'active')
+                 ORDER BY ps.import_row_index ASC NULLS LAST, ps.created_at ASC`,
                 [orderNumber, supplier]
             );
-            for (const row of oligosR.rows) {
+            for (let i = 0; i < oligosR.rows.length; i++) {
+                const row = oligosR.rows[i];
                 await client.query(
-                    `INSERT INTO probe_library_members (library_id, probe_id, added_by)
-                     VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`,
-                    [libId, row.probe_id, actor]
+                    `INSERT INTO probe_library_members (library_id, probe_id, synthesis_id, sort_order, added_by)
+                     VALUES ($1,$2,$3,$4,$5)
+                     ON CONFLICT (library_id, synthesis_id) WHERE synthesis_id IS NOT NULL DO NOTHING`,
+                    [libId, row.probe_id, row.synthesis_id, i, actor]
                 );
             }
             await client.query("COMMIT");

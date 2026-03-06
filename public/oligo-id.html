@@ -518,20 +518,14 @@ function regFilter() {
     const st = document.getElementById('reg-status')?.value || '';
     let items = S.registryList;
     if (q) items = items.filter(o => {
-        const synths = Array.isArray(o.syntheses) ? o.syntheses : [];
-        const synthHay = synths.map(s =>
-            [
-                s.order_number || '',
-                s.oligo_number || '',
-                s.synthesis_oligo_no || '',
-                s.supplier || ''
-            ].join(' ')
-        ).join(' ');
+        // o.order_number / o.oligo_number / o.supplier are direct fields in synthesis-centric response
         const hay = [
             o.display_name || '',
             o.canonical_id || '',
             o.sequence_norm || '',
-            synthHay
+            o.order_number || '',
+            o.oligo_number || '',
+            o.supplier || ''
         ].join(' ').toLowerCase();
         return hay.includes(q);
     });
@@ -541,13 +535,14 @@ function regFilter() {
     if (!items.length) { list.innerHTML = `<div class="empty-list">No oligonucleotides found</div>`; return; }
     list.innerHTML = items.map(o => {
         const seqPreview = (o.sequence_norm||'').substring(0, 32) + ((o.sequence_norm||'').length > 32 ? '…' : '');
-        const batchCount = o.synthesis_count || (Array.isArray(o.syntheses) ? o.syntheses.length : 0);
+        // probe_id = probe_catalog UUID; id = synthesis UUID (list row key)
+        const probeId = o.probe_id || o.id;
         return `
-        <div class="list-item${o.id === S.selectedOligoId ? ' selected' : ''}" onclick="selectOligo('${o.id}')">
+        <div class="list-item${probeId === S.selectedOligoId ? ' selected' : ''}" onclick="selectOligo('${probeId}')">
             <div class="list-item-name">${esc(o.display_name || '—')}</div>
             <div class="list-item-sub text-mono">${esc(seqPreview)}</div>
             <div class="list-item-meta">
-                ${batchCount > 0 ? `<span class="tag gray">${batchCount} batch${batchCount > 1 ? 'es' : ''}</span>` : ''}
+                ${o.order_number ? `<span class="tag gray">${esc(o.order_number)}</span>` : ''}
             </div>
         </div>`;
     }).join('');
@@ -1467,7 +1462,7 @@ function libOligoSearch() {
     if (q.length < 2) { document.getElementById('lib-oligo-results').innerHTML = ''; return; }
     const matches = S.registryList.filter(o => (o.display_name||'').toLowerCase().includes(q) || (o.canonical_id||'').toLowerCase().includes(q)).slice(0, 8);
     document.getElementById('lib-oligo-results').innerHTML = matches.length
-        ? matches.map(o => `<div class="list-item" style="border:1px solid #2a2d3a;border-radius:5px;margin-bottom:4px;cursor:pointer;" onclick="addMemberFromSearch('${o.id}')">
+        ? matches.map(o => `<div class="list-item" style="border:1px solid #2a2d3a;border-radius:5px;margin-bottom:4px;cursor:pointer;" onclick="addMemberFromSearch('${o.probe_id || o.id}')">
             <div class="list-item-name">${esc(o.display_name||o.canonical_id)}</div>
             <div class="list-item-sub text-mono">${esc((o.sequence_norm||'').substring(0,28))}…</div>
           </div>`).join('')

@@ -818,6 +818,16 @@ async function migrate() {
             // Source row position for stable registry ordering (preserves Excel upload order)
             `ALTER TABLE probe_syntheses ADD COLUMN IF NOT EXISTS import_row_index INTEGER`,
 
+            // Synthesis-backed library membership: ordered source blocks with duplicate probe support
+            `ALTER TABLE probe_library_members ADD COLUMN IF NOT EXISTS synthesis_id UUID REFERENCES probe_syntheses(id)`,
+            `ALTER TABLE probe_library_members ADD COLUMN IF NOT EXISTS sort_order INTEGER`,
+            // Drop the old unique-per-probe constraint; replace with two partial indexes
+            `ALTER TABLE probe_library_members DROP CONSTRAINT IF EXISTS probe_library_members_library_id_probe_id_key`,
+            // Manually-added members: still one per probe per library (synthesis_id IS NULL)
+            `CREATE UNIQUE INDEX IF NOT EXISTS uq_plm_lib_probe_manual ON probe_library_members(library_id, probe_id) WHERE synthesis_id IS NULL`,
+            // Excel-sourced members: one per synthesis per library (allows duplicate probe_id)
+            `CREATE UNIQUE INDEX IF NOT EXISTS uq_plm_lib_synthesis ON probe_library_members(library_id, synthesis_id) WHERE synthesis_id IS NOT NULL`,
+
         ];
 
         for (const sql of migrations) {
