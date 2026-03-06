@@ -812,6 +812,10 @@ async function migrate() {
             `CREATE INDEX IF NOT EXISTS idx_probe_syntheses_source_file ON probe_syntheses(source_file_id)`,
             `CREATE INDEX IF NOT EXISTS idx_probe_syntheses_excel_status ON probe_syntheses(excel_status)`,
 
+            // Synthesis batch editable fields for QC and aliquot notes
+            `ALTER TABLE probe_syntheses ADD COLUMN IF NOT EXISTS qc_notes TEXT`,
+            `ALTER TABLE probe_syntheses ADD COLUMN IF NOT EXISTS aliquots_text TEXT`,
+
         ];
 
         for (const sql of migrations) {

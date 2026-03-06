@@ -12832,7 +12832,7 @@ function oligoParseExcelBuffer(buffer, filename) {
 }
 
 function oligoNormalizeExcelRow(raw) {
-    // Case-insensitive field lookup
+    // Case-insensitive exact-header lookup
     const get = (keys) => {
         for (const k of keys) {
             for (const rk of Object.keys(raw)) {
@@ -12842,32 +12842,37 @@ function oligoNormalizeExcelRow(raw) {
         return null;
     };
 
-    const orderNo    = String(get(['ORDERNO', 'ORDER_NO', 'ORDER NO', 'Order No', 'Order']) || '').trim();
-    const oligoNo    = String(get(['OLIGONO', 'OLIGO_NO', 'OLIGO NO', 'Oligo No', 'Oligo']) || '').trim();
-    const seqRaw     = String(get(['SEQUENCE', 'Sequence', 'SEQ']) || '').trim();
-    const sequence   = seqRaw.replace(/\s+/g, '').toUpperCase();
-    const mod5s      = oligoNormMod(get(['MOD5S', 'MOD5', '5MOD', "5'MOD", "5' MOD", "5'_MOD"]));
-    const mod3s      = oligoNormMod(get(['MOD3S', 'MOD3', '3MOD', "3'MOD", "3' MOD", "3'_MOD"]));
-    const modi5      = oligoNormMod(get(['MODI5', 'INT_MOD5', 'INTMOD5', 'INT MOD 5']));
-    const modi6      = oligoNormMod(get(['MODI6', 'INT_MOD6', 'INTMOD6', 'INT MOD 6']));
-    const modi7      = oligoNormMod(get(['MODI7', 'INT_MOD7', 'INTMOD7', 'INT MOD 7']));
-    const modi8      = oligoNormMod(get(['MODI8', 'INT_MOD8', 'INTMOD8', 'INT MOD 8']));
-    const mw         = parseFloat(get(['MW', 'mol weight', 'MW (g/mol)']) || '') || null;
-    const amountNmol = parseFloat(get(['AMOUNTNMOL', 'AMOUNT_NMOL', 'AMOUNT NMOL', 'nmol', 'Amount (nmol)']) || '') || null;
+    const orderNo    = String(get(['ORDERNO', 'ORDER_NO', 'ORDER NO']) || '').trim();
+    const oligoNo    = String(get(['OLIGONO', 'OLIGO_NO', 'OLIGO NO']) || '').trim();
+    const oligoName  = String(get(['OLIGONAME', 'OLIGO_NAME', 'OLIGO NAME', 'NAME']) || '').trim();
+    const seqRaw     = String(get(['SEQUENCE', 'SEQ']) || '').trim();
+    const sequence   = seqRaw.replace(/\s+/g, '').toUpperCase().replace(/[^ACGTUN]/g, '');
+    const mod5s      = oligoNormMod(get(['MOD5S', 'MOD5']));
+    const mod3s      = oligoNormMod(get(['MOD3S', 'MOD3']));
+    const modi5      = oligoNormMod(get(['MODI5']));
+    const modi6      = oligoNormMod(get(['MODI6']));
+    const modi7      = oligoNormMod(get(['MODI7']));
+    const modi8      = oligoNormMod(get(['MODI8']));
+    const mw         = parseFloat(String(get(['MW']) || '').replace(',', '.')) || null;
+    const amountNmol = parseFloat(String(get(['AMOUNTNMOL']) || '').replace(',', '.')) || null;
 
-    // CREATEDATE parsing
+    // CREATEDATE parsing – handle numeric serial dates (Excel date serial) and text dates
     let createDate = null;
-    const cdRaw = get(['CREATEDATE', 'CREATE_DATE', 'CREATE DATE', 'Date', 'DATE']);
-    if (cdRaw) {
+    const cdRaw = get(['CREATEDATE']);
+    if (cdRaw != null) {
         if (cdRaw instanceof Date) {
             createDate = cdRaw;
+        } else if (typeof cdRaw === 'number' && cdRaw > 40000 && cdRaw < 60000) {
+            // Excel date serial: days since 1900-01-00 (with leap year bug)
+            const d = new Date(Math.round((cdRaw - 25569) * 86400 * 1000));
+            if (!isNaN(d)) createDate = d;
         } else {
-            const parsed = new Date(cdRaw);
+            const parsed = new Date(String(cdRaw));
             if (!isNaN(parsed)) createDate = parsed;
         }
     }
 
-    return { orderNo, oligoNo, sequence, mod5s, mod3s, modi5, modi6, modi7, modi8, mw, amountNmol, createDate };
+    return { orderNo, oligoNo, oligoName, sequence, mod5s, mod3s, modi5, modi6, modi7, modi8, mw, amountNmol, createDate };
 }
 
 // POST /api/oligo/excel-upload  – parse xlsx/csv and run import pipeline
@@ -12907,10 +12912,15 @@ app.post("/api/oligo/excel-upload", requirePI, oligoExcelUpload.single("file"), 
             return res.status(400).json({ error: 'File contains no data rows' });
         }
 
-        // Normalize rows
-        const rows = rawRows.map(r => oligoNormalizeExcelRow(r)).filter(r => r.sequence && r.orderNo && r.oligoNo);
+        // Normalize rows – require valid nucleotide sequence of ≥4 bases
+        const rows = rawRows.map(r => oligoNormalizeExcelRow(r))
+            .filter(r => r.sequence && r.sequence.length >= 4 && r.orderNo && r.oligoNo);
         if (rows.length === 0) {
-            return res.status(400).json({ error: 'No valid rows found. Ensure columns ORDERNO, OLIGONO, SEQUENCE are present.' });
+            // Provide helpful diagnosis
+            const sample = rawRows.slice(0, 3).map(r => Object.keys(r).join(', ')).join(' | ');
+            return res.status(400).json({
+                error: 'No valid rows found. Required columns: ORDERNO, OLIGONO, SEQUENCE (min 4 nucleotides). Detected columns: ' + sample
+            });
         }
 
         // Compute file stats
@@ -12921,10 +12931,10 @@ app.post("/api/oligo/excel-upload", requirePI, oligoExcelUpload.single("file"), 
         const ordersDetected = ordersSet.size;
         const oligosDetected = rows.length;
 
-        // Library detection: orders with ≥20 rows are library candidates
+        // Library detection: orders with ≥12 rows are library candidates
         const orderCounts = {};
         for (const r of rows) { orderCounts[r.orderNo] = (orderCounts[r.orderNo] || 0) + 1; }
-        const libraryCandidates = Object.entries(orderCounts).filter(([, n]) => n >= 20).map(([o]) => o);
+        const libraryCandidates = Object.entries(orderCounts).filter(([, n]) => n >= 12).map(([o]) => o);
 
         const client = await pool.connect();
         let committed = false;
@@ -12947,13 +12957,20 @@ app.post("/api/oligo/excel-upload", requirePI, oligoExcelUpload.single("file"), 
 
             // Process each row
             for (const row of rows) {
-                const { orderNo, oligoNo, sequence, mod5s, mod3s, modi5, modi6, modi7, modi8, mw, amountNmol, createDate } = row;
+                const { orderNo, oligoNo, oligoName, sequence, mod5s, mod3s, modi5, modi6, modi7, modi8, mw, amountNmol, createDate } = row;
 
-                // Compute probe identity hash
-                const identityHash = oligoComputeIdentityHash(sequence, mod5s, mod3s, modi5, modi6, modi7, modi8);
-                const chemCode = "IDH_" + String(identityHash).slice(0,8);
+                const seqNorm    = sequence.toLowerCase();
+                const lengthNt   = sequence.length;
+                // Identity hash uses normalized (lowercase) sequence
+                const identityHash = oligoComputeIdentityHash(seqNorm, mod5s, mod3s, modi5, modi6, modi7, modi8);
+                // chemistry_code is derived from identity so (sequence_norm, chemistry_code) unique index is satisfied
+                const chemCode   = 'IDH_' + identityHash.slice(0, 10);
+                // Primary display label: OLIGONAME from Excel; fall back to orderNo_oligoNo
+                const displayName = oligoName || `${orderNo}_${oligoNo}`;
+                // Canonical id: supplier-scoped order+oligo key
+                const canonicalId = `${supplier}_${orderNo}_${oligoNo}`.replace(/[^\w\-]/g, '_');
 
-                // Upsert probe_catalog by identity_hash (excel source uses identity_hash, not canonical_id uniqueness)
+                // Upsert oligonucleotide identity by identity_hash
                 let probeId;
                 const existingProbe = await client.query(
                     `SELECT id FROM probe_catalog WHERE identity_hash = $1 LIMIT 1`,
@@ -12961,12 +12978,15 @@ app.post("/api/oligo/excel-upload", requirePI, oligoExcelUpload.single("file"), 
                 );
                 if (existingProbe.rows.length > 0) {
                     probeId = existingProbe.rows[0].id;
+                    // Update display_name if blank and we now have one
+                    if (oligoName) {
+                        await client.query(
+                            `UPDATE probe_catalog SET display_name = $1 WHERE id = $2 AND (display_name IS NULL OR display_name = canonical_id)`,
+                            [displayName, probeId]
+                        );
+                    }
                     reusedProbes++;
                 } else {
-                    // New probe
-                    const seqNorm = sequence.toLowerCase();
-                    const lengthNt = sequence.replace(/[^A-Za-z]/g, '').length;
-                    const canonicalId = `EXL_${orderNo}_${oligoNo}`.replace(/[^\w\-]/g, '_');
                     const insertProbe = await client.query(
                         `INSERT INTO probe_catalog
                             (canonical_id, display_name, sequence, sequence_norm, length_nt,
@@ -12975,7 +12995,7 @@ app.post("/api/oligo/excel-upload", requirePI, oligoExcelUpload.single("file"), 
                          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'OLIGO','ACTIVE',$14)
                          ON CONFLICT (identity_hash) WHERE identity_hash IS NOT NULL DO NOTHING
                          RETURNING id`,
-                        [canonicalId, canonicalId, sequence, seqNorm, lengthNt,
+                        [canonicalId, displayName, sequence, seqNorm, lengthNt,
                          mod5s, mod3s, modi5, modi6, modi7, modi8,
                          identityHash, chemCode, actor]
                     );
@@ -12983,7 +13003,6 @@ app.post("/api/oligo/excel-upload", requirePI, oligoExcelUpload.single("file"), 
                         probeId = insertProbe.rows[0].id;
                         insertedProbes++;
                     } else {
-                        // Race condition: someone else inserted between our check and insert
                         const retry = await client.query(`SELECT id FROM probe_catalog WHERE identity_hash=$1 LIMIT 1`, [identityHash]);
                         probeId = retry.rows[0]?.id;
                         reusedProbes++;
@@ -13131,7 +13150,7 @@ app.get("/api/oligo/library-candidates", requirePI, async (req, res) => {
             FROM probe_syntheses ps
             WHERE ps.order_number IS NOT NULL AND ps.excel_status = 'active'
             GROUP BY ps.order_number, ps.supplier
-            HAVING COUNT(DISTINCT ps.id) >= 20
+            HAVING COUNT(DISTINCT ps.id) >= 12
             ORDER BY synth_count DESC
         `);
         res.json({ candidates: result.rows });
@@ -13325,6 +13344,546 @@ app.get("/api/oligo/registry/:id", requirePI, async (req, res) => {
         res.json({ probe: probe.rows[0], syntheses: syntheses.rows });
     } catch (err) {
         console.error("[OLIGO] registry detail error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// =====================================================
+// OLIGO-ID PHASE 1: FUNCTIONAL ENDPOINTS
+// =====================================================
+
+// ── Oligonucleotide list (main registry) ──
+
+// GET /api/oligo/oligos – list all with library names and synthesis count
+app.get("/api/oligo/oligos", requirePI, async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT
+                pc.id, pc.canonical_id, pc.display_name, pc.sequence, pc.sequence_norm,
+                pc.length_nt, pc.mod5, pc.mod3, pc.mod_int_5, pc.mod_int_6,
+                pc.mod_int_7, pc.mod_int_8, pc.chemistry_code, pc.status, pc.created_at,
+                STRING_AGG(DISTINCT pl.library_name, ', ' ORDER BY pl.library_name) AS library_names,
+                COUNT(DISTINCT ps.id) FILTER (WHERE ps.excel_status = 'active' OR ps.excel_status IS NULL)::int AS synthesis_count,
+                MAX(ps.synthesis_date) AS last_synthesis_date
+            FROM probe_catalog pc
+            LEFT JOIN probe_library_members plm ON plm.probe_id = pc.id
+            LEFT JOIN probe_libraries pl ON pl.id = plm.library_id
+            LEFT JOIN probe_syntheses ps ON ps.probe_id = pc.id
+            GROUP BY pc.id
+            ORDER BY pc.display_name NULLS LAST, pc.created_at DESC
+            LIMIT 2000
+        `);
+        res.json({ oligos: result.rows });
+    } catch (err) {
+        console.error("[OLIGO] oligos list error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// GET /api/oligo/oligos/:id – full detail: identity + libraries + synthesis batches + identity PDFs
+app.get("/api/oligo/oligos/:id", requirePI, async (req, res) => {
+    try {
+        const id = String(req.params.id || '').trim();
+        if (!isUuid(id)) return res.status(400).json({ error: "Invalid ID" });
+
+        const oligoR = await pool.query(
+            `SELECT pc.id, pc.canonical_id, pc.display_name, pc.sequence, pc.sequence_norm,
+                    pc.length_nt, pc.mod5, pc.mod3, pc.mod_int_5, pc.mod_int_6,
+                    pc.mod_int_7, pc.mod_int_8, pc.chemistry_code, pc.status, pc.finalized_at,
+                    pc.created_at, pc.updated_at
+             FROM probe_catalog pc WHERE pc.id = $1`, [id]);
+        if (oligoR.rows.length === 0) return res.status(404).json({ error: "Not found" });
+
+        const libR = await pool.query(
+            `SELECT pl.id, pl.library_name, pl.description
+             FROM probe_library_members plm
+             JOIN probe_libraries pl ON pl.id = plm.library_id
+             WHERE plm.probe_id = $1
+             ORDER BY pl.library_name`, [id]);
+
+        const synthR = await pool.query(
+            `SELECT ps.id, ps.supplier, ps.order_number, ps.oligo_number,
+                    ps.synthesis_date, ps.amount_nmol, ps.mw_value, ps.qc_notes,
+                    ps.aliquots_text, ps.excel_status, ps.discard_reason,
+                    ps.certificate_status, ps.certificate_pdf_key, ps.created_at,
+                    ods.file_name AS source_file_name
+             FROM probe_syntheses ps
+             LEFT JOIN oligo_data_sources ods ON ods.id = ps.source_file_id
+             WHERE ps.probe_id = $1
+             ORDER BY ps.synthesis_date DESC NULLS LAST, ps.created_at DESC`, [id]);
+
+        const pdfR = await pool.query(
+            `SELECT id, original_filename, r2_object_key, file_size_bytes, uploaded_at, uploaded_by
+             FROM probe_pdfs WHERE probe_id = $1
+             ORDER BY uploaded_at DESC`, [id]);
+
+        res.json({
+            oligo: oligoR.rows[0],
+            libraries: libR.rows,
+            syntheses: synthR.rows,
+            identity_docs: pdfR.rows
+        });
+    } catch (err) {
+        console.error("[OLIGO] oligo detail error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// POST /api/oligo/oligos – create oligonucleotide manually
+app.post("/api/oligo/oligos", requirePI, async (req, res) => {
+    try {
+        const name     = String(req.body?.name || '').trim();
+        const seqRaw   = String(req.body?.sequence || '').trim();
+        const sequence = seqRaw.replace(/\s+/g, '').toUpperCase().replace(/[^ACGTUN]/g, '');
+        const mod5     = oligoNormMod(req.body?.mod5);
+        const mod3     = oligoNormMod(req.body?.mod3);
+        const modInt5  = oligoNormMod(req.body?.mod_int_5);
+        const modInt6  = oligoNormMod(req.body?.mod_int_6);
+        const modInt7  = oligoNormMod(req.body?.mod_int_7);
+        const modInt8  = oligoNormMod(req.body?.mod_int_8);
+        const supplier = String(req.body?.supplier || '').trim().toLowerCase() || null;
+        const notes    = String(req.body?.notes || '').trim() || null;
+
+        if (!name) return res.status(400).json({ error: "name is required" });
+        if (!sequence || sequence.length < 4) return res.status(400).json({ error: "sequence must be at least 4 nucleotides" });
+
+        const seqNorm      = sequence.toLowerCase();
+        const lengthNt     = sequence.length;
+        const identityHash = oligoComputeIdentityHash(seqNorm, mod5, mod3, modInt5, modInt6, modInt7, modInt8);
+        const chemCode     = 'IDH_' + identityHash.slice(0, 10);
+        const canonicalId  = `MANUAL_${identityHash.slice(0, 12)}`;
+        const actor        = req.session?.user?.researcher_id || req.session?.user?.id || 'unknown';
+
+        const client = await pool.connect();
+        try {
+            await client.query("BEGIN");
+
+            const insertR = await client.query(
+                `INSERT INTO probe_catalog
+                    (canonical_id, display_name, sequence, sequence_norm, length_nt,
+                     mod5, mod3, mod_int_5, mod_int_6, mod_int_7, mod_int_8,
+                     identity_hash, chemistry_code, oligo_kind, status, notes, created_by)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'OLIGO','ACTIVE',$14,$15)
+                 ON CONFLICT (identity_hash) WHERE identity_hash IS NOT NULL DO NOTHING
+                 RETURNING id`,
+                [canonicalId, name, sequence, seqNorm, lengthNt,
+                 mod5, mod3, modInt5, modInt6, modInt7, modInt8,
+                 identityHash, chemCode, notes, actor]
+            );
+
+            let oligoId;
+            if (insertR.rows.length > 0) {
+                oligoId = insertR.rows[0].id;
+            } else {
+                const existing = await client.query(`SELECT id FROM probe_catalog WHERE identity_hash=$1`, [identityHash]);
+                if (existing.rows.length === 0) throw new Error("Conflict but not found");
+                oligoId = existing.rows[0].id;
+            }
+
+            // Optional synthesis batch
+            const sb = req.body?.synthesis_batch;
+            if (sb && sb.order_number) {
+                const synthSupplier = String(sb.supplier || supplier || 'manual').trim().toLowerCase();
+                const synthOrderNo  = String(sb.order_number || '').trim();
+                const synthOligoNo  = String(sb.oligo_number || '').trim() || null;
+                const synthDate     = sb.synthesis_date ? new Date(sb.synthesis_date) : null;
+                const synthAmnt     = parseFloat(sb.amount_nmol) || null;
+                const synthMW       = parseFloat(sb.mw_value) || null;
+
+                await client.query(
+                    `INSERT INTO probe_syntheses
+                        (probe_id, supplier, order_number, oligo_number, synthesis_date,
+                         amount_nmol, mw_value, excel_status, certificate_status, review_status, created_by)
+                     VALUES ($1,$2,$3,$4,$5,$6,$7,'active','none','PENDING',$8)
+                     ON CONFLICT DO NOTHING`,
+                    [oligoId, synthSupplier, synthOrderNo, synthOligoNo,
+                     synthDate ? synthDate.toISOString().split('T')[0] : null,
+                     synthAmnt, synthMW, actor]
+                );
+            }
+
+            await client.query("COMMIT");
+            res.status(201).json({ success: true, oligo_id: oligoId });
+        } catch (e) {
+            await client.query("ROLLBACK").catch(() => {});
+            throw e;
+        } finally { client.release(); }
+
+    } catch (err) {
+        if (err.code === '23505') return res.status(409).json({ error: "An oligonucleotide with this identity already exists" });
+        console.error("[OLIGO] create oligo error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// PATCH /api/oligo/oligos/:id – edit display_name, mods (identity fields)
+app.patch("/api/oligo/oligos/:id", requirePI, async (req, res) => {
+    try {
+        const id = String(req.params.id || '').trim();
+        if (!isUuid(id)) return res.status(400).json({ error: "Invalid ID" });
+        const actor = req.session?.user?.researcher_id || req.session?.user?.id || 'unknown';
+
+        // Build SET clause for only provided fields
+        const sets = [];
+        const vals = [];
+        const add = (col, val) => { sets.push(`${col} = $${vals.length + 1}`); vals.push(val); };
+
+        if (req.body?.name !== undefined)      add('display_name', String(req.body.name).trim());
+        if (req.body?.mod5 !== undefined)      add('mod5', oligoNormMod(req.body.mod5));
+        if (req.body?.mod3 !== undefined)      add('mod3', oligoNormMod(req.body.mod3));
+        if (req.body?.mod_int_5 !== undefined) add('mod_int_5', oligoNormMod(req.body.mod_int_5));
+        if (req.body?.mod_int_6 !== undefined) add('mod_int_6', oligoNormMod(req.body.mod_int_6));
+        if (req.body?.mod_int_7 !== undefined) add('mod_int_7', oligoNormMod(req.body.mod_int_7));
+        if (req.body?.mod_int_8 !== undefined) add('mod_int_8', oligoNormMod(req.body.mod_int_8));
+        if (req.body?.notes !== undefined)     add('notes', String(req.body.notes || '').trim() || null);
+
+        // Sequence editing: only if not finalized
+        if (req.body?.sequence !== undefined) {
+            const seq = String(req.body.sequence || '').replace(/\s+/g,'').toUpperCase().replace(/[^ACGTUN]/g,'');
+            if (seq.length < 4) return res.status(400).json({ error: "Sequence must be at least 4 nucleotides" });
+            const current = await pool.query(`SELECT finalized_at FROM probe_catalog WHERE id=$1`, [id]);
+            if (current.rows[0]?.finalized_at) return res.status(409).json({ error: "Cannot edit sequence of a finalized oligonucleotide" });
+            add('sequence', seq);
+            add('sequence_norm', seq.toLowerCase());
+            add('length_nt', seq.length);
+        }
+
+        if (sets.length === 0) return res.status(400).json({ error: "No fields to update" });
+        add('updated_at', new Date());
+        vals.push(id);
+
+        const result = await pool.query(
+            `UPDATE probe_catalog SET ${sets.join(', ')} WHERE id = $${vals.length} RETURNING id, display_name`,
+            vals
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: "Not found" });
+
+        // Audit
+        pool.query(`INSERT INTO probe_audit_log (entity_type, entity_id, action, actor, new_values)
+            VALUES ('oligo', $1, 'EDIT_IDENTITY', $2, $3)`,
+            [id, actor, JSON.stringify(req.body)]).catch(() => {});
+
+        res.json({ success: true, oligo: result.rows[0] });
+    } catch (err) {
+        console.error("[OLIGO] edit oligo error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// PATCH /api/oligo/oligos/:id/status – set status
+app.patch("/api/oligo/oligos/:id/status", requirePI, async (req, res) => {
+    try {
+        const id = String(req.params.id || '').trim();
+        if (!isUuid(id)) return res.status(400).json({ error: "Invalid ID" });
+        const status = String(req.body?.status || '').toUpperCase();
+        if (!['ACTIVE', 'RETIRED', 'DRAFT'].includes(status)) {
+            return res.status(400).json({ error: "status must be ACTIVE, RETIRED, or DRAFT" });
+        }
+        const actor = req.session?.user?.researcher_id || req.session?.user?.id || 'unknown';
+        const result = await pool.query(
+            `UPDATE probe_catalog SET status=$1, updated_at=NOW() WHERE id=$2 RETURNING id, status`,
+            [status, id]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: "Not found" });
+        pool.query(`INSERT INTO probe_audit_log (entity_type, entity_id, action, actor, new_values)
+            VALUES ('oligo', $1, 'STATUS_CHANGE', $2, $3)`,
+            [id, actor, JSON.stringify({ status })]).catch(() => {});
+        res.json({ success: true, oligo: result.rows[0] });
+    } catch (err) {
+        console.error("[OLIGO] oligo status error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// POST /api/oligo/oligos/:id/upload-doc – attach PDF document to oligonucleotide identity
+app.post("/api/oligo/oligos/:id/upload-doc", requirePI, oligoCertUpload.single("file"), async (req, res) => {
+    try {
+        const id = String(req.params.id || '').trim();
+        if (!isUuid(id)) return res.status(400).json({ error: "Invalid ID" });
+        if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+
+        const check = await pool.query(`SELECT id FROM probe_catalog WHERE id=$1`, [id]);
+        if (check.rows.length === 0) return res.status(404).json({ error: "Oligonucleotide not found" });
+
+        if (!r2Enabled()) return res.status(503).json({ error: "R2 storage not configured" });
+
+        const crypto = require('crypto');
+        const sha = crypto.createHash('sha256').update(req.file.buffer).digest('hex');
+        const safe = (req.file.originalname || 'doc.pdf').replace(/[^\w.\-]+/g, '_');
+        const r2Key = `oligo/docs/${id}/${sha}/${safe}`;
+        await uploadToR2(req.file.buffer, r2Key, 'application/pdf');
+
+        const actor = req.session?.user?.researcher_id || req.session?.user?.id || 'unknown';
+        const inserted = await pool.query(
+            `INSERT INTO probe_pdfs (probe_id, original_filename, r2_object_key, file_size_bytes, uploaded_by)
+             VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+            [id, req.file.originalname, r2Key, req.file.size, actor]
+        );
+        res.json({ success: true, doc_id: inserted.rows[0].id, r2_key: r2Key });
+    } catch (err) {
+        console.error("[OLIGO] upload-doc error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// ── Libraries ──
+
+// GET /api/oligo/libraries – list all libraries with member count
+app.get("/api/oligo/libraries", requirePI, async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT pl.id, pl.library_name, pl.description, pl.created_by, pl.created_at,
+                   COUNT(plm.id)::int AS member_count
+            FROM probe_libraries pl
+            LEFT JOIN probe_library_members plm ON plm.library_id = pl.id
+            GROUP BY pl.id
+            ORDER BY pl.library_name
+        `);
+        res.json({ libraries: result.rows });
+    } catch (err) {
+        console.error("[OLIGO] libraries list error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// POST /api/oligo/libraries – create a new library
+app.post("/api/oligo/libraries", requirePI, async (req, res) => {
+    try {
+        const name = String(req.body?.library_name || req.body?.name || '').trim();
+        const desc = String(req.body?.description || '').trim() || null;
+        if (!name) return res.status(400).json({ error: "library_name is required" });
+        const actor = req.session?.user?.researcher_id || req.session?.user?.id || 'unknown';
+        const r = await pool.query(
+            `INSERT INTO probe_libraries (library_name, description, created_by)
+             VALUES ($1,$2,$3) RETURNING id, library_name, description, created_at`,
+            [name, desc, actor]
+        );
+        res.status(201).json({ library: r.rows[0] });
+    } catch (err) {
+        if (err.code === '23505') return res.status(409).json({ error: "A library with this name already exists" });
+        console.error("[OLIGO] create library error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// GET /api/oligo/libraries/:id – library detail with members
+app.get("/api/oligo/libraries/:id", requirePI, async (req, res) => {
+    try {
+        const id = String(req.params.id || '').trim();
+        if (!isUuid(id)) return res.status(400).json({ error: "Invalid ID" });
+        const libR = await pool.query(`SELECT * FROM probe_libraries WHERE id=$1`, [id]);
+        if (libR.rows.length === 0) return res.status(404).json({ error: "Library not found" });
+        const memR = await pool.query(`
+            SELECT plm.id AS membership_id, pc.id AS oligo_id, pc.canonical_id,
+                   pc.display_name, pc.sequence, pc.length_nt, pc.mod5, pc.mod3, pc.status
+            FROM probe_library_members plm
+            JOIN probe_catalog pc ON pc.id = plm.probe_id
+            WHERE plm.library_id = $1
+            ORDER BY pc.display_name`, [id]);
+        res.json({ library: libR.rows[0], members: memR.rows });
+    } catch (err) {
+        console.error("[OLIGO] library detail error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// DELETE /api/oligo/libraries/:id – delete library (removes memberships via CASCADE)
+app.delete("/api/oligo/libraries/:id", requirePI, async (req, res) => {
+    try {
+        const id = String(req.params.id || '').trim();
+        if (!isUuid(id)) return res.status(400).json({ error: "Invalid ID" });
+        const r = await pool.query(`DELETE FROM probe_libraries WHERE id=$1 RETURNING id`, [id]);
+        if (r.rows.length === 0) return res.status(404).json({ error: "Library not found" });
+        res.json({ success: true });
+    } catch (err) {
+        console.error("[OLIGO] delete library error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// POST /api/oligo/libraries/:id/members – add an oligonucleotide to library
+app.post("/api/oligo/libraries/:id/members", requirePI, async (req, res) => {
+    try {
+        const libId   = String(req.params.id || '').trim();
+        const oligoId = String(req.body?.oligo_id || '').trim();
+        if (!isUuid(libId) || !isUuid(oligoId)) return res.status(400).json({ error: "Invalid ID" });
+        const actor = req.session?.user?.researcher_id || req.session?.user?.id || 'unknown';
+        const r = await pool.query(
+            `INSERT INTO probe_library_members (library_id, probe_id, added_by)
+             VALUES ($1,$2,$3) ON CONFLICT (library_id, probe_id) DO NOTHING RETURNING id`,
+            [libId, oligoId, actor]
+        );
+        res.json({ success: true, already_member: r.rows.length === 0 });
+    } catch (err) {
+        console.error("[OLIGO] add library member error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// DELETE /api/oligo/libraries/:id/members/:oligoId – remove member
+app.delete("/api/oligo/libraries/:id/members/:oligoId", requirePI, async (req, res) => {
+    try {
+        const libId   = String(req.params.id || '').trim();
+        const oligoId = String(req.params.oligoId || '').trim();
+        if (!isUuid(libId) || !isUuid(oligoId)) return res.status(400).json({ error: "Invalid ID" });
+        await pool.query(`DELETE FROM probe_library_members WHERE library_id=$1 AND probe_id=$2`, [libId, oligoId]);
+        res.json({ success: true });
+    } catch (err) {
+        console.error("[OLIGO] remove library member error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// POST /api/oligo/libraries/from-order – create library from all oligos in an order
+app.post("/api/oligo/libraries/from-order", requirePI, async (req, res) => {
+    try {
+        const orderNumber   = String(req.body?.order_number || '').trim();
+        const supplier      = String(req.body?.supplier || '').trim().toLowerCase();
+        const libraryName   = String(req.body?.library_name || '').trim();
+        if (!orderNumber || !supplier || !libraryName) {
+            return res.status(400).json({ error: "order_number, supplier, and library_name are required" });
+        }
+        const actor = req.session?.user?.researcher_id || req.session?.user?.id || 'unknown';
+
+        const client = await pool.connect();
+        try {
+            await client.query("BEGIN");
+            const libR = await client.query(
+                `INSERT INTO probe_libraries (library_name, description, created_by)
+                 VALUES ($1, $2, $3) RETURNING id`,
+                [libraryName, `Created from order ${orderNumber} (${supplier})`, actor]
+            );
+            const libId = libR.rows[0].id;
+
+            const oligosR = await client.query(
+                `SELECT DISTINCT ps.probe_id FROM probe_syntheses ps
+                 WHERE ps.order_number=$1 AND ps.supplier=$2 AND ps.probe_id IS NOT NULL`,
+                [orderNumber, supplier]
+            );
+            for (const row of oligosR.rows) {
+                await client.query(
+                    `INSERT INTO probe_library_members (library_id, probe_id, added_by)
+                     VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`,
+                    [libId, row.probe_id, actor]
+                );
+            }
+            await client.query("COMMIT");
+            res.status(201).json({ success: true, library_id: libId, members_added: oligosR.rows.length });
+        } catch (e) {
+            await client.query("ROLLBACK").catch(() => {});
+            throw e;
+        } finally { client.release(); }
+    } catch (err) {
+        if (err.code === '23505') return res.status(409).json({ error: "A library with this name already exists" });
+        console.error("[OLIGO] from-order error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// ── Synthesis batches ──
+
+// PATCH /api/oligo/syntheses/:id – edit synthesis batch fields
+app.patch("/api/oligo/syntheses/:id", requirePI, async (req, res) => {
+    try {
+        const id = String(req.params.id || '').trim();
+        if (!isUuid(id)) return res.status(400).json({ error: "Invalid ID" });
+        const actor = req.session?.user?.researcher_id || req.session?.user?.id || 'unknown';
+
+        const sets = [];
+        const vals = [];
+        const add = (col, val) => { sets.push(`${col} = $${vals.length + 1}`); vals.push(val); };
+
+        if (req.body?.synthesis_date !== undefined) {
+            const d = req.body.synthesis_date ? new Date(req.body.synthesis_date) : null;
+            add('synthesis_date', d && !isNaN(d) ? d.toISOString().split('T')[0] : null);
+        }
+        if (req.body?.amount_nmol !== undefined) add('amount_nmol', parseFloat(req.body.amount_nmol) || null);
+        if (req.body?.mw_value !== undefined)    add('mw_value', parseFloat(req.body.mw_value) || null);
+        if (req.body?.qc_notes !== undefined)    add('qc_notes', String(req.body.qc_notes || '').trim() || null);
+        if (req.body?.aliquots_text !== undefined) add('aliquots_text', String(req.body.aliquots_text || '').trim() || null);
+
+        if (sets.length === 0) return res.status(400).json({ error: "No fields to update" });
+        vals.push(id);
+
+        const result = await pool.query(
+            `UPDATE probe_syntheses SET ${sets.join(', ')} WHERE id = $${vals.length} RETURNING id`,
+            vals
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: "Synthesis batch not found" });
+
+        pool.query(`INSERT INTO probe_audit_log (entity_type, entity_id, action, actor, new_values)
+            VALUES ('synthesis', $1, 'EDIT_BATCH', $2, $3)`,
+            [id, actor, JSON.stringify(req.body)]).catch(() => {});
+
+        res.json({ success: true });
+    } catch (err) {
+        console.error("[OLIGO] edit synthesis error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// GET /api/oligo/syntheses/:id/certificate – get signed download URL for certificate PDF
+app.get("/api/oligo/syntheses/:id/certificate", requirePI, async (req, res) => {
+    try {
+        const id = String(req.params.id || '').trim();
+        if (!isUuid(id)) return res.status(400).json({ error: "Invalid ID" });
+        const r = await pool.query(
+            `SELECT certificate_pdf_key FROM probe_syntheses WHERE id=$1`, [id]);
+        if (r.rows.length === 0) return res.status(404).json({ error: "Synthesis batch not found" });
+        const key = r.rows[0].certificate_pdf_key;
+        if (!key) return res.status(404).json({ error: "No certificate attached" });
+        if (!r2Enabled()) return res.status(503).json({ error: "R2 not configured" });
+        const { GetObjectCommand } = require("@aws-sdk/client-s3");
+        const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
+        const url = await getSignedUrl(s3Client, new GetObjectCommand({ Bucket: R2_BUCKET, Key: key }), { expiresIn: 300 });
+        res.json({ url });
+    } catch (err) {
+        console.error("[OLIGO] certificate URL error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// GET /api/oligo/certificates – list all certificates (synthesis-level and identity-level)
+app.get("/api/oligo/certificates", requirePI, async (req, res) => {
+    try {
+        const synthCerts = await pool.query(`
+            SELECT ps.id AS synthesis_id, ps.supplier, ps.order_number, ps.oligo_number,
+                   ps.synthesis_date, ps.certificate_status, ps.certificate_pdf_key,
+                   pc.id AS oligo_id, pc.display_name, pc.canonical_id
+            FROM probe_syntheses ps
+            JOIN probe_catalog pc ON pc.id = ps.probe_id
+            WHERE ps.certificate_pdf_key IS NOT NULL
+            ORDER BY ps.synthesis_date DESC NULLS LAST, ps.created_at DESC
+        `);
+        const identDocs = await pool.query(`
+            SELECT pp.id, pp.probe_id AS oligo_id, pp.original_filename,
+                   pp.r2_object_key, pp.file_size_bytes, pp.uploaded_at, pp.uploaded_by,
+                   pc.display_name, pc.canonical_id
+            FROM probe_pdfs pp
+            JOIN probe_catalog pc ON pc.id = pp.probe_id
+            ORDER BY pp.uploaded_at DESC
+        `);
+        res.json({ synthesis_certificates: synthCerts.rows, identity_documents: identDocs.rows });
+    } catch (err) {
+        console.error("[OLIGO] certificates error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// GET /api/oligo/identity-docs/:id/download – signed URL for identity-level PDF
+app.get("/api/oligo/identity-docs/:id/download", requirePI, async (req, res) => {
+    try {
+        const id = String(req.params.id || '').trim();
+        if (!isUuid(id)) return res.status(400).json({ error: "Invalid ID" });
+        const r = await pool.query(`SELECT r2_object_key FROM probe_pdfs WHERE id=$1`, [id]);
+        if (r.rows.length === 0) return res.status(404).json({ error: "Document not found" });
+        if (!r2Enabled()) return res.status(503).json({ error: "R2 not configured" });
+        const { GetObjectCommand } = require("@aws-sdk/client-s3");
+        const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
+        const url = await getSignedUrl(s3Client, new GetObjectCommand({ Bucket: R2_BUCKET, Key: r.rows[0].r2_object_key }), { expiresIn: 300 });
+        res.json({ url });
+    } catch (err) {
+        console.error("[OLIGO] identity-doc download error:", err);
         res.status(500).json({ error: "Server error" });
     }
 });
