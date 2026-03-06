@@ -12148,7 +12148,10 @@ app.get("/api/oligo/catalog/:id", requirePI, async (req, res) => {
         if (probeResult.rows.length === 0) return res.status(404).json({ error: "Probe not found" });
 
         const synthResult = await pool.query(
-            `SELECT id, order_number, order_item, batch_key, supplier, review_status, created_at
+            `SELECT id, order_number, order_item, batch_key, supplier,
+                    synthesis_oligo_no, oligo_number, synthesis_date,
+                    scale, purification, od_value, amount_nmol, amount_ug, mw_value,
+                    review_status, created_at
              FROM probe_syntheses WHERE probe_id = $1
              ORDER BY created_at DESC`,
             [probeId]
@@ -12853,9 +12856,12 @@ function oligoNormalizeExcelRow(raw) {
     const modi6      = oligoNormMod(get(['MODI6']));
     const modi7      = oligoNormMod(get(['MODI7']));
     const modi8      = oligoNormMod(get(['MODI8']));
-    const scale      = String(get(['SCALE']) || '').trim();
-    const mw         = parseFloat(String(get(['MW']) || '').replace(',', '.')) || null;
-    const amountNmol = parseFloat(String(get(['AMOUNTNMOL']) || '').replace(',', '.')) || null;
+    const scale        = String(get(['SCALE']) || '').trim();
+    const purification = String(get(['PURIFICATION']) || '').trim();
+    const odValue      = parseFloat(String(get(['OD']) || '').replace(',', '.')) || null;
+    const mw           = parseFloat(String(get(['MW']) || '').replace(',', '.')) || null;
+    const amountNmol   = parseFloat(String(get(['AMOUNTNMOL']) || '').replace(',', '.')) || null;
+    const amountUg     = parseFloat(String(get(['AMOUNTUG']) || '').replace(',', '.')) || null;
 
     // CREATEDATE parsing – handle numeric serial dates (Excel date serial) and text dates
     let createDate = null;
@@ -12873,7 +12879,7 @@ function oligoNormalizeExcelRow(raw) {
         }
     }
 
-    return { orderNo, oligoNo, oligoName, sequence, mod5s, mod3s, modi5, modi6, modi7, modi8, mw, amountNmol, createDate, scale };
+    return { orderNo, oligoNo, oligoName, sequence, mod5s, mod3s, modi5, modi6, modi7, modi8, scale, purification, odValue, mw, amountNmol, amountUg, createDate };
 }
 
 // POST /api/oligo/excel-upload  – parse xlsx/csv and run import pipeline
@@ -12958,7 +12964,7 @@ app.post("/api/oligo/excel-upload", requirePI, oligoExcelUpload.single("file"), 
 
             // Process each row
             for (const row of rows) {
-                const { orderNo, oligoNo, oligoName, sequence, mod5s, mod3s, modi5, modi6, modi7, modi8, mw, amountNmol, createDate, scale } = row;
+                const { orderNo, oligoNo, oligoName, sequence, mod5s, mod3s, modi5, modi6, modi7, modi8, scale, purification, odValue, mw, amountNmol, amountUg, createDate } = row;
 
                 const seqNorm    = sequence.toLowerCase();
                 const lengthNt   = sequence.length;
@@ -13020,12 +13026,12 @@ app.post("/api/oligo/excel-upload", requirePI, oligoExcelUpload.single("file"), 
                     await client.query(
                         `INSERT INTO probe_syntheses
                             (probe_id, supplier, order_number, oligo_number, synthesis_date,
-                             amount_nmol, mw_value, source_file_id, excel_status,
-                             certificate_status, review_status, created_by)
-                         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'active','none','PENDING',$9)`,
+                             scale, purification, od_value, amount_nmol, amount_ug, mw_value,
+                             source_file_id, excel_status, certificate_status, review_status, created_by)
+                         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'active','none','PENDING',$13)`,
                         [probeId, supplier, orderNo, oligoNo,
                          createDate ? createDate.toISOString().split('T')[0] : null,
-                         amountNmol, mw, dataSourceId, actor]
+                         scale || null, purification || null, odValue, amountNmol, amountUg, mw, dataSourceId, actor]
                     );
                     insertedSynths++;
                 } catch (synthErr) {
