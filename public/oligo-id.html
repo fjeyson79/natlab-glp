@@ -797,20 +797,24 @@ function parseSequenceTokens(seq, polymerType) {
 }
 
 function renderSequenceHtml(seq, large, polymerType) {
-    const tokens = parseSequenceTokens(seq, polymerType);
-    if (!tokens.length) return '<span style="color:#4b5563;">\u2014</span>';
-    const cssClass = {
-        'dna': 'seq-dna',
-        'rna': 'seq-rna',
-        '2f': 'seq-2f',
-        '2ome': 'seq-2ome',
-        'lna': 'seq-lna',
-    };
-    return tokens.map((t, i) => {
-        const cls = cssClass[t.type] || 'seq-dna';
-        const space = (i > 0 && large) ? '<span class="seq-space"> </span>' : (i > 0 ? ' ' : '');
-        return `${space}<span class="${cls}">${esc(t.display)}</span>`;
-    }).join('');
+    if (!seq) return '<span style="color:#4b5563;">\u2014</span>';
+    // Render raw stored sequence with per-character coloring — no token reinterpretation
+    const basisCls = (polymerType || 'DNA').toUpperCase() === 'RNA' ? 'seq-rna' : 'seq-dna';
+    let html = '';
+    let i = 0;
+    while (i < seq.length) {
+        const ch = seq[i];
+        // Modification prefix pairs: m=2'OMe, f=2'F, l=LNA
+        if ((ch === 'm' || ch === 'f' || ch === 'l') && i + 1 < seq.length && /[A-Za-z]/.test(seq[i + 1])) {
+            const cls = ch === 'm' ? 'seq-2ome' : ch === 'f' ? 'seq-2f' : 'seq-lna';
+            html += `<span class="${cls}">${esc(ch)}${esc(seq[i + 1])}</span>`;
+            i += 2;
+        } else {
+            html += `<span class="${basisCls}">${esc(ch)}</span>`;
+            i++;
+        }
+    }
+    return html;
 }
 
 function renderCardSequencePreview(seq, maxTokens, polymerType) {
@@ -845,38 +849,35 @@ function renderTerminalMod3(mod) {
 
 function renderChemistryLegend(o) {
     const pt = (o.polymer_type || 'DNA').toUpperCase();
-    const tokens = parseSequenceTokens(o.sequence_norm || '', pt);
-    const modCodes = new Set();
-    tokens.forEach(t => { if (t.modCode != null) modCodes.add(t.modCode); });
-    const items = [];
-    // Basis always first
-    items.push(`<span class="chem-legend-item">Basis: ${pt}</span>`);
-    // Internal modifications with colored ball + [code] + name
-    const modDefs = { 6: { cls: 'f2', name: "2\u2032-Fluoro" }, 7: { cls: 'ome', name: "2\u2032-OMe" }, 8: { cls: 'lna', name: "LNA" } };
-    for (const [code, def] of Object.entries(modDefs)) {
-        if (modCodes.has(parseInt(code, 10))) {
-            items.push(`<span class="chem-legend-item"><span class="chem-legend-dot ${def.cls}"></span>[${code}] ${def.name}</span>`);
+    const items = [`<span class="chem-legend-item">Basis: ${pt}</span>`];
+    // Derive modification families from internal modification fields directly
+    const modFields = [o.mod_int_5, o.mod_int_6, o.mod_int_7, o.mod_int_8];
+    const seen = new Set();
+    const families = [
+        { match: v => /fluoro|2.?f/i.test(v), cls: 'f2', name: "2\u2032-Fluoro" },
+        { match: v => /ome|2.?ome/i.test(v),  cls: 'ome', name: "2\u2032-OMe" },
+        { match: v => /lna/i.test(v),          cls: 'lna', name: "LNA" },
+    ];
+    for (const val of modFields) {
+        if (!val || val === '-' || val.toLowerCase() === 'none') continue;
+        for (const fam of families) {
+            if (!seen.has(fam.name) && fam.match(val)) {
+                seen.add(fam.name);
+                items.push(`<span class="chem-legend-item"><span class="chem-legend-dot ${fam.cls}"></span>${fam.name}</span>`);
+            }
+        }
+        // Unknown modification family — show raw value
+        if (![...families].some(f => f.match(val)) && !seen.has(val)) {
+            seen.add(val);
+            items.push(`<span class="chem-legend-item"><span class="chem-legend-dot" style="background:#9ca3af;"></span>${esc(val)}</span>`);
         }
     }
-    // Any other mod codes not in the known set
-    modCodes.forEach(c => {
-        if (!modDefs[c] && c !== undefined) {
-            items.push(`<span class="chem-legend-item"><span class="chem-legend-dot" style="background:#9ca3af;"></span>[${c}] Mod ${c}</span>`);
-        }
-    });
     return `<div class="chem-legend">${items.join('')}</div>`;
 }
 
 function detectChemBadges(o) {
-    const badges = [];
     const pt = (o.polymer_type || 'DNA').toUpperCase();
-    badges.push(pt === 'RNA' ? '<span class="chem-badge chem-badge-rna">RNA</span>' : '<span class="chem-badge chem-badge-dna">DNA</span>');
-    const tokens = parseSequenceTokens(o.sequence_norm || '', pt);
-    const types = new Set(tokens.map(t => t.type));
-    if (types.has('2f'))   badges.push('<span class="chem-badge chem-badge-2f">2\u2032F</span>');
-    if (types.has('2ome')) badges.push('<span class="chem-badge chem-badge-2ome">2\u2032OMe</span>');
-    if (types.has('lna'))  badges.push('<span class="chem-badge chem-badge-lna">LNA</span>');
-    return badges.join(' ');
+    return pt === 'RNA' ? '<span class="chem-badge chem-badge-rna">RNA</span>' : '<span class="chem-badge chem-badge-dna">DNA</span>';
 }
 
 function buildInternalChemSummary(o) {
@@ -931,7 +932,17 @@ function renderRegistryList(lp) {
 async function loadRegistry() {
     try {
         const data = await api('GET', '/api/oligo/oligos');
-        S.registryList = data.oligos || [];
+        // Deduplicate rows by probe_id — backend returns one row per synthesis
+        const byProbe = new Map();
+        for (const row of (data.oligos || [])) {
+            const pid = row.probe_id || row.id;
+            if (byProbe.has(pid)) {
+                byProbe.get(pid).synthesis_count++;
+            } else {
+                byProbe.set(pid, { ...row, synthesis_count: 1 });
+            }
+        }
+        S.registryList = [...byProbe.values()];
         regFilter();
     } catch (e) {
         document.getElementById('reg-list').innerHTML = `<div class="empty-list">Error: ${esc(e.message)}</div>`;
