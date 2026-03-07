@@ -223,7 +223,7 @@
         }
         .lib-card-line1 .lib-card-name {
             font-size: 13px;
-            font-weight: 500;
+            font-weight: 600;
             color: #e2e8f0;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -242,17 +242,8 @@
             color: #9ca3af;
             margin-top: 3px;
         }
-        .lib-card-chem {
-            font-size: 10px;
-            color: #6b7280;
-            letter-spacing: 0.02em;
-        }
-        .lib-card-range {
+        .lib-card-field {
             font-size: 11px;
-            color: #9ca3af;
-        }
-        .lib-card-counts {
-            font-size: 10px;
             color: #6b7280;
         }
 
@@ -2078,20 +2069,10 @@ async function loadLibraryList() {
     }
 }
 
-function libChemFamilies(l) {
-    const families = [];
-    const pts = (l.polymer_types || []).map(p => (p||'').toUpperCase());
-    if (pts.includes('DNA')) families.push('DNA');
-    if (pts.includes('RNA')) families.push('RNA');
-    if (l.has_2f) families.push("2\u2032-Fluoro");
-    if (l.has_2ome) families.push("2\u2032-OMe");
-    if (l.has_lna) families.push('LNA');
-    return families;
-}
-
 function libOrderLabel(l) {
+    // Single order number per library — first from DB, fallback to name
     const orders = l.order_numbers || [];
-    if (orders.length) return orders.map(o => `[${o}]`).join(' ');
+    if (orders.length) return `[${orders[0]}]`;
     const m = (l.library_name || '').match(/(\d{4,})/);
     return m ? `[${m[1]}]` : '';
 }
@@ -2107,23 +2088,18 @@ function libFilter() {
         const name = l.library_name || '\u2014';
         const orderLbl = libOrderLabel(l);
         const mc = l.member_count || 0;
-        const chem = libChemFamilies(l);
-        const first = l.first_member_name || '';
-        const last = l.last_member_name || '';
-        const rangeStr = first && last && first !== last ? `${esc(first)} \u2013 ${esc(last)}` : esc(first || last || '');
-        const synC = l.synthesis_count || 0;
-        const idC = l.identity_count || 0;
+        const chemText = l.chemistry_text || '';
+        const detectText = l.detection_text || '';
         return `
         <div class="list-item${l.id === S.selectedLibraryId ? ' selected' : ''}" onclick="selectLibrary('${l.id}')" style="padding:10px 14px;line-height:1.55;">
             <div class="lib-card-line1">
                 <span class="lib-card-name">${esc(name)}</span>
                 ${orderLbl ? `<span class="lib-card-order">${esc(orderLbl)}</span>` : ''}
             </div>
-            <div class="lib-card-members">\uD83E\uDDEC ${mc} member${mc!==1?'s':''}</div>
+            <div class="lib-card-members">${mc} member${mc!==1?'s':''}</div>
             <div style="height:6px;"></div>
-            ${chem.length ? `<div class="lib-card-chem">${chem.join(' \u2022 ')}</div><div style="height:6px;"></div>` : ''}
-            ${rangeStr ? `<div class="lib-card-range">${rangeStr}</div>` : ''}
-            <div class="lib-card-counts">\uD83E\uDDEA ${synC} synthes${synC!==1?'es':'is'} &nbsp;\uD83E\uDDEC ${idC} identit${idC!==1?'ies':'y'}</div>
+            <div class="lib-card-field">${chemText ? 'Chemistry: ' + esc(chemText) : '<span style="color:#4b5563;">Chemistry: \u2014</span>'}</div>
+            <div class="lib-card-field">${detectText ? 'Detection: ' + esc(detectText) : '<span style="color:#4b5563;">Detection: \u2014</span>'}</div>
         </div>`;
     }).join('');
 }
