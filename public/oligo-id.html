@@ -173,11 +173,14 @@
             letter-spacing: 0.05em;
             text-align: center;
             color: #9ca3af;
-            padding: 6px 0;
+            padding: 4px 8px;
+            margin: 4px -4px;
             line-height: 1.6;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            background: #fff;
+            border-radius: 4px;
         }
         .oligo-card-meta {
             display: flex;
@@ -762,15 +765,15 @@ function parseSequenceTokens(seq, polymerType) {
             const ch = seq[i];
             const next = seq[i + 1];
             if (ch === 'm' && /[A-Za-z]/.test(next)) {
-                tokens.push({ base: next.toUpperCase(), type: '2ome', display: next.toUpperCase(), modCode: 7 });
+                tokens.push({ base: next.toUpperCase(), type: '2ome', display: 'm' + next.toUpperCase(), modCode: 7 });
                 i += 2; continue;
             }
             if (ch === 'f' && /[A-Za-z]/.test(next)) {
-                tokens.push({ base: next.toUpperCase(), type: '2f', display: next.toUpperCase(), modCode: 6 });
+                tokens.push({ base: next.toUpperCase(), type: '2f', display: 'f' + next.toUpperCase(), modCode: 6 });
                 i += 2; continue;
             }
             if (ch === 'l' && /[A-Za-z]/.test(next)) {
-                tokens.push({ base: next.toUpperCase(), type: 'lna', display: next.toUpperCase(), modCode: 8 });
+                tokens.push({ base: next.toUpperCase(), type: 'lna', display: 'l' + next.toUpperCase(), modCode: 8 });
                 i += 2; continue;
             }
         }
@@ -1055,31 +1058,7 @@ function _buildCanvasHtml() {
     // Internal chemistry summary
     const intChemSummary = buildInternalChemSummary(o);
 
-    // Syntheses
-    let synthHtml = '';
-    if (syntheses.length) {
-        synthHtml = syntheses.map((s, i) => {
-            const parts = [];
-            parts.push(`Batch ${i + 1}`);
-            if (s.order_number) parts.push(`Order ${esc(s.order_number)}`);
-            if (s.scale) parts.push(esc(s.scale));
-            if (s.amount_nmol != null) parts.push(`${s.amount_nmol} nmol`);
-            if (s.od_value != null) parts.push(`OD ${s.od_value}`);
-            return `<div class="canvas-synth-line">\uD83E\uDDEA <span>${parts.join(' <span class="synth-detail">|</span> ')}</span></div>`;
-        }).join('');
-    } else {
-        synthHtml = '<div class="canvas-synth-line" style="color:#4b5563;">No synthesis batches</div>';
-    }
-
-    // Libraries
-    let libHtml = '';
-    if (libraries.length) {
-        libHtml = libraries.map(l => `<div class="canvas-lib-line">\uD83D\uDCDA ${esc(l.library_name || l.name || '\u2014')}</div>`).join('');
-    } else {
-        libHtml = '<div class="canvas-lib-line" style="color:#4b5563;">Not assigned to any library</div>';
-    }
-
-    // Batch selector (for the batch-aware sections, keep compatibility)
+    // Batch selector
     let batchSelectorHtml = '';
     if (syntheses.length > 1) {
         const options = syntheses.map((s, i) =>
@@ -1089,6 +1068,26 @@ function _buildCanvasHtml() {
             <div style="text-align:center;margin-bottom:8px;">
                 <select class="filter-select" style="min-width:200px;text-align:center;" onchange="selectBatch(this.value)">${options}</select>
             </div>`;
+    }
+
+    // Identity docs
+    const docs = o.identity_docs || [];
+    let docsHtml = '';
+    if (docs.length) {
+        docsHtml = `
+        <div class="section">
+            <div class="section-title">Documents</div>
+            <table class="data-table">
+                <thead><tr><th>File</th><th>Uploaded</th><th></th></tr></thead>
+                <tbody>${docs.map(d => `
+                    <tr>
+                        <td>${esc(d.original_filename || d.file_key || '\u2014')}</td>
+                        <td>${fmtDate(d.uploaded_at)}</td>
+                        <td><button class="btn btn-secondary btn-sm" onclick="downloadDoc('${d.id}')">Download</button></td>
+                    </tr>
+                `).join('')}</tbody>
+            </table>
+        </div>`;
     }
 
     return `
@@ -1107,27 +1106,75 @@ function _buildCanvasHtml() {
             ${legendHtml}
         </div>
 
-        ${intChemSummary ? `
-        <hr class="canvas-divider">
-        <div class="canvas-section">
-            <div class="canvas-section-title">Internal Chemistry</div>
-            <div class="canvas-intchem">${intChemSummary}</div>
+        <div class="section" style="margin:0 28px 16px;">
+            <div class="section-title">Identity</div>
+            <table class="kv-table">
+                <tr><td>Canonical ID</td><td class="text-mono">${esc(o.canonical_id || '\u2014')}</td></tr>
+                <tr><td>Display Name</td><td>${esc(o.display_name || '\u2014')}</td></tr>
+                <tr><td>Status</td><td><span class="tag ${statusColor(o.status)}">${esc(o.status || 'DRAFT')}</span></td></tr>
+                <tr><td>Polymer Type</td><td>${esc(pt)}</td></tr>
+                <tr><td>Length</td><td>${lenNt} nt</td></tr>
+                ${o.notes ? `<tr><td>Notes</td><td>${esc(o.notes)}</td></tr>` : ''}
+            </table>
         </div>
-        ` : ''}
+
+        <div class="section" style="margin:0 28px 16px;">
+            <div class="section-title">Terminal Modifications</div>
+            <table class="kv-table">
+                <tr><td>5\u2032 Modification</td><td>${fmtMod(o.mod5)}</td></tr>
+                <tr><td>3\u2032 Modification</td><td>${fmtMod(o.mod3)}</td></tr>
+            </table>
+        </div>
+
+        <div class="section" style="margin:0 28px 16px;">
+            <div class="section-title">Internal Modifications</div>
+            <div class="mod-grid">
+                <div class="mod-cell"><div class="mod-cell-label">Int 5</div><div class="mod-cell-value${(!o.mod_int_5||o.mod_int_5==='-')?' none':''}">${fmtMod(o.mod_int_5)}</div></div>
+                <div class="mod-cell"><div class="mod-cell-label">Int 6</div><div class="mod-cell-value${(!o.mod_int_6||o.mod_int_6==='-')?' none':''}">${fmtMod(o.mod_int_6)}</div></div>
+                <div class="mod-cell"><div class="mod-cell-label">Int 7</div><div class="mod-cell-value${(!o.mod_int_7||o.mod_int_7==='-')?' none':''}">${fmtMod(o.mod_int_7)}</div></div>
+                <div class="mod-cell"><div class="mod-cell-label">Int 8</div><div class="mod-cell-value${(!o.mod_int_8||o.mod_int_8==='-')?' none':''}">${fmtMod(o.mod_int_8)}</div></div>
+            </div>
+            ${intChemSummary ? `<div class="canvas-intchem" style="margin-top:8px;">${intChemSummary}</div>` : ''}
+        </div>
 
         <hr class="canvas-divider">
 
         ${batchSelectorHtml}
 
-        <div class="canvas-section">
-            <div class="canvas-section-title">Syntheses</div>
-            ${synthHtml}
+        <div class="section" style="margin:0 28px 16px;">
+            <div class="section-title">Syntheses (${syntheses.length})</div>
+            ${syntheses.length ? `
+            <table class="data-table">
+                <thead><tr><th>Batch</th><th>Supplier</th><th>Order #</th><th>Oligo #</th><th>Date</th><th>Amount</th><th>MW</th><th>Status</th></tr></thead>
+                <tbody>${syntheses.map((s, i) => `
+                    <tr>
+                        <td>${i + 1}</td>
+                        <td>${esc(s.supplier || '\u2014')}</td>
+                        <td class="text-mono">${esc(s.order_number || '\u2014')}</td>
+                        <td class="text-mono">${esc(s.oligo_number || s.synthesis_oligo_no || '\u2014')}</td>
+                        <td>${fmtDate(s.synthesis_date)}</td>
+                        <td>${s.amount_nmol != null ? s.amount_nmol + ' nmol' : '\u2014'}</td>
+                        <td>${s.mw_value != null ? s.mw_value + ' g/mol' : '\u2014'}</td>
+                        <td><span class="tag ${(s.excel_status||s.status)==='ACTIVE'?'green':(s.excel_status||s.status)==='DISCARDED'?'red':'gray'}">${esc(s.excel_status || s.status || '\u2014')}</span></td>
+                    </tr>
+                `).join('')}</tbody>
+            </table>
+            ` : '<p class="text-muted" style="font-size:13px;">No synthesis batches</p>'}
         </div>
 
-        <div class="canvas-section">
-            <div class="canvas-section-title">Libraries</div>
-            ${libHtml}
+        <div class="section" style="margin:0 28px 16px;">
+            <div class="section-title">Libraries (${libraries.length})</div>
+            ${libraries.length ? `
+            <table class="data-table">
+                <thead><tr><th>Library Name</th></tr></thead>
+                <tbody>${libraries.map(l => `
+                    <tr><td>${esc(l.library_name || l.name || '\u2014')}</td></tr>
+                `).join('')}</tbody>
+            </table>
+            ` : '<p class="text-muted" style="font-size:13px;">Not assigned to any library</p>'}
         </div>
+
+        ${docsHtml ? `<div style="margin:0 28px 16px;">${docsHtml}</div>` : ''}
     `;
 }
 
