@@ -13690,14 +13690,25 @@ app.post("/api/oligo/oligos/:id/upload-doc", requirePI, oligoCertUpload.single("
 
 // ── Libraries ──
 
-// GET /api/oligo/libraries – list all libraries with member count
+// GET /api/oligo/libraries – list all libraries with member count + card summary
 app.get("/api/oligo/libraries", requirePI, async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT pl.id, pl.library_name, pl.description, pl.created_by, pl.created_at,
-                   COUNT(plm.id)::int AS member_count
+                   COUNT(plm.id)::int AS member_count,
+                   COUNT(DISTINCT pc.id)::int AS identity_count,
+                   COUNT(DISTINCT ps.id)::int AS synthesis_count,
+                   ARRAY_AGG(DISTINCT pc.polymer_type) FILTER (WHERE pc.polymer_type IS NOT NULL) AS polymer_types,
+                   BOOL_OR(pc.sequence_norm ~ 'f[A-Za-z]') AS has_2f,
+                   BOOL_OR(pc.sequence_norm ~ 'm[A-Za-z]') AS has_2ome,
+                   BOOL_OR(pc.sequence_norm ~ 'l[A-Za-z]') AS has_lna,
+                   ARRAY_AGG(DISTINCT ps.order_number) FILTER (WHERE ps.order_number IS NOT NULL AND ps.order_number != '') AS order_numbers,
+                   (ARRAY_AGG(pc.display_name ORDER BY plm.sort_order ASC NULLS LAST, plm.added_at ASC) FILTER (WHERE pc.display_name IS NOT NULL))[1] AS first_member_name,
+                   (ARRAY_AGG(pc.display_name ORDER BY plm.sort_order DESC NULLS LAST, plm.added_at DESC) FILTER (WHERE pc.display_name IS NOT NULL))[1] AS last_member_name
             FROM probe_libraries pl
             LEFT JOIN probe_library_members plm ON plm.library_id = pl.id
+            LEFT JOIN probe_catalog pc ON pc.id = plm.probe_id
+            LEFT JOIN probe_syntheses ps ON ps.probe_id = pc.id
             GROUP BY pl.id
             ORDER BY pl.library_name
         `);

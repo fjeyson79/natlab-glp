@@ -213,6 +213,49 @@
         .list-item-name { font-size: 13px; font-weight: 500; color: #e2e8f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .list-item-sub { font-size: 11px; color: #6b7280; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .list-item-meta { display: flex; gap: 6px; margin-top: 4px; align-items: center; }
+
+        /* Library card in list panel */
+        .lib-card-line1 {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            gap: 8px;
+        }
+        .lib-card-line1 .lib-card-name {
+            font-size: 13px;
+            font-weight: 500;
+            color: #e2e8f0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            min-width: 0;
+        }
+        .lib-card-line1 .lib-card-order {
+            font-size: 11px;
+            color: #6b7280;
+            font-family: "JetBrains Mono", monospace;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .lib-card-members {
+            font-size: 11px;
+            color: #9ca3af;
+            margin-top: 3px;
+        }
+        .lib-card-chem {
+            font-size: 10px;
+            color: #6b7280;
+            letter-spacing: 0.02em;
+        }
+        .lib-card-range {
+            font-size: 11px;
+            color: #9ca3af;
+        }
+        .lib-card-counts {
+            font-size: 10px;
+            color: #6b7280;
+        }
+
         .tag {
             font-size: 10px;
             font-weight: 600;
@@ -410,9 +453,9 @@
 
         /* Library inline member expansion */
         .lib-member-header {
-            display: flex;
+            display: grid;
+            grid-template-columns: 180px 1fr 72px;
             align-items: center;
-            gap: 12px;
             padding: 4px 8px;
             font-size: 10px;
             font-weight: 600;
@@ -421,11 +464,8 @@
             color: #6b7280;
             border-bottom: 1px solid #1e2130;
         }
-        .lib-member-header span:first-child { min-width: 180px;
-            width: 180px;
-            flex-shrink: 0; }
-        .lib-member-header span:nth-child(2) { flex: 1; }
-        .lib-member-header span:last-child { flex-shrink: 0; }
+        .lib-member-header span:nth-child(2) { text-align: center; }
+        .lib-member-header span:last-child { text-align: right; }
         .lib-member-row {
             padding: 8px 8px;
             border-bottom: 1px solid #1e2130;
@@ -436,26 +476,22 @@
         .lib-member-row.expanded { background: #151821; }
         .lib-member-row:last-child { border-bottom: none; }
         .lib-member-summary {
-            display: flex;
+            display: grid;
+            grid-template-columns: 180px 1fr 72px;
             align-items: center;
-            gap: 12px;
             font-size: 12px;
         }
         .lib-member-summary .member-name {
             color: #6ee7b7;
             font-weight: 500;
-            min-width: 180px;
-            width: 180px;
-            flex-shrink: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
         .lib-member-row:hover .member-name {
             text-decoration: underline;
         }
         .lib-member-summary .member-seq-preview {
-            flex: 1;
-            display: flex;
-            justify-content: center;
-            align-items: center;
             text-align: center;
             font-family: "JetBrains Mono", monospace;
             font-size: 11px;
@@ -463,9 +499,10 @@
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
+            padding: 0 8px;
         }
         .lib-member-summary .member-status {
-            flex-shrink: 0;
+            text-align: right;
         }
         .lib-member-expand {
             overflow: hidden;
@@ -1548,7 +1585,7 @@ async function populateLibSelect() {
         const data = await api('GET', '/api/oligo/libraries');
         const sel = document.getElementById('lib-add-select');
         if (!sel) return;
-        sel.innerHTML = (data.libraries||[]).map(l => `<option value="${l.id}">${esc(l.name)}</option>`).join('');
+        sel.innerHTML = (data.libraries||[]).map(l => `<option value="${l.id}">${esc(l.library_name||l.name||'')}</option>`).join('');
     } catch (_) {}
 }
 
@@ -2041,22 +2078,54 @@ async function loadLibraryList() {
     }
 }
 
+function libChemFamilies(l) {
+    const families = [];
+    const pts = (l.polymer_types || []).map(p => (p||'').toUpperCase());
+    if (pts.includes('DNA')) families.push('DNA');
+    if (pts.includes('RNA')) families.push('RNA');
+    if (l.has_2f) families.push("2\u2032-Fluoro");
+    if (l.has_2ome) families.push("2\u2032-OMe");
+    if (l.has_lna) families.push('LNA');
+    return families;
+}
+
+function libOrderLabel(l) {
+    const orders = l.order_numbers || [];
+    if (orders.length) return orders.map(o => `[${o}]`).join(' ');
+    const m = (l.library_name || '').match(/(\d{4,})/);
+    return m ? `[${m[1]}]` : '';
+}
+
 function libFilter() {
     const q = (document.getElementById('lib-search')?.value || '').toLowerCase();
     let items = S.libraryList;
-    if (q) items = items.filter(l => (l.name||'').toLowerCase().includes(q));
+    if (q) items = items.filter(l => (l.library_name||'').toLowerCase().includes(q));
     const list = document.getElementById('lib-list');
     if (!list) return;
     if (!items.length) { list.innerHTML = `<div class="empty-list">No libraries</div>`; return; }
-    list.innerHTML = items.map(l => `
-        <div class="list-item${l.id === S.selectedLibraryId ? ' selected' : ''}" onclick="selectLibrary('${l.id}')">
-            <div class="list-item-name">${esc(l.name)}</div>
-            <div class="list-item-sub">${l.member_count||0} member${l.member_count!==1?'s':''}</div>
-            <div class="list-item-meta">
-                <span class="tag gray">${fmtDate(l.created_at)}</span>
+    list.innerHTML = items.map(l => {
+        const name = l.library_name || '\u2014';
+        const orderLbl = libOrderLabel(l);
+        const mc = l.member_count || 0;
+        const chem = libChemFamilies(l);
+        const first = l.first_member_name || '';
+        const last = l.last_member_name || '';
+        const rangeStr = first && last && first !== last ? `${esc(first)} \u2013 ${esc(last)}` : esc(first || last || '');
+        const synC = l.synthesis_count || 0;
+        const idC = l.identity_count || 0;
+        return `
+        <div class="list-item${l.id === S.selectedLibraryId ? ' selected' : ''}" onclick="selectLibrary('${l.id}')" style="padding:10px 14px;line-height:1.55;">
+            <div class="lib-card-line1">
+                <span class="lib-card-name">${esc(name)}</span>
+                ${orderLbl ? `<span class="lib-card-order">${esc(orderLbl)}</span>` : ''}
             </div>
-        </div>
-    `).join('');
+            <div class="lib-card-members">\uD83E\uDDEC ${mc} member${mc!==1?'s':''}</div>
+            <div style="height:6px;"></div>
+            ${chem.length ? `<div class="lib-card-chem">${chem.join(' \u2022 ')}</div><div style="height:6px;"></div>` : ''}
+            ${rangeStr ? `<div class="lib-card-range">${rangeStr}</div>` : ''}
+            <div class="lib-card-counts">\uD83E\uDDEA ${synC} synthes${synC!==1?'es':'is'} &nbsp;\uD83E\uDDEC ${idC} identit${idC!==1?'ies':'y'}</div>
+        </div>`;
+    }).join('');
 }
 
 async function createLibrary() {
