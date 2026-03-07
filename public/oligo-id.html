@@ -421,7 +421,9 @@
             color: #6b7280;
             border-bottom: 1px solid #1e2130;
         }
-        .lib-member-header span:first-child { min-width: 100px; }
+        .lib-member-header span:first-child { min-width: 180px;
+            width: 180px;
+            flex-shrink: 0; }
         .lib-member-header span:nth-child(2) { flex: 1; }
         .lib-member-header span:last-child { flex-shrink: 0; }
         .lib-member-row {
@@ -442,7 +444,9 @@
         .lib-member-summary .member-name {
             color: #6ee7b7;
             font-weight: 500;
-            min-width: 100px;
+            min-width: 180px;
+            width: 180px;
+            flex-shrink: 0;
         }
         .lib-member-row:hover .member-name {
             text-decoration: underline;
