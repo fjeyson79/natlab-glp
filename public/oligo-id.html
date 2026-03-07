@@ -675,7 +675,13 @@
             border-radius: 4px;
             white-space: nowrap;
         }
-    </style>
+    .seq-preview {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: #e5e7eb;
+  letter-spacing: 0;
+}
+
+</style>
 </head>
 <body>
 
@@ -968,13 +974,9 @@ function renderSequenceHtml(seq, large, polymerType) {
 function renderCardSequencePreview(seq, maxTokens, polymerType) {
     const tokens = parseSequenceTokens(seq, polymerType);
     const show = tokens.slice(0, maxTokens || 20);
-    const cssClass = { 'dna': 'seq-dna', 'rna': 'seq-rna', '2f': 'seq-2f', '2ome': 'seq-2ome', 'lna': 'seq-lna' };
-    let html = show.map((t, i) => {
-        const cls = cssClass[t.type] || 'seq-dna';
-        return `${i > 0 ? ' ' : ''}<span class="${cls}">${esc(t.display)}</span>`;
-    }).join('');
-    if (tokens.length > show.length) html += ' <span style="color:#4b5563;">\u2026</span>';
-    return html;
+    let html = show.map(t => esc(t.display)).join('' );
+    if (tokens.length > show.length) html += '<span style="color:#4b5563;">\u2026</span>';
+    return '<span class="seq-preview">' + html + '</span>';
 }
 
 function renderTerminalMod5(mod) {
@@ -2183,7 +2185,7 @@ function libBuildMemberRows(members) {
 }
 
 function libBuildMemberDetail(m, idx, total, pt, lenNt, mod5Html, mod3Html, seqFull) {
-    const legendHtml = renderChemistryLegend(m);
+    const legendHtml = renderChemistryLegend({ ...m, sequence: m.sequence_norm });
     return `
         <div class="lib-member-detail">
             <div class="seq-card">
