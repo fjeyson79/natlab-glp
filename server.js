@@ -13695,7 +13695,9 @@ app.get("/api/oligo/libraries", requirePI, async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT pl.id, pl.library_name, pl.description, pl.created_by, pl.created_at,
+                   pl.chemistry_families, pl.detection_type,
                    COUNT(DISTINCT plm.id)::int AS member_count,
+                   COUNT(DISTINCT plm.id) FILTER (WHERE plm.certified = true)::int AS certified_count,
                    COUNT(DISTINCT pc.id)::int AS identity_count,
                    COUNT(DISTINCT ps.id)::int AS synthesis_count,
                    ARRAY_AGG(DISTINCT pc.polymer_type) FILTER (WHERE pc.polymer_type IS NOT NULL) AS polymer_types,
@@ -13712,6 +13714,11 @@ app.get("/api/oligo/libraries", requirePI, async (req, res) => {
             GROUP BY pl.id
             ORDER BY pl.library_name
         `);
+        // Compute chemistry_text and detection_text for card display
+        for (const lib of result.rows) {
+            lib.chemistry_text = (lib.chemistry_families || []).join(', ');
+            lib.detection_text = lib.detection_type || '';
+        }
         res.json({ libraries: result.rows });
     } catch (err) {
         console.error("[OLIGO] libraries list error:", err);
@@ -13739,7 +13746,7 @@ app.post("/api/oligo/libraries", requirePI, async (req, res) => {
     }
 });
 
-// GET /api/oligo/libraries/:id – library detail with members
+// GET /api/oligo/libraries/:id – library detail with members + aliquots
 app.get("/api/oligo/libraries/:id", requirePI, async (req, res) => {
     try {
         const id = String(req.params.id || '').trim();
@@ -13748,15 +13755,115 @@ app.get("/api/oligo/libraries/:id", requirePI, async (req, res) => {
         if (libR.rows.length === 0) return res.status(404).json({ error: "Library not found" });
         const memR = await pool.query(`
             SELECT plm.id AS membership_id, plm.synthesis_id, plm.sort_order,
+                   plm.certified, plm.certificate_id,
                    pc.id AS oligo_id, pc.canonical_id,
                    pc.display_name, pc.sequence, pc.sequence_norm, pc.polymer_type, pc.length_nt, pc.mod5, pc.mod3, pc.mod_int_5, pc.mod_int_6, pc.mod_int_7, pc.mod_int_8, pc.status
             FROM probe_library_members plm
             JOIN probe_catalog pc ON pc.id = plm.probe_id
             WHERE plm.library_id = $1
             ORDER BY plm.sort_order ASC NULLS LAST, plm.added_at ASC`, [id]);
+        // Fetch aliquots for all members in one query
+        const aliqR = await pool.query(`
+            SELECT a.library_member_id, a.aliquot_index, a.amount_nmol
+            FROM probe_library_member_aliquots a
+            WHERE a.library_id = $1
+            ORDER BY a.library_member_id, a.aliquot_index`, [id]);
+        // Group aliquots by member
+        const aliqMap = {};
+        for (const a of aliqR.rows) {
+            if (!aliqMap[a.library_member_id]) aliqMap[a.library_member_id] = [];
+            aliqMap[a.library_member_id].push({ idx: a.aliquot_index, nmol: a.amount_nmol });
+        }
+        for (const m of memR.rows) {
+            m.aliquots = aliqMap[m.membership_id] || [];
+        }
         res.json({ library: libR.rows[0], members: memR.rows });
     } catch (err) {
         console.error("[OLIGO] library detail error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// PATCH /api/oligo/libraries/:id – edit library metadata (name, chemistry_families, detection_type)
+app.patch("/api/oligo/libraries/:id", requirePI, async (req, res) => {
+    try {
+        const id = String(req.params.id || '').trim();
+        if (!isUuid(id)) return res.status(400).json({ error: "Invalid ID" });
+
+        const sets = [];
+        const vals = [];
+        const add = (col, val) => { sets.push(`${col} = $${vals.length + 1}`); vals.push(val); };
+
+        if (req.body?.library_name !== undefined) {
+            const name = String(req.body.library_name || '').trim();
+            if (!name) return res.status(400).json({ error: "library_name cannot be empty" });
+            add('library_name', name);
+        }
+        if (req.body?.chemistry_families !== undefined) {
+            const fams = Array.isArray(req.body.chemistry_families) ? req.body.chemistry_families : [];
+            const allowed = ['DNA', 'RNA', "2'-Fluoro", "2'-OMe", 'LNA'];
+            const clean = fams.filter(f => allowed.includes(f));
+            add('chemistry_families', clean.length ? clean : null);
+        }
+        if (req.body?.detection_type !== undefined) {
+            add('detection_type', String(req.body.detection_type || '').trim() || null);
+        }
+
+        if (sets.length === 0) return res.status(400).json({ error: "No fields to update" });
+        sets.push(`updated_at = NOW()`);
+        vals.push(id);
+        const r = await pool.query(
+            `UPDATE probe_libraries SET ${sets.join(', ')} WHERE id = $${vals.length} RETURNING *`,
+            vals
+        );
+        if (r.rows.length === 0) return res.status(404).json({ error: "Library not found" });
+        res.json({ library: r.rows[0] });
+    } catch (err) {
+        if (err.code === '23505') return res.status(409).json({ error: "A library with this name already exists" });
+        console.error("[OLIGO] patch library error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// POST /api/oligo/libraries/:id/duplicate – duplicate library with all members
+app.post("/api/oligo/libraries/:id/duplicate", requirePI, async (req, res) => {
+    try {
+        const srcId = String(req.params.id || '').trim();
+        if (!isUuid(srcId)) return res.status(400).json({ error: "Invalid ID" });
+        const newName = String(req.body?.library_name || '').trim();
+        if (!newName) return res.status(400).json({ error: "library_name is required" });
+        const actor = req.session?.user?.researcher_id || req.session?.user?.id || 'unknown';
+
+        const client = await pool.connect();
+        try {
+            await client.query("BEGIN");
+            // Copy library metadata
+            const libR = await client.query(
+                `INSERT INTO probe_libraries (library_name, description, chemistry_families, detection_type, created_by)
+                 SELECT $1, description, chemistry_families, detection_type, $2
+                 FROM probe_libraries WHERE id = $3
+                 RETURNING id`,
+                [newName, actor, srcId]
+            );
+            if (libR.rows.length === 0) { await client.query("ROLLBACK"); return res.status(404).json({ error: "Source library not found" }); }
+            const newId = libR.rows[0].id;
+            // Copy all members
+            const memR = await client.query(
+                `INSERT INTO probe_library_members (library_id, probe_id, synthesis_id, sort_order, added_by)
+                 SELECT $1, probe_id, synthesis_id, sort_order, $2
+                 FROM probe_library_members WHERE library_id = $3
+                 ORDER BY sort_order ASC NULLS LAST, added_at ASC`,
+                [newId, actor, srcId]
+            );
+            await client.query("COMMIT");
+            res.status(201).json({ success: true, library_id: newId, members_copied: memR.rowCount });
+        } catch (e) {
+            await client.query("ROLLBACK").catch(() => {});
+            throw e;
+        } finally { client.release(); }
+    } catch (err) {
+        if (err.code === '23505') return res.status(409).json({ error: "A library with this name already exists" });
+        console.error("[OLIGO] duplicate library error:", err);
         res.status(500).json({ error: "Server error" });
     }
 });
@@ -13862,6 +13969,180 @@ app.post("/api/oligo/libraries/from-order", requirePI, async (req, res) => {
     }
 });
 
+// POST /api/oligo/libraries/:id/certificate-upload – upload PDF, extract aliquots, certify members
+app.post("/api/oligo/libraries/:id/certificate-upload", requirePI, oligoCertUpload.single("file"), async (req, res) => {
+    try {
+        const libId = String(req.params.id || '').trim();
+        if (!isUuid(libId)) return res.status(400).json({ error: "Invalid library ID" });
+        if (!req.file) return res.status(400).json({ error: "No PDF file uploaded" });
+
+        const actor = req.session?.user?.researcher_id || req.session?.user?.id || 'unknown';
+        const buf = req.file.buffer;
+        const originalFilename = req.file.originalname || 'certificate.pdf';
+
+        // Verify library exists
+        const libR = await pool.query(`SELECT id FROM probe_libraries WHERE id=$1`, [libId]);
+        if (libR.rows.length === 0) return res.status(404).json({ error: "Library not found" });
+
+        // Parse PDF
+        const { parseBiomersPdf } = require("./server/oligo/biomers_parser");
+        const parsed = await parseBiomersPdf(buf);
+        const items = parsed.items || [];
+
+        // Get library members with their synthesis info for matching
+        const memR = await pool.query(`
+            SELECT plm.id AS membership_id, plm.probe_id, plm.synthesis_id,
+                   pc.canonical_id, ps.order_number, ps.oligo_number
+            FROM probe_library_members plm
+            JOIN probe_catalog pc ON pc.id = plm.probe_id
+            LEFT JOIN probe_syntheses ps ON ps.id = plm.synthesis_id
+            WHERE plm.library_id = $1`, [libId]);
+
+        // Build lookup maps for strict matching
+        const byCanonical = {};
+        const byOrderOligo = {};
+        for (const m of memR.rows) {
+            if (m.canonical_id) byCanonical[m.canonical_id.toUpperCase()] = m;
+            if (m.order_number && m.oligo_number) {
+                byOrderOligo[`${m.order_number}_${m.oligo_number}`] = m;
+            }
+        }
+
+        // Match extracted items to library members
+        const matches = []; // { member, item }
+        const unmatched = [];
+        for (const item of items) {
+            const info = item.ID_INFO || {};
+            // info['Order#'] is the canonical_id (e.g. "00304503_30")
+            const pdfCanonical = (info['Order#'] || '').toUpperCase();
+            // Extract order_number and oligo_number by splitting canonical_id on last underscore
+            const usIdx = pdfCanonical.lastIndexOf('_');
+            const pdfOrderNo = usIdx > 0 ? pdfCanonical.slice(0, usIdx) : pdfCanonical;
+            const pdfOligoNo = usIdx > 0 ? pdfCanonical.slice(usIdx + 1) : '';
+
+            let member = null;
+            // Try canonical_id match first (covers Biomers PDF-origin probes)
+            if (pdfCanonical && byCanonical[pdfCanonical]) {
+                member = byCanonical[pdfCanonical];
+            }
+            // Try with Excel-origin canonical_id format (supplier_orderNo_oligoNo)
+            if (!member && pdfCanonical) {
+                const excelCanon = `BIOMERS_${pdfCanonical}`.toUpperCase();
+                if (byCanonical[excelCanon]) member = byCanonical[excelCanon];
+            }
+            // Try order_number + oligo_number match (via synthesis records)
+            if (!member && pdfOrderNo && pdfOligoNo) {
+                member = byOrderOligo[`${pdfOrderNo}_${pdfOligoNo}`];
+            }
+            if (member) {
+                matches.push({ member, item });
+            } else {
+                unmatched.push(item);
+            }
+        }
+
+        // Store PDF in R2
+        const crypto = require("crypto");
+        const sha256 = crypto.createHash("sha256").update(buf).digest("hex");
+
+        // SHA dedup: reject if this exact PDF was already uploaded for this library
+        const dupCheck = await pool.query(
+            `SELECT id FROM probe_library_certificates WHERE library_id = $1 AND file_sha256 = $2 LIMIT 1`,
+            [libId, sha256]
+        );
+        if (dupCheck.rows.length > 0) {
+            return res.status(409).json({ error: "This PDF has already been uploaded for this library." });
+        }
+
+        const safeName = originalFilename.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const r2Key = `oligo/library-certs/${libId}/${sha256}/${safeName}`;
+
+        if (r2Enabled()) {
+            await uploadToR2(buf, r2Key, 'application/pdf');
+        }
+
+        // Transactional: insert certificate row, update members, insert aliquots
+        const client = await pool.connect();
+        try {
+            await client.query("BEGIN");
+
+            // Insert certificate record
+            const certR = await client.query(
+                `INSERT INTO probe_library_certificates
+                    (library_id, original_filename, r2_object_key, file_sha256,
+                     entries_detected, matched_oligos, updated_oligos, unmatched_rows, certified_oligos,
+                     uploaded_by)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+                [libId, originalFilename, r2Key, sha256,
+                 items.length, matches.length, matches.length, unmatched.length, matches.length,
+                 actor]
+            );
+            const certId = certR.rows[0].id;
+
+            // Certify matched members + insert aliquots
+            // certificate_id = most recent certificate that matched this member
+            // Aliquot rows from all certificates are preserved (append-only)
+            for (const { member, item } of matches) {
+                await client.query(
+                    `UPDATE probe_library_members SET certified = true, certificate_id = $1 WHERE id = $2`,
+                    [certId, member.membership_id]
+                );
+                // Extract aliquots from parsed item
+                const aliquots = item.ALIQUOTS || [];
+                for (const aliq of aliquots) {
+                    await client.query(
+                        `INSERT INTO probe_library_member_aliquots
+                            (library_id, library_member_id, certificate_id, aliquot_index, amount_nmol, raw_text)
+                         VALUES ($1,$2,$3,$4,$5,$6)`,
+                        [libId, member.membership_id, certId,
+                         aliq.index || 0, aliq.nmol || null,
+                         aliq.nmol ? `${aliq.index || 0}. ${aliq.nmol} nmol` : null]
+                    );
+                }
+            }
+
+            await client.query("COMMIT");
+
+            res.json({
+                success: true,
+                certificate_id: certId,
+                summary: {
+                    entries_detected: items.length,
+                    matched_oligos: matches.length,
+                    updated_oligos: matches.length,
+                    unmatched_rows: unmatched.length,
+                    certified_oligos: matches.length
+                },
+                warnings: parsed.warnings || []
+            });
+        } catch (e) {
+            await client.query("ROLLBACK").catch(() => {});
+            throw e;
+        } finally { client.release(); }
+    } catch (err) {
+        console.error("[OLIGO] library certificate upload error:", err);
+        res.status(500).json({ error: err.message || "Server error" });
+    }
+});
+
+// GET /api/oligo/library-certificates/:id/download – signed URL for library certificate PDF
+app.get("/api/oligo/library-certificates/:id/download", requirePI, async (req, res) => {
+    try {
+        const id = String(req.params.id || '').trim();
+        if (!isUuid(id)) return res.status(400).json({ error: "Invalid ID" });
+        const r = await pool.query(`SELECT r2_object_key FROM probe_library_certificates WHERE id=$1`, [id]);
+        if (r.rows.length === 0) return res.status(404).json({ error: "Certificate not found" });
+        if (!r2Enabled()) return res.status(503).json({ error: "R2 not configured" });
+        const { GetObjectCommand } = require("@aws-sdk/client-s3");
+        const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
+        const url = await getSignedUrl(s3Client, new GetObjectCommand({ Bucket: R2_BUCKET, Key: r.rows[0].r2_object_key }), { expiresIn: 300 });
+        res.json({ url });
+    } catch (err) {
+        console.error("[OLIGO] library cert download error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
 // ── Synthesis batches ──
 
 // PATCH /api/oligo/syntheses/:id – edit synthesis batch fields
@@ -13945,7 +14226,70 @@ app.get("/api/oligo/certificates", requirePI, async (req, res) => {
             JOIN probe_catalog pc ON pc.id = pp.probe_id
             ORDER BY pp.uploaded_at DESC
         `);
-        res.json({ synthesis_certificates: synthCerts.rows, identity_documents: identDocs.rows });
+        // Library certificates
+        let libCerts = [];
+        try {
+            const lcR = await pool.query(`
+                SELECT plc.id, plc.library_id, plc.original_filename, plc.r2_object_key,
+                       plc.entries_detected, plc.matched_oligos, plc.certified_oligos,
+                       plc.uploaded_at, plc.uploaded_by,
+                       pl.library_name
+                FROM probe_library_certificates plc
+                JOIN probe_libraries pl ON pl.id = plc.library_id
+                ORDER BY plc.uploaded_at DESC
+            `);
+            libCerts = lcR.rows;
+        } catch (_) { /* table may not exist yet */ }
+
+        // Merge into unified list for frontend
+        const certificates = [];
+        for (const sc of synthCerts.rows) {
+            certificates.push({
+                id: sc.synthesis_id,
+                cert_type: 'synthesis',
+                original_filename: `${sc.supplier || ''} ${sc.order_number || ''} #${sc.oligo_number || ''}`.trim(),
+                oligo_name: sc.display_name || sc.canonical_id || '',
+                oligo_id: sc.oligo_id,
+                synthesis_id: sc.synthesis_id,
+                uploaded_at: sc.synthesis_date,
+                uploaded_by: null,
+                certificate_status: sc.certificate_status,
+                file_key: sc.certificate_pdf_key
+            });
+        }
+        for (const id of identDocs.rows) {
+            certificates.push({
+                id: id.id,
+                cert_type: 'identity',
+                original_filename: id.original_filename,
+                oligo_name: id.display_name || id.canonical_id || '',
+                oligo_id: id.oligo_id,
+                uploaded_at: id.uploaded_at,
+                uploaded_by: id.uploaded_by
+            });
+        }
+        for (const lc of libCerts) {
+            certificates.push({
+                id: lc.id,
+                cert_type: 'library',
+                original_filename: lc.original_filename,
+                oligo_name: lc.library_name || '',
+                library_id: lc.library_id,
+                library_name: lc.library_name,
+                uploaded_at: lc.uploaded_at,
+                uploaded_by: lc.uploaded_by,
+                entries_detected: lc.entries_detected,
+                matched_oligos: lc.matched_oligos,
+                certified_oligos: lc.certified_oligos
+            });
+        }
+        // Sort unified list by uploaded_at descending
+        certificates.sort((a, b) => {
+            const da = a.uploaded_at ? new Date(a.uploaded_at).getTime() : 0;
+            const db = b.uploaded_at ? new Date(b.uploaded_at).getTime() : 0;
+            return db - da;
+        });
+        res.json({ certificates, synthesis_certificates: synthCerts.rows, identity_documents: identDocs.rows, library_certificates: libCerts });
     } catch (err) {
         console.error("[OLIGO] certificates error:", err);
         res.status(500).json({ error: "Server error" });

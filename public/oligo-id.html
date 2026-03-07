@@ -259,6 +259,7 @@
         .tag.amber { background: #3a2a10; color: #fbbf24; }
         .tag.red { background: #3a1a1a; color: #f87171; }
         .tag.gray { background: #2a2d3a; color: #9ca3af; }
+        .tag.blue { background: #1a2a3a; color: #60a5fa; }
         .empty-list { padding: 32px 16px; text-align: center; color: #4b5563; font-size: 13px; }
 
         /* ── Right detail panel ── */
@@ -445,7 +446,7 @@
         /* Library inline member expansion */
         .lib-member-header {
             display: grid;
-            grid-template-columns: 180px 1fr 72px;
+            grid-template-columns: 180px 1fr 100px 72px;
             align-items: center;
             padding: 4px 8px;
             font-size: 10px;
@@ -456,6 +457,7 @@
             border-bottom: 1px solid #1e2130;
         }
         .lib-member-header span:nth-child(2) { text-align: center; }
+        .lib-member-header span:nth-child(3) { text-align: center; }
         .lib-member-header span:last-child { text-align: right; }
         .lib-member-row {
             padding: 8px 8px;
@@ -468,7 +470,7 @@
         .lib-member-row:last-child { border-bottom: none; }
         .lib-member-summary {
             display: grid;
-            grid-template-columns: 180px 1fr 72px;
+            grid-template-columns: 180px 1fr 100px 72px;
             align-items: center;
             font-size: 12px;
         }
@@ -491,6 +493,15 @@
             text-overflow: ellipsis;
             white-space: nowrap;
             padding: 0 8px;
+        }
+        .lib-member-summary .member-aliquots {
+            text-align: center;
+            font-family: "JetBrains Mono", monospace;
+            font-size: 10px;
+            color: #9ca3af;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
         .lib-member-summary .member-status {
             text-align: right;
@@ -2088,6 +2099,7 @@ function libFilter() {
         const name = l.library_name || '\u2014';
         const orderLbl = libOrderLabel(l);
         const mc = l.member_count || 0;
+        const cc = l.certified_count || 0;
         const chemText = l.chemistry_text || '';
         const detectText = l.detection_text || '';
         return `
@@ -2097,6 +2109,7 @@ function libFilter() {
                 ${orderLbl ? `<span class="lib-card-order">${esc(orderLbl)}</span>` : ''}
             </div>
             <div class="lib-card-members">\uD83E\uDDEC ${mc} member${mc!==1?'s':''}</div>
+            ${cc > 0 ? `<div class="lib-card-members" style="color:#34d399;">\u2714 ${cc} certified</div>` : ''}
             <div style="height:6px;"></div>
             <div class="lib-card-field">${chemText ? 'Chemistry: ' + esc(chemText) : '<span style="color:#4b5563;">Chemistry: \u2014</span>'}</div>
             <div class="lib-card-field">${detectText ? 'Detection: ' + esc(detectText) : '<span style="color:#4b5563;">Detection: \u2014</span>'}</div>
@@ -2172,20 +2185,60 @@ function renderLibraryDetail(lib) {
                 <span style="display:inline-block;width:3px;height:12px;background:${color};border-radius:2px;"></span>
                 Members
             </div>
-            ${members.length ? '<div class="lib-member-header"><span>Name</span><span>Sequence (preview)</span><span>Status</span></div>' : ''}
+            ${members.length ? '<div class="lib-member-header"><span>Name</span><span>Sequence (preview)</span><span>Aliquots</span><span>Status</span></div>' : ''}
             <div id="lib-members-list">
                 ${members.length ? libBuildMemberRows(members) : '<p class="text-muted" style="font-size:13px;padding:8px;">No members.</p>'}
             </div>
         </div>
     `;
 
+    const chemOptions = ['DNA', 'RNA', "2'-Fluoro", "2'-OMe", 'LNA'];
+    const currentChems = lib.chemistry_families || [];
+    const chemCheckboxes = chemOptions.map(c => {
+        const checked = currentChems.includes(c) ? 'checked' : '';
+        const cid = 'lib-chem-' + c.replace(/[^a-zA-Z]/g, '');
+        return `<label style="display:inline-flex;align-items:center;gap:4px;margin-right:10px;font-size:12px;color:#d1d5db;cursor:pointer;">
+            <input type="checkbox" class="lib-chem-cb" value="${esc(c)}" ${checked} style="accent-color:#34d399;"> ${esc(c)}
+        </label>`;
+    }).join('');
+
     const actionsHtml = `
         <div id="lib-actions-alert"></div>
+        <div class="section">
+            <div class="section-title">Edit Library</div>
+            <div class="form-group">
+                <label class="form-label">Library Name</label>
+                <input class="form-input" id="lib-edit-name" value="${esc(libName)}">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Chemistry Families</label>
+                <div id="lib-edit-chems" style="padding:4px 0;">${chemCheckboxes}</div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Detection Type</label>
+                <input class="form-input" id="lib-edit-detection" value="${esc(lib.detection_type || '')}" placeholder="e.g. FISH, qPCR, MALDI">
+            </div>
+            <div class="btn-row">
+                <button class="btn btn-primary btn-sm" onclick="libSaveEdit('${lib.id}')">Save Changes</button>
+            </div>
+        </div>
+        <hr class="divider">
+        <div class="section">
+            <div class="section-title">Duplicate Library</div>
+            <div class="form-group">
+                <label class="form-label">New Library Name</label>
+                <input class="form-input" id="lib-dup-name" placeholder="e.g. ${esc(libName)} (copy)">
+            </div>
+            <div class="btn-row">
+                <button class="btn btn-secondary btn-sm" onclick="libDuplicate('${lib.id}')">Create Copy</button>
+            </div>
+        </div>
+        <hr class="divider">
         <div class="section">
             <div class="section-title">Add Member</div>
             <div class="form-group">
                 <label class="form-label">Search oligonucleotides</label>
-                <input class="form-input" id="lib-oligo-search" placeholder="Type name or ID\u2026" oninput="libOligoSearch()">
+                <input class="form-input" id="lib-oligo-search" placeholder="Type name, ID, sequence, order\u2026" oninput="libOligoSearch()">
             </div>
             <div id="lib-oligo-results" style="margin-top:6px;"></div>
         </div>
@@ -2198,6 +2251,18 @@ function renderLibraryDetail(lib) {
             <div class="btn-row">
                 <button class="btn btn-danger btn-sm" onclick="removeMember('${lib.id}')">Remove Selected</button>
             </div>
+        </div>
+        <hr class="divider">
+        <div class="section">
+            <div class="section-title">Upload PDF</div>
+            <div class="form-group">
+                <label class="form-label">Certificate PDF</label>
+                <input type="file" id="lib-cert-file" accept=".pdf" style="font-size:12px;color:#d1d5db;">
+            </div>
+            <div class="btn-row">
+                <button class="btn btn-primary btn-sm" onclick="libUploadCert('${lib.id}')">Extract and Update Aliquots</button>
+            </div>
+            <div id="lib-cert-summary" style="margin-top:8px;"></div>
         </div>
         <hr class="divider">
         <div class="section">
@@ -2223,11 +2288,15 @@ function libBuildMemberRows(members) {
         const mod5Html = renderTerminalMod5(m.mod5);
         const mod3Html = renderTerminalMod3(m.mod3);
         const seqFull = renderSequenceHtml(m.sequence_norm, true, pt);
+        const aliqText = (m.aliquots && m.aliquots.length)
+            ? m.aliquots.map(a => `${a.idx}. ${a.nmol ?? '?'} nmol`).join(', ')
+            : '\u2014';
         return `
             <div class="lib-member-row${expanded ? ' expanded' : ''}" id="lib-member-${i}">
                 <div class="lib-member-summary" onclick="libToggleMember(${i})">
-                    <span class="member-name">${esc(m.display_name||m.canonical_id||'\u2014')}</span>
+                    <span class="member-name">${esc(m.display_name||m.canonical_id||'\u2014')}${m.certified ? ' <span style="color:#34d399;font-size:10px;">\u2714</span>' : ''}</span>
                     <span class="member-seq-preview">${seqPreview}</span>
+                    <span class="member-aliquots" title="${esc(aliqText)}">${esc(aliqText)}</span>
                     <span class="member-status"><span class="tag ${statusColor(m.status)}">${m.status||'\u2014'}</span></span>
                 </div>
                 <div class="lib-member-expand${expanded ? ' open' : ''}">
@@ -2287,13 +2356,28 @@ function libRefreshMemberRows() {
 
 function libOligoSearch() {
     const q = (document.getElementById('lib-oligo-search')?.value || '').toLowerCase();
-    if (q.length < 2) { document.getElementById('lib-oligo-results').innerHTML = ''; return; }
-    const matches = S.registryList.filter(o => (o.display_name||'').toLowerCase().includes(q) || (o.canonical_id||'').toLowerCase().includes(q)).slice(0, 8);
-    document.getElementById('lib-oligo-results').innerHTML = matches.length
-        ? matches.map(o => `<div class="list-item" style="border:1px solid #e2e8f0;border-radius:5px;margin-bottom:4px;cursor:pointer;" onclick="addMemberFromSearch('${o.probe_id || o.id}')">
-            <div class="list-item-name">${esc(o.display_name||o.canonical_id)}</div>
-            <div class="list-item-sub text-mono">${esc((o.sequence_norm||'').substring(0,28))}\u2026</div>
-          </div>`).join('')
+    const resultsEl = document.getElementById('lib-oligo-results');
+    if (!resultsEl) return;
+    if (q.length < 2) { resultsEl.innerHTML = ''; return; }
+    // Mirror registry search: match across all searchable fields
+    const currentMemberIds = new Set((S.currentLibMembers || []).map(m => m.oligo_id || m.id));
+    const matches = S.registryList.filter(o => {
+        const hay = [
+            o.display_name || '', o.canonical_id || '', o.sequence_norm || '',
+            o.order_number || '', o.oligo_number || '', o.supplier || '', o.polymer_type || ''
+        ].join(' ').toLowerCase();
+        return hay.includes(q);
+    }).slice(0, 10);
+    resultsEl.innerHTML = matches.length
+        ? matches.map(o => {
+            const oid = o.probe_id || o.id;
+            const inLib = currentMemberIds.has(oid);
+            return `<div class="list-item" style="border:1px solid ${inLib ? '#374151' : '#e2e8f0'};border-radius:5px;margin-bottom:4px;cursor:${inLib ? 'default' : 'pointer'};opacity:${inLib ? '0.5' : '1'};" ${inLib ? '' : `onclick="addMemberFromSearch('${oid}')"`}>
+                <div class="list-item-name">${esc(o.display_name||o.canonical_id)}${inLib ? ' <span style="color:#6b7280;font-size:10px;">(in library)</span>' : ''}</div>
+                <div class="list-item-sub text-mono">${esc((o.sequence_norm||'').substring(0,28))}\u2026</div>
+                ${o.canonical_id ? `<div class="list-item-sub" style="font-size:10px;color:#6b7280;">${esc(o.canonical_id)}</div>` : ''}
+            </div>`;
+        }).join('')
         : '<p style="font-size:12px;color:#6b7280;">No matches</p>';
 }
 
@@ -2302,8 +2386,8 @@ async function addMemberFromSearch(oligoId) {
     try {
         await api('POST', `/api/oligo/libraries/${S.selectedLibraryId}/members`, { oligo_id: oligoId });
         showAlert('lib-actions-alert', 'success', 'Member added.');
+        await loadLibraryList();
         await selectLibrary(S.selectedLibraryId);
-        libFilter();
     } catch (e) {
         showAlert('lib-actions-alert', 'error', e.message);
     }
@@ -2315,8 +2399,8 @@ async function removeMember(libId) {
     try {
         await api('DELETE', `/api/oligo/libraries/${libId}/members/${oligoId}`);
         showAlert('lib-actions-alert', 'success', 'Member removed.');
+        await loadLibraryList();
         await selectLibrary(libId);
-        libFilter();
     } catch (e) {
         showAlert('lib-actions-alert', 'error', e.message);
     }
@@ -2331,6 +2415,77 @@ async function deleteLibrary(libId, name) {
         await loadLibraryList();
     } catch (e) {
         alert('Error: ' + e.message);
+    }
+}
+
+async function libSaveEdit(libId) {
+    const name = document.getElementById('lib-edit-name')?.value?.trim();
+    if (!name) return showAlert('lib-actions-alert', 'error', 'Library name cannot be empty.');
+    const chems = Array.from(document.querySelectorAll('.lib-chem-cb:checked')).map(cb => cb.value);
+    const detection = document.getElementById('lib-edit-detection')?.value?.trim() || '';
+    try {
+        await api('PATCH', `/api/oligo/libraries/${libId}`, {
+            library_name: name,
+            chemistry_families: chems,
+            detection_type: detection
+        });
+        showAlert('lib-actions-alert', 'success', 'Library updated.');
+        await loadLibraryList();
+        await selectLibrary(libId);
+    } catch (e) {
+        showAlert('lib-actions-alert', 'error', e.message);
+    }
+}
+
+async function libDuplicate(srcId) {
+    const name = document.getElementById('lib-dup-name')?.value?.trim();
+    if (!name) return showAlert('lib-actions-alert', 'error', 'Enter a name for the copy.');
+    try {
+        const data = await api('POST', `/api/oligo/libraries/${srcId}/duplicate`, { library_name: name });
+        showAlert('lib-actions-alert', 'success', `Library duplicated (${data.members_copied} members copied).`);
+        await loadLibraryList();
+        if (data.library_id) await selectLibrary(data.library_id);
+    } catch (e) {
+        showAlert('lib-actions-alert', 'error', e.message);
+    }
+}
+
+async function libUploadCert(libId) {
+    const fileInput = document.getElementById('lib-cert-file');
+    const summaryEl = document.getElementById('lib-cert-summary');
+    if (!fileInput || !fileInput.files.length) return showAlert('lib-actions-alert', 'error', 'Select a PDF file.');
+    const file = fileInput.files[0];
+    if (!file.name.toLowerCase().endsWith('.pdf')) return showAlert('lib-actions-alert', 'error', 'Only PDF files are accepted.');
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    if (summaryEl) summaryEl.innerHTML = '<div class="spinner" style="margin:8px auto;"></div>';
+    try {
+        const r = await fetch(`/api/oligo/libraries/${libId}/certificate-upload`, {
+            method: 'POST',
+            body: formData
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+
+        const s = data.summary || {};
+        if (summaryEl) summaryEl.innerHTML = `
+            <table class="kv-table" style="font-size:12px;">
+                <tr><td>Entries detected</td><td>${s.entries_detected || 0}</td></tr>
+                <tr><td>Matched oligos</td><td>${s.matched_oligos || 0}</td></tr>
+                <tr><td>Updated oligos</td><td>${s.updated_oligos || 0}</td></tr>
+                <tr><td>Unmatched rows</td><td>${s.unmatched_rows || 0}</td></tr>
+                <tr><td>Certified oligos</td><td style="color:#34d399;font-weight:600;">${s.certified_oligos || 0}</td></tr>
+            </table>
+        `;
+        showAlert('lib-actions-alert', 'success', 'Certificate processed successfully.');
+        fileInput.value = '';
+        await loadLibraryList();
+        await selectLibrary(libId);
+    } catch (e) {
+        if (summaryEl) summaryEl.innerHTML = '';
+        showAlert('lib-actions-alert', 'error', e.message);
     }
 }
 
@@ -2440,16 +2595,20 @@ async function loadCerts() {
             showDetail('Certificates', 'No documents attached yet', '<div style="padding:20px;"><p style="color:#6b7280;font-size:13px;">Attach PDFs to oligonucleotides via Registry \u2192 select oligo \u2192 Actions \u2192 Attach Document.</p></div>', null);
             return;
         }
-        list.innerHTML = S.certList.map((c, i) => `
+        list.innerHTML = S.certList.map((c, i) => {
+            const badgeClass = c.cert_type === 'identity' ? '' : c.cert_type === 'library' ? 'blue' : 'green';
+            const badgeLabel = c.cert_type === 'identity' ? 'Identity doc' : c.cert_type === 'library' ? 'Library cert' : 'Certificate';
+            const subtitle = c.cert_type === 'library' ? (c.library_name || '') : (c.oligo_name || c.synthesis_label || '\u2014');
+            return `
             <div class="list-item" onclick="showCertDetail(${i})">
                 <div class="list-item-name">${esc(c.original_filename || c.file_key || 'Document')}</div>
-                <div class="list-item-sub">${esc(c.oligo_name || c.synthesis_label || '\u2014')}</div>
+                <div class="list-item-sub">${esc(subtitle)}</div>
                 <div class="list-item-meta">
-                    <span class="tag ${c.cert_type==='identity'?'':'green'}">${c.cert_type==='identity'?'Identity doc':'Certificate'}</span>
+                    <span class="tag ${badgeClass}">${badgeLabel}</span>
                     <span class="tag gray">${fmtDate(c.uploaded_at)}</span>
                 </div>
-            </div>
-        `).join('');
+            </div>`;
+        }).join('');
         if (S.certList.length) showCertDetail(0);
     } catch (e) {
         const list = document.getElementById('cert-list');
@@ -2460,26 +2619,44 @@ async function loadCerts() {
 function showCertDetail(idx) {
     const c = S.certList[idx];
     if (!c) return;
+    const typeLabel = c.cert_type === 'identity' ? 'Identity document' : c.cert_type === 'library' ? 'Library certificate' : 'Synthesis certificate';
+    const linkedTo = c.cert_type === 'library' ? (c.library_name || '\u2014') : (c.oligo_name || c.synthesis_label || '\u2014');
+    let statsHtml = '';
+    if (c.cert_type === 'library') {
+        statsHtml = `
+        <div class="section">
+            <div class="section-title">Extraction Summary</div>
+            <table class="kv-table">
+                <tr><td>Entries detected</td><td>${c.entries_detected || 0}</td></tr>
+                <tr><td>Matched oligos</td><td>${c.matched_oligos || 0}</td></tr>
+                <tr><td>Certified oligos</td><td style="color:#34d399;">${c.certified_oligos || 0}</td></tr>
+            </table>
+        </div>`;
+    }
+    let downloadBtn = '';
+    if (c.cert_type === 'identity') downloadBtn = `<button class="btn btn-primary" onclick="downloadDocById('${c.id}')">Download PDF</button>`;
+    else if (c.cert_type === 'library') downloadBtn = `<button class="btn btn-primary" onclick="downloadLibCert('${c.id}')">Download PDF</button>`;
+    else downloadBtn = `<button class="btn btn-primary" onclick="downloadCert('${c.synthesis_id}')">Download PDF</button>`;
+
     const viewHtml = `
         <div class="section">
             <div class="section-title">Document</div>
             <table class="kv-table">
                 <tr><td>Filename</td><td>${esc(c.original_filename||'\u2014')}</td></tr>
-                <tr><td>Type</td><td>${c.cert_type==='identity'?'Identity document':'Synthesis certificate'}</td></tr>
-                <tr><td>Linked to</td><td>${esc(c.oligo_name || c.synthesis_label || '\u2014')}</td></tr>
+                <tr><td>Type</td><td>${typeLabel}</td></tr>
+                <tr><td>Linked to</td><td>${esc(linkedTo)}</td></tr>
                 <tr><td>Uploaded by</td><td>${esc(c.uploaded_by||'\u2014')}</td></tr>
                 <tr><td>Uploaded</td><td>${fmtDate(c.uploaded_at)}</td></tr>
             </table>
             <div class="btn-row" style="margin-top:14px;">
-                ${c.cert_type==='identity'
-                    ? `<button class="btn btn-primary" onclick="downloadDocById('${c.id}')">Download PDF</button>`
-                    : `<button class="btn btn-primary" onclick="downloadCert('${c.synthesis_id}')">Download PDF</button>`
-                }
+                ${downloadBtn}
                 ${c.oligo_id ? `<button class="btn btn-secondary" onclick="switchMode('registry');setTimeout(()=>selectOligo('${c.oligo_id}'),300);">View Oligonucleotide</button>` : ''}
+                ${c.library_id ? `<button class="btn btn-secondary" onclick="switchMode('library');setTimeout(()=>selectLibrary('${c.library_id}'),300);">View Library</button>` : ''}
             </div>
         </div>
+        ${statsHtml}
     `;
-    showDetail(c.original_filename || 'Document', c.oligo_name || '', viewHtml, null);
+    showDetail(c.original_filename || 'Document', linkedTo, viewHtml, null);
 }
 
 async function downloadCert(synthId) {
@@ -2492,6 +2669,13 @@ async function downloadCert(synthId) {
 async function downloadDocById(docId) {
     try {
         const data = await api('GET', `/api/oligo/identity-docs/${docId}/download`);
+        if (data.url) window.open(data.url, '_blank');
+    } catch (e) { alert('Error: ' + e.message); }
+}
+
+async function downloadLibCert(certId) {
+    try {
+        const data = await api('GET', `/api/oligo/library-certificates/${certId}/download`);
         if (data.url) window.open(data.url, '_blank');
     } catch (e) { alert('Error: ' + e.message); }
 }

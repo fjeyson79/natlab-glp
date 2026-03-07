@@ -839,6 +839,59 @@ async function migrate() {
             // Excel-sourced members: one per synthesis per library (allows duplicate probe_id)
             `CREATE UNIQUE INDEX IF NOT EXISTS uq_plm_lib_synthesis ON probe_library_members(library_id, synthesis_id) WHERE synthesis_id IS NOT NULL`,
 
+            // ==================== LIBRARY CERTIFICATION (migration 032) ====================
+
+            // Editable metadata on libraries (for card display)
+            `ALTER TABLE probe_libraries ADD COLUMN IF NOT EXISTS chemistry_families TEXT[]`,
+            `ALTER TABLE probe_libraries ADD COLUMN IF NOT EXISTS detection_type TEXT`,
+
+            // Certification flag on library members
+            `ALTER TABLE probe_library_members ADD COLUMN IF NOT EXISTS certified BOOLEAN DEFAULT FALSE`,
+            `ALTER TABLE probe_library_members ADD COLUMN IF NOT EXISTS certificate_id UUID`,
+
+            // Library-level certificate storage
+            `CREATE TABLE IF NOT EXISTS probe_library_certificates (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                library_id UUID NOT NULL REFERENCES probe_libraries(id) ON DELETE CASCADE,
+                original_filename TEXT NOT NULL,
+                r2_object_key TEXT NOT NULL,
+                file_sha256 TEXT,
+                entries_detected INT DEFAULT 0,
+                matched_oligos INT DEFAULT 0,
+                updated_oligos INT DEFAULT 0,
+                unmatched_rows INT DEFAULT 0,
+                certified_oligos INT DEFAULT 0,
+                uploaded_by TEXT NOT NULL,
+                uploaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )`,
+            `CREATE INDEX IF NOT EXISTS idx_plc_library ON probe_library_certificates(library_id)`,
+
+            // Add FK after table exists (SET NULL so library deletion cascades cleanly)
+            `DO $$ BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint WHERE conname = 'fk_plm_certificate'
+                ) THEN
+                    ALTER TABLE probe_library_members
+                        ADD CONSTRAINT fk_plm_certificate
+                        FOREIGN KEY (certificate_id) REFERENCES probe_library_certificates(id)
+                        ON DELETE SET NULL;
+                END IF;
+            END $$`,
+
+            // Library-scoped aliquot data (append-only, never modifies Registry)
+            `CREATE TABLE IF NOT EXISTS probe_library_member_aliquots (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                library_id UUID NOT NULL REFERENCES probe_libraries(id) ON DELETE CASCADE,
+                library_member_id UUID NOT NULL REFERENCES probe_library_members(id) ON DELETE CASCADE,
+                certificate_id UUID NOT NULL REFERENCES probe_library_certificates(id) ON DELETE CASCADE,
+                aliquot_index INT NOT NULL,
+                amount_nmol NUMERIC,
+                raw_text TEXT,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )`,
+            `CREATE INDEX IF NOT EXISTS idx_plma_member ON probe_library_member_aliquots(library_member_id)`,
+            `CREATE INDEX IF NOT EXISTS idx_plma_cert ON probe_library_member_aliquots(certificate_id)`,
+
         ];
 
         for (const sql of migrations) {
