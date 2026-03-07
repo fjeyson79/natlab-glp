@@ -496,6 +496,11 @@ function renderRegistryList(lp) {
                     <option value="DRAFT">Draft</option>
                     <option value="RETIRED">Retired</option>
                 </select>
+                <select class="filter-select" id="reg-basis" onchange="regFilter()" style="width:70px;">
+                    <option value="">Basis</option>
+                    <option value="DNA">DNA</option>
+                    <option value="RNA">RNA</option>
+                </select>
             </div>
         </div>
         <div class="list-scroll" id="reg-list"><div class="empty-list"><div class="spinner"></div></div></div>
@@ -516,20 +521,22 @@ async function loadRegistry() {
 function regFilter() {
     const q = (document.getElementById('reg-search')?.value || '').toLowerCase();
     const st = document.getElementById('reg-status')?.value || '';
+    const basis = document.getElementById('reg-basis')?.value || '';
     let items = S.registryList;
     if (q) items = items.filter(o => {
-        // o.order_number / o.oligo_number / o.supplier are direct fields in synthesis-centric response
         const hay = [
             o.display_name || '',
             o.canonical_id || '',
             o.sequence_norm || '',
             o.order_number || '',
             o.oligo_number || '',
-            o.supplier || ''
+            o.supplier || '',
+            o.polymer_type || ''
         ].join(' ').toLowerCase();
         return hay.includes(q);
     });
     if (st) items = items.filter(o => o.status === st);
+    if (basis) items = items.filter(o => (o.polymer_type || 'DNA') === basis);
     const list = document.getElementById('reg-list');
     if (!list) return;
     if (!items.length) { list.innerHTML = `<div class="empty-list">No oligonucleotides found</div>`; return; }
@@ -537,9 +544,10 @@ function regFilter() {
         const seqPreview = (o.sequence_norm||'').substring(0, 32) + ((o.sequence_norm||'').length > 32 ? '…' : '');
         // probe_id = probe_catalog UUID; id = synthesis UUID (list row key)
         const probeId = o.probe_id || o.id;
+        const basisTag = o.polymer_type === 'RNA' ? '<span class="tag" style="background:#3b82f6;color:#fff;font-size:10px;padding:1px 5px;">RNA</span>' : '';
         return `
         <div class="list-item${probeId === S.selectedOligoId ? ' selected' : ''}" onclick="selectOligo('${probeId}')">
-            <div class="list-item-name">${esc(o.display_name || '—')}</div>
+            <div class="list-item-name">${esc(o.display_name || '—')} ${basisTag}</div>
             <div class="list-item-sub text-mono">${esc(seqPreview)}</div>
             <div class="list-item-meta">
                 ${o.order_number ? `<span class="tag gray">${esc(o.order_number)}</span>` : ''}
@@ -633,6 +641,7 @@ function _buildOligoViewHtml() {
                 <tr><td>Name</td><td><strong>${esc(o.display_name || '—')}</strong></td></tr>
                 <tr><td>Date</td><td>${synth?.synthesis_date ? fmtDate(synth.synthesis_date) : '—'}</td></tr>
                 <tr><td>Type</td><td>${esc(o.oligo_kind || '—')}</td></tr>
+                <tr><td>Basis</td><td>${esc(o.polymer_type || 'DNA')}</td></tr>
                 <tr><td>Synthesis#</td><td class="text-mono">${esc(synth?.oligo_number || '—')}</td></tr>
             </table>
         </div>

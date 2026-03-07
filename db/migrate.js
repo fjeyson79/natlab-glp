@@ -743,6 +743,12 @@ async function migrate() {
                     IF NEW.notes IS DISTINCT FROM OLD.notes THEN
                         RAISE EXCEPTION 'Cannot modify notes on a finalized probe';
                     END IF;
+                    IF NEW.identity_hash IS DISTINCT FROM OLD.identity_hash THEN
+                        RAISE EXCEPTION 'Cannot modify identity_hash on a finalized probe';
+                    END IF;
+                    IF NEW.polymer_type IS DISTINCT FROM OLD.polymer_type THEN
+                        RAISE EXCEPTION 'Cannot modify polymer_type on a finalized probe';
+                    END IF;
                 END IF;
                 RETURN NEW;
             END;
@@ -811,6 +817,11 @@ async function migrate() {
             `CREATE UNIQUE INDEX IF NOT EXISTS uq_probe_syntheses_excel_src ON probe_syntheses(supplier, order_number, oligo_number) WHERE oligo_number IS NOT NULL`,
             `CREATE INDEX IF NOT EXISTS idx_probe_syntheses_source_file ON probe_syntheses(source_file_id)`,
             `CREATE INDEX IF NOT EXISTS idx_probe_syntheses_excel_status ON probe_syntheses(excel_status)`,
+
+            // ==================== CHEMICAL IDENTITY MODEL (migration 031) ====================
+
+            // Add polymer_type (DNA/RNA) to probe_catalog – part of chemical identity
+            `ALTER TABLE probe_catalog ADD COLUMN IF NOT EXISTS polymer_type TEXT`,
 
             // Synthesis batch editable fields for QC and aliquot notes
             `ALTER TABLE probe_syntheses ADD COLUMN IF NOT EXISTS qc_notes TEXT`,

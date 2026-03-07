@@ -12814,9 +12814,16 @@ function oligoNormMod(v) {
     return s;
 }
 
-function oligoComputeIdentityHash(seq, mod5, mod3, int5, int6, int7, int8) {
+// Derive DNA/RNA basis from scale string.  Scale is NOT part of identity —
+// only the derived class matters.  RNA scales start with 'R' (RS27, RM27, …).
+function oligoDeriveBasis(scale) {
+    if (!scale) return 'DNA';
+    return scale.toUpperCase().startsWith('R') ? 'RNA' : 'DNA';
+}
+
+function oligoComputeIdentityHash(seq, mod5, mod3, int5, int6, int7, int8, basis) {
     const crypto = require('crypto');
-    const sig = `${seq}|${mod5}|${mod3}|${int5}|${int6}|${int7}|${int8}`;
+    const sig = `${seq}|${mod5}|${mod3}|${int5}|${int6}|${int7}|${int8}|${basis || 'DNA'}`;
     return crypto.createHash('sha256').update(sig).digest('hex');
 }
 
@@ -12983,14 +12990,14 @@ app.post("/api/oligo/excel-upload", requirePI, oligoExcelUpload.single("file"), 
 
                 const seqNorm    = sequence.toLowerCase();
                 const lengthNt   = sequence.length;
-                // Identity hash uses normalized (lowercase) sequence
-                const identityHash = oligoComputeIdentityHash(seqNorm, mod5s, mod3s, modi5, modi6, modi7, modi8);
+                // Derive DNA/RNA basis from scale (not the raw scale itself)
+                const polymerType = oligoDeriveBasis(scale);
+                // Identity hash uses normalized sequence + mods + basis
+                const identityHash = oligoComputeIdentityHash(seqNorm, mod5s, mod3s, modi5, modi6, modi7, modi8, polymerType);
                 // chemistry_code is derived from identity so (sequence_norm, chemistry_code) unique index is satisfied
                 const chemCode   = 'IDH_' + identityHash.slice(0, 10);
                 // Primary display label: OLIGONAME from Excel; fall back to orderNo_oligoNo
                 const displayName = oligoName || `${orderNo}_${oligoNo}`;
-                // Infer polymer type from SCALE: starts with 'R' → RNA, otherwise DNA
-                const polymerType = scale && scale.toUpperCase().startsWith('R') ? 'RNA' : 'DNA';
                 // Canonical id: supplier-scoped order+oligo key
                 const canonicalId = `${supplier}_${orderNo}_${oligoNo}`.replace(/[^\w\-]/g, '_');
 
@@ -13300,7 +13307,7 @@ app.get("/api/oligo/registry", requirePI, async (req, res) => {
                 SELECT pc.id, pc.canonical_id, pc.display_name, pc.sequence, pc.length_nt,
                        pc.chemistry_code, pc.oligo_kind, pc.status, pc.finalized_at,
                        NULL AS mod5, NULL AS mod3, NULL AS mod_int_5, NULL AS mod_int_6,
-                       NULL AS mod_int_7, NULL AS mod_int_8, NULL AS library_def_id, NULL AS library_name,
+                       NULL AS mod_int_7, NULL AS mod_int_8, NULL AS library_def_id, NULL AS library_name, NULL AS polymer_type,
                        COUNT(ps.id)::int AS synthesis_count, 0 AS stock_count,
                        NULL AS last_synthesis_date
                 FROM probe_catalog pc
@@ -13315,6 +13322,7 @@ app.get("/api/oligo/registry", requirePI, async (req, res) => {
                 pc.id, pc.canonical_id, pc.display_name, pc.sequence, pc.length_nt,
                 pc.mod5, pc.mod3, pc.mod_int_5, pc.mod_int_6, pc.mod_int_7, pc.mod_int_8,
                 pc.chemistry_code, pc.oligo_kind, pc.library_def_id, pc.status, pc.finalized_at,
+                pc.polymer_type,
                 ld.name AS library_name,
                 COUNT(ps.id) FILTER (WHERE ps.excel_status = 'active' OR ps.excel_status IS NULL)::int AS synthesis_count,
                 COUNT(pst.id) FILTER (WHERE pst.status = 'IN_STOCK')::int AS stock_count,
@@ -13343,7 +13351,7 @@ app.get("/api/oligo/registry/:id", requirePI, async (req, res) => {
         const probe = await pool.query(`
             SELECT pc.id, pc.canonical_id, pc.display_name, pc.sequence, pc.length_nt,
                    pc.mod5, pc.mod3, pc.mod_int_5, pc.mod_int_6, pc.mod_int_7, pc.mod_int_8,
-                   pc.chemistry_code, pc.oligo_kind, pc.library_def_id, pc.status, pc.finalized_at,
+                   pc.chemistry_code, pc.oligo_kind, pc.library_def_id, pc.polymer_type, pc.status, pc.finalized_at,
                    ld.name AS library_name
             FROM probe_catalog pc
             LEFT JOIN oligo_library_definitions ld ON ld.id = pc.library_def_id
@@ -13380,18 +13388,38 @@ app.get("/api/oligo/registry/:id", requirePI, async (req, res) => {
 // ── Oligonucleotide list (main registry) ──
 
 // GET /api/oligo/oligos – list all with library names and synthesis count
+// Supports chemical identity filters: ?basis=DNA|RNA  ?mod5=...  ?mod3=...  ?seq=...
 app.get("/api/oligo/oligos", requirePI, async (req, res) => {
     try {
-        // Synthesis-centric: one row per active synthesis, ordered by source row position.
-        // This mirrors the Excel upload order exactly, including duplicate probe identities.
-        // Each row uses ps.id as the list key; pc.id is returned as probe_id for detail navigation.
+        // Build optional WHERE clauses for chemical identity search
+        const conditions = [`(ps.excel_status = 'active' OR ps.excel_status IS NULL)`];
+        const params = [];
+        let pi = 1;
+        if (req.query.basis) {
+            params.push(req.query.basis.toUpperCase());
+            conditions.push(`pc.polymer_type = $${pi++}`);
+        }
+        if (req.query.seq) {
+            params.push(`%${req.query.seq.toLowerCase()}%`);
+            conditions.push(`pc.sequence_norm LIKE $${pi++}`);
+        }
+        if (req.query.mod5) {
+            params.push(req.query.mod5);
+            conditions.push(`pc.mod5 = $${pi++}`);
+        }
+        if (req.query.mod3) {
+            params.push(req.query.mod3);
+            conditions.push(`pc.mod3 = $${pi++}`);
+        }
+
+        const whereClause = conditions.join(' AND ');
         const result = await pool.query(`
             SELECT
                 ps.id,
                 pc.id AS probe_id,
                 pc.canonical_id, pc.display_name, pc.sequence, pc.sequence_norm,
                 pc.length_nt, pc.oligo_kind, pc.mod5, pc.mod3, pc.mod_int_5, pc.mod_int_6,
-                pc.mod_int_7, pc.mod_int_8, pc.chemistry_code, pc.status, pc.created_at,
+                pc.mod_int_7, pc.mod_int_8, pc.chemistry_code, pc.polymer_type, pc.status, pc.created_at,
                 ps.order_number, ps.oligo_number, ps.supplier, ps.synthesis_date,
                 ps.import_row_index,
                 STRING_AGG(DISTINCT pl.library_name, ', ' ORDER BY pl.library_name) AS library_names,
@@ -13400,11 +13428,11 @@ app.get("/api/oligo/oligos", requirePI, async (req, res) => {
             JOIN probe_catalog pc ON pc.id = ps.probe_id
             LEFT JOIN probe_library_members plm ON plm.probe_id = pc.id
             LEFT JOIN probe_libraries pl ON pl.id = plm.library_id
-            WHERE ps.excel_status = 'active' OR ps.excel_status IS NULL
+            WHERE ${whereClause}
             GROUP BY ps.id, pc.id
             ORDER BY ps.import_row_index ASC NULLS LAST, ps.created_at ASC
             LIMIT 2000
-        `);
+        `, params);
         res.json({ oligos: result.rows });
     } catch (err) {
         console.error("[OLIGO] oligos list error:", err);
@@ -13421,7 +13449,7 @@ app.get("/api/oligo/oligos/:id", requirePI, async (req, res) => {
         const oligoR = await pool.query(
             `SELECT pc.id, pc.canonical_id, pc.display_name, pc.sequence, pc.sequence_norm,
                     pc.length_nt, pc.oligo_kind, pc.mod5, pc.mod3, pc.mod_int_5, pc.mod_int_6,
-                    pc.mod_int_7, pc.mod_int_8, pc.chemistry_code, pc.status, pc.finalized_at,
+                    pc.mod_int_7, pc.mod_int_8, pc.chemistry_code, pc.polymer_type, pc.status, pc.finalized_at,
                     pc.created_at, pc.updated_at
              FROM probe_catalog pc WHERE pc.id = $1`, [id]);
         if (oligoR.rows.length === 0) return res.status(404).json({ error: "Not found" });
@@ -13480,9 +13508,10 @@ app.post("/api/oligo/oligos", requirePI, async (req, res) => {
         if (!name) return res.status(400).json({ error: "name is required" });
         if (!sequence || sequence.length < 4) return res.status(400).json({ error: "sequence must be at least 4 nucleotides" });
 
+        const polymerType  = String(req.body?.polymer_type || '').toUpperCase() === 'RNA' ? 'RNA' : 'DNA';
         const seqNorm      = sequence.toLowerCase();
         const lengthNt     = sequence.length;
-        const identityHash = oligoComputeIdentityHash(seqNorm, mod5, mod3, modInt5, modInt6, modInt7, modInt8);
+        const identityHash = oligoComputeIdentityHash(seqNorm, mod5, mod3, modInt5, modInt6, modInt7, modInt8, polymerType);
         const chemCode     = 'IDH_' + identityHash.slice(0, 10);
         const canonicalId  = `MANUAL_${identityHash.slice(0, 12)}`;
         const actor        = req.session?.user?.researcher_id || req.session?.user?.id || 'unknown';
@@ -13495,13 +13524,13 @@ app.post("/api/oligo/oligos", requirePI, async (req, res) => {
                 `INSERT INTO probe_catalog
                     (canonical_id, display_name, sequence, sequence_norm, length_nt,
                      mod5, mod3, mod_int_5, mod_int_6, mod_int_7, mod_int_8,
-                     identity_hash, chemistry_code, oligo_kind, status, notes, created_by)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'OLIGO','ACTIVE',$14,$15)
+                     identity_hash, chemistry_code, oligo_kind, polymer_type, status, notes, created_by)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'OLIGO',$14,'ACTIVE',$15,$16)
                  ON CONFLICT (identity_hash) WHERE identity_hash IS NOT NULL DO NOTHING
                  RETURNING id`,
                 [canonicalId, name, sequence, seqNorm, lengthNt,
                  mod5, mod3, modInt5, modInt6, modInt7, modInt8,
-                 identityHash, chemCode, notes, actor]
+                 identityHash, chemCode, polymerType, notes, actor]
             );
 
             let oligoId;
@@ -13926,6 +13955,46 @@ app.get("/api/oligo/identity-docs/:id/download", requirePI, async (req, res) => 
         res.json({ url });
     } catch (err) {
         console.error("[OLIGO] identity-doc download error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// POST /api/oligo/backfill-identity – re-derive polymer_type + identity_hash for existing data
+// Safe & idempotent: skips finalized probes, only updates where polymer_type is NULL or hash changed
+app.post("/api/oligo/backfill-identity", requirePI, async (req, res) => {
+    try {
+        const actor = req.session?.user?.researcher_id || req.session?.user?.id || 'unknown';
+        // For each probe_catalog entry missing polymer_type, derive it from its syntheses' scale
+        const probes = await pool.query(`
+            SELECT pc.id, pc.sequence_norm, pc.mod5, pc.mod3,
+                   pc.mod_int_5, pc.mod_int_6, pc.mod_int_7, pc.mod_int_8,
+                   pc.identity_hash, pc.polymer_type, pc.finalized_at,
+                   (SELECT ps.scale FROM probe_syntheses ps WHERE ps.probe_id = pc.id AND ps.scale IS NOT NULL LIMIT 1) AS sample_scale
+            FROM probe_catalog pc
+            WHERE pc.identity_hash IS NOT NULL
+        `);
+
+        let updated = 0, skippedFinalized = 0, unchanged = 0;
+        for (const p of probes.rows) {
+            const basis = oligoDeriveBasis(p.sample_scale);
+            const newHash = oligoComputeIdentityHash(
+                p.sequence_norm || '', p.mod5 || 'none', p.mod3 || 'none',
+                p.mod_int_5 || 'none', p.mod_int_6 || 'none', p.mod_int_7 || 'none', p.mod_int_8 || 'none',
+                basis
+            );
+            if (newHash === p.identity_hash && p.polymer_type) { unchanged++; continue; }
+            if (p.finalized_at) { skippedFinalized++; continue; }
+            const chemCode = 'IDH_' + newHash.slice(0, 10);
+            await pool.query(
+                `UPDATE probe_catalog SET polymer_type = $1, identity_hash = $2, chemistry_code = $3 WHERE id = $4`,
+                [basis, newHash, chemCode, p.id]
+            );
+            updated++;
+        }
+        console.log(`[OLIGO] backfill-identity: updated=${updated}, unchanged=${unchanged}, skippedFinalized=${skippedFinalized}`);
+        res.json({ updated, unchanged, skippedFinalized, total: probes.rows.length });
+    } catch (err) {
+        console.error("[OLIGO] backfill-identity error:", err);
         res.status(500).json({ error: "Server error" });
     }
 });
