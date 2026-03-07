@@ -1010,7 +1010,7 @@ function renderSequenceHtml(seq, large, polymerType) {
 function renderCardSequencePreview(seq, maxTokens, polymerType) {
     const tokens = parseSequenceTokens(seq, polymerType);
     const show = tokens.slice(0, maxTokens || 20);
-    let html = show.map(t => esc(t.display)).join('' );
+    let html = show.map(t => esc(t.display.toLowerCase())).join('');
     if (tokens.length > show.length) html += '<span style="color:#4b5563;">\u2026</span>';
     return '<span class="seq-preview">' + html + '</span>';
 }
@@ -2096,7 +2096,7 @@ function libFilter() {
                 <span class="lib-card-name">${esc(name)}</span>
                 ${orderLbl ? `<span class="lib-card-order">${esc(orderLbl)}</span>` : ''}
             </div>
-            <div class="lib-card-members">${mc} member${mc!==1?'s':''}</div>
+            <div class="lib-card-members">\uD83E\uDDEC ${mc} member${mc!==1?'s':''}</div>
             <div style="height:6px;"></div>
             <div class="lib-card-field">${chemText ? 'Chemistry: ' + esc(chemText) : '<span style="color:#4b5563;">Chemistry: \u2014</span>'}</div>
             <div class="lib-card-field">${detectText ? 'Detection: ' + esc(detectText) : '<span style="color:#4b5563;">Detection: \u2014</span>'}</div>

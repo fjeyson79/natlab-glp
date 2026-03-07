@@ -13695,7 +13695,7 @@ app.get("/api/oligo/libraries", requirePI, async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT pl.id, pl.library_name, pl.description, pl.created_by, pl.created_at,
-                   COUNT(plm.id)::int AS member_count,
+                   COUNT(DISTINCT plm.id)::int AS member_count,
                    COUNT(DISTINCT pc.id)::int AS identity_count,
                    COUNT(DISTINCT ps.id)::int AS synthesis_count,
                    ARRAY_AGG(DISTINCT pc.polymer_type) FILTER (WHERE pc.polymer_type IS NOT NULL) AS polymer_types,
