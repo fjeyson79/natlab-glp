@@ -550,6 +550,19 @@
         .text-mono { font-family: "JetBrains Mono", monospace; font-size: 12px; }
         .hidden { display: none !important; }
         hr.divider { border: none; border-top: 1px solid #2a2d3a; margin: 14px 0; }
+
+        /* Synthesis# badge on registry cards */
+        .synth-no-badge {
+            margin-left: auto;
+            background: #fff;
+            color: #1e293b;
+            font-size: 11px;
+            font-weight: 600;
+            font-family: "JetBrains Mono", monospace;
+            padding: 1px 7px;
+            border-radius: 4px;
+            white-space: nowrap;
+        }
     </style>
 </head>
 <body>
@@ -802,6 +815,14 @@ function parseSequenceTokens(seq, polymerType) {
     return tokens;
 }
 
+// Fixed color map for internal modification numbers — consistent across sequence and legend
+const INT_MOD_COLOR_MAP = {
+    5: '#14b8a6',  // teal
+    6: '#7c3aed',  // purple
+    7: '#d97706',  // amber
+    8: '#dc2626',  // red
+};
+
 function renderSequenceHtml(seq, large, polymerType) {
     if (!seq) return '<span style="color:#4b5563;">\u2014</span>';
     // Render raw stored sequence with per-character coloring — no token reinterpretation
@@ -815,6 +836,12 @@ function renderSequenceHtml(seq, large, polymerType) {
             const cls = ch === 'm' ? 'seq-2ome' : ch === 'f' ? 'seq-2f' : 'seq-lna';
             html += `<span class="${cls}">${esc(ch)}${esc(seq[i + 1])}</span>`;
             i += 2;
+        } else if (/[0-9]/.test(ch)) {
+            // Internal modification number — use fixed color identity
+            const code = parseInt(ch, 10);
+            const color = INT_MOD_COLOR_MAP[code] || '#9ca3af';
+            html += `<span style="color:${color};font-weight:700;">${esc(ch)}</span>`;
+            i++;
         } else {
             html += `<span class="${basisCls}">${esc(ch)}</span>`;
             i++;
@@ -889,18 +916,24 @@ function modToReadableLabel(raw) {
 function renderChemistryLegend(o) {
     const pt = (o.polymer_type || 'DNA').toUpperCase();
     const items = [`<span class="chem-legend-item">Basis: ${pt}</span>`];
-    const modFields = [o.mod_int_5, o.mod_int_6, o.mod_int_7, o.mod_int_8];
-    const seen = new Set();
-    for (const val of modFields) {
-        if (!val || val === '-' || val.toLowerCase() === 'none') continue;
-        const parsed = modToReadableLabel(val);
-        if (parsed && !seen.has(parsed.label)) {
-            seen.add(parsed.label);
-            items.push(`<span class="chem-legend-item"><span class="chem-legend-dot ${parsed.cls}"></span>${esc(parsed.label)}</span>`);
-        } else if (!parsed && !seen.has(val)) {
-            seen.add(val);
-            items.push(`<span class="chem-legend-item"><span class="chem-legend-dot" style="background:#9ca3af;"></span>${esc(val)}</span>`);
-        }
+    const modSlots = [
+        { num: 5, val: o.mod_int_5 },
+        { num: 6, val: o.mod_int_6 },
+        { num: 7, val: o.mod_int_7 },
+        { num: 8, val: o.mod_int_8 },
+    ];
+    // Check which numbers actually appear in the sequence
+    const seq = o.sequence_norm || '';
+    const numsInSeq = new Set();
+    for (const ch of seq) { if (/[0-9]/.test(ch)) numsInSeq.add(parseInt(ch, 10)); }
+
+    for (const slot of modSlots) {
+        if (!slot.val || slot.val === '-' || slot.val.toLowerCase() === 'none') continue;
+        if (!numsInSeq.has(slot.num)) continue; // only show if number is present in sequence
+        const color = INT_MOD_COLOR_MAP[slot.num] || '#9ca3af';
+        const parsed = modToReadableLabel(slot.val);
+        const label = parsed ? parsed.label : slot.val;
+        items.push(`<span class="chem-legend-item"><span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:${color};color:#fff;font-size:10px;font-weight:700;font-family:'JetBrains Mono',monospace;">${slot.num}</span>${esc(label)}</span>`);
     }
     return `<div class="chem-legend">${items.join('')}</div>`;
 }
@@ -1007,11 +1040,13 @@ function regFilter() {
         const lenNt = o.length_nt || (o.sequence_norm ? parseSequenceTokens(o.sequence_norm, o.polymer_type).length : null);
         const batchCount = o.synthesis_count || 0;
         const libCount = o.library_count || 0;
+        const synthNo = o.oligo_number || o.synthesis_oligo_no || '';
         return `
         <div class="oligo-card${probeId === S.selectedOligoId ? ' selected' : ''}" onclick="selectOligo('${probeId}')">
             <div class="oligo-card-line1">
                 <span class="oligo-card-name">${esc(o.display_name || '\u2014')}</span>
                 ${badges}
+                ${synthNo ? `<span class="synth-no-badge">${esc(synthNo)}</span>` : ''}
             </div>
             <div class="oligo-card-length">${lenNt ? lenNt + ' nt' : ''}</div>
             <div class="oligo-card-seq">${esc(o.sequence_norm || '\u2014')}</div>
