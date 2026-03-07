@@ -381,6 +381,111 @@
         .chem-legend-dot.ome { background: #d97706; }
         .chem-legend-dot.lna { background: #dc2626; }
 
+        /* Library icon + hover animation */
+        .library-icon {
+            font-size: 18px;
+            font-weight: 700;
+            transition: transform 0.18s ease, letter-spacing 0.18s ease;
+            cursor: default;
+            display: inline-block;
+        }
+        .library-icon:hover {
+            transform: scale(1.08);
+            letter-spacing: 1px;
+        }
+        .lib-info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4px 24px;
+            font-size: 13px;
+        }
+        .lib-info-grid .lib-info-label {
+            color: #6b7280;
+        }
+        .lib-info-grid .lib-info-value {
+            color: #e2e8f0;
+        }
+
+        /* Library inline member expansion */
+        .lib-member-row {
+            padding: 8px 8px;
+            border-bottom: 1px solid #1e2130;
+            cursor: pointer;
+            transition: background 0.12s;
+        }
+        .lib-member-row:hover { background: #1a1d27; }
+        .lib-member-row.expanded { background: #0a2e1c; }
+        .lib-member-row:last-child { border-bottom: none; }
+        .lib-member-summary {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 12px;
+        }
+        .lib-member-summary .member-name {
+            color: #e2e8f0;
+            font-weight: 500;
+            min-width: 100px;
+        }
+        .lib-member-summary .member-seq-preview {
+            flex: 1;
+            font-family: "JetBrains Mono", monospace;
+            font-size: 11px;
+            color: #6b7280;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .lib-member-summary .member-status {
+            flex-shrink: 0;
+        }
+        .lib-member-expand {
+            overflow: hidden;
+            max-height: 0;
+            transition: max-height 0.25s ease;
+        }
+        .lib-member-expand.open {
+            max-height: 600px;
+        }
+        .lib-member-detail {
+            padding: 12px 8px 8px;
+            border-top: 1px solid #2a2d3a;
+            margin-top: 8px;
+        }
+        .lib-member-detail .seq-card {
+            margin: 0 0 12px;
+            padding: 16px 12px 12px;
+        }
+        .lib-member-detail .canvas-seq {
+            font-size: 16px;
+        }
+        .lib-member-props {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 4px 12px;
+            font-size: 12px;
+            margin-bottom: 10px;
+        }
+        .lib-member-props .prop-label { color: #6b7280; font-size: 11px; }
+        .lib-member-props .prop-value { color: #e2e8f0; }
+        .lib-member-nav {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 8px;
+        }
+        .lib-member-nav button {
+            background: #1e2130;
+            border: 1px solid #374151;
+            border-radius: 4px;
+            color: #9ca3af;
+            font-size: 12px;
+            padding: 3px 10px;
+            cursor: pointer;
+            transition: all 0.12s;
+        }
+        .lib-member-nav button:hover { color: #e2e8f0; border-color: #6b7280; }
+
         /* Canvas sections */
         .canvas-section {
             padding: 0 28px;
@@ -639,6 +744,9 @@ const S = {
     filterLib: '',
     currentOligo: null,
     selectedBatchIdx: 0,
+    expandedMemberIdx: -1,
+    currentLibMembers: [],
+    currentLibDetail: null,
 };
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
@@ -1963,33 +2071,57 @@ async function selectLibrary(id) {
     }
 }
 
+const LIB_PALETTE = ['#34D399','#22D3EE','#60A5FA','#A78BFA','#F59E0B','#F87171','#10B981','#6366F1'];
+
+function libColor(id) {
+    // Deterministic color from library ID — use numeric hash of uuid
+    let n = 0;
+    const s = String(id || '');
+    for (let i = 0; i < s.length; i++) n = (n * 31 + s.charCodeAt(i)) >>> 0;
+    return LIB_PALETTE[n % LIB_PALETTE.length];
+}
+
 function renderLibraryDetail(lib) {
     const members = lib.members || [];
     const libName = lib.library_name || lib.name || '';
+    const color = libColor(lib.id);
+    S.expandedMemberIdx = -1;
+    S.currentLibMembers = members;
+    S.currentLibDetail = lib;
+
+    // Source info — try to extract order number from name
+    const orderMatch = libName.match(/(\d{4,})/);
+    const sourceLabel = orderMatch ? `Order ${orderMatch[1]}` : '\u2014';
+
     const viewHtml = `
-        <div class="section">
-            <div class="section-title">Library Info</div>
-            <table class="kv-table">
-                <tr><td>Name</td><td><strong>${esc(libName)}</strong></td></tr>
-                ${lib.description ? `<tr><td>Description</td><td>${esc(lib.description)}</td></tr>` : ''}
-                <tr><td>Members</td><td>${members.length}</td></tr>
-                <tr><td>Created</td><td>${fmtDate(lib.created_at)}</td></tr>
-            </table>
+        <div style="padding:20px 0 12px 0;text-align:center;">
+            <div style="margin-bottom:4px;">
+                <span class="library-icon" style="color:${color};">\u2261\u25CF</span>
+                <span style="font-size:17px;font-weight:700;color:#e2e8f0;margin-left:6px;">${esc(libName)}</span>
+            </div>
+            <div style="font-size:12px;color:#6b7280;">${members.length} member${members.length!==1?'s':''}</div>
         </div>
-        <div class="section">
-            <div class="section-title">Members</div>
-            ${members.length ? `
-            <table class="data-table">
-                <thead><tr><th>Name</th><th>Sequence (preview)</th><th>Status</th></tr></thead>
-                <tbody>${members.map(m => `
-                    <tr>
-                        <td><a href="#" onclick="switchMode('registry');setTimeout(()=>selectOligo('${m.oligo_id||m.id}'),200);return false;" style="color:#16a34a;">${esc(m.display_name||m.canonical_id||'\u2014')}</a></td>
-                        <td class="text-mono">${esc((m.sequence_norm||'').substring(0,24))}${(m.sequence_norm||'').length>24?'\u2026':''}</td>
-                        <td><span class="tag ${statusColor(m.status)}">${m.status||'\u2014'}</span></td>
-                    </tr>
-                `).join('')}</tbody>
-            </table>
-            ` : '<p class="text-muted" style="font-size:13px;">No members.</p>'}
+        ${lib.description ? `<div style="text-align:center;font-size:12px;color:#9ca3af;padding:0 20px 8px;">${esc(lib.description)}</div>` : ''}
+        <div style="padding:0 20px 16px;">
+            <div class="lib-info-grid">
+                <div><span class="lib-info-label">Name</span></div>
+                <div><span class="lib-info-value">${esc(libName)}</span></div>
+                <div><span class="lib-info-label">Members</span></div>
+                <div><span class="lib-info-value">${members.length}</span></div>
+                <div><span class="lib-info-label">Source</span></div>
+                <div><span class="lib-info-value">${esc(sourceLabel)}</span></div>
+                <div><span class="lib-info-label">Created</span></div>
+                <div><span class="lib-info-value">${fmtDate(lib.created_at)}</span></div>
+            </div>
+        </div>
+        <div class="section" style="padding:0 8px;">
+            <div class="section-title" style="padding:0 8px 6px;display:flex;align-items:center;gap:6px;">
+                <span style="display:inline-block;width:3px;height:12px;background:${color};border-radius:2px;"></span>
+                Members
+            </div>
+            <div id="lib-members-list">
+                ${members.length ? libBuildMemberRows(members) : '<p class="text-muted" style="font-size:13px;padding:8px;">No members.</p>'}
+            </div>
         </div>
     `;
 
@@ -2021,6 +2153,79 @@ function renderLibraryDetail(lib) {
     `;
 
     showDetail(libName, `${members.length} members`, viewHtml, actionsHtml);
+}
+
+function libBuildMemberRows(members) {
+    return members.map((m, i) => {
+        const seqPreview = renderCardSequencePreview(m.sequence_norm, 16, m.polymer_type);
+        const expanded = i === S.expandedMemberIdx;
+        const pt = (m.polymer_type || 'DNA').toUpperCase();
+        const lenNt = m.length_nt || parseSequenceTokens(m.sequence_norm || '', pt).length;
+        const mod5Html = renderTerminalMod5(m.mod5);
+        const mod3Html = renderTerminalMod3(m.mod3);
+        const seqFull = renderSequenceHtml(m.sequence_norm, true, pt);
+        return `
+            <div class="lib-member-row${expanded ? ' expanded' : ''}" id="lib-member-${i}">
+                <div class="lib-member-summary" onclick="libToggleMember(${i})">
+                    <span class="member-name">${esc(m.display_name||m.canonical_id||'\u2014')}</span>
+                    <span class="member-seq-preview">${seqPreview}</span>
+                    <span class="member-status"><span class="tag ${statusColor(m.status)}">${m.status||'\u2014'}</span></span>
+                </div>
+                <div class="lib-member-expand${expanded ? ' open' : ''}">
+                    ${expanded ? libBuildMemberDetail(m, i, members.length, pt, lenNt, mod5Html, mod3Html, seqFull) : ''}
+                </div>
+            </div>`;
+    }).join('');
+}
+
+function libBuildMemberDetail(m, idx, total, pt, lenNt, mod5Html, mod3Html, seqFull) {
+    return `
+        <div class="lib-member-detail">
+            <div class="seq-card">
+                <div class="canvas-seq-wrap" style="padding:12px 8px 8px;">
+                    <div class="canvas-seq">${mod5Html}${seqFull}${mod3Html}</div>
+                </div>
+            </div>
+            <div class="lib-member-props">
+                <div><span class="prop-label">Basis</span><br><span class="prop-value">${esc(pt)}</span></div>
+                <div><span class="prop-label">Length</span><br><span class="prop-value">${lenNt} nt</span></div>
+                <div><span class="prop-label">Chemistry</span><br><span class="prop-value">${buildInternalChemSummary(m) || 'Unmodified'}</span></div>
+            </div>
+            <div class="lib-member-nav">
+                <button onclick="event.stopPropagation();libNavMember(${idx - 1})" ${idx === 0 ? 'disabled style="opacity:0.4;cursor:default;"' : ''}>\u2191 previous</button>
+                <button onclick="event.stopPropagation();libNavMember(${idx + 1})" ${idx >= total - 1 ? 'disabled style="opacity:0.4;cursor:default;"' : ''}>\u2193 next</button>
+                <span style="flex:1;"></span>
+                <button onclick="event.stopPropagation();switchMode('registry');setTimeout(()=>selectOligo('${m.oligo_id||m.id}'),200);" style="color:#6ee7b7;">Open full record</button>
+            </div>
+        </div>`;
+}
+
+function libToggleMember(idx) {
+    if (S.expandedMemberIdx === idx) {
+        S.expandedMemberIdx = -1;
+    } else {
+        S.expandedMemberIdx = idx;
+    }
+    libRefreshMemberRows();
+}
+
+function libNavMember(idx) {
+    if (idx < 0 || idx >= S.currentLibMembers.length) return;
+    S.expandedMemberIdx = idx;
+    libRefreshMemberRows();
+    // Smooth scroll to the expanded row
+    setTimeout(() => {
+        const el = document.getElementById('lib-member-' + idx);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 50);
+}
+
+function libRefreshMemberRows() {
+    const container = document.getElementById('lib-members-list');
+    if (!container) return;
+    container.innerHTML = S.currentLibMembers.length
+        ? libBuildMemberRows(S.currentLibMembers)
+        : '<p class="text-muted" style="font-size:13px;padding:8px;">No members.</p>';
 }
 
 function libOligoSearch() {
