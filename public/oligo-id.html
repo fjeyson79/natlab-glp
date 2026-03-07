@@ -724,7 +724,13 @@ function showAlert(containerId, type, msg) {
 // ─── Utilities ────────────────────────────────────────────────────────────────
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function fmtDate(s) { return s ? new Date(s).toLocaleDateString() : '\u2014'; }
-function fmtMod(v) { return (!v || v === '-') ? `<span class="none">\u2014</span>` : esc(v); }
+function fmtMod(v) {
+    if (!v || v === '-') return `<span class="none">\u2014</span>`;
+    // Ensure LNA values like "+A" display as "+A LNA"
+    const lnaBare = v.trim().match(/^\+([A-Za-z])$/);
+    if (lnaBare) return esc(v.trim() + ' LNA');
+    return esc(v);
+}
 function copyText(t) { navigator.clipboard.writeText(t).catch(()=>{}); }
 async function api(method, path, body) {
     const opts = { method, headers: {} };
@@ -847,27 +853,51 @@ function renderTerminalMod3(mod) {
     return `<span class="term-mod-generic">${esc(mod)}</span>`;
 }
 
+function modToReadableLabel(raw) {
+    // Convert internal modification codes to base-centric readable format
+    // e.g. 2FdA → A-2′-Fluoro, 2FdC → C-2′-Fluoro, 2OMeG → G-2′-OMe, +A LNA → A-LNA, +A → A-LNA
+    if (!raw) return null;
+    const v = raw.trim();
+    // 2′-Fluoro patterns: 2FdA, 2FdC, 2FdG, 2FdU, 2FdT etc.
+    const fMatch = v.match(/^2F(?:d)?([A-Za-z])$/i);
+    if (fMatch) return { base: fMatch[1].toUpperCase(), label: fMatch[1].toUpperCase() + "-2\u2032-Fluoro", cls: 'f2' };
+    // 2′-OMe patterns: 2OMeA, 2OMeC, 2OMeG, 2OMeU etc.
+    const omeMatch = v.match(/^2O?Me([A-Za-z])$/i);
+    if (omeMatch) return { base: omeMatch[1].toUpperCase(), label: omeMatch[1].toUpperCase() + "-2\u2032-OMe", cls: 'ome' };
+    // LNA patterns: +A LNA, +C LNA, +A, +C etc.
+    const lnaMatch = v.match(/^\+([A-Za-z])(?:\s+LNA)?$/i);
+    if (lnaMatch) return { base: lnaMatch[1].toUpperCase(), label: lnaMatch[1].toUpperCase() + "-LNA", cls: 'lna' };
+    // Generic fluoro/ome/lna detection for other formats
+    if (/fluoro|2.?f/i.test(v)) {
+        const bm = v.match(/([A-Za-z])$/);
+        const base = bm ? bm[1].toUpperCase() : '';
+        return { base, label: (base ? base + "-" : '') + "2\u2032-Fluoro", cls: 'f2' };
+    }
+    if (/ome|2.?ome/i.test(v)) {
+        const bm = v.match(/([A-Za-z])$/);
+        const base = bm ? bm[1].toUpperCase() : '';
+        return { base, label: (base ? base + "-" : '') + "2\u2032-OMe", cls: 'ome' };
+    }
+    if (/lna/i.test(v)) {
+        const bm = v.match(/([A-Za-z])/);
+        const base = bm ? bm[1].toUpperCase() : '';
+        return { base, label: (base ? base + "-" : '') + "LNA", cls: 'lna' };
+    }
+    return null;
+}
+
 function renderChemistryLegend(o) {
     const pt = (o.polymer_type || 'DNA').toUpperCase();
     const items = [`<span class="chem-legend-item">Basis: ${pt}</span>`];
-    // Derive modification families from internal modification fields directly
     const modFields = [o.mod_int_5, o.mod_int_6, o.mod_int_7, o.mod_int_8];
     const seen = new Set();
-    const families = [
-        { match: v => /fluoro|2.?f/i.test(v), cls: 'f2', name: "2\u2032-Fluoro" },
-        { match: v => /ome|2.?ome/i.test(v),  cls: 'ome', name: "2\u2032-OMe" },
-        { match: v => /lna/i.test(v),          cls: 'lna', name: "LNA" },
-    ];
     for (const val of modFields) {
         if (!val || val === '-' || val.toLowerCase() === 'none') continue;
-        for (const fam of families) {
-            if (!seen.has(fam.name) && fam.match(val)) {
-                seen.add(fam.name);
-                items.push(`<span class="chem-legend-item"><span class="chem-legend-dot ${fam.cls}"></span>${fam.name}</span>`);
-            }
-        }
-        // Unknown modification family — show raw value
-        if (![...families].some(f => f.match(val)) && !seen.has(val)) {
+        const parsed = modToReadableLabel(val);
+        if (parsed && !seen.has(parsed.label)) {
+            seen.add(parsed.label);
+            items.push(`<span class="chem-legend-item"><span class="chem-legend-dot ${parsed.cls}"></span>${esc(parsed.label)}</span>`);
+        } else if (!parsed && !seen.has(val)) {
             seen.add(val);
             items.push(`<span class="chem-legend-item"><span class="chem-legend-dot" style="background:#9ca3af;"></span>${esc(val)}</span>`);
         }
@@ -1062,9 +1092,6 @@ function _buildCanvasHtml() {
     // Chemistry legend
     const legendHtml = renderChemistryLegend(o);
 
-    // Internal chemistry summary
-    const intChemSummary = buildInternalChemSummary(o);
-
     // Batch selector
     let batchSelectorHtml = '';
     if (syntheses.length > 1) {
@@ -1141,7 +1168,6 @@ function _buildCanvasHtml() {
                 <div class="mod-cell"><div class="mod-cell-label">Int 7</div><div class="mod-cell-value${(!o.mod_int_7||o.mod_int_7==='-')?' none':''}">${fmtMod(o.mod_int_7)}</div></div>
                 <div class="mod-cell"><div class="mod-cell-label">Int 8</div><div class="mod-cell-value${(!o.mod_int_8||o.mod_int_8==='-')?' none':''}">${fmtMod(o.mod_int_8)}</div></div>
             </div>
-            ${intChemSummary ? `<div class="canvas-intchem" style="margin-top:8px;">${intChemSummary}</div>` : ''}
         </div>
 
         <hr class="canvas-divider">
