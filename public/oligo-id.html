@@ -4,12 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Oligonucleotide Registry | NAT-Lab GLP</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
             font-family: system-ui, -apple-system, sans-serif;
-            background: #0f1117;
-            color: #d1d5db;
+            background: #f5f5f4;
+            color: #1e293b;
             height: 100vh;
             display: flex;
             flex-direction: column;
@@ -18,8 +21,8 @@
 
         /* ── Header ── */
         .app-header {
-            background: #161922;
-            border-bottom: 1px solid #2a2d3a;
+            background: linear-gradient(135deg, #166534 0%, #15803d 100%);
+            border-bottom: 1px solid rgba(0,0,0,0.08);
             padding: 0 20px;
             height: 46px;
             display: flex;
@@ -27,16 +30,17 @@
             justify-content: space-between;
             flex-shrink: 0;
         }
-        .app-header h1 { font-size: 15px; font-weight: 600; color: #e2e8f0; }
+        .app-header h1 { font-size: 15px; font-weight: 600; color: #fff; letter-spacing: 0.02em; }
         .app-header a {
-            color: #6b7280;
+            color: rgba(255,255,255,0.8);
             text-decoration: none;
             font-size: 12px;
             padding: 4px 10px;
-            border: 1px solid #374151;
+            border: 1px solid rgba(255,255,255,0.3);
             border-radius: 5px;
+            transition: all 0.15s;
         }
-        .app-header a:hover { color: #d1d5db; border-color: #6b7280; }
+        .app-header a:hover { color: #fff; border-color: rgba(255,255,255,0.6); background: rgba(255,255,255,0.1); }
 
         /* ── Three-panel layout ── */
         .app-body {
@@ -49,8 +53,8 @@
         .sidebar {
             width: 160px;
             min-width: 160px;
-            background: #161922;
-            border-right: 1px solid #2a2d3a;
+            background: #fff;
+            border-right: 1px solid #e5e7eb;
             padding: 12px 8px;
             display: flex;
             flex-direction: column;
@@ -60,7 +64,7 @@
             font-size: 10px;
             text-transform: uppercase;
             letter-spacing: 1px;
-            color: #4b5563;
+            color: #9ca3af;
             padding: 0 8px 8px;
         }
         .mode-btn {
@@ -72,14 +76,15 @@
             border: none;
             border-radius: 5px;
             background: transparent;
-            color: #9ca3af;
+            color: #64748b;
             font-size: 13px;
             font-weight: 500;
             text-align: left;
             cursor: pointer;
+            transition: all 0.12s;
         }
-        .mode-btn:hover { background: #1e2130; color: #d1d5db; }
-        .mode-btn.active { background: #1e3a5f; color: #93c5fd; }
+        .mode-btn:hover { background: #f1f5f9; color: #334155; }
+        .mode-btn.active { background: #ecfdf5; color: #166534; font-weight: 600; }
         .mode-btn .badge {
             background: #ef4444;
             color: #fff;
@@ -90,70 +95,138 @@
             display: none;
         }
         .mode-btn .badge.show { display: block; }
-        .sidebar-divider { height: 1px; background: #2a2d3a; margin: 6px 0; }
+        .sidebar-divider { height: 1px; background: #e5e7eb; margin: 6px 0; }
 
         /* ── Middle list panel ── */
         .list-panel {
-            width: 340px;
-            min-width: 340px;
-            background: #12151c;
-            border-right: 1px solid #2a2d3a;
+            width: 370px;
+            min-width: 370px;
+            background: #fff;
+            border-right: 1px solid #e5e7eb;
             display: flex;
             flex-direction: column;
             overflow: hidden;
         }
         .list-panel-header {
-            padding: 12px 14px 10px;
-            border-bottom: 1px solid #2a2d3a;
+            padding: 14px 16px 12px;
+            border-bottom: 1px solid #e5e7eb;
             flex-shrink: 0;
         }
-        .list-panel-header h2 { font-size: 13px; font-weight: 600; color: #e2e8f0; margin-bottom: 8px; }
+        .list-panel-header h2 { font-size: 14px; font-weight: 600; color: #0f172a; margin-bottom: 8px; }
         .search-row { display: flex; gap: 6px; }
         .search-input {
             flex: 1;
-            background: #1e2130;
-            border: 1px solid #374151;
-            border-radius: 5px;
-            padding: 6px 10px;
-            color: #d1d5db;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            padding: 7px 10px;
+            color: #1e293b;
             font-size: 12px;
+            transition: border-color 0.15s;
         }
-        .search-input::placeholder { color: #4b5563; }
-        .search-input:focus { outline: none; border-color: #3b82f6; }
+        .search-input::placeholder { color: #94a3b8; }
+        .search-input:focus { outline: none; border-color: #16a34a; box-shadow: 0 0 0 2px rgba(22,163,74,0.08); }
         .filter-select {
-            background: #1e2130;
-            border: 1px solid #374151;
-            border-radius: 5px;
-            padding: 6px 8px;
-            color: #d1d5db;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            padding: 7px 8px;
+            color: #1e293b;
             font-size: 12px;
             cursor: pointer;
         }
+        .filter-select:focus { outline: none; border-color: #16a34a; }
         .list-scroll { flex: 1; overflow-y: auto; }
+
+        /* ── Registry cards ── */
+        .oligo-card {
+            padding: 14px 16px;
+            border-bottom: 1px solid #f1f5f9;
+            cursor: pointer;
+            transition: background 0.12s;
+        }
+        .oligo-card:hover { background: #f8fafc; }
+        .oligo-card.selected { background: #ecfdf5; border-left: 3px solid #16a34a; }
+        .oligo-card-line1 {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .oligo-card-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: #0f172a;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 180px;
+        }
+        .oligo-card-length {
+            font-size: 11px;
+            color: #94a3b8;
+            margin-top: 3px;
+        }
+        .oligo-card-seq {
+            font-family: "JetBrains Mono", "Fira Code", "Source Code Pro", monospace;
+            font-size: 12px;
+            letter-spacing: 0.05em;
+            text-align: center;
+            color: #475569;
+            padding: 6px 0;
+            line-height: 1.6;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .oligo-card-meta {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            font-size: 11px;
+            color: #94a3b8;
+        }
+
+        /* ── Chem badges ── */
+        .chem-badge {
+            font-size: 10px;
+            font-weight: 600;
+            padding: 1px 7px;
+            border-radius: 4px;
+            line-height: 1.6;
+            white-space: nowrap;
+        }
+        .chem-badge-dna { background: #eff6ff; color: #2563eb; }
+        .chem-badge-rna { background: #ecfdf5; color: #059669; }
+        .chem-badge-2f { background: #f5f3ff; color: #7c3aed; }
+        .chem-badge-2ome { background: #fffbeb; color: #d97706; }
+        .chem-badge-lna { background: #fef2f2; color: #dc2626; }
+
+        /* ── Legacy list items (non-registry modes) ── */
         .list-item {
             padding: 10px 14px;
-            border-bottom: 1px solid #1e2130;
+            border-bottom: 1px solid #f1f5f9;
             cursor: pointer;
             transition: background 0.1s;
         }
-        .list-item:hover { background: #1a1d27; }
-        .list-item.selected { background: #1e2f45; border-left: 2px solid #3b82f6; }
-        .list-item-name { font-size: 13px; font-weight: 500; color: #e2e8f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .list-item-sub { font-size: 11px; color: #6b7280; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .list-item:hover { background: #f8fafc; }
+        .list-item.selected { background: #ecfdf5; border-left: 2px solid #16a34a; }
+        .list-item-name { font-size: 13px; font-weight: 500; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .list-item-sub { font-size: 11px; color: #64748b; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .list-item-meta { display: flex; gap: 6px; margin-top: 4px; align-items: center; }
         .tag {
             font-size: 10px;
             font-weight: 600;
             padding: 1px 6px;
             border-radius: 3px;
-            background: #1e2f45;
-            color: #93c5fd;
+            background: #eff6ff;
+            color: #2563eb;
         }
-        .tag.green { background: #1a3a2a; color: #6ee7b7; }
-        .tag.amber { background: #3a2a10; color: #fbbf24; }
-        .tag.red { background: #3a1a1a; color: #f87171; }
-        .tag.gray { background: #2a2d3a; color: #9ca3af; }
-        .empty-list { padding: 32px 16px; text-align: center; color: #4b5563; font-size: 13px; }
+        .tag.green { background: #ecfdf5; color: #059669; }
+        .tag.amber { background: #fffbeb; color: #d97706; }
+        .tag.red { background: #fef2f2; color: #dc2626; }
+        .tag.gray { background: #f1f5f9; color: #64748b; }
+        .empty-list { padding: 32px 16px; text-align: center; color: #94a3b8; font-size: 13px; }
 
         /* ── Right detail panel ── */
         .detail-panel {
@@ -161,75 +234,228 @@
             display: flex;
             flex-direction: column;
             overflow: hidden;
-            background: #0f1117;
+            background: #FDFCF8;
         }
         .detail-panel-header {
             padding: 12px 20px 10px;
-            border-bottom: 1px solid #2a2d3a;
+            border-bottom: 1px solid #e8e6df;
             flex-shrink: 0;
             display: flex;
             align-items: center;
             justify-content: space-between;
+            background: #FDFCF8;
         }
-        .detail-title { font-size: 15px; font-weight: 600; color: #e2e8f0; }
-        .detail-subtitle { font-size: 11px; color: #6b7280; margin-top: 2px; }
-        .toggle-group { display: flex; gap: 0; border: 1px solid #374151; border-radius: 6px; overflow: hidden; }
+        .detail-title { font-size: 15px; font-weight: 600; color: #0f172a; }
+        .detail-subtitle { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+        .toggle-group { display: flex; gap: 0; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; }
         .toggle-btn {
             padding: 5px 14px;
             border: none;
             background: transparent;
-            color: #9ca3af;
+            color: #64748b;
             font-size: 12px;
             font-weight: 500;
             cursor: pointer;
         }
-        .toggle-btn.active { background: #1e3a5f; color: #93c5fd; }
-        .toggle-btn:hover:not(.active) { background: #1e2130; color: #d1d5db; }
+        .toggle-btn.active { background: #ecfdf5; color: #166534; }
+        .toggle-btn:hover:not(.active) { background: #f8fafc; color: #334155; }
         .detail-scroll { flex: 1; overflow-y: auto; padding: 16px 20px; }
-        .detail-placeholder { display: flex; align-items: center; justify-content: center; height: 100%; color: #374151; font-size: 13px; text-align: center; }
+        .detail-placeholder { display: flex; align-items: center; justify-content: center; height: 100%; color: #cbd5e1; font-size: 13px; text-align: center; }
 
-        /* ── Sections/Tables ── */
-        .section { margin-bottom: 22px; }
-        .section-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; color: #6b7280; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid #2a2d3a; }
-        .kv-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-        .kv-table tr td:first-child { color: #6b7280; width: 160px; padding: 5px 0; vertical-align: top; }
-        .kv-table tr td:last-child { color: #d1d5db; padding: 5px 0; word-break: break-all; }
-        .data-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-        .data-table th { text-align: left; padding: 6px 8px; background: #161922; color: #6b7280; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #2a2d3a; }
-        .data-table td { padding: 7px 8px; border-bottom: 1px solid #1e2130; color: #d1d5db; vertical-align: top; }
-        .data-table tr:last-child td { border-bottom: none; }
-        .data-table tr:hover td { background: #161922; }
+        /* ── Premium right-panel canvas ── */
+        .canvas-identity {
+            text-align: center;
+            padding: 32px 24px 0;
+        }
+        .canvas-oligo-name {
+            font-size: 20px;
+            font-weight: 700;
+            color: #0f172a;
+            letter-spacing: 0.01em;
+        }
+        .canvas-oligo-meta {
+            font-size: 13px;
+            color: #94a3b8;
+            margin-top: 4px;
+            font-weight: 400;
+        }
+        .canvas-seq-wrap {
+            padding: 32px 20px 24px;
+            text-align: center;
+        }
+        .canvas-seq {
+            font-family: "JetBrains Mono", monospace;
+            font-size: 26px;
+            font-weight: 500;
+            letter-spacing: 0.08em;
+            line-height: 1.8;
+            text-align: center;
+            word-break: break-all;
+            display: inline;
+        }
+        /* Sequence base colors */
+        .seq-dna { color: #2563eb; }
+        .seq-rna { color: #059669; }
+        .seq-2f { color: #7c3aed; }
+        .seq-2ome { color: #d97706; }
+        .seq-lna { color: #dc2626; }
+        .seq-space { display: inline-block; width: 0.3em; }
 
-        /* ── Sequence display ── */
-        .sequence-block {
-            font-family: 'Courier New', monospace;
+        /* Terminal modification nodes */
+        .term-mod {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            vertical-align: middle;
+            border-radius: 50%;
+            font-family: "JetBrains Mono", monospace;
+            font-weight: 700;
+            margin: 0 6px;
+        }
+        .term-mod-fam {
+            width: 44px; height: 44px;
+            background: #16a34a;
+            color: #fff;
+            font-size: 13px;
+        }
+        .term-mod-quencher {
+            width: 44px; height: 44px;
+            background: #18181b;
+            color: #fff;
+            font-size: 14px;
+        }
+        .term-mod-generic {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            vertical-align: middle;
+            padding: 4px 10px;
+            border: 1.5px solid #cbd5e1;
+            border-radius: 6px;
+            background: #fff;
+            color: #334155;
+            font-family: "JetBrains Mono", monospace;
+            font-size: 13px;
+            font-weight: 500;
+            margin: 0 6px;
+        }
+
+        /* Chemistry legend */
+        .chem-legend {
+            display: flex;
+            justify-content: center;
+            gap: 18px;
+            flex-wrap: wrap;
+            padding: 8px 0 0;
+        }
+        .chem-legend-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 11px;
+            color: #94a3b8;
+            font-weight: 500;
+        }
+        .chem-legend-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+        .chem-legend-dot.dna { background: #2563eb; }
+        .chem-legend-dot.rna { background: #059669; }
+        .chem-legend-dot.f2 { background: #7c3aed; }
+        .chem-legend-dot.ome { background: #d97706; }
+        .chem-legend-dot.lna { background: #dc2626; }
+
+        /* Canvas sections */
+        .canvas-section {
+            padding: 0 28px;
+            margin-bottom: 20px;
+        }
+        .canvas-section-title {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #94a3b8;
+            margin-bottom: 10px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid #eee8df;
+        }
+        .canvas-synth-line {
+            font-size: 13px;
+            color: #475569;
+            padding: 5px 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            line-height: 1.5;
+        }
+        .canvas-synth-line .synth-detail {
+            color: #94a3b8;
             font-size: 12px;
-            background: #161922;
-            border: 1px solid #2a2d3a;
+        }
+        .canvas-lib-line {
+            font-size: 13px;
+            color: #475569;
+            padding: 4px 0;
+            line-height: 1.5;
+        }
+        .canvas-divider {
+            border: none;
+            border-top: 1px solid #eee8df;
+            margin: 20px 28px;
+        }
+        .canvas-intchem {
+            font-size: 13px;
+            color: #475569;
+            text-align: center;
+            padding: 0 0 4px;
+        }
+        .canvas-intchem-label { font-weight: 500; }
+
+        /* ── Sections/Tables (legacy detail views) ── */
+        .section { margin-bottom: 22px; }
+        .section-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; color: #94a3b8; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid #e5e7eb; }
+        .kv-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .kv-table tr td:first-child { color: #94a3b8; width: 160px; padding: 5px 0; vertical-align: top; }
+        .kv-table tr td:last-child { color: #1e293b; padding: 5px 0; word-break: break-all; }
+        .data-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        .data-table th { text-align: left; padding: 6px 8px; background: #f8fafc; color: #64748b; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #e5e7eb; }
+        .data-table td { padding: 7px 8px; border-bottom: 1px solid #f1f5f9; color: #1e293b; vertical-align: top; }
+        .data-table tr:last-child td { border-bottom: none; }
+        .data-table tr:hover td { background: #f8fafc; }
+
+        /* ── Sequence display (legacy) ── */
+        .sequence-block {
+            font-family: "JetBrains Mono", monospace;
+            font-size: 12px;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
             border-radius: 6px;
             padding: 10px 12px;
             word-break: break-all;
             line-height: 1.6;
-            color: #a5f3fc;
+            color: #0f172a;
         }
 
         /* ── Forms ── */
         .form-group { margin-bottom: 14px; }
-        .form-label { display: block; font-size: 11px; font-weight: 600; color: #9ca3af; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .form-label { display: block; font-size: 11px; font-weight: 600; color: #64748b; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.5px; }
         .form-input, .form-select, .form-textarea {
             width: 100%;
-            background: #1e2130;
-            border: 1px solid #374151;
+            background: #fff;
+            border: 1px solid #e2e8f0;
             border-radius: 5px;
             padding: 7px 10px;
-            color: #d1d5db;
+            color: #1e293b;
             font-size: 13px;
         }
-        .form-input:focus, .form-select:focus, .form-textarea:focus { outline: none; border-color: #3b82f6; }
+        .form-input:focus, .form-select:focus, .form-textarea:focus { outline: none; border-color: #16a34a; box-shadow: 0 0 0 2px rgba(22,163,74,0.08); }
         .form-textarea { resize: vertical; min-height: 70px; font-family: inherit; }
         .form-row { display: grid; gap: 10px; grid-template-columns: 1fr 1fr; }
         .form-row-3 { display: grid; gap: 10px; grid-template-columns: 1fr 1fr 1fr; }
-        .form-hint { font-size: 11px; color: #4b5563; margin-top: 3px; }
+        .form-hint { font-size: 11px; color: #94a3b8; margin-top: 3px; }
 
         /* ── Buttons ── */
         .btn {
@@ -242,71 +468,74 @@
             display: inline-flex;
             align-items: center;
             gap: 6px;
+            transition: all 0.12s;
         }
-        .btn-primary { background: #2563eb; color: #fff; }
-        .btn-primary:hover { background: #1d4ed8; }
-        .btn-secondary { background: #1e2130; border: 1px solid #374151; color: #d1d5db; }
-        .btn-secondary:hover { background: #252a3a; }
-        .btn-danger { background: #7f1d1d; color: #fca5a5; }
-        .btn-danger:hover { background: #991b1b; }
-        .btn-success { background: #14532d; color: #86efac; border: 1px solid #166534; }
-        .btn-success:hover { background: #166534; }
+        .btn-primary { background: #16a34a; color: #fff; }
+        .btn-primary:hover { background: #15803d; }
+        .btn-secondary { background: #fff; border: 1px solid #e2e8f0; color: #475569; }
+        .btn-secondary:hover { background: #f8fafc; border-color: #cbd5e1; }
+        .btn-danger { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+        .btn-danger:hover { background: #fee2e2; }
+        .btn-success { background: #ecfdf5; color: #166534; border: 1px solid #bbf7d0; }
+        .btn-success:hover { background: #dcfce7; }
         .btn-sm { padding: 4px 10px; font-size: 12px; }
         .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
 
         /* ── Upload zone ── */
         .upload-zone {
-            border: 2px dashed #374151;
+            border: 2px dashed #e2e8f0;
             border-radius: 8px;
             padding: 24px;
             text-align: center;
             cursor: pointer;
             transition: border-color 0.2s;
+            background: #fff;
         }
-        .upload-zone:hover, .upload-zone.drag { border-color: #3b82f6; }
-        .upload-zone p { font-size: 13px; color: #6b7280; margin-top: 6px; }
-        .upload-zone strong { font-size: 14px; color: #9ca3af; }
+        .upload-zone:hover, .upload-zone.drag { border-color: #16a34a; background: #f0fdf4; }
+        .upload-zone p { font-size: 13px; color: #94a3b8; margin-top: 6px; }
+        .upload-zone strong { font-size: 14px; color: #475569; }
 
         /* ── Alerts ── */
         .alert { padding: 10px 14px; border-radius: 6px; font-size: 13px; margin-bottom: 14px; }
-        .alert-success { background: #1a3a2a; border: 1px solid #166534; color: #86efac; }
-        .alert-error { background: #3a1a1a; border: 1px solid #7f1d1d; color: #fca5a5; }
-        .alert-warn { background: #3a2a10; border: 1px solid #92400e; color: #fbbf24; }
-        .alert-info { background: #1e2f45; border: 1px solid #1e40af; color: #93c5fd; }
+        .alert-success { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; }
+        .alert-error { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+        .alert-warn { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
+        .alert-info { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; }
 
         /* ── Copy button inline ── */
         .copy-btn {
             background: none;
             border: none;
-            color: #4b5563;
+            color: #94a3b8;
             cursor: pointer;
             font-size: 11px;
             padding: 2px 6px;
             border-radius: 3px;
         }
-        .copy-btn:hover { color: #93c5fd; background: #1e2f45; }
+        .copy-btn:hover { color: #16a34a; background: #f0fdf4; }
 
         /* ── Mod grid ── */
         .mod-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-        .mod-cell { background: #161922; border: 1px solid #2a2d3a; border-radius: 5px; padding: 6px 8px; }
-        .mod-cell-label { font-size: 10px; color: #4b5563; text-transform: uppercase; margin-bottom: 2px; }
-        .mod-cell-value { font-size: 12px; color: #d1d5db; font-family: monospace; }
-        .mod-cell-value.none { color: #374151; font-style: italic; }
+        .mod-cell { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 5px; padding: 6px 8px; }
+        .mod-cell-label { font-size: 10px; color: #94a3b8; text-transform: uppercase; margin-bottom: 2px; }
+        .mod-cell-value { font-size: 12px; color: #1e293b; font-family: monospace; }
+        .mod-cell-value.none { color: #cbd5e1; font-style: italic; }
 
         /* ── Scrollbars ── */
         ::-webkit-scrollbar { width: 5px; }
         ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
         /* ── Loading spinner ── */
-        .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid #374151; border-top-color: #3b82f6; border-radius: 50%; animation: spin 0.6s linear infinite; }
+        .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid #e2e8f0; border-top-color: #16a34a; border-radius: 50%; animation: spin 0.6s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
 
         /* ── Misc ── */
-        .text-muted { color: #4b5563; }
-        .text-mono { font-family: monospace; font-size: 12px; }
+        .text-muted { color: #94a3b8; }
+        .text-mono { font-family: "JetBrains Mono", monospace; font-size: 12px; }
         .hidden { display: none !important; }
-        hr.divider { border: none; border-top: 1px solid #2a2d3a; margin: 14px 0; }
+        hr.divider { border: none; border-top: 1px solid #e5e7eb; margin: 14px 0; }
     </style>
 </head>
 <body>
@@ -314,7 +543,7 @@
 <!-- Header -->
 <header class="app-header">
     <h1>Oligonucleotide Registry</h1>
-    <a href="/pi-dashboard.html">← Dashboard</a>
+    <a href="/pi-dashboard.html">&larr; Dashboard</a>
 </header>
 
 <!-- Three-panel body -->
@@ -342,7 +571,7 @@
     <div class="detail-panel" id="detail-panel">
         <div class="detail-placeholder" id="detail-placeholder">
             <div>
-                <div style="font-size:32px;margin-bottom:12px;">🧬</div>
+                <div style="font-size:32px;margin-bottom:12px;opacity:0.4;">&#x1F9EC;</div>
                 <div>Select an item to view details</div>
             </div>
         </div>
@@ -434,11 +663,33 @@ function showDetail(title, subtitle, viewHtml, actionsHtml) {
     else tog.classList.add('hidden');
 }
 
+function showCanvasDetail(canvasHtml, actionsHtml) {
+    document.getElementById('detail-placeholder').classList.add('hidden');
+    const dc = document.getElementById('detail-content');
+    dc.classList.remove('hidden');
+    dc.style.display = 'flex';
+    document.getElementById('detail-title').textContent = '';
+    document.getElementById('detail-subtitle').textContent = '';
+    document.getElementById('detail-header').style.display = actionsHtml ? '' : 'none';
+    document.getElementById('detail-view-pane').innerHTML = canvasHtml;
+    document.getElementById('detail-actions-pane').innerHTML = actionsHtml || '<div class="text-muted" style="padding:20px;">No actions available.</div>';
+    setDetailToggle(S.detailToggle);
+    const tog = document.getElementById('detail-toggle');
+    if (actionsHtml) {
+        tog.classList.remove('hidden');
+        document.getElementById('detail-header').style.display = '';
+        document.getElementById('detail-title').textContent = S.currentOligo?.display_name || '';
+        document.getElementById('detail-subtitle').textContent = '';
+    }
+    else tog.classList.add('hidden');
+}
+
 function clearDetail() {
     document.getElementById('detail-placeholder').classList.remove('hidden');
     const dc = document.getElementById('detail-content');
     dc.classList.add('hidden');
     dc.style.display = 'none';
+    document.getElementById('detail-header').style.display = '';
 }
 
 function setDetailToggle(tog) {
@@ -458,8 +709,8 @@ function showAlert(containerId, type, msg) {
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-function fmtDate(s) { return s ? new Date(s).toLocaleDateString() : '—'; }
-function fmtMod(v) { return (!v || v === '-') ? `<span class="none">—</span>` : esc(v); }
+function fmtDate(s) { return s ? new Date(s).toLocaleDateString() : '\u2014'; }
+function fmtMod(v) { return (!v || v === '-') ? `<span class="none">\u2014</span>` : esc(v); }
 function copyText(t) { navigator.clipboard.writeText(t).catch(()=>{}); }
 async function api(method, path, body) {
     const opts = { method, headers: {} };
@@ -482,6 +733,139 @@ async function loadDupCount() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// SEQUENCE RENDERING HELPERS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function parseSequenceTokens(seq) {
+    if (!seq) return [];
+    const tokens = [];
+    let i = 0;
+    while (i < seq.length) {
+        // Check for modification prefixes: m=2'OMe, f=2'F, l=LNA
+        if (i + 1 < seq.length) {
+            const ch = seq[i];
+            const next = seq[i + 1];
+            if (ch === 'm' && /[A-Za-z]/.test(next)) {
+                tokens.push({ base: next, type: '2ome', display: 'm' + next });
+                i += 2; continue;
+            }
+            if (ch === 'f' && /[A-Za-z]/.test(next)) {
+                tokens.push({ base: next, type: '2f', display: 'f' + next });
+                i += 2; continue;
+            }
+            if (ch === 'l' && /[A-Za-z]/.test(next)) {
+                tokens.push({ base: next, type: 'lna', display: 'l' + next });
+                i += 2; continue;
+            }
+        }
+        const ch = seq[i];
+        if (/[a-z]/.test(ch)) {
+            tokens.push({ base: ch, type: 'rna', display: ch });
+        } else if (/[A-Z]/.test(ch)) {
+            tokens.push({ base: ch, type: 'dna', display: ch });
+        } else {
+            tokens.push({ base: ch, type: 'dna', display: ch });
+        }
+        i++;
+    }
+    return tokens;
+}
+
+function renderSequenceHtml(seq, large) {
+    const tokens = parseSequenceTokens(seq);
+    if (!tokens.length) return '<span style="color:#cbd5e1;">\u2014</span>';
+    const cssClass = {
+        'dna': 'seq-dna',
+        'rna': 'seq-rna',
+        '2f': 'seq-2f',
+        '2ome': 'seq-2ome',
+        'lna': 'seq-lna',
+    };
+    return tokens.map((t, i) => {
+        const cls = cssClass[t.type] || 'seq-dna';
+        const space = (i > 0 && large) ? '<span class="seq-space"> </span>' : (i > 0 ? ' ' : '');
+        return `${space}<span class="${cls}">${esc(t.display)}</span>`;
+    }).join('');
+}
+
+function renderCardSequencePreview(seq, maxTokens) {
+    const tokens = parseSequenceTokens(seq);
+    const show = tokens.slice(0, maxTokens || 20);
+    const cssClass = { 'dna': 'seq-dna', 'rna': 'seq-rna', '2f': 'seq-2f', '2ome': 'seq-2ome', 'lna': 'seq-lna' };
+    let html = show.map((t, i) => {
+        const cls = cssClass[t.type] || 'seq-dna';
+        return `${i > 0 ? ' ' : ''}<span class="${cls}">${esc(t.display)}</span>`;
+    }).join('');
+    if (tokens.length > show.length) html += ' <span style="color:#cbd5e1;">\u2026</span>';
+    return html;
+}
+
+function renderTerminalMod5(mod) {
+    if (!mod || mod === '-') return '';
+    const upper = mod.toUpperCase();
+    if (upper === '6FDM3' || upper === '6-FAM' || upper === 'FAM' || upper === '6FAM') {
+        return `<span class="term-mod term-mod-fam">FAM</span>`;
+    }
+    return `<span class="term-mod-generic">${esc(mod)}</span>`;
+}
+
+function renderTerminalMod3(mod) {
+    if (!mod || mod === '-') return '';
+    const upper = mod.toUpperCase();
+    if (upper === 'TQ2' || upper === 'BHQ1' || upper === 'BHQ2' || upper === 'DABCYL') {
+        return `<span class="term-mod term-mod-quencher">Q</span>`;
+    }
+    return `<span class="term-mod-generic">${esc(mod)}</span>`;
+}
+
+function renderChemistryLegend(o) {
+    const tokens = parseSequenceTokens(o.sequence_norm || '');
+    const types = new Set(tokens.map(t => t.type));
+    const items = [];
+    if (types.has('dna'))  items.push('<span class="chem-legend-item"><span class="chem-legend-dot dna"></span>DNA</span>');
+    if (types.has('rna'))  items.push('<span class="chem-legend-item"><span class="chem-legend-dot rna"></span>RNA</span>');
+    if (types.has('2f'))   items.push('<span class="chem-legend-item"><span class="chem-legend-dot f2"></span>2\u2032-Fluoro</span>');
+    if (types.has('2ome')) items.push('<span class="chem-legend-item"><span class="chem-legend-dot ome"></span>2\u2032-OMe</span>');
+    if (types.has('lna'))  items.push('<span class="chem-legend-item"><span class="chem-legend-dot lna"></span>LNA</span>');
+    if (!items.length) return '';
+    return `<div class="chem-legend">${items.join('')}</div>`;
+}
+
+function detectChemBadges(o) {
+    const badges = [];
+    const pt = (o.polymer_type || 'DNA').toUpperCase();
+    badges.push(pt === 'RNA' ? '<span class="chem-badge chem-badge-rna">RNA</span>' : '<span class="chem-badge chem-badge-dna">DNA</span>');
+    const tokens = parseSequenceTokens(o.sequence_norm || '');
+    const types = new Set(tokens.map(t => t.type));
+    if (types.has('2f'))   badges.push('<span class="chem-badge chem-badge-2f">2\u2032F</span>');
+    if (types.has('2ome')) badges.push('<span class="chem-badge chem-badge-2ome">2\u2032OMe</span>');
+    if (types.has('lna'))  badges.push('<span class="chem-badge chem-badge-lna">LNA</span>');
+    return badges.join(' ');
+}
+
+function buildInternalChemSummary(o) {
+    const tokens = parseSequenceTokens(o.sequence_norm || '');
+    const mods = [];
+    tokens.forEach((t, i) => {
+        if (t.type === '2f')   mods.push({ label: "2\u2032F", pos: i + 1 });
+        if (t.type === '2ome') mods.push({ label: "2\u2032OMe", pos: i + 1 });
+        if (t.type === 'lna')  mods.push({ label: "LNA", pos: i + 1 });
+    });
+    if (!mods.length) return '';
+    // Group by label
+    const groups = {};
+    mods.forEach(m => {
+        if (!groups[m.label]) groups[m.label] = [];
+        groups[m.label].push(m.pos);
+    });
+    const parts = Object.entries(groups).map(([label, positions]) => {
+        if (positions.length > 4) return `${label} (${positions.length} positions)`;
+        return `${label} (pos ${positions.join(', ')})`;
+    });
+    return parts.join(', ');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // REGISTRY MODE
 // ═══════════════════════════════════════════════════════════════════════════════
 function renderRegistryList(lp) {
@@ -489,7 +873,7 @@ function renderRegistryList(lp) {
         <div class="list-panel-header">
             <h2>Registry</h2>
             <div class="search-row">
-                <input class="search-input" id="reg-search" placeholder="Search name / sequence…" oninput="regFilter()">
+                <input class="search-input" id="reg-search" placeholder="Search name / sequence\u2026" oninput="regFilter()">
                 <select class="filter-select" id="reg-status" onchange="regFilter()">
                     <option value="">All</option>
                     <option value="ACTIVE">Active</option>
@@ -541,16 +925,23 @@ function regFilter() {
     if (!list) return;
     if (!items.length) { list.innerHTML = `<div class="empty-list">No oligonucleotides found</div>`; return; }
     list.innerHTML = items.map(o => {
-        const seqPreview = (o.sequence_norm||'').substring(0, 32) + ((o.sequence_norm||'').length > 32 ? '…' : '');
-        // probe_id = probe_catalog UUID; id = synthesis UUID (list row key)
         const probeId = o.probe_id || o.id;
-        const basisTag = o.polymer_type === 'RNA' ? '<span class="tag" style="background:#3b82f6;color:#fff;font-size:10px;padding:1px 5px;">RNA</span>' : '';
+        const badges = detectChemBadges(o);
+        const lenNt = o.length_nt || (o.sequence_norm ? parseSequenceTokens(o.sequence_norm).length : null);
+        const seqPreview = renderCardSequencePreview(o.sequence_norm, 18);
+        const batchCount = o.synthesis_count || 0;
+        const libCount = o.library_count || 0;
         return `
-        <div class="list-item${probeId === S.selectedOligoId ? ' selected' : ''}" onclick="selectOligo('${probeId}')">
-            <div class="list-item-name">${esc(o.display_name || '—')} ${basisTag}</div>
-            <div class="list-item-sub text-mono">${esc(seqPreview)}</div>
-            <div class="list-item-meta">
-                ${o.order_number ? `<span class="tag gray">${esc(o.order_number)}</span>` : ''}
+        <div class="oligo-card${probeId === S.selectedOligoId ? ' selected' : ''}" onclick="selectOligo('${probeId}')">
+            <div class="oligo-card-line1">
+                <span class="oligo-card-name">${esc(o.display_name || '\u2014')}</span>
+                ${badges}
+            </div>
+            <div class="oligo-card-length">${lenNt ? lenNt + ' nt' : ''}</div>
+            <div class="oligo-card-seq">${seqPreview}</div>
+            <div class="oligo-card-meta">
+                ${batchCount ? `<span>\uD83E\uDDEA ${batchCount} batch${batchCount !== 1 ? 'es' : ''}</span>` : ''}
+                ${libCount ? `<span>\uD83D\uDCDA ${libCount} librar${libCount !== 1 ? 'ies' : 'y'}</span>` : ''}
             </div>
         </div>`;
     }).join('');
@@ -565,10 +956,9 @@ function statusColor(s) {
 async function selectOligo(id) {
     S.selectedOligoId = id;
     regFilter(); // re-render list to highlight
-    showDetail('Loading…', '', '<div style="padding:20px;"><div class="spinner"></div></div>', null);
+    showDetail('Loading\u2026', '', '<div style="padding:20px;"><div class="spinner"></div></div>', null);
     try {
         const data = await api('GET', `/api/oligo/oligos/${id}`);
-        // Merge related arrays into the oligo object for convenience
         const o = data.oligo;
         o.syntheses = data.syntheses || [];
         o.libraries = data.libraries || [];
@@ -593,12 +983,8 @@ function renderOligoDetail(o) {
         return sb.localeCompare(sa, undefined, { numeric: true, sensitivity: 'base' });
     });
     S.selectedBatchIdx = 0;
-    const batchCount = (S.currentOligo.syntheses || []).length;
-    const subtitle = batchCount > 0 ? `${batchCount} batch${batchCount > 1 ? 'es' : ''}` : 'No batches';
-    showDetail(
-        o.display_name || '—',
-        subtitle,
-        _buildOligoViewHtml(),
+    showCanvasDetail(
+        _buildCanvasHtml(),
         buildOligoActionsHtml(S.currentOligo)
     );
 }
@@ -606,109 +992,111 @@ function renderOligoDetail(o) {
 function selectBatch(idx) {
     S.selectedBatchIdx = parseInt(idx, 10);
     const pane = document.getElementById('detail-view-pane');
-    if (pane) pane.innerHTML = _buildOligoViewHtml();
+    if (pane) pane.innerHTML = _buildCanvasHtml();
 }
 
 function copyOligoSequence() {
     copyText(S.currentOligo?.sequence_norm || '');
 }
 
-function _buildOligoViewHtml() {
+function _buildCanvasHtml() {
     const o = S.currentOligo;
     const syntheses = o.syntheses || [];
-    const synth = syntheses[S.selectedBatchIdx] || null;
+    const libraries = o.libraries || [];
+    const pt = (o.polymer_type || 'DNA').toUpperCase();
+    const lenNt = o.length_nt || parseSequenceTokens(o.sequence_norm || '').length;
 
-    // Batch selector (only when multiple batches)
+    // Terminal modifications
+    const mod5Html = renderTerminalMod5(o.mod5);
+    const mod3Html = renderTerminalMod3(o.mod3);
+
+    // Sequence
+    const seqHtml = renderSequenceHtml(o.sequence_norm, true);
+
+    // Chemistry legend
+    const legendHtml = renderChemistryLegend(o);
+
+    // Internal chemistry summary
+    const intChemSummary = buildInternalChemSummary(o);
+
+    // Syntheses
+    let synthHtml = '';
+    if (syntheses.length) {
+        synthHtml = syntheses.map((s, i) => {
+            const parts = [];
+            parts.push(`Batch ${i + 1}`);
+            if (s.order_number) parts.push(`Order ${esc(s.order_number)}`);
+            if (s.scale) parts.push(esc(s.scale));
+            if (s.amount_nmol != null) parts.push(`${s.amount_nmol} nmol`);
+            if (s.od_value != null) parts.push(`OD ${s.od_value}`);
+            return `<div class="canvas-synth-line">\uD83E\uDDEA <span>${parts.join(' <span class="synth-detail">|</span> ')}</span></div>`;
+        }).join('');
+    } else {
+        synthHtml = '<div class="canvas-synth-line" style="color:#cbd5e1;">No synthesis batches</div>';
+    }
+
+    // Libraries
+    let libHtml = '';
+    if (libraries.length) {
+        libHtml = libraries.map(l => `<div class="canvas-lib-line">\uD83D\uDCDA ${esc(l.library_name || l.name || '\u2014')}</div>`).join('');
+    } else {
+        libHtml = '<div class="canvas-lib-line" style="color:#cbd5e1;">Not assigned to any library</div>';
+    }
+
+    // Batch selector (for the batch-aware sections, keep compatibility)
     let batchSelectorHtml = '';
     if (syntheses.length > 1) {
         const options = syntheses.map((s, i) =>
-            `<option value="${i}"${i === S.selectedBatchIdx ? ' selected' : ''}>${esc(s.order_number || '—')} / ${esc(s.oligo_number || '—')}${s.synthesis_date ? ' (' + fmtDate(s.synthesis_date) + ')' : ''}</option>`
+            `<option value="${i}"${i === S.selectedBatchIdx ? ' selected' : ''}>${esc(s.order_number || '\u2014')} / ${esc(s.oligo_number || '\u2014')}${s.synthesis_date ? ' (' + fmtDate(s.synthesis_date) + ')' : ''}</option>`
         ).join('');
         batchSelectorHtml = `
-        <div class="section">
-            <div class="section-title">Batch</div>
-            <select class="filter-select" style="width:100%;" onchange="selectBatch(this.value)">${options}</select>
-        </div>`;
+            <div style="text-align:center;margin-bottom:8px;">
+                <select class="filter-select" style="min-width:200px;text-align:center;" onchange="selectBatch(this.value)">${options}</select>
+            </div>`;
     }
 
     return `
-        <div id="oligo-view-alert"></div>
+        <div class="canvas-identity">
+            <div class="canvas-oligo-name">${esc(o.display_name || '\u2014')}</div>
+            <div class="canvas-oligo-meta">${pt} \u2022 ${lenNt} nt</div>
+        </div>
+
+        <div class="canvas-seq-wrap">
+            <div class="canvas-seq">
+                ${mod5Html}${seqHtml}${mod3Html}
+            </div>
+            <button class="copy-btn" onclick="copyOligoSequence()" title="Copy sequence" style="margin-top:10px;">copy sequence</button>
+        </div>
+
+        ${legendHtml}
+
+        ${intChemSummary ? `
+        <hr class="canvas-divider">
+        <div class="canvas-section">
+            <div class="canvas-section-title">Internal Chemistry</div>
+            <div class="canvas-intchem">${intChemSummary}</div>
+        </div>
+        ` : ''}
+
+        <hr class="canvas-divider">
+
         ${batchSelectorHtml}
 
-        <div class="section">
-            <div class="section-title">ID_INFO</div>
-            <table class="kv-table">
-                <tr><td>Name</td><td><strong>${esc(o.display_name || '—')}</strong></td></tr>
-                <tr><td>Date</td><td>${synth?.synthesis_date ? fmtDate(synth.synthesis_date) : '—'}</td></tr>
-                <tr><td>Type</td><td>${esc(o.oligo_kind || '—')}</td></tr>
-                <tr><td>Basis</td><td>${esc(o.polymer_type || 'DNA')}</td></tr>
-                <tr><td>Synthesis#</td><td class="text-mono">${esc(synth?.oligo_number || '—')}</td></tr>
-            </table>
+        <div class="canvas-section">
+            <div class="canvas-section-title">Syntheses</div>
+            ${synthHtml}
         </div>
 
-        <div class="section">
-            <div class="section-title">SEQUENCE_INFO</div>
-            <table class="kv-table">
-                <tr>
-                    <td>sequence_5to3</td>
-                    <td>
-                        <div style="display:flex;align-items:flex-start;gap:8px;">
-                            <div class="sequence-block" style="flex:1;">${esc(o.sequence_norm || '—')}</div>
-                            ${o.sequence_norm ? `<button class="copy-btn" onclick="copyOligoSequence()" title="Copy sequence">copy</button>` : ''}
-                        </div>
-                    </td>
-                </tr>
-            </table>
+        <div class="canvas-section">
+            <div class="canvas-section-title">Libraries</div>
+            ${libHtml}
         </div>
-
-        <div class="section">
-            <div class="section-title">SYNTHESIS_INFO</div>
-            <table class="kv-table">
-                <tr><td>Scale</td><td>${synth?.scale != null && synth?.scale !== '' ? esc(synth.scale) : '—'}</td></tr>
-                <tr><td>Purification</td><td>${synth?.purification != null && synth?.purification !== '' ? esc(synth.purification) : '—'}</td></tr>
-            </table>
-        </div>
-
-        <div class="section">
-            <div class="section-title">SYNTHESIS_MODIFICATIONS_ENDS</div>
-            <table class="kv-table">
-                <tr><td>5_mod</td><td class="text-mono">${fmtMod(o.mod5)}</td></tr>
-                <tr><td>3_mod</td><td class="text-mono">${fmtMod(o.mod3)}</td></tr>
-            </table>
-        </div>
-
-        <div class="section">
-            <div class="section-title">SYNTHESIS_MODIFICATIONS_INTERNAL</div>
-            <table class="kv-table">
-                <tr><td>5</td><td class="text-mono">${fmtMod(o.mod_int_5)}</td></tr>
-                <tr><td>6</td><td class="text-mono">${fmtMod(o.mod_int_6)}</td></tr>
-                <tr><td>7</td><td class="text-mono">${fmtMod(o.mod_int_7)}</td></tr>
-                <tr><td>8</td><td class="text-mono">${fmtMod(o.mod_int_8)}</td></tr>
-            </table>
-        </div>
-
-        <div class="section">
-            <div class="section-title">SYNTHESIS_REPORT</div>
-            <table class="kv-table">
-                <tr><td>Length</td><td>${o.length_nt != null ? o.length_nt : '—'}</td></tr>
-                <tr><td>MW_Calc</td><td>—</td></tr>
-                <tr><td>MW_Found</td><td>${synth?.mw_value != null ? synth.mw_value : '—'}</td></tr>
-                <tr><td>Tm</td><td>—</td></tr>
-                <tr><td>GC_content</td><td>—</td></tr>
-                <tr><td>Ext_Coeff</td><td>—</td></tr>
-            </table>
-        </div>
-
-        <div class="section">
-            <div class="section-title">SYNTHESIS_YIELD</div>
-            <table class="kv-table">
-                <tr><td>OD</td><td>${synth?.od_value != null ? synth.od_value : '—'}</td></tr>
-                <tr><td>nmol</td><td>${synth?.amount_nmol != null ? synth.amount_nmol : '—'}</td></tr>
-                <tr><td>ug</td><td>${synth?.amount_ug != null ? synth.amount_ug : '—'}</td></tr>
-            </table>
-        </div>
-
     `;
+}
+
+// Keep legacy view builder for fallback / non-registry modes
+function _buildOligoViewHtml() {
+    return _buildCanvasHtml();
 }
 
 function buildOligoActionsHtml(o) {
@@ -807,10 +1195,10 @@ function buildOligoActionsHtml(o) {
         <!-- Attach document -->
         <div class="section">
             <div class="section-title">Attach Document (PDF)</div>
-            <p style="font-size:12px;color:#6b7280;margin-bottom:10px;">Attach a PDF to this oligonucleotide identity (e.g. specification sheet, CoA).</p>
+            <p style="font-size:12px;color:#94a3b8;margin-bottom:10px;">Attach a PDF to this oligonucleotide identity (e.g. specification sheet, CoA).</p>
             <input type="file" id="doc-file-input" accept=".pdf" style="display:none;" onchange="uploadDoc('${o.id}')">
-            <button class="btn btn-secondary" onclick="document.getElementById('doc-file-input').click()">Choose PDF…</button>
-            <div id="doc-upload-status" style="margin-top:8px;font-size:12px;color:#6b7280;"></div>
+            <button class="btn btn-secondary" onclick="document.getElementById('doc-file-input').click()">Choose PDF\u2026</button>
+            <div id="doc-upload-status" style="margin-top:8px;font-size:12px;color:#94a3b8;"></div>
         </div>
 
         ${synthOptions ? `
@@ -899,7 +1287,7 @@ async function uploadDoc(oligoId) {
     const file = input?.files?.[0];
     if (!file) return;
     const status = document.getElementById('doc-upload-status');
-    if (status) status.textContent = 'Uploading…';
+    if (status) status.textContent = 'Uploading\u2026';
     try {
         const fd = new FormData();
         fd.append('file', file);
@@ -927,7 +1315,6 @@ function loadSynthEdit() {
     const synthId = sel?.value;
     const form = document.getElementById('synth-edit-form');
     if (!form || !synthId) return;
-    // Find synthesis in current oligo data by looking through select options label
     form.innerHTML = `
         <div class="form-row" style="margin-top:8px;">
             <div>
@@ -999,7 +1386,7 @@ function buildExcelUploadView() {
         <div id="src-upload-alert"></div>
         <div class="section">
             <div class="section-title">Upload Excel / CSV</div>
-            <p style="font-size:13px;color:#9ca3af;margin-bottom:14px;">Import oligonucleotide data from a supplier Excel file. Columns recognized: OLIGONAME, SEQUENCE, ORDERNO, OLIGONO, MOD5S, MOD3S, MODI5–MODI8, MW, AMOUNTNMOL, CREATEDATE.</p>
+            <p style="font-size:13px;color:#64748b;margin-bottom:14px;">Import oligonucleotide data from a supplier Excel file. Columns recognized: OLIGONAME, SEQUENCE, ORDERNO, OLIGONO, MOD5S, MOD3S, MODI5\u2013MODI8, MW, AMOUNTNMOL, CREATEDATE.</p>
             <div class="form-group">
                 <label class="form-label">Supplier</label>
                 <select class="form-select" id="src-supplier">
@@ -1014,7 +1401,7 @@ function buildExcelUploadView() {
                 <p>Accepts .xlsx or .csv</p>
             </div>
             <input type="file" id="excel-file-input" accept=".xlsx,.xls,.csv" style="display:none;" onchange="handleExcelUpload()">
-            <div id="excel-upload-progress" style="margin-top:10px;font-size:13px;color:#6b7280;"></div>
+            <div id="excel-upload-progress" style="margin-top:10px;font-size:13px;color:#94a3b8;"></div>
         </div>
 
         <div class="section" id="src-detail-section" style="display:none;">
@@ -1034,7 +1421,7 @@ async function loadSourceList() {
         list.innerHTML = S.sourceList.map(s => `
             <div class="list-item${s.id === S.selectedSourceId ? ' selected' : ''}" onclick="selectSource('${s.id}')">
                 <div class="list-item-name">${esc(s.file_name || s.id)}</div>
-                <div class="list-item-sub">${esc(s.supplier||'')} · ${s.oligos_detected||0} oligos</div>
+                <div class="list-item-sub">${esc(s.supplier||'')} \u00B7 ${s.oligos_detected||0} oligos</div>
                 <div class="list-item-meta">
                     <span class="tag gray">${fmtDate(s.created_at||s.imported_at)}</span>
                     ${s.orders_detected ? `<span class="tag">${s.orders_detected} order${s.orders_detected>1?'s':''}</span>` : ''}
@@ -1057,17 +1444,17 @@ function selectSource(id) {
         <div class="section">
             <div class="section-title">Import Summary</div>
             <table class="kv-table">
-                <tr><td>File</td><td>${esc(src.file_name||'—')}</td></tr>
-                <tr><td>Supplier</td><td>${esc(src.supplier||'—')}</td></tr>
+                <tr><td>File</td><td>${esc(src.file_name||'\u2014')}</td></tr>
+                <tr><td>Supplier</td><td>${esc(src.supplier||'\u2014')}</td></tr>
                 <tr><td>Oligos imported</td><td>${src.oligos_detected||0}</td></tr>
-                <tr><td>Orders detected</td><td>${src.orders_detected||'—'}</td></tr>
-                <tr><td>Date range</td><td>${fmtDate(src.date_range_start)} – ${fmtDate(src.date_range_end)}</td></tr>
-                <tr><td>Imported by</td><td>${esc(src.imported_by||'—')}</td></tr>
+                <tr><td>Orders detected</td><td>${src.orders_detected||'\u2014'}</td></tr>
+                <tr><td>Date range</td><td>${fmtDate(src.date_range_start)} \u2013 ${fmtDate(src.date_range_end)}</td></tr>
+                <tr><td>Imported by</td><td>${esc(src.imported_by||'\u2014')}</td></tr>
                 <tr><td>Imported at</td><td>${fmtDate(src.created_at||src.imported_at)}</td></tr>
             </table>
         </div>
     `;
-    showDetail(src.file_name || 'Import', `${src.supplier||''} · ${src.oligos_detected||0} oligos`, viewHtml, null);
+    showDetail(src.file_name || 'Import', `${src.supplier||''} \u00B7 ${src.oligos_detected||0} oligos`, viewHtml, null);
 }
 
 async function handleExcelUpload() {
@@ -1076,7 +1463,7 @@ async function handleExcelUpload() {
     if (!file) return;
     const supplier = document.getElementById('src-supplier')?.value || 'biomers';
     const progress = document.getElementById('excel-upload-progress');
-    if (progress) progress.innerHTML = `<div class="spinner"></div> Parsing and importing…`;
+    if (progress) progress.innerHTML = `<div class="spinner"></div> Parsing and importing\u2026`;
 
     try {
         const fd = new FormData();
@@ -1087,12 +1474,12 @@ async function handleExcelUpload() {
         if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
 
         const { probes_inserted=0, probes_reused=0, syntheses_inserted=0, duplicates_detected=0, library_candidates=[], warnings=[] } = d;
-        let html = `<div class="alert alert-success">Import complete — ${probes_inserted} identities new, ${probes_reused} identities reused, ${syntheses_inserted} synthesis batches inserted, ${duplicates_detected} duplicates detected.</div>`;
+        let html = `<div class="alert alert-success">Import complete \u2014 ${probes_inserted} identities new, ${probes_reused} identities reused, ${syntheses_inserted} synthesis batches inserted, ${duplicates_detected} duplicates detected.</div>`;
         if (warnings.length) {
             html += `<div class="alert alert-warn">${warnings.length} warning(s):<ul style="margin-top:6px;padding-left:18px;">${warnings.slice(0,10).map(w=>`<li>${esc(w.message||w)}</li>`).join('')}</ul></div>`;
         }
         if (library_candidates.length) {
-            html += `<div class="alert alert-info">Library candidates detected (≥12 oligos per order):<ul style="margin-top:6px;padding-left:18px;">${library_candidates.map(c=>`<li>${esc(c.order_number)} (${Number(c.count||0)} oligos)</li>`).join('')}</ul><div style="margin-top:8px;">${library_candidates.map(c=>`<button class="btn btn-success btn-sm" onclick="createLibFromOrder('${esc(c.order_number)}','${supplier}')">Create library for ${esc(c.order_number)} (${Number(c.count||0)})</button>`).join(' ')}</div></div>`;
+            html += `<div class="alert alert-info">Library candidates detected (\u226512 oligos per order):<ul style="margin-top:6px;padding-left:18px;">${library_candidates.map(c=>`<li>${esc(c.order_number)} (${Number(c.count||0)} oligos)</li>`).join('')}</ul><div style="margin-top:8px;">${library_candidates.map(c=>`<button class="btn btn-success btn-sm" onclick="createLibFromOrder('${esc(c.order_number)}','${supplier}')">Create library for ${esc(c.order_number)} (${Number(c.count||0)})</button>`).join(' ')}</div></div>`;
         }
         if (progress) progress.innerHTML = html;
         loadSourceList();
@@ -1147,7 +1534,7 @@ function renderCreatePanel(lp) {
     lp.innerHTML = `
         <div class="list-panel-header">
             <h2>Create Oligonucleotide</h2>
-            <p style="font-size:12px;color:#6b7280;margin-top:4px;">Manually register a new oligonucleotide</p>
+            <p style="font-size:12px;color:#64748b;margin-top:4px;">Manually register a new oligonucleotide</p>
         </div>
         <div class="list-scroll" style="padding:14px;">
             <div id="create-alert"></div>
@@ -1156,8 +1543,8 @@ function renderCreatePanel(lp) {
                 <input class="form-input" id="c-name" placeholder="e.g. hsa-miR-21-sense">
             </div>
             <div class="form-group">
-                <label class="form-label">Sequence (5'→3') *</label>
-                <textarea class="form-textarea" id="c-seq" placeholder="ACGU…" style="font-family:monospace;"></textarea>
+                <label class="form-label">Sequence (5'\u21923') *</label>
+                <textarea class="form-textarea" id="c-seq" placeholder="ACGU\u2026" style="font-family:monospace;"></textarea>
             </div>
             <div class="form-group">
                 <label class="form-label">Modifications</label>
@@ -1186,7 +1573,7 @@ function renderCreatePanel(lp) {
                 <textarea class="form-textarea" id="c-notes" style="min-height:50px;"></textarea>
             </div>
             <hr class="divider">
-            <div style="font-size:12px;font-weight:600;color:#9ca3af;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.5px;">Optional: First Synthesis Batch</div>
+            <div style="font-size:12px;font-weight:600;color:#64748b;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.5px;">Optional: First Synthesis Batch</div>
             <div class="form-row">
                 <div>
                     <label class="form-label">Supplier</label>
@@ -1218,10 +1605,10 @@ function renderCreatePanel(lp) {
                 </div>
             </div>
             <hr class="divider">
-            <div style="font-size:12px;font-weight:600;color:#9ca3af;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.5px;">Optional: Attach Document (PDF)</div>
+            <div style="font-size:12px;font-weight:600;color:#64748b;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.5px;">Optional: Attach Document (PDF)</div>
             <input type="file" id="c-doc-file" accept=".pdf" style="display:none;">
-            <button class="btn btn-secondary btn-sm" onclick="document.getElementById('c-doc-file').click()">Choose PDF…</button>
-            <span id="c-doc-name" style="font-size:12px;color:#6b7280;margin-left:8px;"></span>
+            <button class="btn btn-secondary btn-sm" onclick="document.getElementById('c-doc-file').click()">Choose PDF\u2026</button>
+            <span id="c-doc-name" style="font-size:12px;color:#94a3b8;margin-left:8px;"></span>
             <script>document.getElementById('c-doc-file').addEventListener('change', function() { document.getElementById('c-doc-name').textContent = this.files[0]?.name || ''; });<\/script>
             <div class="btn-row" style="margin-top:16px;">
                 <button class="btn btn-primary" onclick="createOligo()">Create Oligonucleotide</button>
@@ -1314,7 +1701,7 @@ function renderLibraryList(lp) {
         <div class="list-panel-header">
             <h2>Libraries</h2>
             <div class="search-row">
-                <input class="search-input" id="lib-search" placeholder="Search libraries…" oninput="libFilter()">
+                <input class="search-input" id="lib-search" placeholder="Search libraries\u2026" oninput="libFilter()">
             </div>
         </div>
         <div class="list-scroll" id="lib-list"><div class="empty-list"><div class="spinner"></div></div></div>
@@ -1343,7 +1730,7 @@ function buildLibraryCreateView() {
         <hr class="divider">
         <div class="section">
             <div class="section-title">About Libraries</div>
-            <p style="font-size:13px;color:#6b7280;line-height:1.6;">Libraries group oligonucleotides that are used together as a panel or set. Orders with ≥12 oligos are automatically flagged as library candidates during Excel import.</p>
+            <p style="font-size:13px;color:#64748b;line-height:1.6;">Libraries group oligonucleotides that are used together as a panel or set. Orders with \u226512 oligos are automatically flagged as library candidates during Excel import.</p>
         </div>
     `;
 }
@@ -1397,7 +1784,7 @@ async function createLibrary() {
 async function selectLibrary(id) {
     S.selectedLibraryId = id;
     libFilter();
-    showDetail('Loading…', '', '<div style="padding:20px;"><div class="spinner"></div></div>', null);
+    showDetail('Loading\u2026', '', '<div style="padding:20px;"><div class="spinner"></div></div>', null);
     try {
         const data = await api('GET', `/api/oligo/libraries/${id}`);
         renderLibraryDetail({ ...data.library, members: data.members });
@@ -1426,9 +1813,9 @@ function renderLibraryDetail(lib) {
                 <thead><tr><th>Name</th><th>Sequence (preview)</th><th>Status</th></tr></thead>
                 <tbody>${members.map(m => `
                     <tr>
-                        <td><a href="#" onclick="switchMode('registry');setTimeout(()=>selectOligo('${m.oligo_id||m.id}'),200);return false;" style="color:#93c5fd;">${esc(m.display_name||m.canonical_id||'—')}</a></td>
-                        <td class="text-mono">${esc((m.sequence_norm||'').substring(0,24))}${(m.sequence_norm||'').length>24?'…':''}</td>
-                        <td><span class="tag ${statusColor(m.status)}">${m.status||'—'}</span></td>
+                        <td><a href="#" onclick="switchMode('registry');setTimeout(()=>selectOligo('${m.oligo_id||m.id}'),200);return false;" style="color:#16a34a;">${esc(m.display_name||m.canonical_id||'\u2014')}</a></td>
+                        <td class="text-mono">${esc((m.sequence_norm||'').substring(0,24))}${(m.sequence_norm||'').length>24?'\u2026':''}</td>
+                        <td><span class="tag ${statusColor(m.status)}">${m.status||'\u2014'}</span></td>
                     </tr>
                 `).join('')}</tbody>
             </table>
@@ -1442,7 +1829,7 @@ function renderLibraryDetail(lib) {
             <div class="section-title">Add Member</div>
             <div class="form-group">
                 <label class="form-label">Search oligonucleotides</label>
-                <input class="form-input" id="lib-oligo-search" placeholder="Type name or ID…" oninput="libOligoSearch()">
+                <input class="form-input" id="lib-oligo-search" placeholder="Type name or ID\u2026" oninput="libOligoSearch()">
             </div>
             <div id="lib-oligo-results" style="margin-top:6px;"></div>
         </div>
@@ -1471,11 +1858,11 @@ function libOligoSearch() {
     if (q.length < 2) { document.getElementById('lib-oligo-results').innerHTML = ''; return; }
     const matches = S.registryList.filter(o => (o.display_name||'').toLowerCase().includes(q) || (o.canonical_id||'').toLowerCase().includes(q)).slice(0, 8);
     document.getElementById('lib-oligo-results').innerHTML = matches.length
-        ? matches.map(o => `<div class="list-item" style="border:1px solid #2a2d3a;border-radius:5px;margin-bottom:4px;cursor:pointer;" onclick="addMemberFromSearch('${o.probe_id || o.id}')">
+        ? matches.map(o => `<div class="list-item" style="border:1px solid #e2e8f0;border-radius:5px;margin-bottom:4px;cursor:pointer;" onclick="addMemberFromSearch('${o.probe_id || o.id}')">
             <div class="list-item-name">${esc(o.display_name||o.canonical_id)}</div>
-            <div class="list-item-sub text-mono">${esc((o.sequence_norm||'').substring(0,28))}…</div>
+            <div class="list-item-sub text-mono">${esc((o.sequence_norm||'').substring(0,28))}\u2026</div>
           </div>`).join('')
-        : '<p style="font-size:12px;color:#4b5563;">No matches</p>';
+        : '<p style="font-size:12px;color:#94a3b8;">No matches</p>';
 }
 
 async function addMemberFromSearch(oligoId) {
@@ -1522,7 +1909,7 @@ function renderDupList(lp) {
     lp.innerHTML = `
         <div class="list-panel-header">
             <h2>Duplicates</h2>
-            <p style="font-size:12px;color:#6b7280;margin-top:4px;">Synthesis batches with the same identity</p>
+            <p style="font-size:12px;color:#64748b;margin-top:4px;">Synthesis batches with the same identity</p>
         </div>
         <div class="list-scroll" id="dup-list"><div class="empty-list"><div class="spinner"></div></div></div>
     `;
@@ -1540,7 +1927,7 @@ async function loadDups() {
         if (!list) return;
         if (!S.dupList.length) {
             list.innerHTML = `<div class="empty-list">No duplicates detected</div>`;
-            showDetail('No duplicates', 'All synthesis batches have unique identities', '<div style="padding:20px;"><p style="color:#6b7280;font-size:13px;">No duplicate oligonucleotide identities found across synthesis batches.</p></div>', null);
+            showDetail('No duplicates', 'All synthesis batches have unique identities', '<div style="padding:20px;"><p style="color:#94a3b8;font-size:13px;">No duplicate oligonucleotide identities found across synthesis batches.</p></div>', null);
             return;
         }
         list.innerHTML = S.dupList.map((d, i) => `
@@ -1568,9 +1955,9 @@ function showDupDetail(idx) {
         <div class="section">
             <div class="section-title">Identity</div>
             <table class="kv-table">
-                <tr><td>Name</td><td><strong>${esc(d.display_name||'—')}</strong></td></tr>
-                <tr><td>Canonical ID</td><td class="text-mono">${esc(d.canonical_id||'—')}</td></tr>
-                <tr><td>Sequence</td><td class="text-mono" style="font-size:11px;">${esc((d.sequence_norm||'').substring(0,40))}…</td></tr>
+                <tr><td>Name</td><td><strong>${esc(d.display_name||'\u2014')}</strong></td></tr>
+                <tr><td>Canonical ID</td><td class="text-mono">${esc(d.canonical_id||'\u2014')}</td></tr>
+                <tr><td>Sequence</td><td class="text-mono" style="font-size:11px;">${esc((d.sequence_norm||'').substring(0,40))}\u2026</td></tr>
             </table>
         </div>
         <div class="section">
@@ -1579,18 +1966,18 @@ function showDupDetail(idx) {
                 <thead><tr><th>Supplier</th><th>Order #</th><th>Oligo #</th><th>Date</th><th>Status</th></tr></thead>
                 <tbody>${batches.map(b => `
                     <tr>
-                        <td>${esc(b.supplier||'—')}</td>
-                        <td class="text-mono">${esc(b.order_number||'—')}</td>
-                        <td class="text-mono">${esc(b.oligo_number||'—')}</td>
+                        <td>${esc(b.supplier||'\u2014')}</td>
+                        <td class="text-mono">${esc(b.order_number||'\u2014')}</td>
+                        <td class="text-mono">${esc(b.oligo_number||'\u2014')}</td>
                         <td>${fmtDate(b.synthesis_date)}</td>
-                        <td><span class="tag ${b.excel_status==='ACTIVE'?'green':b.excel_status==='DISCARDED'?'red':'gray'}">${esc(b.excel_status||'—')}</span></td>
+                        <td><span class="tag ${b.excel_status==='ACTIVE'?'green':b.excel_status==='DISCARDED'?'red':'gray'}">${esc(b.excel_status||'\u2014')}</span></td>
                     </tr>
                 `).join('')}</tbody>
             </table>
         </div>
         <div class="section">
             <div class="section-title">Resolution</div>
-            <div class="alert alert-info">To resolve: keep one batch as ACTIVE and discard the others via the Registry → select oligo → Actions → Edit Synthesis Batch.</div>
+            <div class="alert alert-info">To resolve: keep one batch as ACTIVE and discard the others via the Registry \u2192 select oligo \u2192 Actions \u2192 Edit Synthesis Batch.</div>
         </div>
     `;
     showDetail(d.display_name || d.canonical_id || 'Duplicate', `${batches.length} batches`, viewHtml, null);
@@ -1603,7 +1990,7 @@ function renderCertList(lp) {
     lp.innerHTML = `
         <div class="list-panel-header">
             <h2>Certificates</h2>
-            <p style="font-size:12px;color:#6b7280;margin-top:4px;">Attached PDFs and documents</p>
+            <p style="font-size:12px;color:#64748b;margin-top:4px;">Attached PDFs and documents</p>
         </div>
         <div class="list-scroll" id="cert-list"><div class="empty-list"><div class="spinner"></div></div></div>
     `;
@@ -1618,13 +2005,13 @@ async function loadCerts() {
         if (!list) return;
         if (!S.certList.length) {
             list.innerHTML = `<div class="empty-list">No certificates or documents</div>`;
-            showDetail('Certificates', 'No documents attached yet', '<div style="padding:20px;"><p style="color:#6b7280;font-size:13px;">Attach PDFs to oligonucleotides via Registry → select oligo → Actions → Attach Document.</p></div>', null);
+            showDetail('Certificates', 'No documents attached yet', '<div style="padding:20px;"><p style="color:#94a3b8;font-size:13px;">Attach PDFs to oligonucleotides via Registry \u2192 select oligo \u2192 Actions \u2192 Attach Document.</p></div>', null);
             return;
         }
         list.innerHTML = S.certList.map((c, i) => `
             <div class="list-item" onclick="showCertDetail(${i})">
                 <div class="list-item-name">${esc(c.original_filename || c.file_key || 'Document')}</div>
-                <div class="list-item-sub">${esc(c.oligo_name || c.synthesis_label || '—')}</div>
+                <div class="list-item-sub">${esc(c.oligo_name || c.synthesis_label || '\u2014')}</div>
                 <div class="list-item-meta">
                     <span class="tag ${c.cert_type==='identity'?'':'green'}">${c.cert_type==='identity'?'Identity doc':'Certificate'}</span>
                     <span class="tag gray">${fmtDate(c.uploaded_at)}</span>
@@ -1645,10 +2032,10 @@ function showCertDetail(idx) {
         <div class="section">
             <div class="section-title">Document</div>
             <table class="kv-table">
-                <tr><td>Filename</td><td>${esc(c.original_filename||'—')}</td></tr>
+                <tr><td>Filename</td><td>${esc(c.original_filename||'\u2014')}</td></tr>
                 <tr><td>Type</td><td>${c.cert_type==='identity'?'Identity document':'Synthesis certificate'}</td></tr>
-                <tr><td>Linked to</td><td>${esc(c.oligo_name || c.synthesis_label || '—')}</td></tr>
-                <tr><td>Uploaded by</td><td>${esc(c.uploaded_by||'—')}</td></tr>
+                <tr><td>Linked to</td><td>${esc(c.oligo_name || c.synthesis_label || '\u2014')}</td></tr>
+                <tr><td>Uploaded by</td><td>${esc(c.uploaded_by||'\u2014')}</td></tr>
                 <tr><td>Uploaded</td><td>${fmtDate(c.uploaded_at)}</td></tr>
             </table>
             <div class="btn-row" style="margin-top:14px;">
