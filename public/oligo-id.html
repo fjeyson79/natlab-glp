@@ -449,6 +449,10 @@
         }
         .lib-member-summary .member-seq-preview {
             flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
             font-family: "JetBrains Mono", monospace;
             font-size: 11px;
             color: #6b7280;
@@ -2185,7 +2189,7 @@ function libBuildMemberRows(members) {
 }
 
 function libBuildMemberDetail(m, idx, total, pt, lenNt, mod5Html, mod3Html, seqFull) {
-    const legendHtml = renderChemistryLegend({ ...m, sequence: m.sequence_norm });
+    const legendHtml = renderChemistryLegend({ ...m, sequence: m.sequence_norm, sequence_raw: m.sequence_norm, polymer_type: m.polymer_type });
     return `
         <div class="lib-member-detail">
             <div class="seq-card">

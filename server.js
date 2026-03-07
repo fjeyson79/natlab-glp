@@ -13738,7 +13738,7 @@ app.get("/api/oligo/libraries/:id", requirePI, async (req, res) => {
         const memR = await pool.query(`
             SELECT plm.id AS membership_id, plm.synthesis_id, plm.sort_order,
                    pc.id AS oligo_id, pc.canonical_id,
-                   pc.display_name, pc.sequence, pc.sequence_norm, pc.length_nt, pc.mod5, pc.mod3, pc.status
+                   pc.display_name, pc.sequence, pc.sequence_norm, pc.polymer_type, pc.length_nt, pc.mod5, pc.mod3, pc.mod_int_5, pc.mod_int_6, pc.mod_int_7, pc.mod_int_8, pc.status
             FROM probe_library_members plm
             JOIN probe_catalog pc ON pc.id = plm.probe_id
             WHERE plm.library_id = $1
