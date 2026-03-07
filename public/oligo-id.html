@@ -171,16 +171,12 @@
             font-family: "JetBrains Mono", "Fira Code", "Source Code Pro", monospace;
             font-size: 12px;
             letter-spacing: 0.05em;
-            text-align: center;
-            color: #9ca3af;
-            padding: 4px 8px;
-            margin: 4px -4px;
+            text-align: left;
+            color: #e2e8f0;
+            padding: 4px 0;
+            margin: 4px 0;
             line-height: 1.6;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            background: #fff;
-            border-radius: 4px;
+            word-break: break-all;
         }
         .oligo-card-meta {
             display: flex;
@@ -778,7 +774,7 @@ function parseSequenceTokens(seq, polymerType) {
             }
         }
         const ch = seq[i];
-        // Numeric tokens are internal modification codes — not bases
+        // Numeric tokens are internal modification codes
         if (/[0-9]/.test(ch)) {
             const code = parseInt(ch, 10);
             const typeMap = { 6: '2f', 7: '2ome', 8: 'lna' };
@@ -788,7 +784,8 @@ function parseSequenceTokens(seq, polymerType) {
                 tokens.push({ base, type: typeMap[code] || 'mod' + code, display: base, modCode: code });
                 i += 2; continue;
             }
-            // Standalone number — skip
+            // Standalone number — render as modification token
+            tokens.push({ base: ch, type: typeMap[code] || 'mod' + code, display: ch, modCode: code });
             i++; continue;
         }
         if (/[A-Za-z]/.test(ch)) {
@@ -967,7 +964,6 @@ function regFilter() {
         const probeId = o.probe_id || o.id;
         const badges = detectChemBadges(o);
         const lenNt = o.length_nt || (o.sequence_norm ? parseSequenceTokens(o.sequence_norm, o.polymer_type).length : null);
-        const seqPreview = renderCardSequencePreview(o.sequence_norm, 18, o.polymer_type);
         const batchCount = o.synthesis_count || 0;
         const libCount = o.library_count || 0;
         return `
@@ -977,7 +973,7 @@ function regFilter() {
                 ${badges}
             </div>
             <div class="oligo-card-length">${lenNt ? lenNt + ' nt' : ''}</div>
-            <div class="oligo-card-seq">${seqPreview}</div>
+            <div class="oligo-card-seq">${esc(o.sequence_norm || '\u2014')}</div>
             <div class="oligo-card-meta">
                 ${batchCount ? `<span>\uD83E\uDDEA ${batchCount} batch${batchCount !== 1 ? 'es' : ''}</span>` : ''}
                 ${libCount ? `<span>\uD83D\uDCDA ${libCount} librar${libCount !== 1 ? 'ies' : 'y'}</span>` : ''}
@@ -1142,25 +1138,43 @@ function _buildCanvasHtml() {
         ${batchSelectorHtml}
 
         <div class="section" style="margin:0 28px 16px;">
-            <div class="section-title">Syntheses (${syntheses.length})</div>
-            ${syntheses.length ? `
+            <div class="section-title">Synthesis Details</div>
+            ${syntheses.length ? (() => {
+                const s = syntheses[S.selectedBatchIdx] || syntheses[0];
+                return `
+                <table class="kv-table">
+                    <tr><td>Supplier</td><td>${esc(s.supplier || '\u2014')}</td></tr>
+                    <tr><td>Order #</td><td class="text-mono">${esc(s.order_number || '\u2014')}</td></tr>
+                    <tr><td>Oligo #</td><td class="text-mono">${esc(s.oligo_number || s.synthesis_oligo_no || '\u2014')}</td></tr>
+                    <tr><td>Synthesis Date</td><td>${fmtDate(s.synthesis_date)}</td></tr>
+                    <tr><td>Amount</td><td>${s.amount_nmol != null ? s.amount_nmol + ' nmol' : '\u2014'}</td></tr>
+                    <tr><td>MW</td><td>${s.mw_value != null ? s.mw_value + ' g/mol' : '\u2014'}</td></tr>
+                    <tr><td>Status</td><td><span class="tag ${(s.excel_status||s.status)==='ACTIVE'?'green':(s.excel_status||s.status)==='DISCARDED'?'red':'gray'}">${esc(s.excel_status || s.status || '\u2014')}</span></td></tr>
+                    ${s.qc_notes ? `<tr><td>QC Notes</td><td>${esc(s.qc_notes)}</td></tr>` : ''}
+                    ${s.aliquots_text ? `<tr><td>Aliquots</td><td>${esc(s.aliquots_text)}</td></tr>` : ''}
+                    ${s.certificate_pdf_key ? `<tr><td>Certificate</td><td><button class="btn btn-secondary btn-sm" onclick="downloadCert('${s.id}')">Download PDF</button></td></tr>` : ''}
+                </table>`;
+            })() : '<p class="text-muted" style="font-size:13px;">No synthesis batches</p>'}
+        </div>
+
+        ${syntheses.length > 1 ? `
+        <div class="section" style="margin:0 28px 16px;">
+            <div class="section-title">All Synthesis Batches (${syntheses.length})</div>
             <table class="data-table">
-                <thead><tr><th>Batch</th><th>Supplier</th><th>Order #</th><th>Oligo #</th><th>Date</th><th>Amount</th><th>MW</th><th>Status</th></tr></thead>
+                <thead><tr><th>#</th><th>Supplier</th><th>Order #</th><th>Oligo #</th><th>Date</th><th>Status</th></tr></thead>
                 <tbody>${syntheses.map((s, i) => `
-                    <tr>
+                    <tr style="${i === S.selectedBatchIdx ? 'background:#0a2e1c;' : ''}">
                         <td>${i + 1}</td>
                         <td>${esc(s.supplier || '\u2014')}</td>
                         <td class="text-mono">${esc(s.order_number || '\u2014')}</td>
                         <td class="text-mono">${esc(s.oligo_number || s.synthesis_oligo_no || '\u2014')}</td>
                         <td>${fmtDate(s.synthesis_date)}</td>
-                        <td>${s.amount_nmol != null ? s.amount_nmol + ' nmol' : '\u2014'}</td>
-                        <td>${s.mw_value != null ? s.mw_value + ' g/mol' : '\u2014'}</td>
                         <td><span class="tag ${(s.excel_status||s.status)==='ACTIVE'?'green':(s.excel_status||s.status)==='DISCARDED'?'red':'gray'}">${esc(s.excel_status || s.status || '\u2014')}</span></td>
                     </tr>
                 `).join('')}</tbody>
             </table>
-            ` : '<p class="text-muted" style="font-size:13px;">No synthesis batches</p>'}
         </div>
+        ` : ''}
 
         <div class="section" style="margin:0 28px 16px;">
             <div class="section-title">Libraries (${libraries.length})</div>
