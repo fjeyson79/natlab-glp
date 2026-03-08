@@ -13696,6 +13696,7 @@ app.get("/api/oligo/libraries", requirePI, async (req, res) => {
         const result = await pool.query(`
             SELECT pl.id, pl.library_name, pl.description, pl.created_by, pl.created_at,
                    pl.chemistry_families, pl.detection_type,
+                   pl.source_supplier, pl.source_order,
                    COUNT(DISTINCT plm.id)::int AS member_count,
                    COUNT(DISTINCT plm.id) FILTER (WHERE plm.certified = true)::int AS certified_count,
                    COUNT(DISTINCT pc.id)::int AS identity_count,
@@ -13704,8 +13705,6 @@ app.get("/api/oligo/libraries", requirePI, async (req, res) => {
                    BOOL_OR(pc.sequence_norm ~ 'f[A-Za-z]') AS has_2f,
                    BOOL_OR(pc.sequence_norm ~ 'm[A-Za-z]') AS has_2ome,
                    BOOL_OR(pc.sequence_norm ~ 'l[A-Za-z]') AS has_lna,
-                   ARRAY_AGG(DISTINCT ps.order_number) FILTER (WHERE ps.order_number IS NOT NULL AND ps.order_number != '') AS order_numbers,
-                   (ARRAY_AGG(DISTINCT ps.supplier) FILTER (WHERE ps.supplier IS NOT NULL AND ps.supplier != ''))[1] AS supplier,
                    (ARRAY_AGG(pc.display_name ORDER BY plm.sort_order ASC NULLS LAST, plm.added_at ASC) FILTER (WHERE pc.display_name IS NOT NULL))[1] AS first_member_name,
                    (ARRAY_AGG(pc.display_name ORDER BY plm.sort_order DESC NULLS LAST, plm.added_at DESC) FILTER (WHERE pc.display_name IS NOT NULL))[1] AS last_member_name
             FROM probe_libraries pl
@@ -13931,9 +13930,9 @@ app.post("/api/oligo/libraries/from-order", requirePI, async (req, res) => {
         try {
             await client.query("BEGIN");
             const libR = await client.query(
-                `INSERT INTO probe_libraries (library_name, description, created_by)
-                 VALUES ($1, $2, $3) RETURNING id`,
-                [libraryName, `Created from order ${orderNumber} (${supplier})`, actor]
+                `INSERT INTO probe_libraries (library_name, description, created_by, source_supplier, source_order)
+                 VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+                [libraryName, `Created from order ${orderNumber} (${supplier})`, actor, supplier, orderNumber]
             );
             const libId = libR.rows[0].id;
 

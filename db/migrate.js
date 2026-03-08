@@ -892,6 +892,17 @@ async function migrate() {
             `CREATE INDEX IF NOT EXISTS idx_plma_member ON probe_library_member_aliquots(library_member_id)`,
             `CREATE INDEX IF NOT EXISTS idx_plma_cert ON probe_library_member_aliquots(certificate_id)`,
 
+            // Library source metadata (supplier + order that seeded the library)
+            `ALTER TABLE probe_libraries ADD COLUMN IF NOT EXISTS source_supplier TEXT`,
+            `ALTER TABLE probe_libraries ADD COLUMN IF NOT EXISTS source_order TEXT`,
+
+            // Backfill source_supplier and source_order from description for existing libraries
+            `UPDATE probe_libraries
+             SET source_order = (regexp_match(description, 'order\\s+(\\d{4,})'))[1],
+                 source_supplier = (regexp_match(description, '\\(([a-zA-Z]+)\\)'))[1]
+             WHERE source_order IS NULL
+               AND description ~ 'Created from order'`,
+
         ];
 
         for (const sql of migrations) {

@@ -2081,20 +2081,18 @@ async function loadLibraryList() {
 }
 
 function libSourceBadge(l) {
-    const orders = l.order_numbers || [];
-    const orderNo = orders.length ? orders[0] : null;
-    const sup = l.supplier ? String(l.supplier).charAt(0).toUpperCase() + String(l.supplier).slice(1) : null;
+    const orderNo = l.source_order || null;
+    const sup = l.source_supplier ? String(l.source_supplier).charAt(0).toUpperCase() + String(l.source_supplier).slice(1) : null;
     if (!sup && !orderNo) return '';
     const parts = [sup, orderNo].filter(Boolean);
     return `[${parts.join(' \u2022 ')}]`;
 }
-function libCleanName(name, orderNumbers) {
-    // Remove order number from name if duplicated there
+function libCleanName(name, l) {
+    // Remove source order number from name if duplicated there
     let cleaned = name || '';
-    for (const o of (orderNumbers || [])) {
-        if (o && cleaned.includes(o)) {
-            cleaned = cleaned.replace(o, '').replace(/\s{2,}/g, ' ').replace(/^\s*[-–—:]\s*/, '').replace(/\s*[-–—:]\s*$/, '').trim();
-        }
+    const o = l.source_order;
+    if (o && cleaned.includes(o)) {
+        cleaned = cleaned.replace(o, '').replace(/\s{2,}/g, ' ').replace(/^\s*[-–—:]\s*/, '').replace(/\s*[-–—:]\s*$/, '').trim();
     }
     return cleaned || name;
 }
@@ -2107,7 +2105,7 @@ function libFilter() {
     if (!list) return;
     if (!items.length) { list.innerHTML = `<div class="empty-list">No libraries</div>`; return; }
     list.innerHTML = items.map(l => {
-        const name = libCleanName(l.library_name, l.order_numbers);
+        const name = libCleanName(l.library_name, l);
         const sourceBadge = libSourceBadge(l);
         const mc = l.member_count || 0;
         const cc = l.certified_count || 0;
