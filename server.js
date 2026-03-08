@@ -14470,7 +14470,7 @@ app.get("/api/oligo/library-certificates/:id/download", requirePI, async (req, r
         if (!r2Enabled()) return res.status(503).json({ error: "R2 not configured" });
         const { GetObjectCommand } = require("@aws-sdk/client-s3");
         const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
-        const url = await getSignedUrl(s3Client, new GetObjectCommand({ Bucket: R2_BUCKET, Key: r.rows[0].r2_object_key }), { expiresIn: 300 });
+        const url = await getSignedUrl(getR2Client(), new GetObjectCommand({ Bucket: R2_BUCKET, Key: r.rows[0].r2_object_key }), { expiresIn: 300 });
         res.json({ url });
     } catch (err) {
         console.error("[OLIGO] library cert download error:", err);
@@ -14533,7 +14533,7 @@ app.get("/api/oligo/syntheses/:id/certificate", requirePI, async (req, res) => {
         if (!r2Enabled()) return res.status(503).json({ error: "R2 not configured" });
         const { GetObjectCommand } = require("@aws-sdk/client-s3");
         const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
-        const url = await getSignedUrl(s3Client, new GetObjectCommand({ Bucket: R2_BUCKET, Key: key }), { expiresIn: 300 });
+        const url = await getSignedUrl(getR2Client(), new GetObjectCommand({ Bucket: R2_BUCKET, Key: key }), { expiresIn: 300 });
         res.json({ url });
     } catch (err) {
         console.error("[OLIGO] certificate URL error:", err);
@@ -14641,7 +14641,7 @@ app.get("/api/oligo/identity-docs/:id/download", requirePI, async (req, res) => 
         if (!r2Enabled()) return res.status(503).json({ error: "R2 not configured" });
         const { GetObjectCommand } = require("@aws-sdk/client-s3");
         const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
-        const url = await getSignedUrl(s3Client, new GetObjectCommand({ Bucket: R2_BUCKET, Key: r.rows[0].r2_object_key }), { expiresIn: 300 });
+        const url = await getSignedUrl(getR2Client(), new GetObjectCommand({ Bucket: R2_BUCKET, Key: r.rows[0].r2_object_key }), { expiresIn: 300 });
         res.json({ url });
     } catch (err) {
         console.error("[OLIGO] identity-doc download error:", err);
