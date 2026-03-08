@@ -5368,8 +5368,16 @@ credentials: 'include'
                 const byProbe = new Map();
                 for (const row of (data.oligos || [])) {
                     const pid = row.probe_id || row.id;
-                    if (byProbe.has(pid)) { byProbe.get(pid).synthesis_count++; }
-                    else { byProbe.set(pid, { ...row, synthesis_count: 1 }); }
+                    if (byProbe.has(pid)) {
+                        const entry = byProbe.get(pid);
+                        entry.synthesis_count++;
+                        if (row.oligo_number && !entry.all_oligo_numbers.includes(row.oligo_number)) {
+                            entry.all_oligo_numbers.push(row.oligo_number);
+                        }
+                    } else {
+                        const on = row.oligo_number;
+                        byProbe.set(pid, { ...row, synthesis_count: 1, all_oligo_numbers: on ? [on] : [] });
+                    }
                 }
                 OE.registryList = [...byProbe.values()];
                 oeRegFilter();
@@ -5383,7 +5391,7 @@ credentials: 'include'
             const st = document.getElementById('oe-reg-status')?.value || '';
             const basis = document.getElementById('oe-reg-basis')?.value || '';
             let items = OE.registryList;
-            if (q) items = items.filter(o => [o.display_name||'',o.canonical_id||'',o.sequence_norm||'',o.order_number||'',o.oligo_number||'',o.supplier||'',o.polymer_type||''].join(' ').toLowerCase().includes(q));
+            if (q) items = items.filter(o => [o.display_name||'',o.canonical_id||'',o.sequence_norm||'',o.order_number||'',...(o.all_oligo_numbers||[o.oligo_number||'']),o.supplier||'',o.polymer_type||''].join(' ').toLowerCase().includes(q));
             if (st) items = items.filter(o => o.status === st);
             if (basis) items = items.filter(o => (o.polymer_type || 'DNA') === basis);
             const list = document.getElementById('oe-reg-list');
@@ -5395,20 +5403,68 @@ credentials: 'include'
                 const lenNt = o.length_nt || oeParseSequenceTokens(o.sequence_norm, o.polymer_type).length;
                 const batchCount = o.synthesis_count || 0;
                 const libCount = o.library_count || 0;
-                const synthNo = o.oligo_number || o.synthesis_oligo_no || '';
+                const allNos = o.all_oligo_numbers || (o.oligo_number ? [o.oligo_number] : []);
+                const visibleNos = allNos.slice(0, 3);
+                const hiddenCount = allNos.length - visibleNos.length;
+                const noBadgesHtml = visibleNos.map(function(n) { return '<span class="oe-synth-no-badge">' + oeEsc(n) + '</span>'; }).join('')
+                    + (hiddenCount > 0 ? '<span class="oe-synth-no-badge oe-synth-no-toggle" onclick="event.stopPropagation();oeRegToggleNos(this)" data-all-nos="' + oeEsc(allNos.join('|')) + '" data-collapsed="1">+' + hiddenCount + ' &#9662;</span>' : '');
                 return '<div class="oe-oligo-card' + (probeId === OE.selectedOligoId ? ' selected' : '') + '" onclick="oeSelectOligo(\'' + probeId + '\')">'
+                    + '<div class="oe-oligo-card-grid">'
+                    + '<div class="oe-oligo-card-left">'
                     + '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">'
                     + '<span style="font-size:13px;font-weight:600;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;">' + oeEsc(o.display_name || '\u2014') + '</span>'
                     + badges
-                    + (synthNo ? '<span class="oe-synth-no-badge">' + oeEsc(synthNo) + '</span>' : '')
                     + '</div>'
                     + '<div style="font-size:11px;color:#6b7280;margin-top:3px;">' + (lenNt ? lenNt + ' nt' : '') + '</div>'
                     + '<div style="font-family:\'JetBrains Mono\',monospace;font-size:12px;letter-spacing:0.05em;color:#e2e8f0;padding:4px 0;margin:4px 0;line-height:1.6;word-break:break-all;">' + oeEsc(o.sequence_norm || '\u2014') + '</div>'
                     + '<div style="display:flex;gap:12px;font-size:11px;color:#6b7280;">'
                     + (batchCount ? '<span>\uD83E\uDDEA ' + batchCount + ' batch' + (batchCount !== 1 ? 'es' : '') + '</span>' : '')
                     + (libCount ? '<span>\uD83D\uDCDA ' + libCount + ' librar' + (libCount !== 1 ? 'ies' : 'y') + '</span>' : '')
+                    + '</div>'
+                    + '</div>'
+                    + '<div class="oe-oligo-card-nos">' + noBadgesHtml + '</div>'
                     + '</div></div>';
             }).join('');
+        }
+
+        function oeRegToggleNos(el) {
+            const allNos = (el.dataset.allNos || '').split('|');
+            const container = el.closest('.oe-oligo-card-nos');
+            if (!container) return;
+            const collapsed = el.dataset.collapsed === '1';
+            container.innerHTML = '';
+            if (collapsed) {
+                allNos.forEach(function(n) {
+                    var sp = document.createElement('span');
+                    sp.className = 'oe-synth-no-badge';
+                    sp.textContent = n;
+                    container.appendChild(sp);
+                });
+                var tog = document.createElement('span');
+                tog.className = 'oe-synth-no-badge oe-synth-no-toggle';
+                tog.dataset.allNos = allNos.join('|');
+                tog.dataset.collapsed = '0';
+                tog.innerHTML = '&#9652;';
+                tog.onclick = function(e) { e.stopPropagation(); oeRegToggleNos(this); };
+                container.appendChild(tog);
+            } else {
+                allNos.slice(0, 3).forEach(function(n) {
+                    var sp = document.createElement('span');
+                    sp.className = 'oe-synth-no-badge';
+                    sp.textContent = n;
+                    container.appendChild(sp);
+                });
+                var hiddenCount = allNos.length - 3;
+                if (hiddenCount > 0) {
+                    var tog = document.createElement('span');
+                    tog.className = 'oe-synth-no-badge oe-synth-no-toggle';
+                    tog.dataset.allNos = allNos.join('|');
+                    tog.dataset.collapsed = '1';
+                    tog.innerHTML = '+' + hiddenCount + ' &#9662;';
+                    tog.onclick = function(e) { e.stopPropagation(); oeRegToggleNos(this); };
+                    container.appendChild(tog);
+                }
+            }
         }
 
         async function oeSelectOligo(id) {
@@ -5828,7 +5884,13 @@ credentials: 'include'
         .oe-chem-badge { font-size:10px;font-weight:600;padding:1px 7px;border-radius:4px;line-height:1.6;white-space:nowrap; }
         .oe-chem-badge-dna { background:#1e2f45;color:#93c5fd; }
         .oe-chem-badge-rna { background:#0a2e1c;color:#6ee7b7; }
-        .oe-synth-no-badge { margin-left:auto;background:#fff;color:#1e293b;font-size:11px;font-weight:600;font-family:'JetBrains Mono',monospace;padding:1px 7px;border-radius:4px;white-space:nowrap; }
+        .oe-oligo-card-grid { display:grid;grid-template-columns:1fr auto;gap:0 12px; }
+        .oe-oligo-card-left { min-width:0; }
+        .oe-oligo-card-nos { display:flex;flex-direction:column;align-items:flex-end;gap:3px;padding-top:1px; }
+        .oe-synth-no-badge { background:#fff;color:#1e293b;font-size:11px;font-weight:600;font-family:'JetBrains Mono',monospace;padding:1px 7px;border-radius:4px;white-space:nowrap; }
+        .oe-oligo-card-nos .oe-synth-no-badge { display:block;text-align:right; }
+        .oe-synth-no-toggle { cursor:pointer;background:#e2e8f0;color:#475569;font-size:10px;font-weight:500; }
+        .oe-synth-no-toggle:hover { background:#cbd5e1; }
         .oe-seq-dna { color:#2563eb; }
         .oe-seq-rna { color:#059669; }
         .oe-seq-2f { color:#7c3aed; }
