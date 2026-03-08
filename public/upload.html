@@ -1737,10 +1737,36 @@
                         </table>
                     </div>
                     <div id="myInvOligoView" style="display:none;">
-                        <div id="myInvOligoSummary" style="display:none;padding:8px 0;font-size:13px;color:#0c5460;margin-bottom:8px;"></div>
-                        <div style="text-align:center;padding:20px;color:#999;">
-                            <p style="font-size:14px;">No oligos in your inventory yet.</p>
-                            <p style="font-size:12px;margin-top:8px;">Use the Oligo button above to browse and add oligos.</p>
+                        <!-- Oligo Inventory Header -->
+                        <div style="margin-bottom:20px;">
+                            <div style="display:flex;align-items:flex-start;justify-content:space-between;">
+                                <div>
+                                    <h2 style="font-size:20px;font-weight:700;color:#1a1a2e;margin:0 0 4px 0;letter-spacing:-0.02em;">Oligo Inventory</h2>
+                                    <p style="font-size:12px;color:#6b7280;margin:0;font-style:italic;">Curated molecular tools linked to Oligo-ID</p>
+                                </div>
+                                <div style="display:flex;gap:8px;">
+                                    <button class="btn btn-sm" onclick="openOligoExplorer('library')" style="font-size:12px;padding:6px 14px;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;border-radius:6px;cursor:pointer;font-weight:500;">+ ≡● Add Library</button>
+                                    <button class="btn btn-sm" onclick="openOligoExplorer('registry')" style="font-size:12px;padding:6px 14px;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;border-radius:6px;cursor:pointer;font-weight:500;">+ 🧬 Add Oligo</button>
+                                </div>
+                            </div>
+                            <!-- Summary bar -->
+                            <div id="myInvOligoSummary" style="display:none;margin-top:14px;padding:10px 16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;color:#334155;"></div>
+                        </div>
+                        <!-- Libraries block -->
+                        <div style="margin-bottom:24px;">
+                            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+                                <h3 style="font-size:14px;font-weight:600;color:#1a1a2e;margin:0;">≡● Libraries</h3>
+                                <button class="btn btn-sm" onclick="openOligoExplorer('library')" style="font-size:11px;padding:4px 12px;background:transparent;color:#166534;border:1px solid #d1fae5;border-radius:5px;cursor:pointer;">+ ≡● Add Library</button>
+                            </div>
+                            <div id="myInvLibList"></div>
+                        </div>
+                        <!-- Oligos block -->
+                        <div>
+                            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+                                <h3 style="font-size:14px;font-weight:600;color:#1a1a2e;margin:0;">🧬 Oligos</h3>
+                                <button class="btn btn-sm" onclick="openOligoExplorer('registry')" style="font-size:11px;padding:4px 12px;background:transparent;color:#166534;border:1px solid #d1fae5;border-radius:5px;cursor:pointer;">+ 🧬 Add Oligo</button>
+                            </div>
+                            <div id="myInvOligoList"></div>
                         </div>
                     </div>
                 </div>
@@ -5644,40 +5670,54 @@ credentials: 'include'
 
         // ─── Inventory oligo tab rendering ──────────────────────────
         async function loadMyOligoRefs() {
-            const view = document.getElementById('myInvOligoView');
-            if (!view) return;
-            view.innerHTML = '<div style="text-align:center;padding:20px;"><div class="spinner"></div></div>';
+            const list = document.getElementById('myInvOligoList');
+            if (!list) return;
+            list.innerHTML = '<div style="text-align:center;padding:20px;"><div class="spinner"></div></div>';
             try {
                 const data = await oeApi('GET', '/api/di/inventory-v2/my-oligo-refs');
                 const refs = data.refs || [];
                 if (refs.length === 0) {
-                    view.innerHTML = '<div style="text-align:center;padding:30px;color:#999;"><p style="font-size:14px;">No oligos in your inventory yet.</p><p style="font-size:12px;margin-top:8px;">Use the Oligo button above to browse and add oligos.</p></div>';
+                    list.innerHTML = '<div style="text-align:center;padding:28px 16px;background:#fafafa;border:1px dashed #d1d5db;border-radius:8px;"><p style="font-size:13px;color:#6b7280;margin:0 0 10px 0;">No individual oligos in your inventory yet.</p><button class="btn btn-sm" onclick="openOligoExplorer(\'registry\')" style="font-size:12px;padding:6px 16px;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;border-radius:6px;cursor:pointer;">+ 🧬 Add Oligo</button></div>';
                     return;
                 }
-                view.innerHTML = '<table class="data-table" style="font-size:13px;"><thead><tr><th>Name</th><th>Canonical ID</th><th>Type</th><th>Length</th><th>Status</th><th>Added</th><th>Actions</th></tr></thead><tbody>' + refs.map(r => '<tr><td>' + escapeHtml(r.display_name || '\u2014') + '</td><td style="font-family:monospace;font-size:12px;">' + escapeHtml(r.canonical_id || '') + '</td><td>' + escapeHtml(r.polymer_type || 'DNA') + '</td><td>' + (r.length_nt || '\u2014') + ' nt</td><td><span class="status-badge">' + escapeHtml(r.status || 'DRAFT') + '</span></td><td>' + new Date(r.created_at).toLocaleDateString() + '</td><td><button class="btn btn-sm" onclick="viewOligoFromInv(\'' + r.probe_id + '\')" style="font-size:11px;">View</button> <button class="btn btn-sm" onclick="removeOligoRef(\'' + r.id + '\')" style="font-size:11px;color:#dc3545;">Remove</button></td></tr>').join('') + '</tbody></table>';
-            } catch (e) { view.innerHTML = '<div style="text-align:center;padding:20px;color:#dc3545;">Error loading oligo inventory</div>'; }
+                list.innerHTML = refs.map(r => '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#fff;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:6px;transition:box-shadow 0.15s;" onmouseenter="this.style.boxShadow=\'0 2px 8px rgba(0,0,0,0.06)\'" onmouseleave="this.style.boxShadow=\'none\'">'
+                    + '<div style="display:flex;align-items:center;gap:14px;flex:1;min-width:0;">'
+                    + '<div style="width:6px;height:32px;border-radius:3px;background:' + (r.polymer_type === 'RNA' ? '#7c3aed' : '#166534') + ';flex-shrink:0;"></div>'
+                    + '<div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:600;color:#1a1a2e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(r.display_name || '\u2014') + '</div>'
+                    + '<div style="font-size:11px;color:#6b7280;font-family:monospace;margin-top:2px;">' + escapeHtml(r.canonical_id || '') + '</div></div>'
+                    + '<div style="font-size:11px;color:#6b7280;flex-shrink:0;text-align:right;min-width:80px;">' + escapeHtml(r.polymer_type || 'DNA') + ' · ' + (r.length_nt || '\u2014') + ' nt</div>'
+                    + '<span class="status-badge" style="flex-shrink:0;margin-left:8px;">' + escapeHtml(r.status || 'DRAFT') + '</span>'
+                    + '<div style="font-size:11px;color:#9ca3af;flex-shrink:0;min-width:70px;text-align:right;">' + new Date(r.created_at).toLocaleDateString() + '</div>'
+                    + '</div>'
+                    + '<div style="display:flex;gap:6px;margin-left:12px;flex-shrink:0;">'
+                    + '<button class="btn btn-sm" onclick="viewOligoFromInv(\'' + r.probe_id + '\')" style="font-size:11px;padding:4px 10px;border-radius:5px;">View</button>'
+                    + '<button class="btn btn-sm" onclick="removeOligoRef(\'' + r.id + '\')" style="font-size:11px;padding:4px 10px;border-radius:5px;color:#dc3545;">Remove</button>'
+                    + '</div></div>').join('');
+            } catch (e) { list.innerHTML = '<div style="text-align:center;padding:20px;color:#dc3545;">Error loading oligo inventory</div>'; }
         }
 
         async function loadMyLibraryRefs() {
-            // Only rendered when the oligo tab is active - embedded below the oligo table
-            const view = document.getElementById('myInvOligoView');
-            if (!view) return;
-            // Append library section if oligo table exists
+            const list = document.getElementById('myInvLibList');
+            if (!list) return;
+            list.innerHTML = '<div style="text-align:center;padding:12px;"><div class="spinner"></div></div>';
             try {
                 const data = await oeApi('GET', '/api/di/inventory-v2/my-library-refs');
                 const refs = data.refs || [];
-                let libEl = document.getElementById('myInvLibSection');
-                if (!libEl) {
-                    libEl = document.createElement('div');
-                    libEl.id = 'myInvLibSection';
-                    libEl.style.marginTop = '16px';
-                    view.appendChild(libEl);
-                }
                 if (refs.length === 0) {
-                    libEl.innerHTML = '';
+                    list.innerHTML = '<div style="text-align:center;padding:28px 16px;background:#fafafa;border:1px dashed #d1d5db;border-radius:8px;"><p style="font-size:13px;color:#6b7280;margin:0 0 10px 0;">No libraries in your inventory yet.</p><button class="btn btn-sm" onclick="openOligoExplorer(\'library\')" style="font-size:12px;padding:6px 16px;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;border-radius:6px;cursor:pointer;">+ ≡● Add Library</button></div>';
                     return;
                 }
-                libEl.innerHTML = '<h3 style="font-size:14px;font-weight:600;margin-bottom:8px;color:#333;">Libraries</h3><table class="data-table" style="font-size:13px;"><thead><tr><th>Library Name</th><th>Members</th><th>Chemistry</th><th>Added</th><th>Actions</th></tr></thead><tbody>' + refs.map(r => '<tr><td>' + escapeHtml(r.library_name || '\u2014') + '</td><td>' + (r.member_count || 0) + '</td><td>' + escapeHtml(r.chemistry_text || '\u2014') + '</td><td>' + new Date(r.created_at).toLocaleDateString() + '</td><td><button class="btn btn-sm" onclick="viewLibraryFromInv(\'' + r.library_id + '\')" style="font-size:11px;">View</button> <button class="btn btn-sm" onclick="removeLibraryRef(\'' + r.id + '\')" style="font-size:11px;color:#dc3545;">Remove</button></td></tr>').join('') + '</tbody></table>';
+                list.innerHTML = refs.map(r => '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#fff;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:6px;transition:box-shadow 0.15s;" onmouseenter="this.style.boxShadow=\'0 2px 8px rgba(0,0,0,0.06)\'" onmouseleave="this.style.boxShadow=\'none\'">'
+                    + '<div style="display:flex;align-items:center;gap:14px;flex:1;min-width:0;">'
+                    + '<div style="width:6px;height:32px;border-radius:3px;background:#0d9488;flex-shrink:0;"></div>'
+                    + '<div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:600;color:#1a1a2e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(r.library_name || '\u2014') + '</div>'
+                    + '<div style="font-size:11px;color:#6b7280;margin-top:2px;">' + (r.member_count || 0) + ' members · ' + escapeHtml(r.chemistry_text || '\u2014') + '</div></div>'
+                    + '<div style="font-size:11px;color:#9ca3af;flex-shrink:0;min-width:70px;text-align:right;">' + new Date(r.created_at).toLocaleDateString() + '</div>'
+                    + '</div>'
+                    + '<div style="display:flex;gap:6px;margin-left:12px;flex-shrink:0;">'
+                    + '<button class="btn btn-sm" onclick="viewLibraryFromInv(\'' + r.library_id + '\')" style="font-size:11px;padding:4px 10px;border-radius:5px;">View</button>'
+                    + '<button class="btn btn-sm" onclick="removeLibraryRef(\'' + r.id + '\')" style="font-size:11px;padding:4px 10px;border-radius:5px;color:#dc3545;">Remove</button>'
+                    + '</div></div>').join('');
             } catch (e) { /* silent */ }
         }
 
@@ -5717,9 +5757,13 @@ credentials: 'include'
                 const data = await oeApi('GET', '/api/di/inventory-v2/oligo-summary');
                 const el = document.getElementById('myInvOligoSummary');
                 if (el) {
-                    el.innerHTML = '<span style="margin-right:16px;"><strong>' + data.oligos + '</strong> Oligos</span>'
-                        + '<span style="margin-right:16px;"><strong>' + data.libraries + '</strong> Libraries</span>'
-                        + '<span><strong>' + data.total_represented + '</strong> Total represented</span>';
+                    el.innerHTML = '<div style="display:flex;align-items:center;gap:0;font-size:13px;">'
+                        + '<span style="display:flex;align-items:center;gap:5px;">≡● Libraries<strong style="margin-left:4px;">' + data.libraries + '</strong></span>'
+                        + '<span style="margin:0 14px;color:#cbd5e1;">|</span>'
+                        + '<span style="display:flex;align-items:center;gap:5px;">🧬 Oligos<strong style="margin-left:4px;">' + data.oligos + '</strong></span>'
+                        + '<span style="margin:0 14px;color:#cbd5e1;">|</span>'
+                        + '<span style="display:flex;align-items:center;gap:5px;">Σ Total Oligos<strong style="margin-left:4px;">' + data.total_represented + '</strong></span>'
+                        + '</div>';
                     el.style.display = (data.oligos + data.libraries > 0) ? 'block' : 'none';
                 }
             } catch (_) {}
