@@ -7319,6 +7319,325 @@ app.get('/api/di/inventory-v2/supervision/:researcherId/inventory', requireSuper
 
 
 // =====================================================================
+// OLIGO INVENTORY — researcher/supervisor read-only browse + refs
+// =====================================================================
+
+let oligoInvRefsExists = null;
+let oligoInvRefsLastCheck = 0;
+
+async function checkOligoInvRefsTables() {
+    const now = Date.now();
+    if (oligoInvRefsExists === null || oligoInvRefsExists === false || (now - oligoInvRefsLastCheck > ROLE_COLUMN_CHECK_INTERVAL)) {
+        try {
+            const result = await pool.query(`SELECT table_name FROM information_schema.tables WHERE table_name = 'di_inventory_oligo_refs'`);
+            oligoInvRefsExists = result.rows.length > 0;
+            oligoInvRefsLastCheck = now;
+        } catch (_) { oligoInvRefsExists = false; }
+    }
+    return oligoInvRefsExists;
+}
+
+// Browse oligos — read-only mirror of /api/oligo/oligos (requireInternal)
+app.get('/api/di/inventory-v2/oligo-browse', requireAuth, requireInternal, async (req, res) => {
+    try {
+        const conditions = [`(ps.excel_status = 'active' OR ps.excel_status IS NULL)`];
+        const params = [];
+        let pi = 1;
+        if (req.query.basis) { params.push(req.query.basis.toUpperCase()); conditions.push(`pc.polymer_type = $${pi++}`); }
+        if (req.query.seq) { params.push(`%${req.query.seq.toLowerCase()}%`); conditions.push(`pc.sequence_norm LIKE $${pi++}`); }
+        const whereClause = conditions.join(' AND ');
+        const result = await pool.query(`
+            SELECT
+                ps.id,
+                pc.id AS probe_id,
+                pc.canonical_id, pc.display_name, pc.sequence, pc.sequence_norm,
+                pc.length_nt, pc.oligo_kind, pc.mod5, pc.mod3, pc.mod_int_5, pc.mod_int_6,
+                pc.mod_int_7, pc.mod_int_8, pc.chemistry_code, pc.polymer_type, pc.status, pc.created_at,
+                ps.order_number, ps.oligo_number, ps.supplier, ps.synthesis_date,
+                ps.import_row_index,
+                STRING_AGG(DISTINCT pl.library_name, ', ' ORDER BY pl.library_name) AS library_names,
+                1::int AS synthesis_count
+            FROM probe_syntheses ps
+            JOIN probe_catalog pc ON pc.id = ps.probe_id
+            LEFT JOIN probe_library_members plm ON plm.probe_id = pc.id
+            LEFT JOIN probe_libraries pl ON pl.id = plm.library_id
+            WHERE ${whereClause}
+            GROUP BY ps.id, pc.id
+            ORDER BY ps.import_row_index ASC NULLS LAST, ps.created_at ASC
+            LIMIT 2000
+        `, params);
+        res.json({ oligos: result.rows });
+    } catch (err) {
+        console.error("[INV-OLIGO] browse list error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// Browse oligo detail — read-only mirror of /api/oligo/oligos/:id
+app.get('/api/di/inventory-v2/oligo-browse/:id', requireAuth, requireInternal, async (req, res) => {
+    try {
+        const id = String(req.params.id || '').trim();
+        if (!isUuid(id)) return res.status(400).json({ error: "Invalid ID" });
+        const oligoR = await pool.query(
+            `SELECT pc.id, pc.canonical_id, pc.display_name, pc.sequence, pc.sequence_norm,
+                    pc.length_nt, pc.oligo_kind, pc.mod5, pc.mod3, pc.mod_int_5, pc.mod_int_6,
+                    pc.mod_int_7, pc.mod_int_8, pc.chemistry_code, pc.polymer_type, pc.status, pc.finalized_at,
+                    pc.created_at, pc.updated_at
+             FROM probe_catalog pc WHERE pc.id = $1`, [id]);
+        if (oligoR.rows.length === 0) return res.status(404).json({ error: "Not found" });
+        const libR = await pool.query(
+            `SELECT pl.id, pl.library_name, pl.description
+             FROM probe_library_members plm
+             JOIN probe_libraries pl ON pl.id = plm.library_id
+             WHERE plm.probe_id = $1
+             ORDER BY pl.library_name`, [id]);
+        const synthR = await pool.query(
+            `SELECT ps.id, ps.supplier, ps.order_number, ps.synthesis_oligo_no, ps.oligo_number,
+                    ps.synthesis_date, ps.scale, ps.purification, ps.od_value,
+                    ps.amount_nmol, ps.amount_ug, ps.mw_value, ps.qc_notes,
+                    ps.aliquots_text, ps.excel_status, ps.discard_reason,
+                    ps.certificate_status, ps.certificate_pdf_key, ps.created_at
+             FROM probe_syntheses ps
+             WHERE ps.probe_id = $1
+             ORDER BY ps.synthesis_date DESC NULLS LAST, ps.created_at DESC`, [id]);
+        const pdfR = await pool.query(
+            `SELECT id, original_filename, file_size_bytes, uploaded_at
+             FROM probe_pdfs WHERE probe_id = $1
+             ORDER BY uploaded_at DESC`, [id]);
+        res.json({
+            oligo: oligoR.rows[0],
+            libraries: libR.rows,
+            syntheses: synthR.rows,
+            identity_docs: pdfR.rows
+        });
+    } catch (err) {
+        console.error("[INV-OLIGO] browse detail error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// Browse libraries — read-only mirror of /api/oligo/libraries
+app.get('/api/di/inventory-v2/library-browse', requireAuth, requireInternal, async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT pl.id, pl.library_name, pl.description, pl.created_at,
+                   pl.chemistry_families, pl.detection_type,
+                   pl.source_supplier, pl.source_order,
+                   COUNT(DISTINCT plm.id)::int AS member_count,
+                   COUNT(DISTINCT plm.id) FILTER (WHERE plm.certified = true)::int AS certified_count
+            FROM probe_libraries pl
+            LEFT JOIN probe_library_members plm ON plm.library_id = pl.id
+            GROUP BY pl.id
+            ORDER BY pl.library_name
+        `);
+        for (const lib of result.rows) {
+            lib.chemistry_text = (lib.chemistry_families || []).join(', ');
+            lib.detection_text = lib.detection_type || '';
+        }
+        res.json({ libraries: result.rows });
+    } catch (err) {
+        console.error("[INV-OLIGO] library browse error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// Browse library detail — read-only mirror of /api/oligo/libraries/:id
+app.get('/api/di/inventory-v2/library-browse/:id', requireAuth, requireInternal, async (req, res) => {
+    try {
+        const id = String(req.params.id || '').trim();
+        if (!isUuid(id)) return res.status(400).json({ error: "Invalid ID" });
+        const libR = await pool.query(`SELECT * FROM probe_libraries WHERE id=$1`, [id]);
+        if (libR.rows.length === 0) return res.status(404).json({ error: "Library not found" });
+        const memR = await pool.query(`
+            SELECT plm.id AS membership_id, plm.synthesis_id, plm.sort_order,
+                   plm.certified, plm.certificate_id,
+                   pc.id AS oligo_id, pc.canonical_id,
+                   pc.display_name, pc.sequence, pc.sequence_norm, pc.polymer_type, pc.length_nt,
+                   pc.mod5, pc.mod3, pc.mod_int_5, pc.mod_int_6, pc.mod_int_7, pc.mod_int_8, pc.status
+            FROM probe_library_members plm
+            JOIN probe_catalog pc ON pc.id = plm.probe_id
+            WHERE plm.library_id = $1
+            ORDER BY plm.sort_order ASC NULLS LAST, plm.added_at ASC`, [id]);
+        const aliqR = await pool.query(`
+            SELECT a.library_member_id, a.aliquot_index, a.amount_nmol
+            FROM probe_library_member_aliquots a
+            WHERE a.library_id = $1
+            ORDER BY a.library_member_id, a.aliquot_index`, [id]);
+        const aliqMap = {};
+        for (const a of aliqR.rows) {
+            if (!aliqMap[a.library_member_id]) aliqMap[a.library_member_id] = [];
+            aliqMap[a.library_member_id].push({ idx: a.aliquot_index, nmol: a.amount_nmol });
+        }
+        for (const m of memR.rows) {
+            m.aliquots = aliqMap[m.membership_id] || [];
+        }
+        res.json({ library: libR.rows[0], members: memR.rows });
+    } catch (err) {
+        console.error("[INV-OLIGO] library detail error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// My oligo refs
+app.get('/api/di/inventory-v2/my-oligo-refs', requireAuth, requireInternal, async (req, res) => {
+    try {
+        const ready = await checkOligoInvRefsTables();
+        if (!ready) return res.json({ refs: [] });
+        const userId = req.session.user.researcher_id || req.session.user.id;
+        const result = await pool.query(`
+            SELECT r.id, r.probe_id, r.notes, r.created_at,
+                   pc.canonical_id, pc.display_name, pc.sequence_norm, pc.polymer_type,
+                   pc.length_nt, pc.mod5, pc.mod3, pc.status
+            FROM di_inventory_oligo_refs r
+            JOIN probe_catalog pc ON pc.id = r.probe_id
+            WHERE r.user_id = $1
+            ORDER BY r.created_at DESC`, [userId]);
+        res.json({ refs: result.rows });
+    } catch (err) {
+        console.error("[INV-OLIGO] my oligo refs error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// My library refs
+app.get('/api/di/inventory-v2/my-library-refs', requireAuth, requireInternal, async (req, res) => {
+    try {
+        const ready = await checkOligoInvRefsTables();
+        if (!ready) return res.json({ refs: [] });
+        const userId = req.session.user.researcher_id || req.session.user.id;
+        const result = await pool.query(`
+            SELECT r.id, r.library_id, r.notes, r.created_at,
+                   pl.library_name, pl.source_supplier, pl.source_order,
+                   pl.chemistry_families, pl.detection_type,
+                   COUNT(DISTINCT plm.id)::int AS member_count,
+                   COUNT(DISTINCT plm.id) FILTER (WHERE plm.certified = true)::int AS certified_count
+            FROM di_inventory_library_refs r
+            JOIN probe_libraries pl ON pl.id = r.library_id
+            LEFT JOIN probe_library_members plm ON plm.library_id = pl.id
+            WHERE r.user_id = $1
+            GROUP BY r.id, pl.id
+            ORDER BY r.created_at DESC`, [userId]);
+        for (const lib of result.rows) {
+            lib.chemistry_text = (lib.chemistry_families || []).join(', ');
+            lib.detection_text = lib.detection_type || '';
+        }
+        res.json({ refs: result.rows });
+    } catch (err) {
+        console.error("[INV-OLIGO] my library refs error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// Add oligo ref
+app.post('/api/di/inventory-v2/oligo-ref', requireAuth, requireInternal, async (req, res) => {
+    try {
+        const ready = await checkOligoInvRefsTables();
+        if (!ready) return res.status(503).json({ error: "Tables not ready. Run migration 031." });
+        const probeId = String(req.body?.probe_id || '').trim();
+        if (!isUuid(probeId)) return res.status(400).json({ error: "Invalid probe_id" });
+        const userId = req.session.user.researcher_id || req.session.user.id;
+        const notes = String(req.body?.notes || '').trim() || null;
+        const r = await pool.query(
+            `INSERT INTO di_inventory_oligo_refs (user_id, probe_id, notes)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (user_id, probe_id) DO NOTHING
+             RETURNING id`,
+            [userId, probeId, notes]);
+        if (r.rows.length === 0) return res.json({ success: true, message: "Already in inventory" });
+        res.status(201).json({ success: true, id: r.rows[0].id });
+    } catch (err) {
+        console.error("[INV-OLIGO] add oligo ref error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// Add library ref
+app.post('/api/di/inventory-v2/library-ref', requireAuth, requireInternal, async (req, res) => {
+    try {
+        const ready = await checkOligoInvRefsTables();
+        if (!ready) return res.status(503).json({ error: "Tables not ready. Run migration 031." });
+        const libraryId = String(req.body?.library_id || '').trim();
+        if (!isUuid(libraryId)) return res.status(400).json({ error: "Invalid library_id" });
+        const userId = req.session.user.researcher_id || req.session.user.id;
+        const notes = String(req.body?.notes || '').trim() || null;
+        const r = await pool.query(
+            `INSERT INTO di_inventory_library_refs (user_id, library_id, notes)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (user_id, library_id) DO NOTHING
+             RETURNING id`,
+            [userId, libraryId, notes]);
+        if (r.rows.length === 0) return res.json({ success: true, message: "Already in inventory" });
+        res.status(201).json({ success: true, id: r.rows[0].id });
+    } catch (err) {
+        console.error("[INV-OLIGO] add library ref error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// Remove oligo ref
+app.delete('/api/di/inventory-v2/oligo-ref/:id', requireAuth, requireInternal, async (req, res) => {
+    try {
+        const ready = await checkOligoInvRefsTables();
+        if (!ready) return res.status(503).json({ error: "Tables not ready" });
+        const id = String(req.params.id || '').trim();
+        if (!isUuid(id)) return res.status(400).json({ error: "Invalid ID" });
+        const userId = req.session.user.researcher_id || req.session.user.id;
+        await pool.query(`DELETE FROM di_inventory_oligo_refs WHERE id=$1 AND user_id=$2`, [id, userId]);
+        res.json({ success: true });
+    } catch (err) {
+        console.error("[INV-OLIGO] remove oligo ref error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// Remove library ref
+app.delete('/api/di/inventory-v2/library-ref/:id', requireAuth, requireInternal, async (req, res) => {
+    try {
+        const ready = await checkOligoInvRefsTables();
+        if (!ready) return res.status(503).json({ error: "Tables not ready" });
+        const id = String(req.params.id || '').trim();
+        if (!isUuid(id)) return res.status(400).json({ error: "Invalid ID" });
+        const userId = req.session.user.researcher_id || req.session.user.id;
+        await pool.query(`DELETE FROM di_inventory_library_refs WHERE id=$1 AND user_id=$2`, [id, userId]);
+        res.json({ success: true });
+    } catch (err) {
+        console.error("[INV-OLIGO] remove library ref error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// Oligo inventory summary — counts for header metrics
+app.get('/api/di/inventory-v2/oligo-summary', requireAuth, requireInternal, async (req, res) => {
+    try {
+        const ready = await checkOligoInvRefsTables();
+        if (!ready) return res.json({ oligos: 0, libraries: 0, total_represented: 0 });
+        const userId = req.session.user.researcher_id || req.session.user.id;
+        const oR = await pool.query(`SELECT COUNT(*)::int AS cnt FROM di_inventory_oligo_refs WHERE user_id=$1`, [userId]);
+        const lR = await pool.query(`SELECT COUNT(*)::int AS cnt FROM di_inventory_library_refs WHERE user_id=$1`, [userId]);
+        // Total represented = direct oligos + sum of library member counts
+        const tR = await pool.query(`
+            SELECT COALESCE(SUM(mc),0)::int AS lib_members FROM (
+                SELECT COUNT(DISTINCT plm.probe_id)::int AS mc
+                FROM di_inventory_library_refs r
+                JOIN probe_library_members plm ON plm.library_id = r.library_id
+                WHERE r.user_id = $1
+                GROUP BY r.library_id
+            ) sub`, [userId]);
+        const directOligos = oR.rows[0].cnt;
+        const libMembers = tR.rows[0].lib_members;
+        res.json({
+            oligos: directOligos,
+            libraries: lR.rows[0].cnt,
+            total_represented: directOligos + libMembers
+        });
+    } catch (err) {
+        console.error("[INV-OLIGO] summary error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+
+// =====================================================================
 // TRAINING & APPROVALS
 // =====================================================================
 

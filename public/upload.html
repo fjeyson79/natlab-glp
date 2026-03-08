@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Upload: NATLAB GLP Portal</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -1592,7 +1595,7 @@
                     <div style="display:flex;gap:8px;">
                         <button class="inv-toggle-btn active" id="offTypeProduct" onclick="switchOfflineType('product')">Product</button>
                         <button class="inv-toggle-btn" id="offTypeSample" onclick="switchOfflineType('sample')">Sample</button>
-                        <button class="inv-toggle-btn" id="offTypeOligo" onclick="switchOfflineType('oligo')" disabled style="opacity:0.5;cursor:not-allowed;">Oligo</button>
+                        <button class="inv-toggle-btn" id="offTypeOligo" onclick="switchOfflineType('oligo')">Oligo</button>
                     </div>
                 </div>
                 <div class="panel-content">
@@ -1693,6 +1696,14 @@
                         <div style="margin-top:8px;"><label class="off-label">Notes</label><textarea id="offSampNotes" class="off-input" rows="2" style="resize:vertical;"></textarea></div>
                         <button class="btn btn-sm btn-success" onclick="submitOfflineSample()" style="margin-top:10px;">Add Sample</button>
                     </div>
+                    <!-- Oligo offline form -->
+                    <div id="offOligoForm" style="display:none;">
+                        <div style="text-align:center;padding:20px 0;">
+                            <p style="font-size:14px;color:#333;margin-bottom:12px;">Browse the Oligo Registry to add oligos or libraries to your inventory.</p>
+                            <button class="btn btn-sm btn-success" onclick="openOligoExplorer('registry')" style="padding:8px 20px;font-size:13px;">Open Oligo Explorer</button>
+                            <button class="btn btn-sm" onclick="openOligoExplorer('library')" style="padding:8px 20px;font-size:13px;margin-left:8px;background:#f0f0f0;border:1px solid #ddd;">Browse Libraries</button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -1726,9 +1737,10 @@
                         </table>
                     </div>
                     <div id="myInvOligoView" style="display:none;">
-                        <div style="text-align:center;padding:30px;color:#999;">
-                            <p style="font-size:18px;">Oligo tracking coming soon</p>
-                            <p style="font-size:13px;">This section is under development.</p>
+                        <div id="myInvOligoSummary" style="display:none;padding:8px 0;font-size:13px;color:#0c5460;margin-bottom:8px;"></div>
+                        <div style="text-align:center;padding:20px;color:#999;">
+                            <p style="font-size:14px;">No oligos in your inventory yet.</p>
+                            <p style="font-size:12px;margin-top:8px;">Use the Oligo button above to browse and add oligos.</p>
                         </div>
                     </div>
                 </div>
@@ -1765,8 +1777,9 @@
                     </div>
                     <div id="grpInvOligoView" style="display:none;">
                         <div style="text-align:center;padding:30px;color:#999;">
-                            <p style="font-size:18px;">Oligo tracking coming soon</p>
-                            <p style="font-size:13px;">This section is under development.</p>
+                            <p style="font-size:14px;">Oligo inventories are managed individually.</p>
+                            <p style="font-size:12px;margin-top:8px;">Switch to <strong>My Inventory &rarr; Oligos</strong> to view your oligo inventory, or use the <strong>Oligo Explorer</strong> to browse and add items.</p>
+                            <button class="btn btn-sm" onclick="openOligoExplorer('registry')" style="margin-top:12px;">Open Oligo Explorer</button>
                         </div>
                     </div>
                 </div>
@@ -3948,7 +3961,7 @@ credentials: 'include'
             container.innerHTML = '<div class="loading"><div class="spinner"></div>Loading...</div>';
 
             if (currentSupInvType === 'oligo') {
-                container.innerHTML = '<div class="empty-state"><div class="icon">&#129516;</div><p>Oligo inventory coming soon</p></div>';
+                container.innerHTML = '<div class="empty-state"><div class="icon">&#129516;</div><p>Oligo inventories are managed individually by each researcher.</p><p style="font-size:12px;margin-top:4px;color:#999;">Switch to My Inventory to view your own oligo inventory.</p></div>';
                 return;
             }
 
@@ -4007,6 +4020,7 @@ credentials: 'include'
             document.getElementById('offTypeOligo').classList.toggle('active', type === 'oligo');
             document.getElementById('offProductForm').style.display = type === 'product' ? 'block' : 'none';
             document.getElementById('offSampleForm').style.display = type === 'sample' ? 'block' : 'none';
+            document.getElementById('offOligoForm').style.display = type === 'oligo' ? 'block' : 'none';
         }
 
         function toggleProviderDetail() {
@@ -4107,7 +4121,8 @@ credentials: 'include'
             document.getElementById('myInvProductView').style.display = type === 'product' ? 'block' : 'none';
             document.getElementById('myInvSampleView').style.display = type === 'sample' ? 'block' : 'none';
             document.getElementById('myInvOligoView').style.display = type === 'oligo' ? 'block' : 'none';
-            if (type !== 'oligo') loadMyInventoryV2(type);
+            if (type === 'oligo') { loadMyOligoRefs(); loadMyLibraryRefs(); loadOligoSummary(); }
+            else loadMyInventoryV2(type);
         }
 
         async function loadMyInventoryV2(itemType) {
@@ -5119,6 +5134,695 @@ credentials: 'include'
                 </tr>`).join('');
             } catch (err) { console.error('[TRAINING] load sealed overview:', err); }
         }
+
+        // =====================================================
+        // OLIGO EXPLORER — read-only mirror for researchers/supervisors
+        // =====================================================
+
+        const OE = {
+            mode: 'registry',
+            registryList: [],
+            libraryList: [],
+            selectedOligoId: null,
+            selectedLibraryId: null,
+            currentOligo: null,
+            currentLibDetail: null,
+            currentLibMembers: [],
+            selectedBatchIdx: 0,
+            expandedMemberIdx: -1,
+            detailToggle: 'view',
+        };
+
+        function openOligoExplorer(mode) {
+            OE.mode = mode || 'registry';
+            document.getElementById('oligoExplorerModal').style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+            oeSetMode(OE.mode);
+        }
+
+        function closeOligoExplorer() {
+            document.getElementById('oligoExplorerModal').style.display = 'none';
+            document.body.style.overflow = '';
+        }
+
+        function oeSetMode(mode) {
+            OE.mode = mode;
+            document.querySelectorAll('#oe-mode-tabs .oe-mode-btn').forEach(b => {
+                b.classList.toggle('active', b.dataset.mode === mode);
+            });
+            const lp = document.getElementById('oe-list-panel');
+            if (mode === 'registry') { oeRenderRegistryList(lp); }
+            else if (mode === 'library') { oeRenderLibraryList(lp); }
+            oeClearDetail();
+        }
+
+        // ─── Escape / format helpers ─────────────────────────────────
+        function oeEsc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+        function oeFmtDate(s) { return s ? new Date(s).toLocaleDateString() : '\u2014'; }
+        function oeFmtMod(v) {
+            if (!v || v === '-') return '<span style="color:#374151;font-style:italic;">\u2014</span>';
+            const lnaBare = v.trim().match(/^\+([A-Za-z])$/);
+            if (lnaBare) return oeEsc(v.trim() + ' LNA');
+            return oeEsc(v);
+        }
+        function oeCopyText(t) { navigator.clipboard.writeText(t).catch(()=>{}); }
+
+        async function oeApi(method, path, body) {
+            const opts = { method, headers: {}, credentials: 'include' };
+            if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+            const r = await fetch(path, opts);
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(data.error || data.message || 'HTTP ' + r.status);
+            return data;
+        }
+
+        // ─── Sequence rendering (mirrored from oligo-id) ────────────
+        const OE_INT_MOD_COLOR_MAP = { 5: '#14b8a6', 6: '#7c3aed', 7: '#d97706', 8: '#dc2626' };
+
+        function oeParseSequenceTokens(seq, polymerType) {
+            if (!seq) return [];
+            const tokens = [];
+            const basis = (polymerType || 'DNA').toUpperCase() === 'RNA' ? 'rna' : 'dna';
+            let i = 0;
+            while (i < seq.length) {
+                if (i + 1 < seq.length) {
+                    const ch = seq[i], next = seq[i + 1];
+                    if (ch === 'm' && /[A-Za-z]/.test(next)) { tokens.push({ base: next.toUpperCase(), type: '2ome', display: 'm' + next.toUpperCase() }); i += 2; continue; }
+                    if (ch === 'f' && /[A-Za-z]/.test(next)) { tokens.push({ base: next.toUpperCase(), type: '2f', display: 'f' + next.toUpperCase() }); i += 2; continue; }
+                    if (ch === 'l' && /[A-Za-z]/.test(next)) { tokens.push({ base: next.toUpperCase(), type: 'lna', display: 'l' + next.toUpperCase() }); i += 2; continue; }
+                }
+                const ch = seq[i];
+                if (/[0-9]/.test(ch)) {
+                    const code = parseInt(ch, 10);
+                    const typeMap = { 6: '2f', 7: '2ome', 8: 'lna' };
+                    if (i + 1 < seq.length && /[A-Za-z]/.test(seq[i + 1])) {
+                        tokens.push({ base: seq[i+1].toUpperCase(), type: typeMap[code] || 'mod'+code, display: seq[i+1].toUpperCase(), modCode: code });
+                        i += 2; continue;
+                    }
+                    tokens.push({ base: ch, type: typeMap[code] || 'mod'+code, display: ch, modCode: code });
+                    i++; continue;
+                }
+                if (/[A-Za-z]/.test(ch)) tokens.push({ base: ch.toUpperCase(), type: basis, display: ch.toUpperCase() });
+                i++;
+            }
+            return tokens;
+        }
+
+        function oeRenderSequenceHtml(seq, large, polymerType) {
+            if (!seq) return '<span style="color:#4b5563;">\u2014</span>';
+            const basisCls = (polymerType || 'DNA').toUpperCase() === 'RNA' ? 'oe-seq-rna' : 'oe-seq-dna';
+            let html = '';
+            let i = 0;
+            while (i < seq.length) {
+                const ch = seq[i];
+                if ((ch === 'm' || ch === 'f' || ch === 'l') && i + 1 < seq.length && /[A-Za-z]/.test(seq[i + 1])) {
+                    const cls = ch === 'm' ? 'oe-seq-2ome' : ch === 'f' ? 'oe-seq-2f' : 'oe-seq-lna';
+                    html += '<span class="' + cls + '">' + oeEsc(ch) + oeEsc(seq[i + 1]) + '</span>';
+                    i += 2;
+                } else if (/[0-9]/.test(ch)) {
+                    const code = parseInt(ch, 10);
+                    const color = OE_INT_MOD_COLOR_MAP[code] || '#9ca3af';
+                    html += '<span style="color:' + color + ';font-weight:700;">' + oeEsc(ch) + '</span>';
+                    i++;
+                } else {
+                    html += '<span class="' + basisCls + '">' + oeEsc(ch) + '</span>';
+                    i++;
+                }
+            }
+            return html;
+        }
+
+        function oeRenderCardSeqPreview(seq, maxTokens, polymerType) {
+            const tokens = oeParseSequenceTokens(seq, polymerType);
+            const show = tokens.slice(0, maxTokens || 20);
+            let html = show.map(t => oeEsc(t.display.toLowerCase())).join('');
+            if (tokens.length > show.length) html += '<span style="color:#4b5563;">\u2026</span>';
+            return '<span style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#e5e7eb;letter-spacing:0;">' + html + '</span>';
+        }
+
+        function oeRenderTermMod5(mod) {
+            if (!mod || mod === '-') return '';
+            const u = mod.toUpperCase();
+            if (u === '6FDM3' || u === '6-FAM' || u === 'FAM' || u === '6FAM') return '<span class="oe-term-mod oe-term-mod-fam">FAM</span>';
+            return '<span class="oe-term-mod-generic">' + oeEsc(mod) + '</span>';
+        }
+
+        function oeRenderTermMod3(mod) {
+            if (!mod || mod === '-') return '';
+            const u = mod.toUpperCase();
+            if (u === 'TQ2' || u === 'BHQ1' || u === 'BHQ2' || u === 'DABCYL') return '<span class="oe-term-mod oe-term-mod-quencher">Q</span>';
+            return '<span class="oe-term-mod-generic">' + oeEsc(mod) + '</span>';
+        }
+
+        function oeDetectChemBadges(o) {
+            const pt = (o.polymer_type || 'DNA').toUpperCase();
+            return pt === 'RNA' ? '<span class="oe-chem-badge oe-chem-badge-rna">RNA</span>' : '<span class="oe-chem-badge oe-chem-badge-dna">DNA</span>';
+        }
+
+        function oeModToReadableLabel(raw) {
+            if (!raw) return null;
+            const v = raw.trim();
+            const fMatch = v.match(/^2F(?:d)?([A-Za-z])$/i);
+            if (fMatch) return { label: fMatch[1].toUpperCase() + "-2\u2032-Fluoro" };
+            const omeMatch = v.match(/^2O?Me([A-Za-z])$/i);
+            if (omeMatch) return { label: omeMatch[1].toUpperCase() + "-2\u2032-OMe" };
+            const lnaMatch = v.match(/^\+([A-Za-z])(?:\s+LNA)?$/i);
+            if (lnaMatch) return { label: lnaMatch[1].toUpperCase() + "-LNA" };
+            return null;
+        }
+
+        function oeRenderChemLegend(o) {
+            const pt = (o.polymer_type || 'DNA').toUpperCase();
+            const items = ['<span style="display:flex;align-items:center;gap:5px;font-size:11px;color:#64748b;font-weight:500;white-space:nowrap;">Basis: ' + pt + '</span>'];
+            const modSlots = [{ num: 5, val: o.mod_int_5 },{ num: 6, val: o.mod_int_6 },{ num: 7, val: o.mod_int_7 },{ num: 8, val: o.mod_int_8 }];
+            const seq = o.sequence_norm || '';
+            const numsInSeq = new Set();
+            for (const ch of seq) { if (/[0-9]/.test(ch)) numsInSeq.add(parseInt(ch, 10)); }
+            for (const slot of modSlots) {
+                if (!slot.val || slot.val === '-' || slot.val.toLowerCase() === 'none') continue;
+                if (!numsInSeq.has(slot.num)) continue;
+                const color = OE_INT_MOD_COLOR_MAP[slot.num] || '#9ca3af';
+                const parsed = oeModToReadableLabel(slot.val);
+                const label = parsed ? parsed.label : slot.val;
+                items.push('<span style="display:flex;align-items:center;gap:5px;font-size:11px;color:#64748b;font-weight:500;white-space:nowrap;"><span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:' + color + ';color:#fff;font-size:10px;font-weight:700;font-family:\'JetBrains Mono\',monospace;">' + slot.num + '</span>' + oeEsc(label) + '</span>');
+            }
+            return '<div style="display:flex;justify-content:center;gap:18px;flex-wrap:nowrap;padding:8px 0 0;">' + items.join('') + '</div>';
+        }
+
+        function oeStatusColor(s) {
+            if (s === 'ACTIVE') return 'green';
+            if (s === 'RETIRED') return 'red';
+            return 'gray';
+        }
+
+        // ─── Detail panel helpers ────────────────────────────────────
+        function oeClearDetail() {
+            document.getElementById('oe-detail-placeholder').style.display = 'flex';
+            document.getElementById('oe-detail-content').style.display = 'none';
+        }
+
+        function oeShowDetail(viewHtml, actionHtml) {
+            document.getElementById('oe-detail-placeholder').style.display = 'none';
+            const dc = document.getElementById('oe-detail-content');
+            dc.style.display = 'flex';
+            document.getElementById('oe-detail-view').innerHTML = viewHtml;
+            document.getElementById('oe-detail-actions').innerHTML = actionHtml || '';
+            document.getElementById('oe-detail-actions').style.display = actionHtml ? 'block' : 'none';
+        }
+
+        // ─── Registry mode ──────────────────────────────────────────
+        function oeRenderRegistryList(lp) {
+            lp.innerHTML = '<div class="oe-list-header"><h2>Registry</h2><div style="display:flex;gap:6px;"><input class="oe-search" id="oe-reg-search" placeholder="Search name / sequence\u2026" oninput="oeRegFilter()"><select class="oe-filter-select" id="oe-reg-status" onchange="oeRegFilter()"><option value="">All</option><option value="ACTIVE">Active</option><option value="DRAFT">Draft</option><option value="RETIRED">Retired</option></select><select class="oe-filter-select" id="oe-reg-basis" onchange="oeRegFilter()" style="width:70px;"><option value="">Basis</option><option value="DNA">DNA</option><option value="RNA">RNA</option></select></div></div><div class="oe-list-scroll" id="oe-reg-list"><div style="padding:32px;text-align:center;color:#4b5563;"><div class="oe-spinner"></div></div></div>';
+            oeLoadRegistry();
+        }
+
+        async function oeLoadRegistry() {
+            try {
+                const data = await oeApi('GET', '/api/di/inventory-v2/oligo-browse');
+                const byProbe = new Map();
+                for (const row of (data.oligos || [])) {
+                    const pid = row.probe_id || row.id;
+                    if (byProbe.has(pid)) { byProbe.get(pid).synthesis_count++; }
+                    else { byProbe.set(pid, { ...row, synthesis_count: 1 }); }
+                }
+                OE.registryList = [...byProbe.values()];
+                oeRegFilter();
+            } catch (e) {
+                document.getElementById('oe-reg-list').innerHTML = '<div style="padding:32px;text-align:center;color:#f87171;">Error: ' + oeEsc(e.message) + '</div>';
+            }
+        }
+
+        function oeRegFilter() {
+            const q = (document.getElementById('oe-reg-search')?.value || '').toLowerCase();
+            const st = document.getElementById('oe-reg-status')?.value || '';
+            const basis = document.getElementById('oe-reg-basis')?.value || '';
+            let items = OE.registryList;
+            if (q) items = items.filter(o => [o.display_name||'',o.canonical_id||'',o.sequence_norm||'',o.order_number||'',o.oligo_number||'',o.supplier||'',o.polymer_type||''].join(' ').toLowerCase().includes(q));
+            if (st) items = items.filter(o => o.status === st);
+            if (basis) items = items.filter(o => (o.polymer_type || 'DNA') === basis);
+            const list = document.getElementById('oe-reg-list');
+            if (!list) return;
+            if (!items.length) { list.innerHTML = '<div style="padding:32px;text-align:center;color:#4b5563;">No oligonucleotides found</div>'; return; }
+            list.innerHTML = items.map(o => {
+                const probeId = o.probe_id || o.id;
+                const badges = oeDetectChemBadges(o);
+                const lenNt = o.length_nt || oeParseSequenceTokens(o.sequence_norm, o.polymer_type).length;
+                const batchCount = o.synthesis_count || 0;
+                const libCount = o.library_count || 0;
+                const synthNo = o.oligo_number || o.synthesis_oligo_no || '';
+                return '<div class="oe-oligo-card' + (probeId === OE.selectedOligoId ? ' selected' : '') + '" onclick="oeSelectOligo(\'' + probeId + '\')">'
+                    + '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">'
+                    + '<span style="font-size:13px;font-weight:600;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;">' + oeEsc(o.display_name || '\u2014') + '</span>'
+                    + badges
+                    + (synthNo ? '<span class="oe-synth-no-badge">' + oeEsc(synthNo) + '</span>' : '')
+                    + '</div>'
+                    + '<div style="font-size:11px;color:#6b7280;margin-top:3px;">' + (lenNt ? lenNt + ' nt' : '') + '</div>'
+                    + '<div style="font-family:\'JetBrains Mono\',monospace;font-size:12px;letter-spacing:0.05em;color:#e2e8f0;padding:4px 0;margin:4px 0;line-height:1.6;word-break:break-all;">' + oeEsc(o.sequence_norm || '\u2014') + '</div>'
+                    + '<div style="display:flex;gap:12px;font-size:11px;color:#6b7280;">'
+                    + (batchCount ? '<span>\uD83E\uDDEA ' + batchCount + ' batch' + (batchCount !== 1 ? 'es' : '') + '</span>' : '')
+                    + (libCount ? '<span>\uD83D\uDCDA ' + libCount + ' librar' + (libCount !== 1 ? 'ies' : 'y') + '</span>' : '')
+                    + '</div></div>';
+            }).join('');
+        }
+
+        async function oeSelectOligo(id) {
+            OE.selectedOligoId = id;
+            oeRegFilter();
+            oeShowDetail('<div style="padding:20px;text-align:center;"><div class="oe-spinner"></div></div>', null);
+            try {
+                const data = await oeApi('GET', '/api/di/inventory-v2/oligo-browse/' + id);
+                const o = data.oligo;
+                o.syntheses = data.syntheses || [];
+                o.libraries = data.libraries || [];
+                o.identity_docs = data.identity_docs || [];
+                OE.currentOligo = o;
+                OE.currentOligo.syntheses = (o.syntheses || []).slice().sort((a, b) => {
+                    const da = a?.synthesis_date ? String(a.synthesis_date) : '';
+                    const db = b?.synthesis_date ? String(b.synthesis_date) : '';
+                    if (da !== db) return db.localeCompare(da);
+                    const oa = a?.oligo_number ? String(a.oligo_number) : '';
+                    const ob = b?.oligo_number ? String(b.oligo_number) : '';
+                    return ob.localeCompare(oa, undefined, { numeric: true, sensitivity: 'base' });
+                });
+                OE.selectedBatchIdx = 0;
+                oeShowDetail(oeBuildCanvasHtml(), '<div style="padding:12px;"><button class="oe-btn oe-btn-primary" onclick="oeAddOligo(\'' + o.id + '\')">Add Oligo to Inventory</button></div>');
+            } catch (e) {
+                oeShowDetail('<div style="padding:20px;text-align:center;color:#f87171;">' + oeEsc(e.message) + '</div>', null);
+            }
+        }
+
+        function oeSelectBatch(idx) {
+            OE.selectedBatchIdx = parseInt(idx, 10);
+            const pane = document.getElementById('oe-detail-view');
+            if (pane) pane.innerHTML = oeBuildCanvasHtml();
+        }
+
+        function oeBuildCanvasHtml() {
+            const o = OE.currentOligo;
+            const syntheses = o.syntheses || [];
+            const libraries = o.libraries || [];
+            const pt = (o.polymer_type || 'DNA').toUpperCase();
+            const lenNt = o.length_nt || oeParseSequenceTokens(o.sequence_norm || '', pt).length;
+            const mod5Html = oeRenderTermMod5(o.mod5);
+            const mod3Html = oeRenderTermMod3(o.mod3);
+            const seqHtml = oeRenderSequenceHtml(o.sequence_norm, true, pt);
+            const legendHtml = oeRenderChemLegend(o);
+
+            let batchSelectorHtml = '';
+            if (syntheses.length > 1) {
+                const options = syntheses.map((s, i) =>
+                    '<option value="' + i + '"' + (i === OE.selectedBatchIdx ? ' selected' : '') + '>' + oeEsc(s.order_number || '\u2014') + ' / ' + oeEsc(s.oligo_number || '\u2014') + (s.synthesis_date ? ' (' + oeFmtDate(s.synthesis_date) + ')' : '') + '</option>'
+                ).join('');
+                batchSelectorHtml = '<div style="text-align:center;margin-bottom:8px;"><select class="oe-filter-select" style="min-width:200px;text-align:center;" onchange="oeSelectBatch(this.value)">' + options + '</select></div>';
+            }
+
+            let docsHtml = '';
+            const docs = o.identity_docs || [];
+            if (docs.length) {
+                docsHtml = '<div class="oe-section" style="margin:0 28px 16px;"><div class="oe-section-title">Documents</div><table class="oe-data-table"><thead><tr><th>File</th><th>Uploaded</th></tr></thead><tbody>' + docs.map(d => '<tr><td>' + oeEsc(d.original_filename || '\u2014') + '</td><td>' + oeFmtDate(d.uploaded_at) + '</td></tr>').join('') + '</tbody></table></div>';
+            }
+
+            return '<div style="text-align:center;padding:32px 24px 0;"><div style="font-size:20px;font-weight:700;color:#e2e8f0;">' + oeEsc(o.display_name || '\u2014') + '</div><div style="font-size:13px;color:#6b7280;margin-top:4px;">' + pt + ' \u2022 ' + lenNt + ' nt</div></div>'
+                + '<div class="oe-seq-card"><div style="padding:12px 0 8px;text-align:center;"><div style="font-family:\'JetBrains Mono\',monospace;font-size:26px;font-weight:500;letter-spacing:0.08em;line-height:1.8;text-align:center;word-break:break-all;display:inline;">' + mod5Html + seqHtml + mod3Html + '</div><br><button style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:11px;padding:2px 6px;border-radius:3px;margin-top:10px;" onclick="oeCopyText(\'' + oeEsc((o.sequence_norm||'').replace(/'/g,"\\'")) + '\')">copy sequence</button></div>' + legendHtml + '</div>'
+                + '<div class="oe-section" style="margin:0 28px 16px;"><div class="oe-section-title">Identity</div><table class="oe-kv-table"><tr><td>Canonical ID</td><td style="font-family:\'JetBrains Mono\',monospace;font-size:12px;">' + oeEsc(o.canonical_id || '\u2014') + '</td></tr><tr><td>Display Name</td><td>' + oeEsc(o.display_name || '\u2014') + '</td></tr><tr><td>Status</td><td><span class="oe-tag ' + oeStatusColor(o.status) + '">' + oeEsc(o.status || 'DRAFT') + '</span></td></tr><tr><td>Polymer Type</td><td>' + oeEsc(pt) + '</td></tr><tr><td>Length</td><td>' + lenNt + ' nt</td></tr>' + (o.notes ? '<tr><td>Notes</td><td>' + oeEsc(o.notes) + '</td></tr>' : '') + '</table></div>'
+                + '<div class="oe-section" style="margin:0 28px 16px;"><div class="oe-section-title">Terminal Modifications</div><table class="oe-kv-table"><tr><td>5\u2032 Modification</td><td>' + oeFmtMod(o.mod5) + '</td></tr><tr><td>3\u2032 Modification</td><td>' + oeFmtMod(o.mod3) + '</td></tr></table></div>'
+                + '<div class="oe-section" style="margin:0 28px 16px;"><div class="oe-section-title">Internal Modifications</div><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;">'
+                + '<div class="oe-mod-cell"><div class="oe-mod-cell-label">Int 5</div><div class="oe-mod-cell-value' + ((!o.mod_int_5||o.mod_int_5==='-')?' none':'') + '">' + oeFmtMod(o.mod_int_5) + '</div></div>'
+                + '<div class="oe-mod-cell"><div class="oe-mod-cell-label">Int 6</div><div class="oe-mod-cell-value' + ((!o.mod_int_6||o.mod_int_6==='-')?' none':'') + '">' + oeFmtMod(o.mod_int_6) + '</div></div>'
+                + '<div class="oe-mod-cell"><div class="oe-mod-cell-label">Int 7</div><div class="oe-mod-cell-value' + ((!o.mod_int_7||o.mod_int_7==='-')?' none':'') + '">' + oeFmtMod(o.mod_int_7) + '</div></div>'
+                + '<div class="oe-mod-cell"><div class="oe-mod-cell-label">Int 8</div><div class="oe-mod-cell-value' + ((!o.mod_int_8||o.mod_int_8==='-')?' none':'') + '">' + oeFmtMod(o.mod_int_8) + '</div></div>'
+                + '</div></div>'
+                + '<hr style="border:none;border-top:1px solid #2a2d3a;margin:20px 28px;">'
+                + batchSelectorHtml
+                + '<div class="oe-section" style="margin:0 28px 16px;"><div class="oe-section-title">Synthesis Details</div>'
+                + (syntheses.length ? (() => {
+                    const s = syntheses[OE.selectedBatchIdx] || syntheses[0];
+                    return '<table class="oe-kv-table"><tr><td>Supplier</td><td>' + oeEsc(s.supplier || '\u2014') + '</td></tr><tr><td>Order #</td><td style="font-family:\'JetBrains Mono\',monospace;font-size:12px;">' + oeEsc(s.order_number || '\u2014') + '</td></tr><tr><td>Oligo #</td><td style="font-family:\'JetBrains Mono\',monospace;font-size:12px;">' + oeEsc(s.oligo_number || s.synthesis_oligo_no || '\u2014') + '</td></tr><tr><td>Synthesis Date</td><td>' + oeFmtDate(s.synthesis_date) + '</td></tr><tr><td>Amount</td><td>' + (s.amount_nmol != null ? s.amount_nmol + ' nmol' : '\u2014') + '</td></tr><tr><td>MW</td><td>' + (s.mw_value != null ? s.mw_value + ' g/mol' : '\u2014') + '</td></tr><tr><td>Status</td><td><span class="oe-tag ' + ((s.excel_status||s.status)==='ACTIVE'?'green':(s.excel_status||s.status)==='DISCARDED'?'red':'gray') + '">' + oeEsc(s.excel_status || s.status || '\u2014') + '</span></td></tr>' + (s.aliquots_text ? '<tr><td>Aliquots</td><td>' + oeEsc(s.aliquots_text) + '</td></tr>' : '') + '</table>';
+                })() : '<p style="font-size:13px;color:#6b7280;">No synthesis batches</p>')
+                + '</div>'
+                + (syntheses.length > 1 ? '<div class="oe-section" style="margin:0 28px 16px;"><div class="oe-section-title">All Synthesis Batches (' + syntheses.length + ')</div><table class="oe-data-table"><thead><tr><th>#</th><th>Supplier</th><th>Order #</th><th>Oligo #</th><th>Date</th><th>Status</th></tr></thead><tbody>' + syntheses.map((s, i) => '<tr' + (i === OE.selectedBatchIdx ? ' style="background:#0a2e1c;"' : '') + '><td>' + (i+1) + '</td><td>' + oeEsc(s.supplier||'\u2014') + '</td><td style="font-family:\'JetBrains Mono\',monospace;font-size:12px;">' + oeEsc(s.order_number||'\u2014') + '</td><td style="font-family:\'JetBrains Mono\',monospace;font-size:12px;">' + oeEsc(s.oligo_number||s.synthesis_oligo_no||'\u2014') + '</td><td>' + oeFmtDate(s.synthesis_date) + '</td><td><span class="oe-tag ' + ((s.excel_status||s.status)==='ACTIVE'?'green':(s.excel_status||s.status)==='DISCARDED'?'red':'gray') + '">' + oeEsc(s.excel_status||s.status||'\u2014') + '</span></td></tr>').join('') + '</tbody></table></div>' : '')
+                + '<div class="oe-section" style="margin:0 28px 16px;"><div class="oe-section-title">Libraries (' + libraries.length + ')</div>' + (libraries.length ? '<table class="oe-data-table"><thead><tr><th>Library Name</th></tr></thead><tbody>' + libraries.map(l => '<tr><td>' + oeEsc(l.library_name || '\u2014') + '</td></tr>').join('') + '</tbody></table>' : '<p style="font-size:13px;color:#6b7280;">Not assigned to any library</p>') + '</div>'
+                + docsHtml;
+        }
+
+        // ─── Library mode ───────────────────────────────────────────
+        function oeRenderLibraryList(lp) {
+            lp.innerHTML = '<div class="oe-list-header"><h2>Libraries</h2><div style="display:flex;gap:6px;"><input class="oe-search" id="oe-lib-search" placeholder="Search libraries\u2026" oninput="oeLibFilter()"></div></div><div class="oe-list-scroll" id="oe-lib-list"><div style="padding:32px;text-align:center;color:#4b5563;"><div class="oe-spinner"></div></div></div>';
+            oeLoadLibraryList();
+        }
+
+        async function oeLoadLibraryList() {
+            try {
+                const data = await oeApi('GET', '/api/di/inventory-v2/library-browse');
+                OE.libraryList = data.libraries || [];
+                oeLibFilter();
+            } catch (e) {
+                const list = document.getElementById('oe-lib-list');
+                if (list) list.innerHTML = '<div style="padding:32px;text-align:center;color:#f87171;">Error loading libraries</div>';
+            }
+        }
+
+        function oeLibSourceBadge(l) {
+            const sup = l.source_supplier ? String(l.source_supplier).charAt(0).toUpperCase() + String(l.source_supplier).slice(1) : null;
+            const orderNo = l.source_order || null;
+            if (!sup && !orderNo) return '';
+            return '[' + [sup, orderNo].filter(Boolean).join(' \u2022 ') + ']';
+        }
+        function oeLibCleanName(name, l) {
+            let cleaned = name || '';
+            const o = l.source_order;
+            if (o && cleaned.includes(o)) cleaned = cleaned.replace(o, '').replace(/\s{2,}/g, ' ').replace(/^\s*[-\u2013\u2014:]\s*/, '').replace(/\s*[-\u2013\u2014:]\s*$/, '').trim();
+            return cleaned || name;
+        }
+
+        function oeLibFilter() {
+            const q = (document.getElementById('oe-lib-search')?.value || '').toLowerCase();
+            let items = OE.libraryList;
+            if (q) items = items.filter(l => (l.library_name||'').toLowerCase().includes(q));
+            const list = document.getElementById('oe-lib-list');
+            if (!list) return;
+            if (!items.length) { list.innerHTML = '<div style="padding:32px;text-align:center;color:#4b5563;">No libraries</div>'; return; }
+            list.innerHTML = items.map(l => {
+                const name = oeLibCleanName(l.library_name, l);
+                const sourceBadge = oeLibSourceBadge(l);
+                const mc = l.member_count || 0;
+                const cc = l.certified_count || 0;
+                const chemText = l.chemistry_text || '';
+                const detectText = l.detection_text || '';
+                return '<div class="oe-list-item' + (l.id === OE.selectedLibraryId ? ' selected' : '') + '" onclick="oeSelectLibrary(\'' + l.id + '\')" style="padding:10px 14px;line-height:1.55;">'
+                    + '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">'
+                    + '<span style="font-size:13px;font-weight:600;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;">' + oeEsc(name) + '</span>'
+                    + (sourceBadge ? '<span style="font-size:11px;color:#6b7280;font-family:\'JetBrains Mono\',monospace;white-space:nowrap;flex-shrink:0;">' + oeEsc(sourceBadge) + '</span>' : '')
+                    + '</div>'
+                    + '<div style="font-size:11px;color:#9ca3af;margin-top:3px;">\uD83E\uDDEC ' + mc + ' member' + (mc !== 1 ? 's' : '') + '</div>'
+                    + (cc > 0 ? '<div style="font-size:11px;color:#34d399;margin-top:3px;">\u2714 ' + cc + ' certified</div>' : '')
+                    + '<div style="height:6px;"></div>'
+                    + '<div style="font-size:11px;color:#6b7280;">' + (chemText ? 'Chemistry: ' + oeEsc(chemText) : '<span style="color:#4b5563;">Chemistry: \u2014</span>') + '</div>'
+                    + '<div style="font-size:11px;color:#6b7280;">' + (detectText ? 'Detection: ' + oeEsc(detectText) : '<span style="color:#4b5563;">Detection: \u2014</span>') + '</div>'
+                    + '</div>';
+            }).join('');
+        }
+
+        const OE_LIB_PALETTE = ['#34D399','#22D3EE','#60A5FA','#A78BFA','#F59E0B','#F87171','#10B981','#6366F1'];
+        function oeLibColor(id) {
+            let n = 0;
+            const s = String(id || '');
+            for (let i = 0; i < s.length; i++) n = (n * 31 + s.charCodeAt(i)) >>> 0;
+            return OE_LIB_PALETTE[n % OE_LIB_PALETTE.length];
+        }
+
+        async function oeSelectLibrary(id) {
+            OE.selectedLibraryId = id;
+            oeLibFilter();
+            oeShowDetail('<div style="padding:20px;text-align:center;"><div class="oe-spinner"></div></div>', null);
+            try {
+                const data = await oeApi('GET', '/api/di/inventory-v2/library-browse/' + id);
+                const lib = { ...data.library, members: data.members };
+                OE.currentLibDetail = lib;
+                OE.currentLibMembers = lib.members || [];
+                OE.expandedMemberIdx = -1;
+                oeRenderLibraryDetail(lib);
+            } catch (e) {
+                oeShowDetail('<div style="padding:20px;text-align:center;color:#f87171;">' + oeEsc(e.message) + '</div>', null);
+            }
+        }
+
+        function oeRenderLibraryDetail(lib) {
+            const members = lib.members || [];
+            const libName = lib.library_name || lib.name || '';
+            const color = oeLibColor(lib.id);
+            const orderMatch = libName.match(/(\d{4,})/);
+            const sourceLabel = orderMatch ? 'Order ' + orderMatch[1] : '\u2014';
+
+            const viewHtml = (lib.description ? '<div style="font-size:12px;color:#9ca3af;padding:8px 20px 4px;">' + oeEsc(lib.description) + '</div>' : '')
+                + '<div style="padding:8px 20px 12px;"><div style="display:flex;align-items:baseline;gap:4px;font-size:12px;line-height:1.7;"><span style="color:#6b7280;">Name:</span><span style="color:#e2e8f0;font-weight:500;">' + oeEsc(libName) + '</span><span style="color:#6b7280;margin-left:16px;">Members:</span><span style="color:#e2e8f0;font-weight:500;">' + members.length + '</span></div><div style="display:flex;align-items:baseline;gap:4px;font-size:12px;line-height:1.7;"><span style="color:#6b7280;">Source:</span><span style="color:#e2e8f0;font-weight:500;">' + oeEsc(sourceLabel) + '</span><span style="color:#6b7280;margin-left:16px;">Created:</span><span style="color:#e2e8f0;font-weight:500;">' + oeFmtDate(lib.created_at) + '</span></div></div>'
+                + '<div class="oe-section" style="padding:0 8px;"><div class="oe-section-title" style="padding:0 8px 6px;display:flex;align-items:center;gap:6px;"><span style="display:inline-block;width:3px;height:12px;background:' + color + ';border-radius:2px;"></span>Members</div>'
+                + (members.length ? '<div style="display:grid;grid-template-columns:2.2fr 1.3fr 2.4fr 0.8fr;align-items:center;padding:4px 8px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;border-bottom:1px solid #1e2130;"><span>Name</span><span>Sequence</span><span>Aliquots</span><span style="text-align:right;">Status</span></div>' : '')
+                + '<div id="oe-lib-members-list">' + (members.length ? oeLibBuildMemberRows(members) : '<p style="font-size:13px;color:#6b7280;padding:8px;">No members.</p>') + '</div></div>';
+
+            const titleHtml = '<span style="color:' + color + ';font-size:18px;font-weight:700;">\u2261\u25CF</span> ' + oeEsc(libName);
+            const actionsHtml = '<div style="padding:12px;"><button class="oe-btn oe-btn-primary" onclick="oeAddLibrary(\'' + lib.id + '\')">Add Library to Inventory</button></div>';
+
+            oeShowDetail(viewHtml, actionsHtml);
+        }
+
+        function oeLibBuildMemberRows(members) {
+            return members.map((m, i) => {
+                const seqPreview = oeRenderCardSeqPreview(m.sequence_norm, 16, m.polymer_type);
+                const expanded = i === OE.expandedMemberIdx;
+                const pt = (m.polymer_type || 'DNA').toUpperCase();
+                const lenNt = m.length_nt || oeParseSequenceTokens(m.sequence_norm || '', pt).length;
+                const fmtNmol = (v) => v != null ? String(v).replace('.', ',') : '?';
+                const aliqText = (m.aliquots && m.aliquots.length) ? m.aliquots.map(a => a.idx + '. ' + fmtNmol(a.nmol) + ' nmol').join(', ') : '\u2014';
+                let expandHtml = '';
+                if (expanded) {
+                    const mod5Html = oeRenderTermMod5(m.mod5);
+                    const mod3Html = oeRenderTermMod3(m.mod3);
+                    const seqFull = oeRenderSequenceHtml(m.sequence_norm, true, pt);
+                    const legendHtml = oeRenderChemLegend({ ...m, sequence_norm: m.sequence_norm, polymer_type: m.polymer_type });
+                    expandHtml = '<div style="padding:12px 8px 8px;border-top:1px solid #2a2d3a;margin-top:8px;">'
+                        + '<div class="oe-seq-card" style="margin:0 0 12px;"><div style="padding:12px 0 8px;text-align:center;"><div style="font-family:\'JetBrains Mono\',monospace;font-size:26px;font-weight:500;letter-spacing:0.08em;line-height:1.8;text-align:center;word-break:break-all;display:inline;">' + mod5Html + seqFull + mod3Html + '</div></div>' + legendHtml + '</div>'
+                        + '<div style="display:flex;gap:8px;margin-top:8px;">'
+                        + '<button style="background:#1e2130;border:1px solid #374151;border-radius:4px;color:#9ca3af;font-size:12px;padding:3px 10px;cursor:pointer;" onclick="event.stopPropagation();oeLibNavMember(' + (i-1) + ')"' + (i === 0 ? ' disabled style="opacity:0.4;cursor:default;background:#1e2130;border:1px solid #374151;border-radius:4px;color:#9ca3af;font-size:12px;padding:3px 10px;"' : '') + '>\u2191 previous</button>'
+                        + '<button style="background:#1e2130;border:1px solid #374151;border-radius:4px;color:#9ca3af;font-size:12px;padding:3px 10px;cursor:pointer;" onclick="event.stopPropagation();oeLibNavMember(' + (i+1) + ')"' + (i >= members.length - 1 ? ' disabled style="opacity:0.4;cursor:default;background:#1e2130;border:1px solid #374151;border-radius:4px;color:#9ca3af;font-size:12px;padding:3px 10px;"' : '') + '>\u2193 next</button>'
+                        + '</div></div>';
+                }
+                return '<div class="oe-member-row' + (expanded ? ' expanded' : '') + '">'
+                    + '<div style="display:grid;grid-template-columns:2.2fr 1.3fr 2.4fr 0.8fr;align-items:center;font-size:12px;cursor:pointer;" onclick="oeLibToggleMember(' + i + ')">'
+                    + '<span style="color:#6ee7b7;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + oeEsc(m.display_name||m.canonical_id||'\u2014') + (m.certified ? ' <span style="color:#34d399;font-size:10px;">\u2714</span>' : '') + '</span>'
+                    + '<span style="text-align:left;font-family:\'JetBrains Mono\',monospace;font-size:11px;color:#6b7280;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 8px;">' + seqPreview + '</span>'
+                    + '<span style="text-align:left;font-family:\'JetBrains Mono\',monospace;font-size:10px;color:#9ca3af;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + oeEsc(aliqText) + '">' + oeEsc(aliqText) + '</span>'
+                    + '<span style="text-align:right;"><span class="oe-tag ' + oeStatusColor(m.status) + '">' + (m.status||'\u2014') + '</span></span>'
+                    + '</div>'
+                    + '<div style="overflow:hidden;max-height:' + (expanded ? '600px' : '0') + ';transition:max-height 0.25s ease;">' + expandHtml + '</div>'
+                    + '</div>';
+            }).join('');
+        }
+
+        function oeLibToggleMember(idx) {
+            OE.expandedMemberIdx = OE.expandedMemberIdx === idx ? -1 : idx;
+            const list = document.getElementById('oe-lib-members-list');
+            if (list) list.innerHTML = oeLibBuildMemberRows(OE.currentLibMembers);
+        }
+
+        function oeLibNavMember(idx) {
+            if (idx < 0 || idx >= OE.currentLibMembers.length) return;
+            OE.expandedMemberIdx = idx;
+            const list = document.getElementById('oe-lib-members-list');
+            if (list) list.innerHTML = oeLibBuildMemberRows(OE.currentLibMembers);
+        }
+
+        // ─── Add to inventory actions ───────────────────────────────
+        async function oeAddOligo(probeId) {
+            try {
+                await oeApi('POST', '/api/di/inventory-v2/oligo-ref', { probe_id: probeId });
+                oeShowAlert('Added to your oligo inventory.');
+                loadMyOligoRefs();
+                loadOligoSummary();
+            } catch (e) { oeShowAlert('Error: ' + e.message, true); }
+        }
+
+        async function oeAddLibrary(libraryId) {
+            try {
+                await oeApi('POST', '/api/di/inventory-v2/library-ref', { library_id: libraryId });
+                oeShowAlert('Added to your library inventory.');
+                loadMyLibraryRefs();
+                loadOligoSummary();
+            } catch (e) { oeShowAlert('Error: ' + e.message, true); }
+        }
+
+        function oeShowAlert(msg, isError) {
+            const el = document.getElementById('oe-alert');
+            if (!el) return;
+            el.style.display = 'block';
+            el.style.background = isError ? '#3a1a1a' : '#0a2e1c';
+            el.style.color = isError ? '#f87171' : '#6ee7b7';
+            el.style.border = isError ? '1px solid #5a2020' : '1px solid #1a5c35';
+            el.textContent = msg;
+            setTimeout(() => { el.style.display = 'none'; }, 3000);
+        }
+
+        // ─── Inventory oligo tab rendering ──────────────────────────
+        async function loadMyOligoRefs() {
+            const view = document.getElementById('myInvOligoView');
+            if (!view) return;
+            view.innerHTML = '<div style="text-align:center;padding:20px;"><div class="spinner"></div></div>';
+            try {
+                const data = await oeApi('GET', '/api/di/inventory-v2/my-oligo-refs');
+                const refs = data.refs || [];
+                if (refs.length === 0) {
+                    view.innerHTML = '<div style="text-align:center;padding:30px;color:#999;"><p style="font-size:14px;">No oligos in your inventory yet.</p><p style="font-size:12px;margin-top:8px;">Use the Oligo button above to browse and add oligos.</p></div>';
+                    return;
+                }
+                view.innerHTML = '<table class="data-table" style="font-size:13px;"><thead><tr><th>Name</th><th>Canonical ID</th><th>Type</th><th>Length</th><th>Status</th><th>Added</th><th>Actions</th></tr></thead><tbody>' + refs.map(r => '<tr><td>' + escapeHtml(r.display_name || '\u2014') + '</td><td style="font-family:monospace;font-size:12px;">' + escapeHtml(r.canonical_id || '') + '</td><td>' + escapeHtml(r.polymer_type || 'DNA') + '</td><td>' + (r.length_nt || '\u2014') + ' nt</td><td><span class="status-badge">' + escapeHtml(r.status || 'DRAFT') + '</span></td><td>' + new Date(r.created_at).toLocaleDateString() + '</td><td><button class="btn btn-sm" onclick="viewOligoFromInv(\'' + r.probe_id + '\')" style="font-size:11px;">View</button> <button class="btn btn-sm" onclick="removeOligoRef(\'' + r.id + '\')" style="font-size:11px;color:#dc3545;">Remove</button></td></tr>').join('') + '</tbody></table>';
+            } catch (e) { view.innerHTML = '<div style="text-align:center;padding:20px;color:#dc3545;">Error loading oligo inventory</div>'; }
+        }
+
+        async function loadMyLibraryRefs() {
+            // Only rendered when the oligo tab is active - embedded below the oligo table
+            const view = document.getElementById('myInvOligoView');
+            if (!view) return;
+            // Append library section if oligo table exists
+            try {
+                const data = await oeApi('GET', '/api/di/inventory-v2/my-library-refs');
+                const refs = data.refs || [];
+                let libEl = document.getElementById('myInvLibSection');
+                if (!libEl) {
+                    libEl = document.createElement('div');
+                    libEl.id = 'myInvLibSection';
+                    libEl.style.marginTop = '16px';
+                    view.appendChild(libEl);
+                }
+                if (refs.length === 0) {
+                    libEl.innerHTML = '';
+                    return;
+                }
+                libEl.innerHTML = '<h3 style="font-size:14px;font-weight:600;margin-bottom:8px;color:#333;">Libraries</h3><table class="data-table" style="font-size:13px;"><thead><tr><th>Library Name</th><th>Members</th><th>Chemistry</th><th>Added</th><th>Actions</th></tr></thead><tbody>' + refs.map(r => '<tr><td>' + escapeHtml(r.library_name || '\u2014') + '</td><td>' + (r.member_count || 0) + '</td><td>' + escapeHtml(r.chemistry_text || '\u2014') + '</td><td>' + new Date(r.created_at).toLocaleDateString() + '</td><td><button class="btn btn-sm" onclick="viewLibraryFromInv(\'' + r.library_id + '\')" style="font-size:11px;">View</button> <button class="btn btn-sm" onclick="removeLibraryRef(\'' + r.id + '\')" style="font-size:11px;color:#dc3545;">Remove</button></td></tr>').join('') + '</tbody></table>';
+            } catch (e) { /* silent */ }
+        }
+
+        function viewOligoFromInv(probeId) {
+            openOligoExplorer('registry');
+            setTimeout(() => oeSelectOligo(probeId), 300);
+        }
+
+        function viewLibraryFromInv(libraryId) {
+            openOligoExplorer('library');
+            setTimeout(() => oeSelectLibrary(libraryId), 300);
+        }
+
+        async function removeOligoRef(id) {
+            if (!confirm('Remove this oligo from your inventory?')) return;
+            try {
+                await oeApi('DELETE', '/api/di/inventory-v2/oligo-ref/' + id);
+                loadMyOligoRefs();
+                loadMyLibraryRefs();
+                loadOligoSummary();
+            } catch (e) { alert('Error: ' + e.message); }
+        }
+
+        async function removeLibraryRef(id) {
+            if (!confirm('Remove this library from your inventory?')) return;
+            try {
+                await oeApi('DELETE', '/api/di/inventory-v2/library-ref/' + id);
+                loadMyOligoRefs();
+                loadMyLibraryRefs();
+                loadOligoSummary();
+            } catch (e) { alert('Error: ' + e.message); }
+        }
+
+        // ─── Summary metrics ────────────────────────────────────────
+        async function loadOligoSummary() {
+            try {
+                const data = await oeApi('GET', '/api/di/inventory-v2/oligo-summary');
+                const el = document.getElementById('myInvOligoSummary');
+                if (el) {
+                    el.innerHTML = '<span style="margin-right:16px;"><strong>' + data.oligos + '</strong> Oligos</span>'
+                        + '<span style="margin-right:16px;"><strong>' + data.libraries + '</strong> Libraries</span>'
+                        + '<span><strong>' + data.total_represented + '</strong> Total represented</span>';
+                    el.style.display = (data.oligos + data.libraries > 0) ? 'block' : 'none';
+                }
+            } catch (_) {}
+        }
     </script>
+
+    <!-- Oligo Explorer Modal -->
+    <div id="oligoExplorerModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;z-index:10000;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);">
+        <div style="display:flex;flex-direction:column;width:100%;height:100%;max-width:1400px;margin:0 auto;">
+            <!-- Header -->
+            <div style="background:linear-gradient(135deg,#166534,#15803d);padding:0 20px;height:46px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+                <div style="display:flex;align-items:center;gap:16px;">
+                    <h1 style="font-size:15px;font-weight:600;color:#fff;letter-spacing:0.02em;">Oligo Explorer</h1>
+                    <span style="font-size:11px;color:rgba(255,255,255,0.6);background:rgba(255,255,255,0.15);padding:2px 8px;border-radius:3px;">Read-only</span>
+                    <div id="oe-mode-tabs" style="display:flex;gap:0;border:1px solid rgba(255,255,255,0.3);border-radius:5px;overflow:hidden;">
+                        <button class="oe-mode-btn active" data-mode="registry" onclick="oeSetMode('registry')" style="padding:4px 12px;border:none;background:rgba(255,255,255,0.2);color:#fff;font-size:12px;cursor:pointer;">Registry</button>
+                        <button class="oe-mode-btn" data-mode="library" onclick="oeSetMode('library')" style="padding:4px 12px;border:none;background:transparent;color:rgba(255,255,255,0.7);font-size:12px;cursor:pointer;">Libraries</button>
+                    </div>
+                </div>
+                <button onclick="closeOligoExplorer()" style="color:rgba(255,255,255,0.8);text-decoration:none;font-size:12px;padding:4px 10px;border:1px solid rgba(255,255,255,0.3);border-radius:5px;background:none;cursor:pointer;">Close</button>
+            </div>
+
+            <!-- Alert -->
+            <div id="oe-alert" style="display:none;padding:10px 14px;font-size:13px;text-align:center;border-radius:0;"></div>
+
+            <!-- Two-panel body -->
+            <div style="display:flex;flex:1;overflow:hidden;">
+                <!-- List panel -->
+                <div id="oe-list-panel" style="width:370px;min-width:370px;background:#12151c;border-right:1px solid #2a2d3a;display:flex;flex-direction:column;overflow:hidden;"></div>
+
+                <!-- Detail panel -->
+                <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;background:#0f1117;">
+                    <div id="oe-detail-placeholder" style="display:flex;align-items:center;justify-content:center;height:100%;color:#374151;font-size:13px;text-align:center;">
+                        <div>Select an item to view details</div>
+                    </div>
+                    <div id="oe-detail-content" style="display:none;flex-direction:column;height:100%;overflow:hidden;">
+                        <div id="oe-detail-view" style="flex:1;overflow-y:auto;padding:16px 20px;color:#d1d5db;"></div>
+                        <div id="oe-detail-actions" style="border-top:1px solid #2a2d3a;background:#161922;flex-shrink:0;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        /* ── Oligo Explorer scoped styles ── */
+        .oe-mode-btn.active { background: rgba(255,255,255,0.2) !important; color: #fff !important; }
+        .oe-list-header { padding: 14px 16px 12px; border-bottom: 1px solid #2a2d3a; flex-shrink: 0; }
+        .oe-list-header h2 { font-size: 14px; font-weight: 600; color: #e2e8f0; margin-bottom: 8px; }
+        .oe-search { flex:1;background:#1e2130;border:1px solid #374151;border-radius:6px;padding:7px 10px;color:#d1d5db;font-size:12px; }
+        .oe-search::placeholder { color: #4b5563; }
+        .oe-search:focus { outline:none;border-color:#16a34a;box-shadow:0 0 0 2px rgba(22,163,74,0.12); }
+        .oe-filter-select { background:#1e2130;border:1px solid #374151;border-radius:6px;padding:7px 8px;color:#d1d5db;font-size:12px;cursor:pointer; }
+        .oe-filter-select:focus { outline:none;border-color:#16a34a; }
+        .oe-list-scroll { flex:1;overflow-y:auto; }
+        .oe-oligo-card { padding:14px 16px;border-bottom:1px solid #1e2130;cursor:pointer;transition:background 0.12s; }
+        .oe-oligo-card:hover { background:#1a1d27; }
+        .oe-oligo-card.selected { background:#0a2e1c;border-left:3px solid #16a34a; }
+        .oe-list-item { padding:10px 14px;border-bottom:1px solid #1e2130;cursor:pointer;transition:background 0.1s; }
+        .oe-list-item:hover { background:#1a1d27; }
+        .oe-list-item.selected { background:#0a2e1c;border-left:2px solid #16a34a; }
+        .oe-chem-badge { font-size:10px;font-weight:600;padding:1px 7px;border-radius:4px;line-height:1.6;white-space:nowrap; }
+        .oe-chem-badge-dna { background:#1e2f45;color:#93c5fd; }
+        .oe-chem-badge-rna { background:#0a2e1c;color:#6ee7b7; }
+        .oe-synth-no-badge { margin-left:auto;background:#fff;color:#1e293b;font-size:11px;font-weight:600;font-family:'JetBrains Mono',monospace;padding:1px 7px;border-radius:4px;white-space:nowrap; }
+        .oe-seq-dna { color:#2563eb; }
+        .oe-seq-rna { color:#059669; }
+        .oe-seq-2f { color:#7c3aed; }
+        .oe-seq-2ome { color:#d97706; }
+        .oe-seq-lna { color:#dc2626; }
+        .oe-term-mod { display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;border-radius:50%;font-family:'JetBrains Mono',monospace;font-weight:700;margin:0 6px; }
+        .oe-term-mod-fam { width:44px;height:44px;background:#16a34a;color:#fff;font-size:13px; }
+        .oe-term-mod-quencher { width:44px;height:44px;background:#18181b;color:#fff;font-size:14px; }
+        .oe-term-mod-generic { display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;padding:4px 10px;border:1.5px solid #cbd5e1;border-radius:6px;background:#fff;color:#334155;font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:500;margin:0 6px; }
+        .oe-seq-card { background:#fff;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.06);padding:28px 24px 20px;margin:0 28px 20px;text-align:center; }
+        .oe-section { margin-bottom:22px; }
+        .oe-section-title { font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;color:#6b7280;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #2a2d3a; }
+        .oe-kv-table { width:100%;border-collapse:collapse;font-size:13px; }
+        .oe-kv-table tr td:first-child { color:#6b7280;width:160px;padding:5px 0;vertical-align:top; }
+        .oe-kv-table tr td:last-child { color:#e2e8f0;padding:5px 0;word-break:break-all; }
+        .oe-data-table { width:100%;border-collapse:collapse;font-size:12px; }
+        .oe-data-table th { text-align:left;padding:6px 8px;background:#1e2130;color:#9ca3af;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1px solid #2a2d3a; }
+        .oe-data-table td { padding:7px 8px;border-bottom:1px solid #1e2130;color:#d1d5db;vertical-align:top; }
+        .oe-data-table tr:hover td { background:#1a1d27; }
+        .oe-tag { font-size:10px;font-weight:600;padding:1px 6px;border-radius:3px;background:#0a2e1c;color:#6ee7b7; }
+        .oe-tag.green { background:#0a2e1c;color:#6ee7b7; }
+        .oe-tag.red { background:#3a1a1a;color:#f87171; }
+        .oe-tag.gray { background:#2a2d3a;color:#9ca3af; }
+        .oe-mod-cell { background:#1e2130;border:1px solid #374151;border-radius:5px;padding:6px 8px; }
+        .oe-mod-cell-label { font-size:10px;color:#6b7280;text-transform:uppercase;margin-bottom:2px; }
+        .oe-mod-cell-value { font-size:12px;color:#e2e8f0;font-family:monospace; }
+        .oe-mod-cell-value.none { color:#374151;font-style:italic; }
+        .oe-btn { padding:7px 14px;border-radius:5px;border:none;font-size:13px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all 0.12s; }
+        .oe-btn-primary { background:#16a34a;color:#fff; }
+        .oe-btn-primary:hover { background:#15803d; }
+        .oe-spinner { display:inline-block;width:16px;height:16px;border:2px solid #374151;border-top-color:#16a34a;border-radius:50%;animation:spin 0.6s linear infinite; }
+        .oe-member-row { padding:8px 8px;border-bottom:1px solid #1e2130;cursor:pointer;transition:background 0.12s; }
+        .oe-member-row:hover { background:#1a1d27; }
+        .oe-member-row.expanded { background:#151821; }
+        .oe-member-row:last-child { border-bottom:none; }
+        #oligoExplorerModal ::-webkit-scrollbar { width:5px; }
+        #oligoExplorerModal ::-webkit-scrollbar-track { background:transparent; }
+        #oligoExplorerModal ::-webkit-scrollbar-thumb { background:#374151;border-radius:3px; }
+    </style>
 </body>
 </html>
