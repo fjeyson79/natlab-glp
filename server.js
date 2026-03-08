@@ -13992,59 +13992,99 @@ app.post("/api/oligo/libraries/:id/certificate-upload", requirePI, oligoCertUplo
         // Get library members with their synthesis info for matching
         const memR = await pool.query(`
             SELECT plm.id AS membership_id, plm.probe_id, plm.synthesis_id,
-                   pc.canonical_id, ps.order_number, ps.oligo_number, ps.synthesis_oligo_no
+                   pc.canonical_id, ps.order_number, ps.oligo_number,
+                   ps.synthesis_oligo_no, ps.import_row_index
             FROM probe_library_members plm
             JOIN probe_catalog pc ON pc.id = plm.probe_id
             LEFT JOIN probe_syntheses ps ON ps.id = plm.synthesis_id
-            WHERE plm.library_id = $1`, [libId]);
+            WHERE plm.library_id = $1
+            ORDER BY plm.sort_order ASC NULLS LAST, plm.added_at ASC`, [libId]);
 
-        // Build lookup maps for strict matching
+        // --- Build strict lookup maps (4-tier cascade) ---
+
+        // Tier 1: exact canonical_id (covers both PDF-origin and Excel-origin formats)
         const byCanonical = {};
-        const byOrderOligo = {};
+        // Tier 2: stored synthesis_oligo_no (PDF-import Synthesis#)
         const bySynthOligoNo = {};
+        // Tier 3: order_number + Registry Synthesis# (oligo_number or synthesis_oligo_no)
+        const byOrderSynthNo = {};
+        // Tier 4: library-local derived position (import_row_index offset)
+        const byDerivedPosition = {};
+
+        // Compute base_offset = MIN(import_row_index) - 1 for this library
+        let minImportRowIndex = null;
         for (const m of memR.rows) {
-            if (m.canonical_id) byCanonical[m.canonical_id.toUpperCase()] = m;
-            if (m.order_number && m.oligo_number) {
-                byOrderOligo[`${m.order_number}_${m.oligo_number}`] = m;
+            if (m.import_row_index != null) {
+                if (minImportRowIndex === null || m.import_row_index < minImportRowIndex) {
+                    minImportRowIndex = m.import_row_index;
+                }
             }
+        }
+        const baseOffset = (minImportRowIndex != null) ? minImportRowIndex - 1 : null;
+
+        for (const m of memR.rows) {
+            // Tier 1: canonical_id
+            if (m.canonical_id) byCanonical[m.canonical_id.toUpperCase()] = m;
+
+            // Registry Synthesis# = oligo_number (Excel) or synthesis_oligo_no (PDF)
+            const synthNo = String(m.oligo_number || m.synthesis_oligo_no || '').trim();
+
+            // Tier 2: synthesis_oligo_no when explicitly stored
             if (m.synthesis_oligo_no) {
                 bySynthOligoNo[String(m.synthesis_oligo_no).trim()] = m;
             }
+
+            // Tier 3: order_number + Registry Synthesis#
+            if (m.order_number && synthNo) {
+                byOrderSynthNo[`${m.order_number}_${synthNo}`] = m;
+            }
+
+            // Tier 4: derived position from import_row_index (only when no explicit synthesis number)
+            if (!synthNo && baseOffset != null && m.import_row_index != null) {
+                const derivedNo = String(m.import_row_index - baseOffset);
+                byDerivedPosition[derivedNo] = m;
+            }
         }
 
-        // Match extracted items to library members
+        // --- Match parsed PDF items to library members ---
         const matches = []; // { member, item }
         const unmatched = [];
         for (const item of items) {
             const info = item.ID_INFO || {};
-            // info['Order#'] is the canonical_id (e.g. "00304503_30")
-            const pdfCanonical = (info['Order#'] || '').toUpperCase();
-            // Extract order_number and oligo_number by splitting canonical_id on last underscore
+            const pdfCanonical = String(info['Order#'] || '').toUpperCase().trim();
+            const pdfSynthOligoNo = String(info['SynthesisOligo#'] || '').trim();
+
+            // Decompose canonical_id into order_number + item suffix
             const usIdx = pdfCanonical.lastIndexOf('_');
             const pdfOrderNo = usIdx > 0 ? pdfCanonical.slice(0, usIdx) : pdfCanonical;
-            const pdfOligoNo = usIdx > 0 ? pdfCanonical.slice(usIdx + 1) : '';
 
             let member = null;
-            // Try canonical_id match first (covers Biomers PDF-origin probes)
-            if (pdfCanonical && byCanonical[pdfCanonical]) {
+
+            // Tier 1a: exact canonical_id match (PDF-origin probes)
+            if (!member && pdfCanonical && byCanonical[pdfCanonical]) {
                 member = byCanonical[pdfCanonical];
             }
-            // Try with Excel-origin canonical_id format (supplier_orderNo_oligoNo)
+            // Tier 1b: Excel-origin canonical_id format (SUPPLIER_orderNo_oligoNo)
             if (!member && pdfCanonical) {
                 const excelCanon = `BIOMERS_${pdfCanonical}`.toUpperCase();
                 if (byCanonical[excelCanon]) member = byCanonical[excelCanon];
             }
-            // Try order_number + oligo_number match (via synthesis records)
-            if (!member && pdfOrderNo && pdfOligoNo) {
-                member = byOrderOligo[`${pdfOrderNo}_${pdfOligoNo}`];
+
+            // Tier 2: stored synthesis_oligo_no
+            if (!member && pdfSynthOligoNo && bySynthOligoNo[pdfSynthOligoNo]) {
+                member = bySynthOligoNo[pdfSynthOligoNo];
             }
-            // Try SynthesisOligo# from PDF against synthesis_oligo_no in DB (PDF-origin probes)
-            if (!member) {
-                const pdfSynthOligoNo = String(info['SynthesisOligo#'] || '').trim();
-                if (pdfSynthOligoNo && bySynthOligoNo[pdfSynthOligoNo]) {
-                    member = bySynthOligoNo[pdfSynthOligoNo];
-                }
+
+            // Tier 3: order_number + Registry Synthesis#
+            if (!member && pdfOrderNo && pdfSynthOligoNo) {
+                member = byOrderSynthNo[`${pdfOrderNo}_${pdfSynthOligoNo}`] || null;
             }
+
+            // Tier 4: library-local derived position fallback (imported blocks without stored synthesis numbers)
+            if (!member && pdfSynthOligoNo && byDerivedPosition[pdfSynthOligoNo]) {
+                member = byDerivedPosition[pdfSynthOligoNo];
+            }
+
             if (member) {
                 matches.push({ member, item });
             } else {
