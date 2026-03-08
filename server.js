@@ -13992,7 +13992,7 @@ app.post("/api/oligo/libraries/:id/certificate-upload", requirePI, oligoCertUplo
         // Get library members with their synthesis info for matching
         const memR = await pool.query(`
             SELECT plm.id AS membership_id, plm.probe_id, plm.synthesis_id,
-                   pc.canonical_id, ps.order_number, ps.oligo_number
+                   pc.canonical_id, ps.order_number, ps.oligo_number, ps.synthesis_oligo_no
             FROM probe_library_members plm
             JOIN probe_catalog pc ON pc.id = plm.probe_id
             LEFT JOIN probe_syntheses ps ON ps.id = plm.synthesis_id
@@ -14001,10 +14001,14 @@ app.post("/api/oligo/libraries/:id/certificate-upload", requirePI, oligoCertUplo
         // Build lookup maps for strict matching
         const byCanonical = {};
         const byOrderOligo = {};
+        const bySynthOligoNo = {};
         for (const m of memR.rows) {
             if (m.canonical_id) byCanonical[m.canonical_id.toUpperCase()] = m;
             if (m.order_number && m.oligo_number) {
                 byOrderOligo[`${m.order_number}_${m.oligo_number}`] = m;
+            }
+            if (m.synthesis_oligo_no) {
+                bySynthOligoNo[String(m.synthesis_oligo_no).trim()] = m;
             }
         }
 
@@ -14033,6 +14037,13 @@ app.post("/api/oligo/libraries/:id/certificate-upload", requirePI, oligoCertUplo
             // Try order_number + oligo_number match (via synthesis records)
             if (!member && pdfOrderNo && pdfOligoNo) {
                 member = byOrderOligo[`${pdfOrderNo}_${pdfOligoNo}`];
+            }
+            // Try SynthesisOligo# from PDF against synthesis_oligo_no in DB (PDF-origin probes)
+            if (!member) {
+                const pdfSynthOligoNo = String(info['SynthesisOligo#'] || '').trim();
+                if (pdfSynthOligoNo && bySynthOligoNo[pdfSynthOligoNo]) {
+                    member = bySynthOligoNo[pdfSynthOligoNo];
+                }
             }
             if (member) {
                 matches.push({ member, item });
