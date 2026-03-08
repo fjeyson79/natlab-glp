@@ -2288,8 +2288,9 @@ function libBuildMemberRows(members) {
         const mod5Html = renderTerminalMod5(m.mod5);
         const mod3Html = renderTerminalMod3(m.mod3);
         const seqFull = renderSequenceHtml(m.sequence_norm, true, pt);
+        const fmtNmol = (v) => v != null ? String(v).replace('.', ',') : '?';
         const aliqText = (m.aliquots && m.aliquots.length)
-            ? m.aliquots.map(a => `${a.idx}. ${a.nmol ?? '?'} nmol`).join(', ')
+            ? m.aliquots.map(a => `${a.idx}. ${fmtNmol(a.nmol)} nmol`).join(', ')
             : '\u2014';
         return `
             <div class="lib-member-row${expanded ? ' expanded' : ''}" id="lib-member-${i}">

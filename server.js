@@ -14000,89 +14000,52 @@ app.post("/api/oligo/libraries/:id/certificate-upload", requirePI, oligoCertUplo
             WHERE plm.library_id = $1
             ORDER BY plm.sort_order ASC NULLS LAST, plm.added_at ASC`, [libId]);
 
-        // --- Build strict lookup maps (4-tier cascade) ---
+        // Strip leading zeros for numeric identifier comparison
+        const stripLeadingZeros = (s) => String(s || '').replace(/^0+/, '') || '0';
 
-        // Tier 1: exact canonical_id (covers both PDF-origin and Excel-origin formats)
+        // --- Build strict lookup maps ---
+
+        // By canonical_id (exact, case-insensitive)
         const byCanonical = {};
-        // Tier 2: stored synthesis_oligo_no (PDF-import Synthesis#)
+        // By oligo_number (normalized, no leading zeros) — the Registry Synthesis#
+        const byOligoNumber = {};
+        // By synthesis_oligo_no (normalized, no leading zeros)
         const bySynthOligoNo = {};
-        // Tier 3: order_number + Registry Synthesis# (oligo_number or synthesis_oligo_no)
-        const byOrderSynthNo = {};
-        // Tier 4: library-local derived position (import_row_index offset)
-        const byDerivedPosition = {};
-
-        // Compute base_offset = MIN(import_row_index) - 1 for this library
-        let minImportRowIndex = null;
-        for (const m of memR.rows) {
-            if (m.import_row_index != null) {
-                if (minImportRowIndex === null || m.import_row_index < minImportRowIndex) {
-                    minImportRowIndex = m.import_row_index;
-                }
-            }
-        }
-        const baseOffset = (minImportRowIndex != null) ? minImportRowIndex - 1 : null;
 
         for (const m of memR.rows) {
-            // Tier 1: canonical_id
             if (m.canonical_id) byCanonical[m.canonical_id.toUpperCase()] = m;
-
-            // Registry Synthesis# = oligo_number (Excel) or synthesis_oligo_no (PDF)
-            const synthNo = String(m.oligo_number || m.synthesis_oligo_no || '').trim();
-
-            // Tier 2: synthesis_oligo_no when explicitly stored
-            if (m.synthesis_oligo_no) {
-                bySynthOligoNo[String(m.synthesis_oligo_no).trim()] = m;
-            }
-
-            // Tier 3: order_number + Registry Synthesis#
-            if (m.order_number && synthNo) {
-                byOrderSynthNo[`${m.order_number}_${synthNo}`] = m;
-            }
-
-            // Tier 4: derived position from import_row_index (only when no explicit synthesis number)
-            if (!synthNo && baseOffset != null && m.import_row_index != null) {
-                const derivedNo = String(m.import_row_index - baseOffset);
-                byDerivedPosition[derivedNo] = m;
-            }
+            if (m.oligo_number) byOligoNumber[stripLeadingZeros(m.oligo_number)] = m;
+            if (m.synthesis_oligo_no) bySynthOligoNo[stripLeadingZeros(m.synthesis_oligo_no)] = m;
         }
 
-        // --- Match parsed PDF items to library members ---
+        // --- Match parsed PDF items to library members (exact only) ---
         const matches = []; // { member, item }
         const unmatched = [];
         for (const item of items) {
             const info = item.ID_INFO || {};
             const pdfCanonical = String(info['Order#'] || '').toUpperCase().trim();
-            const pdfSynthOligoNo = String(info['SynthesisOligo#'] || '').trim();
-
-            // Decompose canonical_id into order_number + item suffix
-            const usIdx = pdfCanonical.lastIndexOf('_');
-            const pdfOrderNo = usIdx > 0 ? pdfCanonical.slice(0, usIdx) : pdfCanonical;
+            const pdfSynthNo = stripLeadingZeros(info['SynthesisOligo#']);
 
             let member = null;
 
-            // Tier 1a: exact canonical_id match (PDF-origin probes)
-            if (!member && pdfCanonical && byCanonical[pdfCanonical]) {
+            // 1. Exact canonical_id match
+            if (pdfCanonical && byCanonical[pdfCanonical]) {
                 member = byCanonical[pdfCanonical];
             }
-            // Tier 1b: Excel-origin canonical_id format (SUPPLIER_orderNo_oligoNo)
+            // 1b. Excel-origin canonical_id format (SUPPLIER_orderNo_oligoNo)
             if (!member && pdfCanonical) {
                 const excelCanon = `BIOMERS_${pdfCanonical}`.toUpperCase();
                 if (byCanonical[excelCanon]) member = byCanonical[excelCanon];
             }
 
-            // Tier 2: stored synthesis_oligo_no
-            if (!member && pdfSynthOligoNo && bySynthOligoNo[pdfSynthOligoNo]) {
-                member = bySynthOligoNo[pdfSynthOligoNo];
+            // 2. SynthesisOligo# → oligo_number (leading-zero normalized)
+            if (!member && pdfSynthNo !== '0' && byOligoNumber[pdfSynthNo]) {
+                member = byOligoNumber[pdfSynthNo];
             }
 
-            // Tier 3: order_number + Registry Synthesis#
-            if (!member && pdfOrderNo && pdfSynthOligoNo) {
-                member = byOrderSynthNo[`${pdfOrderNo}_${pdfSynthOligoNo}`] || null;
-            }
-
-            // Tier 4: library-local derived position fallback (imported blocks without stored synthesis numbers)
-            if (!member && pdfSynthOligoNo && byDerivedPosition[pdfSynthOligoNo]) {
-                member = byDerivedPosition[pdfSynthOligoNo];
+            // 3. SynthesisOligo# → synthesis_oligo_no (leading-zero normalized)
+            if (!member && pdfSynthNo !== '0' && bySynthOligoNo[pdfSynthNo]) {
+                member = bySynthOligoNo[pdfSynthNo];
             }
 
             if (member) {
@@ -14141,12 +14104,14 @@ app.post("/api/oligo/libraries/:id/certificate-upload", requirePI, oligoCertUplo
                 // Extract aliquots from parsed item
                 const aliquots = item.ALIQUOTS || [];
                 for (const aliq of aliquots) {
+                    // Normalize European decimal comma to dot for NUMERIC column
+                    const nmolRaw = aliq.nmol ? String(aliq.nmol).replace(',', '.') : null;
                     await client.query(
                         `INSERT INTO probe_library_member_aliquots
                             (library_id, library_member_id, certificate_id, aliquot_index, amount_nmol, raw_text)
                          VALUES ($1,$2,$3,$4,$5,$6)`,
                         [libId, member.membership_id, certId,
-                         aliq.index || 0, aliq.nmol || null,
+                         aliq.index || 0, nmolRaw,
                          aliq.nmol ? `${aliq.index || 0}. ${aliq.nmol} nmol` : null]
                     );
                 }
