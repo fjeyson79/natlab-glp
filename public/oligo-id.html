@@ -2080,12 +2080,23 @@ async function loadLibraryList() {
     }
 }
 
-function libOrderLabel(l) {
-    // Single order number per library — first from DB, fallback to name
+function libSourceBadge(l) {
     const orders = l.order_numbers || [];
-    if (orders.length) return `[${orders[0]}]`;
-    const m = (l.library_name || '').match(/(\d{4,})/);
-    return m ? `[${m[1]}]` : '';
+    const orderNo = orders.length ? orders[0] : null;
+    const sup = l.supplier ? String(l.supplier).charAt(0).toUpperCase() + String(l.supplier).slice(1) : null;
+    if (!sup && !orderNo) return '';
+    const parts = [sup, orderNo].filter(Boolean);
+    return `[${parts.join(' \u2022 ')}]`;
+}
+function libCleanName(name, orderNumbers) {
+    // Remove order number from name if duplicated there
+    let cleaned = name || '';
+    for (const o of (orderNumbers || [])) {
+        if (o && cleaned.includes(o)) {
+            cleaned = cleaned.replace(o, '').replace(/\s{2,}/g, ' ').replace(/^\s*[-–—:]\s*/, '').replace(/\s*[-–—:]\s*$/, '').trim();
+        }
+    }
+    return cleaned || name;
 }
 
 function libFilter() {
@@ -2096,8 +2107,8 @@ function libFilter() {
     if (!list) return;
     if (!items.length) { list.innerHTML = `<div class="empty-list">No libraries</div>`; return; }
     list.innerHTML = items.map(l => {
-        const name = l.library_name || '\u2014';
-        const orderLbl = libOrderLabel(l);
+        const name = libCleanName(l.library_name, l.order_numbers);
+        const sourceBadge = libSourceBadge(l);
         const mc = l.member_count || 0;
         const cc = l.certified_count || 0;
         const chemText = l.chemistry_text || '';
@@ -2106,7 +2117,7 @@ function libFilter() {
         <div class="list-item${l.id === S.selectedLibraryId ? ' selected' : ''}" onclick="selectLibrary('${l.id}')" style="padding:10px 14px;line-height:1.55;">
             <div class="lib-card-line1">
                 <span class="lib-card-name">${esc(name)}</span>
-                ${orderLbl ? `<span class="lib-card-order">${esc(orderLbl)}</span>` : ''}
+                ${sourceBadge ? `<span class="lib-card-order">${esc(sourceBadge)}</span>` : ''}
             </div>
             <div class="lib-card-members">\uD83E\uDDEC ${mc} member${mc!==1?'s':''}</div>
             ${cc > 0 ? `<div class="lib-card-members" style="color:#34d399;">\u2714 ${cc} certified</div>` : ''}

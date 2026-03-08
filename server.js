@@ -13705,6 +13705,7 @@ app.get("/api/oligo/libraries", requirePI, async (req, res) => {
                    BOOL_OR(pc.sequence_norm ~ 'm[A-Za-z]') AS has_2ome,
                    BOOL_OR(pc.sequence_norm ~ 'l[A-Za-z]') AS has_lna,
                    ARRAY_AGG(DISTINCT ps.order_number) FILTER (WHERE ps.order_number IS NOT NULL AND ps.order_number != '') AS order_numbers,
+                   (ARRAY_AGG(DISTINCT ps.supplier) FILTER (WHERE ps.supplier IS NOT NULL AND ps.supplier != ''))[1] AS supplier,
                    (ARRAY_AGG(pc.display_name ORDER BY plm.sort_order ASC NULLS LAST, plm.added_at ASC) FILTER (WHERE pc.display_name IS NOT NULL))[1] AS first_member_name,
                    (ARRAY_AGG(pc.display_name ORDER BY plm.sort_order DESC NULLS LAST, plm.added_at DESC) FILTER (WHERE pc.display_name IS NOT NULL))[1] AS last_member_name
             FROM probe_libraries pl
