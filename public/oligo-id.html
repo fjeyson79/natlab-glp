@@ -712,7 +712,6 @@
 
         /* Synthesis# badge on registry cards */
         .synth-no-badge {
-            margin-left: auto;
             background: #fff;
             color: #1e293b;
             font-size: 11px;
@@ -722,6 +721,16 @@
             border-radius: 4px;
             white-space: nowrap;
         }
+        .synth-no-badge + .synth-no-badge { margin-left: 3px; }
+        .oligo-card-line1 .synth-no-badge:first-of-type { margin-left: auto; }
+        .synth-no-toggle {
+            cursor: pointer;
+            background: #e2e8f0;
+            color: #475569;
+            font-family: inherit;
+            font-weight: 500;
+        }
+        .synth-no-toggle:hover { background: #cbd5e1; }
     .seq-preview {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   color: #e5e7eb;
@@ -1164,9 +1173,14 @@ async function loadRegistry() {
         for (const row of (data.oligos || [])) {
             const pid = row.probe_id || row.id;
             if (byProbe.has(pid)) {
-                byProbe.get(pid).synthesis_count++;
+                const entry = byProbe.get(pid);
+                entry.synthesis_count++;
+                if (row.oligo_number && !entry.all_oligo_numbers.includes(row.oligo_number)) {
+                    entry.all_oligo_numbers.push(row.oligo_number);
+                }
             } else {
-                byProbe.set(pid, { ...row, synthesis_count: 1 });
+                const on = row.oligo_number;
+                byProbe.set(pid, { ...row, synthesis_count: 1, all_oligo_numbers: on ? [on] : [] });
             }
         }
         S.registryList = [...byProbe.values()];
@@ -1187,7 +1201,7 @@ function regFilter() {
             o.canonical_id || '',
             o.sequence_norm || '',
             o.order_number || '',
-            o.oligo_number || '',
+            ...(o.all_oligo_numbers || [o.oligo_number || '']),
             o.supplier || '',
             o.polymer_type || ''
         ].join(' ').toLowerCase();
@@ -1204,13 +1218,17 @@ function regFilter() {
         const lenNt = o.length_nt || (o.sequence_norm ? parseSequenceTokens(o.sequence_norm, o.polymer_type).length : null);
         const batchCount = o.synthesis_count || 0;
         const libCount = o.library_count || 0;
-        const synthNo = o.oligo_number || o.synthesis_oligo_no || '';
+        const allNos = o.all_oligo_numbers || (o.oligo_number ? [o.oligo_number] : []);
+        const visibleNos = allNos.slice(0, 3);
+        const hiddenCount = allNos.length - visibleNos.length;
+        const noBadges = visibleNos.map(n => `<span class="synth-no-badge">${esc(n)}</span>`).join('')
+            + (hiddenCount > 0 ? `<span class="synth-no-badge synth-no-toggle" onclick="event.stopPropagation();regToggleNos(this)" data-all-nos="${esc(allNos.join('|'))}" data-collapsed="1">+${hiddenCount} &#9662;</span>` : '');
         return `
         <div class="oligo-card${probeId === S.selectedOligoId ? ' selected' : ''}" onclick="selectOligo('${probeId}')">
             <div class="oligo-card-line1">
                 <span class="oligo-card-name">${esc(o.display_name || '\u2014')}</span>
                 ${badges}
-                ${synthNo ? `<span class="synth-no-badge">${esc(synthNo)}</span>` : ''}
+                ${noBadges}
             </div>
             <div class="oligo-card-length">${lenNt ? lenNt + ' nt' : ''}</div>
             <div class="oligo-card-seq">${esc(o.sequence_norm || '\u2014')}</div>
@@ -1220,6 +1238,53 @@ function regFilter() {
             </div>
         </div>`;
     }).join('');
+}
+
+function regToggleNos(el) {
+    const allNos = (el.dataset.allNos || '').split('|');
+    const line1 = el.closest('.oligo-card-line1');
+    if (!line1) return;
+    const collapsed = el.dataset.collapsed === '1';
+    // Remove existing synth-no badges
+    line1.querySelectorAll('.synth-no-badge').forEach(b => b.remove());
+    if (collapsed) {
+        // Show all
+        const frag = document.createDocumentFragment();
+        allNos.forEach((n, i) => {
+            const sp = document.createElement('span');
+            sp.className = 'synth-no-badge';
+            sp.textContent = n;
+            frag.appendChild(sp);
+        });
+        const tog = document.createElement('span');
+        tog.className = 'synth-no-badge synth-no-toggle';
+        tog.dataset.allNos = allNos.join('|');
+        tog.dataset.collapsed = '0';
+        tog.innerHTML = '&#9652;';
+        tog.onclick = function(e) { e.stopPropagation(); regToggleNos(this); };
+        frag.appendChild(tog);
+        line1.appendChild(frag);
+    } else {
+        // Collapse back to 3
+        const frag = document.createDocumentFragment();
+        allNos.slice(0, 3).forEach(n => {
+            const sp = document.createElement('span');
+            sp.className = 'synth-no-badge';
+            sp.textContent = n;
+            frag.appendChild(sp);
+        });
+        const hiddenCount = allNos.length - 3;
+        if (hiddenCount > 0) {
+            const tog = document.createElement('span');
+            tog.className = 'synth-no-badge synth-no-toggle';
+            tog.dataset.allNos = allNos.join('|');
+            tog.dataset.collapsed = '1';
+            tog.innerHTML = '+' + hiddenCount + ' &#9662;';
+            tog.onclick = function(e) { e.stopPropagation(); regToggleNos(this); };
+            frag.appendChild(tog);
+        }
+        line1.appendChild(frag);
+    }
 }
 
 function statusColor(s) {
