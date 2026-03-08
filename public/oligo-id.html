@@ -147,6 +147,19 @@
         }
         .oligo-card:hover { background: #1a1d27; }
         .oligo-card.selected { background: #0a2e1c; border-left: 3px solid #16a34a; }
+        .oligo-card-grid {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 0 12px;
+        }
+        .oligo-card-left { min-width: 0; }
+        .oligo-card-nos {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 3px;
+            padding-top: 1px;
+        }
         .oligo-card-line1 {
             display: flex;
             align-items: center;
@@ -721,8 +734,7 @@
             border-radius: 4px;
             white-space: nowrap;
         }
-        .synth-no-badge + .synth-no-badge { margin-left: 3px; }
-        .oligo-card-line1 .synth-no-badge:first-of-type { margin-left: auto; }
+        .oligo-card-nos .synth-no-badge { display: block; text-align: right; }
         .synth-no-toggle {
             cursor: pointer;
             background: #e2e8f0;
@@ -1221,40 +1233,42 @@ function regFilter() {
         const allNos = o.all_oligo_numbers || (o.oligo_number ? [o.oligo_number] : []);
         const visibleNos = allNos.slice(0, 3);
         const hiddenCount = allNos.length - visibleNos.length;
-        const noBadges = visibleNos.map(n => `<span class="synth-no-badge">${esc(n)}</span>`).join('')
+        const noBadgesHtml = visibleNos.map(n => `<span class="synth-no-badge">${esc(n)}</span>`).join('')
             + (hiddenCount > 0 ? `<span class="synth-no-badge synth-no-toggle" onclick="event.stopPropagation();regToggleNos(this)" data-all-nos="${esc(allNos.join('|'))}" data-collapsed="1">+${hiddenCount} &#9662;</span>` : '');
         return `
         <div class="oligo-card${probeId === S.selectedOligoId ? ' selected' : ''}" onclick="selectOligo('${probeId}')">
-            <div class="oligo-card-line1">
-                <span class="oligo-card-name">${esc(o.display_name || '\u2014')}</span>
-                ${badges}
-                ${noBadges}
+          <div class="oligo-card-grid">
+            <div class="oligo-card-left">
+                <div class="oligo-card-line1">
+                    <span class="oligo-card-name">${esc(o.display_name || '\u2014')}</span>
+                    ${badges}
+                </div>
+                <div class="oligo-card-length">${lenNt ? lenNt + ' nt' : ''}</div>
+                <div class="oligo-card-seq">${esc(o.sequence_norm || '\u2014')}</div>
+                <div class="oligo-card-meta">
+                    ${batchCount ? `<span>\uD83E\uDDEA ${batchCount} batch${batchCount !== 1 ? 'es' : ''}</span>` : ''}
+                    ${libCount ? `<span>\uD83D\uDCDA ${libCount} librar${libCount !== 1 ? 'ies' : 'y'}</span>` : ''}
+                </div>
             </div>
-            <div class="oligo-card-length">${lenNt ? lenNt + ' nt' : ''}</div>
-            <div class="oligo-card-seq">${esc(o.sequence_norm || '\u2014')}</div>
-            <div class="oligo-card-meta">
-                ${batchCount ? `<span>\uD83E\uDDEA ${batchCount} batch${batchCount !== 1 ? 'es' : ''}</span>` : ''}
-                ${libCount ? `<span>\uD83D\uDCDA ${libCount} librar${libCount !== 1 ? 'ies' : 'y'}</span>` : ''}
-            </div>
+            <div class="oligo-card-nos">${noBadgesHtml}</div>
+          </div>
         </div>`;
     }).join('');
 }
 
 function regToggleNos(el) {
     const allNos = (el.dataset.allNos || '').split('|');
-    const line1 = el.closest('.oligo-card-line1');
-    if (!line1) return;
+    const container = el.closest('.oligo-card-nos');
+    if (!container) return;
     const collapsed = el.dataset.collapsed === '1';
-    // Remove existing synth-no badges
-    line1.querySelectorAll('.synth-no-badge').forEach(b => b.remove());
+    container.innerHTML = '';
     if (collapsed) {
         // Show all
-        const frag = document.createDocumentFragment();
-        allNos.forEach((n, i) => {
+        allNos.forEach(n => {
             const sp = document.createElement('span');
             sp.className = 'synth-no-badge';
             sp.textContent = n;
-            frag.appendChild(sp);
+            container.appendChild(sp);
         });
         const tog = document.createElement('span');
         tog.className = 'synth-no-badge synth-no-toggle';
@@ -1262,16 +1276,14 @@ function regToggleNos(el) {
         tog.dataset.collapsed = '0';
         tog.innerHTML = '&#9652;';
         tog.onclick = function(e) { e.stopPropagation(); regToggleNos(this); };
-        frag.appendChild(tog);
-        line1.appendChild(frag);
+        container.appendChild(tog);
     } else {
         // Collapse back to 3
-        const frag = document.createDocumentFragment();
         allNos.slice(0, 3).forEach(n => {
             const sp = document.createElement('span');
             sp.className = 'synth-no-badge';
             sp.textContent = n;
-            frag.appendChild(sp);
+            container.appendChild(sp);
         });
         const hiddenCount = allNos.length - 3;
         if (hiddenCount > 0) {
@@ -1281,9 +1293,8 @@ function regToggleNos(el) {
             tog.dataset.collapsed = '1';
             tog.innerHTML = '+' + hiddenCount + ' &#9662;';
             tog.onclick = function(e) { e.stopPropagation(); regToggleNos(this); };
-            frag.appendChild(tog);
+            container.appendChild(tog);
         }
-        line1.appendChild(frag);
     }
 }
 
