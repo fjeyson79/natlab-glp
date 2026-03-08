@@ -7319,6 +7319,567 @@ app.get('/api/di/inventory-v2/supervision/:researcherId/inventory', requireSuper
 
 
 // =====================================================================
+// SAMPLE PACK IMPORT — isolated to Sample page only
+// =====================================================================
+
+const sampleExcelUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 5 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+        const name = file.originalname.toLowerCase();
+        if (name.endsWith('.xlsx')) return cb(null, true);
+        return cb(new Error('Only .xlsx files are accepted'), false);
+    }
+});
+
+const VALID_SAMPLE_ORIGINS = ['Human', 'Animal', 'Cell culture', 'Environmental', 'Synthetic', 'Other'];
+const VALID_SAMPLE_STATUSES = ['Fresh', 'Aliquoted', 'In use', 'Archived', 'Near depletion'];
+const VALID_SAMPLE_PROVIDERS = ['Internal NAT Lab', 'External collaborator', 'Commercial source', 'Clinical source', 'Other'];
+
+const SAMPLE_TEMPLATE_COLUMNS = [
+    'Sample Name', 'Sample ID', 'Sample Origin', 'Provider or Collaborator',
+    'Provider Detail', 'Quantity', 'Unit', 'Storage Location',
+    'Storage Temperature', 'Sample Status', 'Notes'
+];
+
+const SAMPLE_FIELD_MAP = {
+    'Sample Name': 'item_name',
+    'Sample ID': 'item_identifier',
+    'Sample Origin': 'sample_origin',
+    'Provider or Collaborator': 'provider_or_collaborator',
+    'Provider Detail': 'provider_detail',
+    'Quantity': 'quantity',
+    'Unit': 'quantity_unit',
+    'Storage Location': 'storage_location',
+    'Storage Temperature': 'storage_temperature',
+    'Sample Status': 'sample_status',
+    'Notes': 'notes'
+};
+
+function validateSampleRow(row, rowIndex, existingIds) {
+    const errors = [];
+    if (!row.item_name || !row.item_name.trim()) errors.push('Sample Name is required');
+    if (!row.item_identifier || !row.item_identifier.trim()) errors.push('Sample ID is required');
+    if (!row.sample_origin || !VALID_SAMPLE_ORIGINS.includes(row.sample_origin))
+        errors.push('Sample Origin must be one of: ' + VALID_SAMPLE_ORIGINS.join(', '));
+    const qty = parseFloat(row.quantity);
+    if (!row.quantity || isNaN(qty) || qty <= 0) errors.push('Quantity must be a positive number');
+    if (!row.quantity_unit || !VALID_UNITS_V2.includes(row.quantity_unit))
+        errors.push('Unit must be one of: ' + VALID_UNITS_V2.join(', '));
+    if (!row.storage_location || !row.storage_location.trim()) errors.push('Storage Location is required');
+    if (!row.storage_temperature || !VALID_STORAGE_TEMPS.includes(row.storage_temperature))
+        errors.push('Storage Temperature must be one of: ' + VALID_STORAGE_TEMPS.join(', '));
+    if (!row.sample_status || !VALID_SAMPLE_STATUSES.includes(row.sample_status))
+        errors.push('Sample Status must be one of: ' + VALID_SAMPLE_STATUSES.join(', '));
+    if (row.provider_or_collaborator && !VALID_SAMPLE_PROVIDERS.includes(row.provider_or_collaborator))
+        errors.push('Provider must be one of: ' + VALID_SAMPLE_PROVIDERS.join(', '));
+    // Duplicate check within file
+    if (row.item_identifier && row.item_identifier.trim()) {
+        const id = row.item_identifier.trim().toLowerCase();
+        if (existingIds.has(id)) errors.push('Duplicate Sample ID within file');
+        existingIds.add(id);
+    }
+    let status = 'ready';
+    if (errors.length > 0) status = 'error';
+    else if (!row.provider_or_collaborator || !row.notes) status = 'warning';
+    return { status, errors };
+}
+
+// Generate sample pack identifier: SP-{YYYYMMDD}-{seq}
+async function generateSamplePackId(affiliation) {
+    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const prefix = `SP-${affiliation}-${dateStr}`;
+    const res = await pool.query(
+        `SELECT COUNT(*) as cnt FROM di_sample_packs WHERE pack_identifier LIKE $1`,
+        [prefix + '%']
+    );
+    const seq = parseInt(res.rows[0].cnt) + 1;
+    return `${prefix}-${String(seq).padStart(3, '0')}`;
+}
+
+let _hasSamplePacksTable = null;
+async function checkSamplePacksTable() {
+    if (_hasSamplePacksTable !== null) return _hasSamplePacksTable;
+    try {
+        const r = await pool.query(`SELECT to_regclass('public.di_sample_packs') AS t`);
+        _hasSamplePacksTable = !!r.rows[0].t;
+    } catch { _hasSamplePacksTable = false; }
+    return _hasSamplePacksTable;
+}
+
+// GET /api/di/inventory-v2/sample-pack/template — download NAT-Lab sample template
+app.get('/api/di/inventory-v2/sample-pack/template', requireAuth, requireInternal, async (req, res) => {
+    try {
+        const XLSX = require('xlsx');
+        const wb = XLSX.utils.book_new();
+
+        // Samples sheet with headers and example row
+        const samplesData = [
+            SAMPLE_TEMPLATE_COLUMNS,
+            ['Example Blood Sample', 'S-2026-001', 'Human', 'External collaborator',
+             'Hospital XYZ', '5', 'mL', 'Freezer Room B / Shelf 3',
+             '-80C', 'Fresh', 'Collected 2026-03-01']
+        ];
+        const ws = XLSX.utils.aoa_to_sheet(samplesData);
+        ws['!cols'] = SAMPLE_TEMPLATE_COLUMNS.map(() => ({ wch: 22 }));
+        XLSX.utils.book_append_sheet(wb, ws, 'Samples');
+
+        // Instructions sheet
+        const instrData = [
+            ['NAT-Lab Sample Import Template — Instructions'],
+            [''],
+            ['Column', 'Required', 'Description', 'Valid Values'],
+            ['Sample Name', 'Yes', 'Descriptive name of the sample', ''],
+            ['Sample ID', 'Yes', 'Unique identifier for the sample', ''],
+            ['Sample Origin', 'Yes', 'Source type', VALID_SAMPLE_ORIGINS.join(', ')],
+            ['Provider or Collaborator', 'No', 'Source provider category', VALID_SAMPLE_PROVIDERS.join(', ')],
+            ['Provider Detail', 'No', 'Specific provider name or detail', ''],
+            ['Quantity', 'Yes', 'Numeric amount', 'Positive number'],
+            ['Unit', 'Yes', 'Unit of measurement', VALID_UNITS_V2.join(', ')],
+            ['Storage Location', 'Yes', 'Physical location', ''],
+            ['Storage Temperature', 'Yes', 'Storage temperature', VALID_STORAGE_TEMPS.join(', ')],
+            ['Sample Status', 'Yes', 'Current condition', VALID_SAMPLE_STATUSES.join(', ')],
+            ['Notes', 'No', 'Additional notes', ''],
+        ];
+        const ws2 = XLSX.utils.aoa_to_sheet(instrData);
+        ws2['!cols'] = [{ wch: 26 }, { wch: 10 }, { wch: 40 }, { wch: 50 }];
+        XLSX.utils.book_append_sheet(wb, ws2, 'Instructions');
+
+        const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', 'attachment; filename="NAT-Lab_Sample_Template.xlsx"');
+        res.send(Buffer.from(buf));
+    } catch (err) {
+        console.error('[SAMPLE-PACK] template error:', err);
+        res.status(500).json({ error: 'Failed to generate template' });
+    }
+});
+
+// POST /api/di/inventory-v2/sample-pack/parse — parse Excel, return headers (flexible) or validated rows (template)
+app.post('/api/di/inventory-v2/sample-pack/parse', requireAuth, requireInternal,
+    sampleExcelUpload.single('file'), async (req, res) => {
+    try {
+        if (!await checkSamplePacksTable()) return res.status(503).json({ error: 'Sample pack feature not yet migrated' });
+        if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+        const XLSX = require('xlsx');
+        const wb = XLSX.read(req.file.buffer, { type: 'buffer', raw: false });
+        const mode = req.body.mode; // 'flexible' or 'natlab_template'
+
+        if (mode === 'natlab_template') {
+            // Expect sheet named "Samples" with exact headers
+            const ws = wb.Sheets['Samples'];
+            if (!ws) return res.status(400).json({ error: 'Template must contain a sheet named "Samples"' });
+            const rows = XLSX.utils.sheet_to_json(ws, { defval: null, raw: false });
+            if (rows.length === 0) return res.status(400).json({ error: 'No data rows found in Samples sheet' });
+            if (rows.length > 500) return res.status(400).json({ error: 'Maximum 500 rows allowed' });
+
+            // Map template columns to internal fields
+            const existingIds = new Set();
+            const items = rows.map((r, i) => {
+                const item = {};
+                for (const [col, field] of Object.entries(SAMPLE_FIELD_MAP)) {
+                    item[field] = r[col] != null ? String(r[col]).trim() : '';
+                }
+                const v = validateSampleRow(item, i, existingIds);
+                return { ...item, row_index: i, validation_status: v.status, validation_errors: v.errors };
+            });
+
+            res.json({
+                success: true,
+                mode: 'natlab_template',
+                file_name: req.file.originalname,
+                row_count: items.length,
+                items
+            });
+        } else if (mode === 'flexible') {
+            // Return detected headers from first sheet
+            const sheetName = wb.SheetNames[0];
+            const ws = wb.Sheets[sheetName];
+            if (!ws) return res.status(400).json({ error: 'Workbook has no sheets' });
+            const rows = XLSX.utils.sheet_to_json(ws, { defval: null, raw: false });
+            if (rows.length === 0) return res.status(400).json({ error: 'No data rows found' });
+            if (rows.length > 500) return res.status(400).json({ error: 'Maximum 500 rows allowed' });
+
+            const headers = Object.keys(rows[0]);
+            // Return headers + a few sample rows for preview
+            const previewRows = rows.slice(0, 5).map(r => {
+                const obj = {};
+                headers.forEach(h => { obj[h] = r[h] != null ? String(r[h]) : ''; });
+                return obj;
+            });
+
+            res.json({
+                success: true,
+                mode: 'flexible',
+                file_name: req.file.originalname,
+                row_count: rows.length,
+                headers,
+                preview_rows: previewRows,
+                natlab_fields: Object.keys(SAMPLE_FIELD_MAP).map(col => ({
+                    label: col,
+                    field: SAMPLE_FIELD_MAP[col],
+                    required: ['item_name', 'item_identifier', 'sample_origin', 'quantity',
+                               'quantity_unit', 'storage_location', 'storage_temperature', 'sample_status'].includes(SAMPLE_FIELD_MAP[col])
+                }))
+            });
+        } else {
+            return res.status(400).json({ error: 'mode must be flexible or natlab_template' });
+        }
+    } catch (err) {
+        console.error('[SAMPLE-PACK] parse error:', err);
+        res.status(500).json({ error: 'Failed to parse Excel file' });
+    }
+});
+
+// POST /api/di/inventory-v2/sample-pack/map — apply flexible mapping and return validated rows
+app.post('/api/di/inventory-v2/sample-pack/map', requireAuth, requireInternal,
+    sampleExcelUpload.single('file'), async (req, res) => {
+    try {
+        if (!await checkSamplePacksTable()) return res.status(503).json({ error: 'Sample pack feature not yet migrated' });
+        if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+        const mapping = JSON.parse(req.body.mapping || '{}'); // { excelHeader: natlabField }
+        const XLSX = require('xlsx');
+        const wb = XLSX.read(req.file.buffer, { type: 'buffer', raw: false });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { defval: null, raw: false });
+        if (rows.length === 0) return res.status(400).json({ error: 'No data rows' });
+        if (rows.length > 500) return res.status(400).json({ error: 'Maximum 500 rows allowed' });
+
+        // Validate required fields are mapped
+        const requiredFields = ['item_name', 'item_identifier', 'sample_origin', 'quantity',
+                                'quantity_unit', 'storage_location', 'storage_temperature', 'sample_status'];
+        const mappedFields = Object.values(mapping);
+        const missingRequired = requiredFields.filter(f => !mappedFields.includes(f));
+        if (missingRequired.length > 0) {
+            return res.status(400).json({ error: 'Required fields not mapped: ' + missingRequired.join(', ') });
+        }
+
+        // Build reverse mapping: natlabField -> excelHeader
+        const reverseMap = {};
+        for (const [excelHeader, natlabField] of Object.entries(mapping)) {
+            reverseMap[natlabField] = excelHeader;
+        }
+
+        const existingIds = new Set();
+        const items = rows.map((r, i) => {
+            const item = {};
+            for (const [field, excelHeader] of Object.entries(reverseMap)) {
+                item[field] = r[excelHeader] != null ? String(r[excelHeader]).trim() : '';
+            }
+            // Fill unmapped fields with empty
+            Object.values(SAMPLE_FIELD_MAP).forEach(f => { if (!(f in item)) item[f] = ''; });
+            const v = validateSampleRow(item, i, existingIds);
+            return { ...item, row_index: i, validation_status: v.status, validation_errors: v.errors };
+        });
+
+        res.json({
+            success: true,
+            mode: 'flexible',
+            file_name: req.file.originalname,
+            mapping,
+            row_count: items.length,
+            items
+        });
+    } catch (err) {
+        console.error('[SAMPLE-PACK] map error:', err);
+        res.status(500).json({ error: 'Failed to apply mapping' });
+    }
+});
+
+// POST /api/di/inventory-v2/sample-pack/create — create pack from previewed items (Approve Preview + Submit)
+app.post('/api/di/inventory-v2/sample-pack/create', requireAuth, requireInternal, async (req, res) => {
+    try {
+        if (!await checkSamplePacksTable()) return res.status(503).json({ error: 'Sample pack feature not yet migrated' });
+        const user = req.session.user;
+        const { items, import_mode, source_file_name, column_mapping } = req.body;
+
+        if (!items || !Array.isArray(items) || items.length === 0)
+            return res.status(400).json({ error: 'No items provided' });
+        if (items.length > 500) return res.status(400).json({ error: 'Maximum 500 items' });
+        if (!['flexible', 'natlab_template'].includes(import_mode))
+            return res.status(400).json({ error: 'Invalid import_mode' });
+
+        // Re-validate all items server-side
+        const existingIds = new Set();
+        for (let i = 0; i < items.length; i++) {
+            const v = validateSampleRow(items[i], i, existingIds);
+            if (v.status === 'error') {
+                return res.status(400).json({ error: `Row ${i + 1} has errors: ${v.errors.join('; ')}` });
+            }
+        }
+
+        // Check for duplicate IDs against existing inventory
+        const identifiers = items.map(it => it.item_identifier.trim());
+        const dupCheck = await pool.query(
+            `SELECT item_identifier FROM di_inventory_items
+             WHERE item_type = 'sample' AND affiliation = $1
+               AND LOWER(item_identifier) = ANY($2)
+               AND status NOT IN ('Rejected', 'Deleted')`,
+            [user.affiliation, identifiers.map(id => id.toLowerCase())]
+        );
+        if (dupCheck.rows.length > 0) {
+            const dups = dupCheck.rows.map(r => r.item_identifier);
+            return res.status(409).json({
+                error: 'Duplicate Sample IDs already in inventory: ' + dups.join(', '),
+                duplicates: dups
+            });
+        }
+
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+
+            const packId = await generateSamplePackId(user.affiliation);
+
+            const packResult = await client.query(
+                `INSERT INTO di_sample_packs
+                    (pack_identifier, affiliation, import_mode, source_file_name,
+                     column_mapping, status, sample_count, created_by, previewed_at, submitted_at)
+                 VALUES ($1, $2, $3, $4, $5, 'Submitted', $6, $7, NOW(), NOW())
+                 RETURNING *`,
+                [packId, user.affiliation, import_mode, source_file_name || null,
+                 column_mapping ? JSON.stringify(column_mapping) : null,
+                 items.length, user.researcher_id]
+            );
+            const pack = packResult.rows[0];
+
+            for (let i = 0; i < items.length; i++) {
+                const it = items[i];
+                await client.query(
+                    `INSERT INTO di_sample_pack_items
+                        (pack_id, row_index, item_name, item_identifier, sample_origin,
+                         provider_or_collaborator, provider_detail, quantity, quantity_unit,
+                         storage_location, storage_temperature, sample_status, notes,
+                         validation_status, validation_errors)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+                    [pack.id, i, it.item_name.trim(), it.item_identifier.trim(),
+                     it.sample_origin, it.provider_or_collaborator || null, it.provider_detail || null,
+                     parseFloat(it.quantity), it.quantity_unit,
+                     it.storage_location.trim(), it.storage_temperature,
+                     it.sample_status, it.notes || null,
+                     'ready', '[]']
+                );
+            }
+
+            await client.query('COMMIT');
+            console.log(`[SAMPLE-PACK] Pack ${packId} created by ${user.researcher_id}: ${items.length} samples`);
+            res.json({ success: true, pack });
+        } catch (txErr) {
+            await client.query('ROLLBACK');
+            throw txErr;
+        } finally {
+            client.release();
+        }
+    } catch (err) {
+        console.error('[SAMPLE-PACK] create error:', err);
+        if (err.status) return res.status(err.status).json({ error: err.message });
+        res.status(500).json({ error: err.message || 'Server error' });
+    }
+});
+
+// GET /api/di/inventory-v2/sample-pack/my-packs — researcher's own sample packs
+app.get('/api/di/inventory-v2/sample-pack/my-packs', requireAuth, requireInternal, async (req, res) => {
+    try {
+        if (!await checkSamplePacksTable()) return res.json({ packs: [] });
+        const user = req.session.user;
+        const result = await pool.query(
+            `SELECT * FROM di_sample_packs WHERE created_by = $1 ORDER BY created_at DESC`,
+            [user.researcher_id]
+        );
+        res.json({ success: true, packs: result.rows });
+    } catch (err) {
+        console.error('[SAMPLE-PACK] my-packs error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/di/inventory-v2/sample-pack/all — PI lists all packs for affiliation
+app.get('/api/di/inventory-v2/sample-pack/all', requirePI, async (req, res) => {
+    try {
+        if (!await checkSamplePacksTable()) return res.json({ packs: [] });
+        const user = req.session.user;
+        const result = await pool.query(
+            `SELECT sp.*, a.full_name AS created_by_name
+             FROM di_sample_packs sp
+             LEFT JOIN di_allowlist a ON a.researcher_id = sp.created_by
+             WHERE sp.affiliation = $1
+             ORDER BY sp.created_at DESC`,
+            [user.affiliation]
+        );
+        res.json({ success: true, packs: result.rows });
+    } catch (err) {
+        console.error('[SAMPLE-PACK] all packs error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/di/inventory-v2/sample-pack/:id — pack detail with items
+app.get('/api/di/inventory-v2/sample-pack/:id', requireAuth, requireInternal, async (req, res) => {
+    try {
+        if (!await checkSamplePacksTable()) return res.status(404).json({ error: 'Not found' });
+        const { id } = req.params;
+        const packResult = await pool.query(
+            `SELECT sp.*, a.full_name AS created_by_name
+             FROM di_sample_packs sp
+             LEFT JOIN di_allowlist a ON a.researcher_id = sp.created_by
+             WHERE sp.id = $1`, [id]);
+        if (packResult.rows.length === 0) return res.status(404).json({ error: 'Pack not found' });
+        const pack = packResult.rows[0];
+
+        const itemsResult = await pool.query(
+            `SELECT * FROM di_sample_pack_items WHERE pack_id = $1 ORDER BY row_index`, [id]);
+
+        res.json({ success: true, pack, items: itemsResult.rows });
+    } catch (err) {
+        console.error('[SAMPLE-PACK] detail error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/di/inventory-v2/sample-pack/:id/approve — PI approves pack, inserts samples into inventory
+app.post('/api/di/inventory-v2/sample-pack/:id/approve', requirePI, async (req, res) => {
+    try {
+        if (!await checkSamplePacksTable()) return res.status(503).json({ error: 'Not migrated' });
+        const { id } = req.params;
+        const user = req.session.user;
+
+        const packResult = await pool.query('SELECT * FROM di_sample_packs WHERE id = $1', [id]);
+        if (packResult.rows.length === 0) return res.status(404).json({ error: 'Pack not found' });
+        const pack = packResult.rows[0];
+        if (pack.status !== 'Submitted') return res.status(400).json({ error: 'Pack is not in Submitted status' });
+        if (pack.affiliation !== user.affiliation) return res.status(403).json({ error: 'Wrong affiliation' });
+
+        const itemsResult = await pool.query(
+            'SELECT * FROM di_sample_pack_items WHERE pack_id = $1 ORDER BY row_index', [id]);
+        const items = itemsResult.rows;
+
+        // Re-check for duplicate Sample IDs at approval time (may have appeared since submission)
+        const identifiers = items.map(it => (it.item_identifier || '').trim().toLowerCase()).filter(Boolean);
+        if (identifiers.length > 0) {
+            const dupCheck = await pool.query(
+                `SELECT item_identifier FROM di_inventory_items
+                 WHERE item_type = 'sample' AND affiliation = $1
+                   AND LOWER(item_identifier) = ANY($2)
+                   AND status NOT IN ('Rejected', 'Deleted')`,
+                [pack.affiliation, identifiers]
+            );
+            if (dupCheck.rows.length > 0) {
+                const dups = dupCheck.rows.map(r => r.item_identifier);
+                return res.status(409).json({
+                    error: 'Cannot approve: duplicate Sample IDs now exist in inventory: ' + dups.join(', '),
+                    duplicates: dups
+                });
+            }
+        }
+
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+
+            for (const item of items) {
+                const invResult = await client.query(
+                    `INSERT INTO di_inventory_items (
+                        affiliation, item_type, source, item_name, item_identifier,
+                        quantity, quantity_unit, storage_location, storage_temperature,
+                        sample_origin, provider_or_collaborator, provider_detail, sample_status,
+                        notes, visibility_scope, created_by, status, owner_type
+                    ) VALUES ($1, 'sample', 'Offline', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'personal', $13, 'Approved', 'group')
+                    RETURNING id`,
+                    [pack.affiliation, item.item_name, item.item_identifier,
+                     item.quantity, item.quantity_unit, item.storage_location, item.storage_temperature,
+                     item.sample_origin, item.provider_or_collaborator, item.provider_detail,
+                     item.sample_status, item.notes, pack.created_by]
+                );
+                const invId = invResult.rows[0].id;
+
+                await client.query(
+                    `UPDATE di_sample_pack_items SET inventory_item_id = $1 WHERE id = $2`,
+                    [invId, item.id]
+                );
+
+                await client.query(
+                    `INSERT INTO di_inventory_items_log (inventory_item_id, action, changed_by, new_values)
+                     VALUES ($1, 'CREATE_FROM_PACK', $2, $3)`,
+                    [invId, user.researcher_id, JSON.stringify({ pack_id: pack.id, pack_identifier: pack.pack_identifier })]
+                );
+            }
+
+            await client.query(
+                `UPDATE di_sample_packs SET status = 'Approved', decided_by = $1, decided_at = NOW(), updated_at = NOW() WHERE id = $2`,
+                [user.researcher_id, id]
+            );
+
+            await client.query('COMMIT');
+            console.log(`[SAMPLE-PACK] Pack ${pack.pack_identifier} approved by ${user.researcher_id}: ${items.length} samples inserted`);
+            res.json({ success: true, inserted_count: items.length });
+        } catch (txErr) {
+            await client.query('ROLLBACK');
+            throw txErr;
+        } finally {
+            client.release();
+        }
+    } catch (err) {
+        console.error('[SAMPLE-PACK] approve error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/di/inventory-v2/sample-pack/:id/revision — PI requests revision
+app.post('/api/di/inventory-v2/sample-pack/:id/revision', requirePI, async (req, res) => {
+    try {
+        if (!await checkSamplePacksTable()) return res.status(503).json({ error: 'Not migrated' });
+        const { id } = req.params;
+        const user = req.session.user;
+        const { comment } = req.body;
+        if (!comment || !comment.trim()) return res.status(400).json({ error: 'Comment is required' });
+
+        const packResult = await pool.query('SELECT * FROM di_sample_packs WHERE id = $1', [id]);
+        if (packResult.rows.length === 0) return res.status(404).json({ error: 'Pack not found' });
+        if (packResult.rows[0].status !== 'Submitted') return res.status(400).json({ error: 'Pack is not in Submitted status' });
+        if (packResult.rows[0].affiliation !== user.affiliation) return res.status(403).json({ error: 'Wrong affiliation' });
+
+        await pool.query(
+            `UPDATE di_sample_packs SET status = 'Revision', status_comment = $1, decided_by = $2, decided_at = NOW(), updated_at = NOW() WHERE id = $3`,
+            [comment.trim(), user.researcher_id, id]
+        );
+        console.log(`[SAMPLE-PACK] Pack ${packResult.rows[0].pack_identifier} revision requested by ${user.researcher_id}`);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[SAMPLE-PACK] revision error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/di/inventory-v2/sample-pack/:id/reject — PI rejects pack
+app.post('/api/di/inventory-v2/sample-pack/:id/reject', requirePI, async (req, res) => {
+    try {
+        if (!await checkSamplePacksTable()) return res.status(503).json({ error: 'Not migrated' });
+        const { id } = req.params;
+        const user = req.session.user;
+        const { comment } = req.body;
+        if (!comment || !comment.trim()) return res.status(400).json({ error: 'Rejection reason is required' });
+
+        const packResult = await pool.query('SELECT * FROM di_sample_packs WHERE id = $1', [id]);
+        if (packResult.rows.length === 0) return res.status(404).json({ error: 'Pack not found' });
+        if (packResult.rows[0].status !== 'Submitted') return res.status(400).json({ error: 'Pack is not in Submitted status' });
+        if (packResult.rows[0].affiliation !== user.affiliation) return res.status(403).json({ error: 'Wrong affiliation' });
+
+        await pool.query(
+            `UPDATE di_sample_packs SET status = 'Rejected', status_comment = $1, decided_by = $2, decided_at = NOW(), updated_at = NOW() WHERE id = $3`,
+            [comment.trim(), user.researcher_id, id]
+        );
+        console.log(`[SAMPLE-PACK] Pack ${packResult.rows[0].pack_identifier} rejected by ${user.researcher_id}`);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[SAMPLE-PACK] reject error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+
+// =====================================================================
 // OLIGO INVENTORY — researcher/supervisor read-only browse + refs
 // =====================================================================
 

@@ -1639,62 +1639,158 @@
                     </div>
                     <!-- Sample offline form -->
                     <div id="offSampleForm" style="display:none;">
-                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;">
-                            <div><label class="off-label">Sample Name *</label><input type="text" id="offSampName" class="off-input" placeholder="e.g. Patient Blood Sample #12"></div>
-                            <div><label class="off-label">Sample ID *</label><input type="text" id="offSampId" class="off-input" placeholder="e.g. S-2026-001"></div>
-                            <div><label class="off-label">Sample Origin *</label>
-                                <select id="offSampOrigin" class="off-input">
-                                    <option value="">Select...</option>
-                                    <option value="Human">Human</option><option value="Animal">Animal</option>
-                                    <option value="Cell culture">Cell culture</option><option value="Environmental">Environmental</option>
-                                    <option value="Synthetic">Synthetic</option><option value="Other">Other</option>
-                                </select>
-                            </div>
-                            <div><label class="off-label">Provider / Collaborator</label>
-                                <select id="offSampProvider" class="off-input" onchange="toggleProviderDetail()">
-                                    <option value="">Select...</option>
-                                    <option value="Internal NAT Lab">Internal NAT Lab</option>
-                                    <option value="External collaborator">External collaborator</option>
-                                    <option value="Commercial source">Commercial source</option>
-                                    <option value="Clinical source">Clinical source</option>
-                                    <option value="Other">Other</option>
-                                </select>
-                            </div>
-                            <div id="providerDetailRow" style="display:none;"><label class="off-label">Provider Detail</label><input type="text" id="offSampProviderDetail" class="off-input" placeholder="Specify..."></div>
-                            <div style="display:flex;gap:8px;">
-                                <div style="flex:1;"><label class="off-label">Quantity *</label><input type="number" id="offSampQty" class="off-input" min="0.01" step="0.01"></div>
-                                <div style="flex:1;"><label class="off-label">Unit *</label>
-                                    <select id="offSampUnit" class="off-input">
+                        <!-- Mode selector buttons -->
+                        <div style="display:flex;gap:8px;margin-bottom:12px;">
+                            <button class="btn btn-sm" id="spBtnSingle" onclick="spSwitchMode('single')" style="padding:6px 14px;background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7;border-radius:6px;cursor:pointer;font-weight:600;">Add Single Sample</button>
+                            <button class="btn btn-sm" id="spBtnImport" onclick="spSwitchMode('import')" style="padding:6px 14px;background:#fff;color:#555;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-weight:500;">Import Multiple Samples</button>
+                        </div>
+
+                        <!-- Single sample form (existing) -->
+                        <div id="spSingleForm">
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;">
+                                <div><label class="off-label">Sample Name *</label><input type="text" id="offSampName" class="off-input" placeholder="e.g. Patient Blood Sample #12"></div>
+                                <div><label class="off-label">Sample ID *</label><input type="text" id="offSampId" class="off-input" placeholder="e.g. S-2026-001"></div>
+                                <div><label class="off-label">Sample Origin *</label>
+                                    <select id="offSampOrigin" class="off-input">
                                         <option value="">Select...</option>
-                                        <option value="uL">uL</option><option value="mL">mL</option>
-                                        <option value="mg">mg</option><option value="g">g</option>
-                                        <option value="aliquots">Number of aliquots</option><option value="slides">Slides</option>
-                                        <option value="tube">tube</option><option value="vial">vial</option>
-                                        <option value="each">each</option><option value="other">other</option>
+                                        <option value="Human">Human</option><option value="Animal">Animal</option>
+                                        <option value="Cell culture">Cell culture</option><option value="Environmental">Environmental</option>
+                                        <option value="Synthetic">Synthetic</option><option value="Other">Other</option>
+                                    </select>
+                                </div>
+                                <div><label class="off-label">Provider / Collaborator</label>
+                                    <select id="offSampProvider" class="off-input" onchange="toggleProviderDetail()">
+                                        <option value="">Select...</option>
+                                        <option value="Internal NAT Lab">Internal NAT Lab</option>
+                                        <option value="External collaborator">External collaborator</option>
+                                        <option value="Commercial source">Commercial source</option>
+                                        <option value="Clinical source">Clinical source</option>
+                                        <option value="Other">Other</option>
+                                    </select>
+                                </div>
+                                <div id="providerDetailRow" style="display:none;"><label class="off-label">Provider Detail</label><input type="text" id="offSampProviderDetail" class="off-input" placeholder="Specify..."></div>
+                                <div style="display:flex;gap:8px;">
+                                    <div style="flex:1;"><label class="off-label">Quantity *</label><input type="number" id="offSampQty" class="off-input" min="0.01" step="0.01"></div>
+                                    <div style="flex:1;"><label class="off-label">Unit *</label>
+                                        <select id="offSampUnit" class="off-input">
+                                            <option value="">Select...</option>
+                                            <option value="uL">uL</option><option value="mL">mL</option>
+                                            <option value="mg">mg</option><option value="g">g</option>
+                                            <option value="aliquots">Number of aliquots</option><option value="slides">Slides</option>
+                                            <option value="tube">tube</option><option value="vial">vial</option>
+                                            <option value="each">each</option><option value="other">other</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div style="display:flex;gap:8px;">
+                                    <div style="flex:1;"><label class="off-label">Storage Location *</label><input type="text" id="offSampLoc" class="off-input" placeholder="Room/Shelf"></div>
+                                    <div style="flex:1;"><label class="off-label">Storage Temp *</label>
+                                        <select id="offSampTemp" class="off-input">
+                                            <option value="RT">RT</option><option value="4C">4C</option>
+                                            <option value="-20C">-20C</option><option value="-80C">-80C</option>
+                                            <option value="LN2">Liquid nitrogen</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div><label class="off-label">Sample Status *</label>
+                                    <select id="offSampStatus" class="off-input">
+                                        <option value="">Select...</option>
+                                        <option value="Fresh">Fresh</option><option value="Aliquoted">Aliquoted</option>
+                                        <option value="In use">In use</option><option value="Archived">Archived</option>
+                                        <option value="Near depletion">Near depletion</option>
                                     </select>
                                 </div>
                             </div>
-                            <div style="display:flex;gap:8px;">
-                                <div style="flex:1;"><label class="off-label">Storage Location *</label><input type="text" id="offSampLoc" class="off-input" placeholder="Room/Shelf"></div>
-                                <div style="flex:1;"><label class="off-label">Storage Temp *</label>
-                                    <select id="offSampTemp" class="off-input">
-                                        <option value="RT">RT</option><option value="4C">4C</option>
-                                        <option value="-20C">-20C</option><option value="-80C">-80C</option>
-                                        <option value="LN2">Liquid nitrogen</option>
-                                    </select>
+                            <div style="margin-top:8px;"><label class="off-label">Notes</label><textarea id="offSampNotes" class="off-input" rows="2" style="resize:vertical;"></textarea></div>
+                            <button class="btn btn-sm btn-success" onclick="submitOfflineSample()" style="margin-top:10px;">Add Sample</button>
+                        </div>
+
+                        <!-- Import Multiple Samples panel -->
+                        <div id="spImportPanel" style="display:none;">
+                            <div id="spImportMsg" class="message" style="display:none;"></div>
+
+                            <!-- Step 0: Choose import mode -->
+                            <div id="spStep0" style="display:flex;gap:16px;flex-wrap:wrap;">
+                                <div onclick="spChooseImportMode('flexible')" style="flex:1;min-width:220px;border:2px solid #ddd;border-radius:10px;padding:16px;cursor:pointer;transition:border-color .2s,box-shadow .2s;" onmouseover="this.style.borderColor='#66bb6a';this.style.boxShadow='0 2px 8px rgba(102,187,106,.2)'" onmouseout="this.style.borderColor='#ddd';this.style.boxShadow='none'">
+                                    <div style="font-size:15px;font-weight:600;color:#2e7d32;margin-bottom:6px;">Flexible Import</div>
+                                    <div style="font-size:12px;color:#666;">Upload your own Excel file and match the columns to NAT-Lab sample fields.</div>
+                                </div>
+                                <div onclick="spChooseImportMode('natlab_template')" style="flex:1;min-width:220px;border:2px solid #ddd;border-radius:10px;padding:16px;cursor:pointer;transition:border-color .2s,box-shadow .2s;" onmouseover="this.style.borderColor='#1976d2';this.style.boxShadow='0 2px 8px rgba(25,118,210,.2)'" onmouseout="this.style.borderColor='#ddd';this.style.boxShadow='none'">
+                                    <div style="font-size:15px;font-weight:600;color:#1565c0;margin-bottom:6px;">NAT-Lab Import</div>
+                                    <div style="font-size:12px;color:#666;">Use the official NAT-Lab Excel template. Upload directly without column mapping.</div>
                                 </div>
                             </div>
-                            <div><label class="off-label">Sample Status *</label>
-                                <select id="offSampStatus" class="off-input">
-                                    <option value="">Select...</option>
-                                    <option value="Fresh">Fresh</option><option value="Aliquoted">Aliquoted</option>
-                                    <option value="In use">In use</option><option value="Archived">Archived</option>
-                                    <option value="Near depletion">Near depletion</option>
-                                </select>
+
+                            <!-- Step 1: Flexible — upload file -->
+                            <div id="spStepFlexUpload" style="display:none;">
+                                <div style="font-size:13px;font-weight:600;color:#2e7d32;margin-bottom:8px;">Step 1: Upload your Excel file (.xlsx)</div>
+                                <input type="file" id="spFlexFile" accept=".xlsx" style="font-size:12px;">
+                                <button class="btn btn-sm" onclick="spParseFlexible()" style="margin-top:8px;padding:5px 14px;background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7;border-radius:6px;cursor:pointer;">Upload &amp; Detect Columns</button>
+                                <button class="btn btn-sm" onclick="spReset()" style="margin-top:8px;margin-left:6px;padding:5px 10px;background:#fff;color:#999;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:11px;">Back</button>
+                            </div>
+
+                            <!-- Step 2: Flexible — column mapping -->
+                            <div id="spStepFlexMap" style="display:none;">
+                                <div style="font-size:13px;font-weight:600;color:#2e7d32;margin-bottom:8px;">Step 2: Match your columns to NAT-Lab fields</div>
+                                <div style="font-size:11px;color:#888;margin-bottom:8px;">File: <span id="spFlexFileName"></span> &mdash; <span id="spFlexRowCount"></span> rows detected</div>
+                                <div id="spMappingGrid" style="display:grid;grid-template-columns:1fr auto 1fr;gap:6px 10px;align-items:center;max-width:600px;"></div>
+                                <div style="margin-top:10px;">
+                                    <button class="btn btn-sm" onclick="spApplyMapping()" style="padding:5px 14px;background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7;border-radius:6px;cursor:pointer;">Apply Mapping &amp; Validate</button>
+                                    <button class="btn btn-sm" onclick="spReset()" style="margin-left:6px;padding:5px 10px;background:#fff;color:#999;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:11px;">Back</button>
+                                </div>
+                            </div>
+
+                            <!-- Step 1b: NAT-Lab template — download + upload -->
+                            <div id="spStepNatlab" style="display:none;">
+                                <div style="font-size:13px;font-weight:600;color:#1565c0;margin-bottom:8px;">NAT-Lab Template Import</div>
+                                <div style="margin-bottom:12px;">
+                                    <button class="btn btn-sm" onclick="spDownloadTemplate()" style="padding:5px 14px;background:#e3f2fd;color:#1565c0;border:1px solid #90caf9;border-radius:6px;cursor:pointer;font-weight:500;">Download NAT-Lab Sample Template</button>
+                                </div>
+                                <div style="font-size:12px;color:#666;margin-bottom:8px;">Fill the template offline, then upload the completed file:</div>
+                                <input type="file" id="spNatlabFile" accept=".xlsx" style="font-size:12px;">
+                                <button class="btn btn-sm" onclick="spParseNatlab()" style="margin-top:8px;padding:5px 14px;background:#e3f2fd;color:#1565c0;border:1px solid #90caf9;border-radius:6px;cursor:pointer;">Upload &amp; Validate</button>
+                                <button class="btn btn-sm" onclick="spReset()" style="margin-top:8px;margin-left:6px;padding:5px 10px;background:#fff;color:#999;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:11px;">Back</button>
+                            </div>
+
+                            <!-- Step 3: Preview table (shared by both modes) -->
+                            <div id="spStepPreview" style="display:none;">
+                                <!-- Import Summary panel -->
+                                <div id="spSummaryPanel" style="border:1px solid #e0e0e0;border-radius:8px;padding:12px 16px;margin-bottom:12px;background:#fafafa;">
+                                    <div style="font-size:13px;font-weight:600;color:#333;margin-bottom:8px;">Import Summary</div>
+                                    <div style="display:flex;gap:20px;flex-wrap:wrap;font-size:12px;margin-bottom:8px;">
+                                        <div>Rows detected: <strong id="spSumTotal">0</strong></div>
+                                        <div>Ready: <strong id="spSumReady" style="color:#28a745;">0</strong></div>
+                                        <div>Warnings: <strong id="spSumWarnings" style="color:#f9a825;">0</strong></div>
+                                        <div>Errors: <strong id="spSumErrors" style="color:#dc3545;">0</strong></div>
+                                    </div>
+                                    <div id="spSumMessage" style="font-size:11px;padding:6px 10px;border-radius:5px;"></div>
+                                </div>
+                                <!-- Row filter buttons -->
+                                <div style="display:flex;gap:6px;margin-bottom:8px;">
+                                    <button class="btn btn-sm" id="spFilterAll" onclick="spFilterRows('all')" style="padding:3px 10px;font-size:11px;background:#e8e8e8;color:#333;border:1px solid #ccc;border-radius:5px;cursor:pointer;font-weight:600;">Show All</button>
+                                    <button class="btn btn-sm" id="spFilterReady" onclick="spFilterRows('ready')" style="padding:3px 10px;font-size:11px;background:#fff;color:#28a745;border:1px solid #a5d6a7;border-radius:5px;cursor:pointer;">Ready</button>
+                                    <button class="btn btn-sm" id="spFilterWarning" onclick="spFilterRows('warning')" style="padding:3px 10px;font-size:11px;background:#fff;color:#f9a825;border:1px solid #ffe082;border-radius:5px;cursor:pointer;">Warnings</button>
+                                    <button class="btn btn-sm" id="spFilterError" onclick="spFilterRows('error')" style="padding:3px 10px;font-size:11px;background:#fff;color:#dc3545;border:1px solid #f5c6cb;border-radius:5px;cursor:pointer;">Errors</button>
+                                </div>
+                                <div style="max-height:400px;overflow:auto;border:1px solid #e0e0e0;border-radius:6px;">
+                                    <table style="width:100%;border-collapse:collapse;font-size:11px;">
+                                        <thead id="spPreviewHead" style="position:sticky;top:0;background:#f5f5f5;"></thead>
+                                        <tbody id="spPreviewBody"></tbody>
+                                    </table>
+                                </div>
+                                <div style="margin-top:12px;display:flex;gap:8px;align-items:center;">
+                                    <button class="btn btn-sm" id="spBtnApprove" onclick="spApprovePreview()" style="padding:6px 16px;background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7;border-radius:6px;cursor:pointer;font-weight:600;" disabled>Approve Preview</button>
+                                    <button class="btn btn-sm" id="spBtnSubmit" onclick="spSubmitPack()" style="padding:6px 16px;background:#c8e6c9;color:#1b5e20;border:1px solid #81c784;border-radius:6px;cursor:pointer;font-weight:600;display:none;">Submit Sample Pack for Review</button>
+                                    <button class="btn btn-sm" onclick="spReset()" style="padding:5px 10px;background:#fff;color:#999;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:11px;">Start Over</button>
+                                </div>
+                            </div>
+
+                            <!-- My Sample Packs list -->
+                            <div id="spMyPacks" style="margin-top:16px;border-top:1px solid #eee;padding-top:12px;">
+                                <div style="font-size:12px;font-weight:600;color:#555;margin-bottom:6px;">My Sample Packs</div>
+                                <div id="spMyPacksBody" style="font-size:11px;color:#888;">Loading...</div>
                             </div>
                         </div>
-                        <div style="margin-top:8px;"><label class="off-label">Notes</label><textarea id="offSampNotes" class="off-input" rows="2" style="resize:vertical;"></textarea></div>
-                        <button class="btn btn-sm btn-success" onclick="submitOfflineSample()" style="margin-top:10px;">Add Sample</button>
                     </div>
                     <!-- Oligo offline form -->
                     <div id="offOligoForm" style="display:none;">
@@ -4134,6 +4230,349 @@ credentials: 'include'
         }
 
         function showMsg(el, msg) { el.className = 'message error show'; el.style.display = 'block'; el.textContent = msg; }
+
+        // =====================================================
+        // SAMPLE PACK IMPORT (sp* prefix) — sample-only
+        // =====================================================
+
+        let spCurrentMode = null;       // 'flexible' | 'natlab_template'
+        let spParsedItems = [];          // validated items from server
+        let spFlexFile = null;           // stored File for re-upload during mapping
+        let spFlexHeaders = [];          // detected Excel headers
+        let spNatlabFields = [];         // NAT-Lab field descriptors
+        let spPreviewApproved = false;
+        let spColumnMapping = {};
+
+        function spSwitchMode(mode) {
+            const single = document.getElementById('spSingleForm');
+            const imp = document.getElementById('spImportPanel');
+            const btnS = document.getElementById('spBtnSingle');
+            const btnI = document.getElementById('spBtnImport');
+            if (mode === 'single') {
+                single.style.display = 'block'; imp.style.display = 'none';
+                btnS.style.background = '#e8f5e9'; btnS.style.color = '#2e7d32'; btnS.style.borderColor = '#a5d6a7'; btnS.style.fontWeight = '600';
+                btnI.style.background = '#fff'; btnI.style.color = '#555'; btnI.style.borderColor = '#ddd'; btnI.style.fontWeight = '500';
+            } else {
+                single.style.display = 'none'; imp.style.display = 'block';
+                btnI.style.background = '#e8f5e9'; btnI.style.color = '#2e7d32'; btnI.style.borderColor = '#a5d6a7'; btnI.style.fontWeight = '600';
+                btnS.style.background = '#fff'; btnS.style.color = '#555'; btnS.style.borderColor = '#ddd'; btnS.style.fontWeight = '500';
+                spReset();
+                spLoadMyPacks();
+            }
+        }
+
+        function spReset() {
+            spCurrentMode = null; spParsedItems = []; spFlexFile = null; spPreviewApproved = false; spColumnMapping = {};
+            ['spStep0','spStepFlexUpload','spStepFlexMap','spStepNatlab','spStepPreview'].forEach(id => {
+                document.getElementById(id).style.display = 'none';
+            });
+            document.getElementById('spStep0').style.display = 'flex';
+            const msg = document.getElementById('spImportMsg');
+            msg.style.display = 'none'; msg.textContent = '';
+        }
+
+        function spShowMsg(text, type) {
+            const el = document.getElementById('spImportMsg');
+            el.className = 'message ' + (type || 'error') + ' show';
+            el.style.display = 'block'; el.textContent = text;
+        }
+
+        function spChooseImportMode(mode) {
+            spCurrentMode = mode;
+            document.getElementById('spStep0').style.display = 'none';
+            if (mode === 'flexible') {
+                document.getElementById('spStepFlexUpload').style.display = 'block';
+            } else {
+                document.getElementById('spStepNatlab').style.display = 'block';
+            }
+        }
+
+        function spDownloadTemplate() {
+            window.open('/api/di/inventory-v2/sample-pack/template', '_blank');
+        }
+
+        async function spParseFlexible() {
+            const fileInput = document.getElementById('spFlexFile');
+            if (!fileInput.files.length) { spShowMsg('Please select an Excel file.'); return; }
+            spFlexFile = fileInput.files[0];
+
+            const formData = new FormData();
+            formData.append('file', spFlexFile);
+            formData.append('mode', 'flexible');
+
+            try {
+                spShowMsg('Parsing file...', 'info');
+                const resp = await fetch('/api/di/inventory-v2/sample-pack/parse', {
+                    method: 'POST', body: formData, credentials: 'include'
+                });
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data.error || 'Parse failed');
+
+                spFlexHeaders = data.headers;
+                spNatlabFields = data.natlab_fields;
+
+                // Build mapping grid
+                const grid = document.getElementById('spMappingGrid');
+                grid.innerHTML = '<div style="font-weight:600;font-size:11px;color:#555;">NAT-Lab Field</div><div></div><div style="font-weight:600;font-size:11px;color:#555;">Your Column</div>';
+                spNatlabFields.forEach(f => {
+                    const label = f.label + (f.required ? ' *' : '');
+                    grid.innerHTML += `<div style="font-size:12px;${f.required ? 'font-weight:600;' : ''}">${label}</div>
+                        <div style="color:#999;font-size:11px;">&larr;</div>
+                        <select id="spMap_${f.field}" class="off-input" style="font-size:11px;padding:3px 6px;">
+                            <option value="">— skip —</option>
+                            ${spFlexHeaders.map(h => `<option value="${h}">${h}</option>`).join('')}
+                        </select>`;
+                });
+
+                // Auto-match by fuzzy name
+                spNatlabFields.forEach(f => {
+                    const sel = document.getElementById('spMap_' + f.field);
+                    const labelLow = f.label.toLowerCase().replace(/[^a-z]/g, '');
+                    for (const h of spFlexHeaders) {
+                        const hLow = h.toLowerCase().replace(/[^a-z]/g, '');
+                        if (hLow === labelLow || hLow.includes(labelLow) || labelLow.includes(hLow)) {
+                            sel.value = h; break;
+                        }
+                    }
+                });
+
+                document.getElementById('spFlexFileName').textContent = data.file_name;
+                document.getElementById('spFlexRowCount').textContent = data.row_count;
+                document.getElementById('spStepFlexUpload').style.display = 'none';
+                document.getElementById('spStepFlexMap').style.display = 'block';
+                document.getElementById('spImportMsg').style.display = 'none';
+            } catch (err) { spShowMsg('Error: ' + err.message); }
+        }
+
+        async function spApplyMapping() {
+            // Build mapping from dropdowns
+            const mapping = {};
+            spNatlabFields.forEach(f => {
+                const sel = document.getElementById('spMap_' + f.field);
+                if (sel && sel.value) mapping[sel.value] = f.field;
+            });
+
+            // Check required fields are mapped
+            const mapped = Object.values(mapping);
+            const missing = spNatlabFields.filter(f => f.required && !mapped.includes(f.field));
+            if (missing.length > 0) {
+                spShowMsg('Required fields not mapped: ' + missing.map(f => f.label).join(', '));
+                return;
+            }
+
+            spColumnMapping = mapping;
+
+            const formData = new FormData();
+            formData.append('file', spFlexFile);
+            formData.append('mode', 'flexible');
+            formData.append('mapping', JSON.stringify(mapping));
+
+            try {
+                spShowMsg('Validating rows...', 'info');
+                const resp = await fetch('/api/di/inventory-v2/sample-pack/map', {
+                    method: 'POST', body: formData, credentials: 'include'
+                });
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data.error || 'Mapping failed');
+
+                spParsedItems = data.items;
+                spRenderPreview();
+                document.getElementById('spStepFlexMap').style.display = 'none';
+                document.getElementById('spStepPreview').style.display = 'block';
+                document.getElementById('spImportMsg').style.display = 'none';
+            } catch (err) { spShowMsg('Error: ' + err.message); }
+        }
+
+        async function spParseNatlab() {
+            const fileInput = document.getElementById('spNatlabFile');
+            if (!fileInput.files.length) { spShowMsg('Please select the completed template file.'); return; }
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            formData.append('mode', 'natlab_template');
+
+            try {
+                spShowMsg('Validating template...', 'info');
+                const resp = await fetch('/api/di/inventory-v2/sample-pack/parse', {
+                    method: 'POST', body: formData, credentials: 'include'
+                });
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data.error || 'Parse failed');
+
+                spParsedItems = data.items;
+                spCurrentMode = 'natlab_template';
+                spRenderPreview();
+                document.getElementById('spStepNatlab').style.display = 'none';
+                document.getElementById('spStepPreview').style.display = 'block';
+                document.getElementById('spImportMsg').style.display = 'none';
+            } catch (err) { spShowMsg('Error: ' + err.message); }
+        }
+
+        let spActiveFilter = 'all';
+
+        function spBuildRowHtml(it, i) {
+            const statusColors = { ready: '#28a745', warning: '#ffc107', error: '#dc3545' };
+            const statusLabels = { ready: 'Ready', warning: 'Warning', error: 'Error' };
+            const bg = it.validation_status === 'error' ? '#fff5f5' : it.validation_status === 'warning' ? '#fffde7' : '#f9fff9';
+            const errTip = it.validation_errors && it.validation_errors.length > 0
+                ? ' title="' + it.validation_errors.join('; ').replace(/"/g, '&quot;') + '"' : '';
+            return `<tr data-sp-status="${it.validation_status}" style="background:${bg};">
+                <td style="padding:3px 6px;font-size:11px;">${i + 1}</td>
+                <td style="padding:3px 6px;"><span style="padding:1px 6px;border-radius:8px;font-size:10px;color:#fff;background:${statusColors[it.validation_status]};"${errTip}>${statusLabels[it.validation_status]}</span></td>
+                <td style="padding:3px 6px;font-size:11px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${(it.item_name||'').replace(/"/g,'&quot;')}">${it.item_name || ''}</td>
+                <td style="padding:3px 6px;font-size:11px;">${it.item_identifier || ''}</td>
+                <td style="padding:3px 6px;font-size:11px;">${it.sample_origin || ''}</td>
+                <td style="padding:3px 6px;font-size:11px;">${it.provider_or_collaborator || ''}</td>
+                <td style="padding:3px 6px;font-size:11px;">${it.quantity || ''}</td>
+                <td style="padding:3px 6px;font-size:11px;">${it.quantity_unit || ''}</td>
+                <td style="padding:3px 6px;font-size:11px;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${(it.storage_location||'').replace(/"/g,'&quot;')}">${it.storage_location || ''}</td>
+                <td style="padding:3px 6px;font-size:11px;">${it.storage_temperature || ''}</td>
+                <td style="padding:3px 6px;font-size:11px;">${it.sample_status || ''}</td>
+                <td style="padding:3px 6px;font-size:11px;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${(it.notes||'').replace(/"/g,'&quot;')}">${it.notes || ''}</td>
+            </tr>`;
+        }
+
+        function spRenderPreview() {
+            spPreviewApproved = false;
+            spActiveFilter = 'all';
+            document.getElementById('spBtnApprove').disabled = false;
+            document.getElementById('spBtnApprove').style.display = '';
+            document.getElementById('spBtnSubmit').style.display = 'none';
+
+            // Count statuses
+            let readyCount = 0, warnCount = 0, errCount = 0;
+            spParsedItems.forEach(it => {
+                if (it.validation_status === 'ready') readyCount++;
+                else if (it.validation_status === 'warning') warnCount++;
+                else errCount++;
+            });
+            const totalCount = spParsedItems.length;
+
+            // Populate Import Summary panel
+            document.getElementById('spSumTotal').textContent = totalCount;
+            document.getElementById('spSumReady').textContent = readyCount;
+            document.getElementById('spSumWarnings').textContent = warnCount;
+            document.getElementById('spSumErrors').textContent = errCount;
+
+            const msgEl = document.getElementById('spSumMessage');
+            if (errCount > 0) {
+                msgEl.textContent = 'Import blocked. Errors must be corrected or removed before submission.';
+                msgEl.style.background = '#fff5f5'; msgEl.style.color = '#c62828'; msgEl.style.border = '1px solid #f5c6cb';
+            } else if (warnCount > 0) {
+                msgEl.textContent = 'Warnings detected. Review recommended before approving.';
+                msgEl.style.background = '#fffde7'; msgEl.style.color = '#f57f17'; msgEl.style.border = '1px solid #ffe082';
+            } else {
+                msgEl.textContent = 'All samples validated and ready for submission.';
+                msgEl.style.background = '#f1f8e9'; msgEl.style.color = '#2e7d32'; msgEl.style.border = '1px solid #c5e1a5';
+            }
+
+            // Update filter button counts
+            document.getElementById('spFilterAll').textContent = 'Show All (' + totalCount + ')';
+            document.getElementById('spFilterReady').textContent = 'Ready (' + readyCount + ')';
+            document.getElementById('spFilterWarning').textContent = 'Warnings (' + warnCount + ')';
+            document.getElementById('spFilterError').textContent = 'Errors (' + errCount + ')';
+
+            // Render table header
+            const cols = ['#', 'Status', 'Sample Name', 'Sample ID', 'Origin', 'Provider', 'Qty', 'Unit', 'Location', 'Temp', 'Status', 'Notes'];
+            document.getElementById('spPreviewHead').innerHTML = '<tr>' + cols.map(c => `<th style="padding:4px 6px;text-align:left;border-bottom:2px solid #ddd;font-size:10px;white-space:nowrap;">${c}</th>`).join('') + '</tr>';
+
+            // Render all rows
+            document.getElementById('spPreviewBody').innerHTML = spParsedItems.map((it, i) => spBuildRowHtml(it, i)).join('');
+
+            // Set active filter style
+            spUpdateFilterButtons('all');
+
+            // Disable approve if any errors
+            if (errCount > 0) {
+                document.getElementById('spBtnApprove').disabled = true;
+                document.getElementById('spBtnApprove').title = 'Fix all errors before approving';
+            }
+        }
+
+        function spFilterRows(filter) {
+            spActiveFilter = filter;
+            spUpdateFilterButtons(filter);
+            const rows = document.getElementById('spPreviewBody').querySelectorAll('tr[data-sp-status]');
+            rows.forEach(row => {
+                if (filter === 'all') { row.style.display = ''; }
+                else { row.style.display = row.getAttribute('data-sp-status') === filter ? '' : 'none'; }
+            });
+        }
+
+        function spUpdateFilterButtons(active) {
+            const btnMap = { all: 'spFilterAll', ready: 'spFilterReady', warning: 'spFilterWarning', error: 'spFilterError' };
+            const activeStyles = { all: {bg:'#e8e8e8',color:'#333',border:'#bbb'}, ready: {bg:'#e8f5e9',color:'#2e7d32',border:'#a5d6a7'}, warning: {bg:'#fffde7',color:'#f57f17',border:'#ffe082'}, error: {bg:'#fff5f5',color:'#c62828',border:'#f5c6cb'} };
+            const inactiveStyle = {bg:'#fff',border:'#ddd'};
+            const inactiveColors = { all: '#333', ready: '#28a745', warning: '#f9a825', error: '#dc3545' };
+            for (const [key, id] of Object.entries(btnMap)) {
+                const el = document.getElementById(id);
+                if (key === active) {
+                    el.style.background = activeStyles[key].bg; el.style.color = activeStyles[key].color;
+                    el.style.borderColor = activeStyles[key].border; el.style.fontWeight = '600';
+                } else {
+                    el.style.background = inactiveStyle.bg; el.style.color = inactiveColors[key];
+                    el.style.borderColor = inactiveStyle.border; el.style.fontWeight = '';
+                }
+            }
+        }
+
+        function spApprovePreview() {
+            spPreviewApproved = true;
+            document.getElementById('spBtnApprove').style.display = 'none';
+            document.getElementById('spBtnSubmit').style.display = '';
+            spShowMsg('Preview approved. Click "Submit Sample Pack for Review" to finalize.', 'success');
+        }
+
+        async function spSubmitPack() {
+            if (!spPreviewApproved) { spShowMsg('Please approve the preview first.'); return; }
+            if (spParsedItems.length === 0) { spShowMsg('No items to submit.'); return; }
+
+            try {
+                spShowMsg('Submitting sample pack...', 'info');
+                const resp = await fetch('/api/di/inventory-v2/sample-pack/create', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        items: spParsedItems,
+                        import_mode: spCurrentMode,
+                        source_file_name: spFlexFile ? spFlexFile.name : document.getElementById('spNatlabFile')?.files[0]?.name || null,
+                        column_mapping: Object.keys(spColumnMapping).length > 0 ? spColumnMapping : null
+                    }),
+                    credentials: 'include'
+                });
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data.error || 'Submission failed');
+
+                spShowMsg(`Sample pack ${data.pack.pack_identifier} submitted for PI review (${spParsedItems.length} samples).`, 'success');
+                document.getElementById('spBtnSubmit').style.display = 'none';
+                spLoadMyPacks();
+                loadMyInventoryV2('sample');
+            } catch (err) { spShowMsg('Error: ' + err.message); }
+        }
+
+        async function spLoadMyPacks() {
+            const el = document.getElementById('spMyPacksBody');
+            try {
+                const resp = await fetch('/api/di/inventory-v2/sample-pack/my-packs', { credentials: 'include' });
+                const data = await resp.json();
+                if (!resp.ok || !data.packs || data.packs.length === 0) {
+                    el.innerHTML = '<span style="color:#aaa;">No sample packs yet.</span>';
+                    return;
+                }
+                const statusColors = { Draft: '#6c757d', Previewed: '#17a2b8', Submitted: '#ffc107', Approved: '#28a745', Revision: '#fd7e14', Rejected: '#dc3545' };
+                el.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:11px;">' +
+                    '<tr style="background:#f8f9fa;"><th style="padding:3px 6px;text-align:left;">Pack ID</th><th style="padding:3px 6px;">Mode</th><th style="padding:3px 6px;">Samples</th><th style="padding:3px 6px;">Status</th><th style="padding:3px 6px;">Submitted</th></tr>' +
+                    data.packs.map(p => `<tr style="border-bottom:1px solid #eee;">
+                        <td style="padding:3px 6px;font-weight:500;">${p.pack_identifier}</td>
+                        <td style="padding:3px 6px;">${p.import_mode === 'natlab_template' ? 'NAT-Lab' : 'Flexible'}</td>
+                        <td style="padding:3px 6px;text-align:center;">${p.sample_count}</td>
+                        <td style="padding:3px 6px;"><span style="padding:1px 6px;border-radius:8px;font-size:10px;color:#fff;background:${statusColors[p.status] || '#666'};">${p.status}</span>${p.status_comment ? '<br><small style="color:#856404;">' + p.status_comment + '</small>' : ''}</td>
+                        <td style="padding:3px 6px;">${p.submitted_at ? new Date(p.submitted_at).toLocaleDateString() : '-'}</td>
+                    </tr>`).join('') + '</table>';
+            } catch (err) {
+                el.innerHTML = '<span style="color:#dc3545;">Error loading packs</span>';
+            }
+        }
 
         // =====================================================
         // MY INVENTORY V2

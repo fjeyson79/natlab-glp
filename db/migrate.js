@@ -903,6 +903,54 @@ async function migrate() {
              WHERE source_order IS NULL
                AND description ~ 'Created from order'`,
 
+            // ==================== SAMPLE PACK IMPORT (sample-only) ====================
+
+            `CREATE TABLE IF NOT EXISTS di_sample_packs (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                pack_identifier VARCHAR(50) NOT NULL,
+                affiliation VARCHAR(10) NOT NULL CHECK (affiliation IN ('LiU', 'UNAV')),
+                import_mode VARCHAR(20) NOT NULL CHECK (import_mode IN ('flexible', 'natlab_template')),
+                source_file_name VARCHAR(500),
+                source_file_sha256 VARCHAR(64),
+                column_mapping JSONB,
+                status VARCHAR(20) NOT NULL DEFAULT 'Draft' CHECK (status IN ('Draft', 'Previewed', 'Submitted', 'Approved', 'Revision', 'Rejected')),
+                status_comment TEXT,
+                sample_count INTEGER NOT NULL DEFAULT 0,
+                created_by VARCHAR(50) NOT NULL REFERENCES di_allowlist(researcher_id),
+                previewed_at TIMESTAMPTZ,
+                submitted_at TIMESTAMPTZ,
+                decided_by VARCHAR(50),
+                decided_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )`,
+            `CREATE INDEX IF NOT EXISTS idx_di_sample_packs_created_by ON di_sample_packs(created_by)`,
+            `CREATE INDEX IF NOT EXISTS idx_di_sample_packs_status ON di_sample_packs(status)`,
+            `CREATE INDEX IF NOT EXISTS idx_di_sample_packs_affiliation ON di_sample_packs(affiliation)`,
+
+            `CREATE TABLE IF NOT EXISTS di_sample_pack_items (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                pack_id UUID NOT NULL REFERENCES di_sample_packs(id) ON DELETE CASCADE,
+                row_index INTEGER NOT NULL,
+                item_name VARCHAR(500),
+                item_identifier VARCHAR(255),
+                sample_origin VARCHAR(50),
+                provider_or_collaborator VARCHAR(255),
+                provider_detail VARCHAR(255),
+                quantity NUMERIC(10,2),
+                quantity_unit VARCHAR(30),
+                storage_location VARCHAR(255),
+                storage_temperature VARCHAR(20),
+                sample_status VARCHAR(50),
+                notes TEXT,
+                validation_status VARCHAR(10) NOT NULL DEFAULT 'pending' CHECK (validation_status IN ('ready', 'warning', 'error', 'pending')),
+                validation_errors JSONB DEFAULT '[]',
+                inventory_item_id UUID REFERENCES di_inventory_items(id),
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )`,
+            `CREATE INDEX IF NOT EXISTS idx_di_sample_pack_items_pack ON di_sample_pack_items(pack_id)`,
+            `CREATE INDEX IF NOT EXISTS idx_di_sample_pack_items_inv ON di_sample_pack_items(inventory_item_id)`,
+
         ];
 
         for (const sql of migrations) {

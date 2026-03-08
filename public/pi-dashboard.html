@@ -3141,6 +3141,47 @@
                 </div>
             </div>
         </div>
+
+        <!-- Sample Packs Review (sample-only) -->
+        <div class="panel" style="margin-top:20px;">
+            <div class="panel-header">
+                <h2>Sample Pack Review</h2>
+                <button class="btn btn-sm btn-secondary" onclick="piLoadSamplePacks()">Refresh</button>
+            </div>
+            <div class="panel-content">
+                <div style="max-height:500px;overflow-y:auto;">
+                    <table class="data-table" style="font-size:13px;">
+                        <thead>
+                            <tr>
+                                <th>Pack ID</th>
+                                <th>Researcher</th>
+                                <th>Mode</th>
+                                <th>Samples</th>
+                                <th>Status</th>
+                                <th>Submitted</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="piSamplePacksBody">
+                            <tr><td colspan="7" style="text-align:center;color:#999;">Click tab to load data</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <!-- Pack detail drawer -->
+                <div id="piSamplePackDrawer" style="display:none;margin-top:12px;border:1px solid #e0e0e0;border-radius:8px;padding:12px;background:#fafafa;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                        <div style="font-weight:600;font-size:14px;" id="piSpDrawerTitle"></div>
+                        <button class="btn btn-sm" onclick="document.getElementById('piSamplePackDrawer').style.display='none'" style="font-size:11px;padding:2px 8px;background:#eee;border:1px solid #ccc;border-radius:4px;cursor:pointer;">Close</button>
+                    </div>
+                    <div style="max-height:300px;overflow:auto;">
+                        <table class="data-table" style="font-size:12px;width:100%;">
+                            <thead id="piSpDrawerHead"></thead>
+                            <tbody id="piSpDrawerBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- ==================== TRAINING & APPROVALS TAB ==================== -->
@@ -3597,7 +3638,7 @@
 
                   if (tabId === 'lab-files') dicInit();
                   if (tabId === 'glp-console') glpcInit();
-                  if (tabId === 'purchases-inventory') { loadAllPurchaseRequests(); loadAllInventoryV2(); loadPONumbers(); }
+                  if (tabId === 'purchases-inventory') { loadAllPurchaseRequests(); loadAllInventoryV2(); loadPONumbers(); piLoadSamplePacks(); }
                   if (tabId === 'training') { loadTrainingDocuments(); loadPendingTrainingPacks(); loadSealedTrainingPacks(); }
               });
           });
@@ -9975,6 +10016,122 @@ function dicBuildPdfViewerSrc(fileUrl) {
                 }
 
                 targetRow.after(sugRow);
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        // =====================================================
+        // SAMPLE PACK REVIEW (PI — sample-only)
+        // =====================================================
+
+        async function piLoadSamplePacks() {
+            const tbody = document.getElementById('piSamplePacksBody');
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;"><div class="loading"><div class="spinner"></div></div></td></tr>';
+            try {
+                const resp = await fetch('/api/di/inventory-v2/sample-pack/all', { credentials: 'include' });
+                const data = await resp.json();
+                if (!resp.ok || !data.packs || data.packs.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#999;">No sample packs found</td></tr>';
+                    return;
+                }
+                const statusColors = { Draft: '#6c757d', Previewed: '#17a2b8', Submitted: '#ffc107', Approved: '#28a745', Revision: '#fd7e14', Rejected: '#dc3545' };
+                tbody.innerHTML = data.packs.map(p => {
+                    let actions = '';
+                    if (p.status === 'Submitted') {
+                        actions += `<button class="btn btn-sm btn-info" style="color:#fff;" onclick="piViewSamplePack('${p.id}')" title="View samples">View</button> `;
+                        actions += `<button class="btn btn-sm btn-success" onclick="piApproveSamplePack('${p.id}')" title="Accept &amp; insert samples">Accept</button> `;
+                        actions += `<button class="btn btn-sm btn-warning" onclick="piRevisionSamplePack('${p.id}')" title="Revision">Revise</button> `;
+                        actions += `<button class="btn btn-sm btn-danger" onclick="piRejectSamplePack('${p.id}')" title="Discard">Discard</button> `;
+                    } else {
+                        actions += `<button class="btn btn-sm btn-info" style="color:#fff;" onclick="piViewSamplePack('${p.id}')" title="View samples">View</button> `;
+                    }
+                    return `<tr>
+                        <td style="font-weight:600;">${escapeHtml(p.pack_identifier)}</td>
+                        <td>${escapeHtml(p.created_by_name || p.created_by)}</td>
+                        <td>${p.import_mode === 'natlab_template' ? 'NAT-Lab' : 'Flexible'}</td>
+                        <td style="text-align:center;">${p.sample_count}</td>
+                        <td><span style="padding:2px 8px;border-radius:10px;font-size:11px;color:#fff;background:${statusColors[p.status]||'#666'};">${p.status}</span>${p.status_comment ? '<br><small style="color:#856404;">'+escapeHtml(p.status_comment)+'</small>' : ''}</td>
+                        <td>${p.submitted_at ? new Date(p.submitted_at).toLocaleDateString() : '-'}</td>
+                        <td style="white-space:nowrap;">${actions}</td>
+                    </tr>`;
+                }).join('');
+            } catch (err) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#dc3545;">Error loading sample packs</td></tr>';
+            }
+        }
+
+        async function piViewSamplePack(id) {
+            const drawer = document.getElementById('piSamplePackDrawer');
+            drawer.style.display = 'block';
+            document.getElementById('piSpDrawerTitle').textContent = 'Loading...';
+            document.getElementById('piSpDrawerBody').innerHTML = '';
+
+            try {
+                const resp = await fetch(`/api/di/inventory-v2/sample-pack/${id}`, { credentials: 'include' });
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data.error || 'Failed');
+
+                document.getElementById('piSpDrawerTitle').textContent = `${data.pack.pack_identifier} — ${data.items.length} samples (${data.pack.import_mode === 'natlab_template' ? 'NAT-Lab' : 'Flexible'})`;
+
+                const cols = ['#', 'Sample Name', 'Sample ID', 'Origin', 'Provider', 'Qty', 'Unit', 'Location', 'Temp', 'Status', 'Notes'];
+                document.getElementById('piSpDrawerHead').innerHTML = '<tr>' + cols.map(c => `<th style="padding:4px 6px;text-align:left;font-size:11px;">${c}</th>`).join('') + '</tr>';
+
+                document.getElementById('piSpDrawerBody').innerHTML = data.items.map((it, i) => `<tr>
+                    <td style="padding:3px 6px;font-size:11px;">${i + 1}</td>
+                    <td style="padding:3px 6px;font-size:11px;">${escapeHtml(it.item_name || '')}</td>
+                    <td style="padding:3px 6px;font-size:11px;">${escapeHtml(it.item_identifier || '')}</td>
+                    <td style="padding:3px 6px;font-size:11px;">${escapeHtml(it.sample_origin || '')}</td>
+                    <td style="padding:3px 6px;font-size:11px;">${escapeHtml(it.provider_or_collaborator || '')}</td>
+                    <td style="padding:3px 6px;font-size:11px;">${it.quantity}</td>
+                    <td style="padding:3px 6px;font-size:11px;">${escapeHtml(it.quantity_unit || '')}</td>
+                    <td style="padding:3px 6px;font-size:11px;">${escapeHtml(it.storage_location || '')}</td>
+                    <td style="padding:3px 6px;font-size:11px;">${escapeHtml(it.storage_temperature || '')}</td>
+                    <td style="padding:3px 6px;font-size:11px;">${escapeHtml(it.sample_status || '')}</td>
+                    <td style="padding:3px 6px;font-size:11px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(it.notes||'')}">${escapeHtml(it.notes || '')}</td>
+                </tr>`).join('');
+            } catch (err) {
+                document.getElementById('piSpDrawerTitle').textContent = 'Error';
+                document.getElementById('piSpDrawerBody').innerHTML = `<tr><td colspan="11" style="color:#dc3545;">${escapeHtml(err.message)}</td></tr>`;
+            }
+        }
+
+        async function piApproveSamplePack(id) {
+            if (!confirm('Accept this sample pack? All samples will be inserted into inventory as Approved.')) return;
+            try {
+                const resp = await fetch(`/api/di/inventory-v2/sample-pack/${id}/approve`, { method: 'POST', credentials: 'include' });
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data.error || 'Failed');
+                alert(`Sample pack approved. ${data.inserted_count} samples inserted into inventory.`);
+                piLoadSamplePacks();
+                loadAllInventoryV2();
+                document.getElementById('piSamplePackDrawer').style.display = 'none';
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        async function piRevisionSamplePack(id) {
+            const comment = prompt('Enter revision comment for the researcher:');
+            if (comment === null || !comment.trim()) return;
+            try {
+                const resp = await fetch(`/api/di/inventory-v2/sample-pack/${id}/revision`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ comment: comment.trim() }), credentials: 'include'
+                });
+                if (!resp.ok) { const d = await resp.json(); throw new Error(d.error || 'Failed'); }
+                piLoadSamplePacks();
+                document.getElementById('piSamplePackDrawer').style.display = 'none';
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        async function piRejectSamplePack(id) {
+            const comment = prompt('Enter rejection reason (required):');
+            if (comment === null || !comment.trim()) return;
+            try {
+                const resp = await fetch(`/api/di/inventory-v2/sample-pack/${id}/reject`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ comment: comment.trim() }), credentials: 'include'
+                });
+                if (!resp.ok) { const d = await resp.json(); throw new Error(d.error || 'Failed'); }
+                piLoadSamplePacks();
+                document.getElementById('piSamplePackDrawer').style.display = 'none';
             } catch (err) { alert('Error: ' + err.message); }
         }
 
