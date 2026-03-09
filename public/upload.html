@@ -1459,9 +1459,7 @@
                     <button class="category-btn" onclick="gdSwitchView('templates', this)">Templates</button>
                     <button class="category-btn" onclick="gdSwitchView('sop-inventory', this)">SOP Inventory</button>
                 </div>
-                <div id="categoryFilter" class="category-filter" style="display:none;">
-                    <button class="category-btn active" onclick="filterByCategory('all')">All</button>
-                </div>
+                <div id="categoryFilter" class="category-filter" style="display:none;"></div>
                 <div id="sopInventoryContainer" style="display:none;"></div>
                 <div id="groupDocsContainer">
                     <div class="loading">
@@ -3129,7 +3127,6 @@ credentials: 'include'
 
         async function loadGroupDocuments() {
             const container = document.getElementById('groupDocsContainer');
-            const filterContainer = document.getElementById('categoryFilter');
 
             container.innerHTML = '<div class="loading"><div class="spinner"></div>Loading group documents...</div>';
 
@@ -3144,7 +3141,6 @@ credentials: 'include'
                 allGroupDocs = data.documents || [];
 
                 if (allGroupDocs.length === 0) {
-                    filterContainer.style.display = 'none';
                     container.innerHTML = `
                         <div class="empty-state">
                             <div class="icon">&#128218;</div>
@@ -3155,16 +3151,7 @@ credentials: 'include'
                     return;
                 }
 
-                // Build category filter buttons
-                const categories = [...new Set(allGroupDocs.map(d => d.category))].sort();
-                filterContainer.innerHTML = `
-                    <button class="category-btn ${currentCategory === 'all' ? 'active' : ''}" onclick="filterByCategory('all')">All (${allGroupDocs.length})</button>
-                    ${categories.map(cat => {
-                        const count = allGroupDocs.filter(d => d.category === cat).length;
-                        return `<button class="category-btn ${currentCategory === cat ? 'active' : ''}" onclick="filterByCategory('${cat}')">${cat} (${count})</button>`;
-                    }).join('')}
-                `;
-                filterContainer.style.display = 'flex';
+                // Category filter row removed — main toggle (All | Templates | SOP Inventory) handles view switching
 
                 renderGroupDocuments();
 
@@ -3256,12 +3243,10 @@ credentials: 'include'
             document.querySelectorAll('#gdViewToggle .category-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
 
-            const catFilter = document.getElementById('categoryFilter');
             const docsContainer = document.getElementById('groupDocsContainer');
             const sopContainer = document.getElementById('sopInventoryContainer');
 
             if (view === 'sop-inventory') {
-                catFilter.style.display = 'none';
                 docsContainer.style.display = 'none';
                 sopContainer.style.display = 'block';
                 loadSopInventory();
@@ -3269,11 +3254,9 @@ credentials: 'include'
                 sopContainer.style.display = 'none';
                 docsContainer.style.display = 'block';
                 filterByCategory('Templates');
-                catFilter.style.display = 'none';
             } else {
                 sopContainer.style.display = 'none';
                 docsContainer.style.display = 'block';
-                catFilter.style.display = allGroupDocs.length > 0 ? 'flex' : 'none';
                 filterByCategory('all');
             }
         }
