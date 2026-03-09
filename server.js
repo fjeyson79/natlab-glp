@@ -4975,6 +4975,171 @@ app.post('/api/di/backup/download/zip', requirePI, async (req, res) => {
 });
 
 
+// =====================================================
+// SYSTEM FUNCTIONAL VERSIONS — recovery package registry
+// =====================================================
+
+let systemVersionsExists = false;
+let systemVersionsLastCheck = 0;
+async function checkSystemVersionsTable() {
+  const now = Date.now();
+  if (now - systemVersionsLastCheck < 30000) return systemVersionsExists;
+  systemVersionsLastCheck = now;
+  try {
+    const r = await pool.query(`SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_name='system_versions'`);
+    systemVersionsExists = r.rows.length > 0;
+  } catch (e) { systemVersionsExists = false; }
+  return systemVersionsExists;
+}
+
+const sysVerUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 500 * 1024 * 1024 } // 500 MB
+});
+
+// --- GET /api/system-versions ---
+app.get('/api/system-versions', requireAuth, async (req, res) => {
+  try {
+    if (!await checkSystemVersionsTable()) return res.json({ versions: [] });
+    const { rows } = await pool.query('SELECT id, version_label, title, description, git_commit, db_schema_version, status, created_by, created_at, files FROM system_versions ORDER BY created_at DESC');
+    res.json({ versions: rows });
+  } catch (err) {
+    console.error('[SYS-VER] list error:', err);
+    res.status(500).json({ error: 'Failed to list versions' });
+  }
+});
+
+// --- POST /api/system-versions ---
+app.post('/api/system-versions', requirePI, async (req, res) => {
+  try {
+    if (!await checkSystemVersionsTable()) return res.status(503).json({ error: 'System versions table not available' });
+    const { version_label, title, description, git_commit } = req.body;
+    if (!version_label || typeof version_label !== 'string' || !version_label.trim()) {
+      return res.status(400).json({ error: 'version_label is required' });
+    }
+    const label = version_label.trim();
+
+    // Auto-detect git commit if not provided
+    let resolvedCommit = git_commit || null;
+    if (!resolvedCommit) {
+      try {
+        const { execSync } = require('child_process');
+        resolvedCommit = execSync('git rev-parse HEAD', { timeout: 5000 }).toString().trim() || null;
+      } catch (_) { /* git not available or not a repo */ }
+    }
+
+    // Auto-detect latest schema migration
+    let dbSchemaVersion = null;
+    try {
+      const smr = await pool.query(`SELECT filename FROM schema_migrations ORDER BY filename DESC LIMIT 1`);
+      if (smr.rows.length > 0) dbSchemaVersion = smr.rows[0].filename.replace(/\.sql$/i, '');
+    } catch (_) { /* schema_migrations may not exist */ }
+
+    const { rows } = await pool.query(
+      `INSERT INTO system_versions (version_label, title, description, git_commit, db_schema_version, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [label, title || null, description || null, resolvedCommit, dbSchemaVersion, req.session.user.id]
+    );
+    console.log(`[SYS-VER] created version ${label} by ${req.session.user.researcher_id} (commit=${resolvedCommit}, schema=${dbSchemaVersion})`);
+    res.json({ success: true, version: rows[0] });
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'Version label already exists' });
+    console.error('[SYS-VER] create error:', err);
+    res.status(500).json({ error: 'Failed to create version' });
+  }
+});
+
+// --- POST /api/system-versions/:id/upload ---
+app.post('/api/system-versions/:id/upload', requirePI, sysVerUpload.single('file'), async (req, res) => {
+  try {
+    if (!await checkSystemVersionsTable()) return res.status(503).json({ error: 'System versions table not available' });
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+    const fileType = req.body.file_type;
+    const validTypes = ['database_dump', 'n8n_workflows', 'n8n_credentials', 'restore_script', 'manifest'];
+    if (!validTypes.includes(fileType)) {
+      return res.status(400).json({ error: 'Invalid file_type. Accepted: ' + validTypes.join(', ') });
+    }
+
+    const { rows } = await pool.query('SELECT * FROM system_versions WHERE id = $1', [req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Version not found' });
+    const ver = rows[0];
+    if (ver.status === 'LOCKED') return res.status(403).json({ error: 'Version is locked' });
+
+    const r2Key = `system_versions/${ver.version_label}/${fileType}_${req.file.originalname}`;
+    await uploadToR2(req.file.buffer, r2Key, req.file.mimetype || 'application/octet-stream');
+
+    const filesObj = ver.files || {};
+    filesObj[fileType] = {
+      r2_key: r2Key,
+      file_name: req.file.originalname,
+      size: req.file.size,
+      uploaded_at: new Date().toISOString(),
+      uploaded_by: req.session.user.researcher_id
+    };
+
+    await pool.query('UPDATE system_versions SET files = $1 WHERE id = $2', [JSON.stringify(filesObj), ver.id]);
+
+    console.log(`[SYS-VER] uploaded ${fileType} for ${ver.version_label} by ${req.session.user.researcher_id}`);
+    res.json({ success: true, file_type: fileType, r2_key: r2Key });
+  } catch (err) {
+    console.error('[SYS-VER] upload error:', err);
+    res.status(500).json({ error: 'Failed to upload file' });
+  }
+});
+
+// --- GET /api/system-versions/:id/files ---
+app.get('/api/system-versions/:id/files', requireAuth, async (req, res) => {
+  try {
+    if (!await checkSystemVersionsTable()) return res.status(503).json({ error: 'System versions table not available' });
+    const { rows } = await pool.query('SELECT id, version_label, files FROM system_versions WHERE id = $1', [req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Version not found' });
+    res.json({ success: true, version_label: rows[0].version_label, files: rows[0].files || {} });
+  } catch (err) {
+    console.error('[SYS-VER] files error:', err);
+    res.status(500).json({ error: 'Failed to get files' });
+  }
+});
+
+// --- GET /api/system-versions/:id/download/:fileType ---
+app.get('/api/system-versions/:id/download/:fileType', requireAuth, async (req, res) => {
+  try {
+    if (!await checkSystemVersionsTable()) return res.status(503).json({ error: 'System versions table not available' });
+    const { rows } = await pool.query('SELECT * FROM system_versions WHERE id = $1', [req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Version not found' });
+
+    const fileType = req.params.fileType;
+    const filesObj = rows[0].files || {};
+    const fileInfo = filesObj[fileType];
+    if (!fileInfo || !fileInfo.r2_key) return res.status(404).json({ error: 'File not found' });
+
+    const r2Resp = await downloadFromR2(fileInfo.r2_key);
+    res.set('Content-Type', r2Resp.ContentType || 'application/octet-stream');
+    res.set('Content-Disposition', `attachment; filename="${fileInfo.file_name || fileType}"`);
+    if (r2Resp.ContentLength) res.set('Content-Length', String(r2Resp.ContentLength));
+    r2Resp.Body.pipe(res);
+  } catch (err) {
+    console.error('[SYS-VER] download error:', err);
+    if (!res.headersSent) res.status(500).json({ error: 'Failed to download file' });
+  }
+});
+
+// --- POST /api/system-versions/:id/lock ---
+app.post('/api/system-versions/:id/lock', requirePI, async (req, res) => {
+  try {
+    if (!await checkSystemVersionsTable()) return res.status(503).json({ error: 'System versions table not available' });
+    const { rows } = await pool.query('SELECT * FROM system_versions WHERE id = $1', [req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ error: 'Version not found' });
+    if (rows[0].status === 'LOCKED') return res.json({ success: true, message: 'Already locked' });
+
+    await pool.query('UPDATE system_versions SET status = $1 WHERE id = $2', ['LOCKED', req.params.id]);
+    console.log(`[SYS-VER] locked version ${rows[0].version_label} by ${req.session.user.researcher_id}`);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[SYS-VER] lock error:', err);
+    res.status(500).json({ error: 'Failed to lock version' });
+  }
+});
 
 
 
