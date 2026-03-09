@@ -2815,6 +2815,38 @@ app.get('/api/di/group-documents', requireAuth, async (req, res) => {
     }
 });
 
+// GET /api/di/sop-inventory
+// Read-only listing of approved SOP documents for the SOP Inventory view
+app.get('/api/di/sop-inventory', requireAuth, async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT s.submission_id, s.original_filename, s.researcher_id,
+                    a.name as researcher_name, s.signed_at,
+                    ROW_NUMBER() OVER (PARTITION BY s.researcher_id ORDER BY s.signed_at ASC) as version_number
+             FROM di_submissions s
+             LEFT JOIN di_allowlist a ON s.researcher_id = a.researcher_id
+             WHERE s.file_type = 'SOP' AND s.status = 'APPROVED'
+             ORDER BY s.signed_at DESC NULLS LAST`
+        );
+
+        res.json({
+            success: true,
+            count: result.rows.length,
+            sops: result.rows.map(row => ({
+                submission_id: row.submission_id,
+                title: row.original_filename.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' '),
+                researcher: row.researcher_name || row.researcher_id,
+                version: parseInt(row.version_number) || 1,
+                approved_at: row.signed_at,
+                download_url: `/api/di/download/${row.submission_id}?download=true`
+            }))
+        });
+    } catch (err) {
+        console.error('SOP inventory error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
 // GET /api/di/group-documents/:id/download
 // Download a group document
 app.get('/api/di/group-documents/:id/download', requireAuth, async (req, res) => {

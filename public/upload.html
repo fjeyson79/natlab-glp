@@ -380,6 +380,40 @@
             border-color: #2d5a87;
         }
 
+        /* SOP Inventory */
+        .sop-search-box {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 13px;
+            margin-bottom: 12px;
+            box-sizing: border-box;
+        }
+        .sop-search-box:focus { outline: none; border-color: #2d5a87; }
+        .sop-row {
+            display: flex;
+            align-items: center;
+            padding: 8px 12px;
+            border-bottom: 1px solid #eee;
+            font-size: 13px;
+            gap: 16px;
+        }
+        .sop-row:hover { background: #f8f9fa; }
+        .sop-col-title { flex: 2; font-weight: 600; color: #1a365d; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .sop-col { flex: 1; color: #555; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .sop-col-action { flex: 0 0 auto; margin-left: auto; }
+        .sop-dl-btn {
+            padding: 4px 10px;
+            background: #2d5a87;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+        .sop-dl-btn:hover { background: #1a365d; }
+
         /* Responsive */
         @media (max-width: 900px) {
             .main-container {
@@ -1420,9 +1454,15 @@
                 <button onclick="loadGroupDocuments()" style="padding:5px 10px;font-size:12px;cursor:pointer;border:1px solid #ddd;border-radius:4px;background:white;">Refresh</button>
             </div>
             <div class="panel-content">
+                <div id="gdViewToggle" class="category-filter" style="margin-bottom:10px;">
+                    <button class="category-btn active" onclick="gdSwitchView('docs', this)">All</button>
+                    <button class="category-btn" onclick="gdSwitchView('templates', this)">Templates</button>
+                    <button class="category-btn" onclick="gdSwitchView('sop-inventory', this)">SOP Inventory</button>
+                </div>
                 <div id="categoryFilter" class="category-filter" style="display:none;">
                     <button class="category-btn active" onclick="filterByCategory('all')">All</button>
                 </div>
+                <div id="sopInventoryContainer" style="display:none;"></div>
                 <div id="groupDocsContainer">
                     <div class="loading">
                         <div class="spinner"></div>
@@ -3203,6 +3243,87 @@ credentials: 'include'
 
         function downloadGroupDoc(url) {
             window.location.href = url;
+        }
+
+        // =====================================================
+        // SOP INVENTORY (Group Documents toggle)
+        // =====================================================
+        let gdCurrentView = 'docs';
+        let sopInventoryData = [];
+
+        function gdSwitchView(view, btn) {
+            gdCurrentView = view;
+            document.querySelectorAll('#gdViewToggle .category-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            const catFilter = document.getElementById('categoryFilter');
+            const docsContainer = document.getElementById('groupDocsContainer');
+            const sopContainer = document.getElementById('sopInventoryContainer');
+
+            if (view === 'sop-inventory') {
+                catFilter.style.display = 'none';
+                docsContainer.style.display = 'none';
+                sopContainer.style.display = 'block';
+                loadSopInventory();
+            } else if (view === 'templates') {
+                sopContainer.style.display = 'none';
+                docsContainer.style.display = 'block';
+                filterByCategory('Templates');
+                catFilter.style.display = 'none';
+            } else {
+                sopContainer.style.display = 'none';
+                docsContainer.style.display = 'block';
+                catFilter.style.display = allGroupDocs.length > 0 ? 'flex' : 'none';
+                filterByCategory('all');
+            }
+        }
+
+        async function loadSopInventory() {
+            const container = document.getElementById('sopInventoryContainer');
+            container.innerHTML = '<div class="loading"><div class="spinner"></div>Loading SOP inventory...</div>';
+            try {
+                const resp = await fetch('/api/di/sop-inventory', { credentials: 'include' });
+                if (!resp.ok) throw new Error('Failed to load');
+                const data = await resp.json();
+                sopInventoryData = data.sops || [];
+                renderSopInventory('');
+            } catch (err) {
+                console.error('SOP inventory error:', err);
+                container.innerHTML = '<p style="color:#dc3545;text-align:center;">Error loading SOP inventory</p>';
+            }
+        }
+
+        function renderSopInventory(query) {
+            const container = document.getElementById('sopInventoryContainer');
+            const q = (query || '').toLowerCase();
+            const filtered = sopInventoryData.filter(s => {
+                if (!q) return true;
+                return (s.title || '').toLowerCase().includes(q) ||
+                       (s.researcher || '').toLowerCase().includes(q) ||
+                       ('version ' + s.version).toLowerCase().includes(q);
+            });
+
+            let html = '<input class="sop-search-box" type="text" placeholder="Search SOP, researcher, version..." oninput="renderSopInventory(this.value)"';
+            if (q) html += ` value="${escapeHtml(q)}"`;
+            html += '>';
+
+            if (filtered.length === 0) {
+                html += '<p style="color:#666;text-align:center;padding:20px;">No approved SOPs found</p>';
+            } else {
+                html += '<div style="border:1px solid #eee;border-radius:6px;overflow:hidden;">';
+                filtered.forEach(sop => {
+                    const date = sop.approved_at ? new Date(sop.approved_at).toLocaleDateString('sv-SE') : '—';
+                    html += `<div class="sop-row">
+                        <span class="sop-col-title" title="${escapeHtml(sop.title)}">${escapeHtml(sop.title)}</span>
+                        <span class="sop-col">${escapeHtml(sop.researcher)}</span>
+                        <span class="sop-col">Version ${sop.version}</span>
+                        <span class="sop-col">Approved ${date}</span>
+                        <span class="sop-col-action"><button class="sop-dl-btn" onclick="downloadGroupDoc('${sop.download_url}')">&#8595; Download</button></span>
+                    </div>`;
+                });
+                html += '</div>';
+            }
+            container.innerHTML = html;
         }
 
         function escapeHtml(text) {
