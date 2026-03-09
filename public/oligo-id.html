@@ -989,7 +989,7 @@ function parseSequenceTokens(seq, polymerType) {
             // Number followed by a letter = modified base
             if (i + 1 < seq.length && /[A-Za-z]/.test(seq[i + 1])) {
                 const base = seq[i + 1].toUpperCase();
-                tokens.push({ base, type: typeMap[code] || 'mod' + code, display: base, modCode: code });
+                tokens.push({ base, type: typeMap[code] || 'mod' + code, display: ch + base, modCode: code });
                 i += 2; continue;
             }
             // Standalone number — render as modification token
