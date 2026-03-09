@@ -14635,7 +14635,8 @@ app.patch("/api/oligo/oligos/:id", requirePI, async (req, res) => {
         const vals = [];
         const add = (col, val) => { sets.push(`${col} = $${vals.length + 1}`); vals.push(val); };
 
-        if (req.body?.name !== undefined)      add('display_name', String(req.body.name).trim());
+        if (req.body?.display_name !== undefined) add('display_name', String(req.body.display_name).trim());
+        else if (req.body?.name !== undefined) add('display_name', String(req.body.name).trim());
         if (req.body?.mod5 !== undefined)      add('mod5', oligoNormMod(req.body.mod5));
         if (req.body?.mod3 !== undefined)      add('mod3', oligoNormMod(req.body.mod3));
         if (req.body?.mod_int_5 !== undefined) add('mod_int_5', oligoNormMod(req.body.mod_int_5));
