@@ -12581,6 +12581,26 @@ async function checkMeetingTables() {
     return meetingTablesExist;
 }
 
+let meetingGroupsTableExist = null;
+let meetingGroupsTableLastCheck = 0;
+
+async function checkMeetingGroupsTable() {
+    const now = Date.now();
+    if (meetingGroupsTableExist === null || meetingGroupsTableExist === false || (now - meetingGroupsTableLastCheck > ROLE_COLUMN_CHECK_INTERVAL)) {
+        try {
+            const result = await pool.query(`
+                SELECT table_name FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'meeting_groups'
+            `);
+            meetingGroupsTableExist = result.rows.length > 0;
+            meetingGroupsTableLastCheck = now;
+        } catch (err) {
+            meetingGroupsTableExist = false;
+        }
+    }
+    return meetingGroupsTableExist;
+}
+
 // GET /api/meetings/next — public (any authenticated user), returns next locked meeting
 app.get('/api/meetings/next', requireAuth, async (req, res) => {
     if (!(await checkMeetingTables())) return res.json({ meeting: null });
@@ -12640,9 +12660,17 @@ app.get('/api/meetings/list', requirePI, async (req, res) => {
             WHERE table_name = 'meeting_schedule' AND column_name = 'notification_sent_at'
         `);
         const hasNotifCols = colCheck.rows.length > 0;
+        const hasGroups = await checkMeetingGroupsTable();
         const cols = 'id, meeting_date, meeting_time, duration_minutes, status, location_text, created_at, locked_at'
+            + (hasGroups ? ', meeting_group_id' : '')
             + (hasNotifCols ? ', notification_sent_at, notification_sent_by, notification_sent_count' : '');
-        const result = await pool.query(`SELECT ${cols} FROM meeting_schedule ORDER BY meeting_date DESC LIMIT 20`);
+        const groupId = req.query.group_id;
+        let result;
+        if (groupId && hasGroups) {
+            result = await pool.query(`SELECT ${cols} FROM meeting_schedule WHERE meeting_group_id = $1 ORDER BY meeting_date DESC LIMIT 20`, [groupId]);
+        } else {
+            result = await pool.query(`SELECT ${cols} FROM meeting_schedule ORDER BY meeting_date DESC LIMIT 20`);
+        }
         res.json({ meetings: result.rows });
     } catch (err) {
         console.error('[MEETING] list error:', err);
@@ -12653,20 +12681,27 @@ app.get('/api/meetings/list', requirePI, async (req, res) => {
 // POST /api/meetings/generate — PI creates/updates draft for a date
 app.post('/api/meetings/generate', requirePI, async (req, res) => {
     if (!(await checkMeetingTables())) return res.status(503).json({ error: 'Meeting tables not available' });
-    const { meeting_date, meeting_time, duration_minutes, format, location_text, participants: manualParticipants } = req.body;
+    const { meeting_date, meeting_time, duration_minutes, format, location_text, participants: manualParticipants, meeting_group_id } = req.body;
     if (!meeting_date) return res.status(400).json({ error: 'meeting_date is required' });
 
     const mTime = meeting_time || '09:00';
     const mDuration = duration_minutes || 60;
     const mFormat = format || 'deep'; // deep | focus | focus_single | flash_only | deep_focus
     const mLocation = location_text || null;
+    const hasGroups = await checkMeetingGroupsTable();
+    const mGroupId = hasGroups && meeting_group_id ? meeting_group_id : null;
 
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
 
-        // Check if meeting exists for this date
-        const existing = await client.query('SELECT id, status FROM meeting_schedule WHERE meeting_date = $1', [meeting_date]);
+        // Check if meeting exists for this date (and group)
+        let existing;
+        if (mGroupId) {
+            existing = await client.query('SELECT id, status FROM meeting_schedule WHERE meeting_date = $1 AND meeting_group_id = $2', [meeting_date, mGroupId]);
+        } else {
+            existing = await client.query('SELECT id, status FROM meeting_schedule WHERE meeting_date = $1 AND meeting_group_id IS NULL', [meeting_date]);
+        }
         if (existing.rows.length > 0 && existing.rows[0].status === 'LOCKED') {
             await client.query('ROLLBACK');
             return res.status(409).json({ error: 'Meeting for this date is locked. Unlock first to regenerate.' });
@@ -12679,8 +12714,8 @@ app.post('/api/meetings/generate', requirePI, async (req, res) => {
             await client.query('DELETE FROM meeting_participation WHERE meeting_id = $1', [meetingId]);
         } else {
             const ins = await client.query(
-                'INSERT INTO meeting_schedule (meeting_date, meeting_time, duration_minutes, status, created_by, location_text) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
-                [meeting_date, mTime, mDuration, 'DRAFT', req.session.user.researcher_id, mLocation]
+                'INSERT INTO meeting_schedule (meeting_date, meeting_time, duration_minutes, status, created_by, location_text, meeting_group_id) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id',
+                [meeting_date, mTime, mDuration, 'DRAFT', req.session.user.researcher_id, mLocation, mGroupId]
             );
             meetingId = ins.rows[0].id;
         }
@@ -12696,15 +12731,30 @@ app.post('/api/meetings/generate', requirePI, async (req, res) => {
                 );
             }
         } else {
-            // Auto-generate from pool
-            const poolRows = await client.query('SELECT * FROM meeting_speaker_pool');
-            const poolMap = {};
-            poolRows.rows.forEach(r => { poolMap[r.user_id] = r; });
+            // Auto-generate from pool (group-scoped if meeting_group_id provided)
+            let poolMap = {};
+            let activeUserRows;
 
-            // Get active researchers/supervisors
-            const activeUsers = await client.query(
-                "SELECT researcher_id, name FROM di_allowlist WHERE active = true AND role IN ('researcher','supervisor') ORDER BY name"
-            );
+            if (mGroupId) {
+                // Group-scoped: use meeting_group_members as pool, only members eligible
+                const memberRows = await client.query(
+                    `SELECT mgm.researcher_id, mgm.can_deep, mgm.can_focus, mgm.can_flash, a.name
+                     FROM meeting_group_members mgm
+                     JOIN di_allowlist a ON a.researcher_id = mgm.researcher_id AND a.active = true
+                     WHERE mgm.meeting_group_id = $1
+                     ORDER BY a.name`, [mGroupId]
+                );
+                activeUserRows = memberRows.rows.map(r => ({ researcher_id: r.researcher_id, name: r.name }));
+                memberRows.rows.forEach(r => { poolMap[r.researcher_id] = { allow_deep: r.can_deep, allow_focus: r.can_focus, allow_flash: r.can_flash }; });
+            } else {
+                // Legacy: global pool
+                const poolRows = await client.query('SELECT * FROM meeting_speaker_pool');
+                poolRows.rows.forEach(r => { poolMap[r.user_id] = r; });
+                const au = await client.query(
+                    "SELECT researcher_id, name FROM di_allowlist WHERE active = true AND role IN ('researcher','supervisor') ORDER BY name"
+                );
+                activeUserRows = au.rows;
+            }
 
             // Get recent participation history for fairness
             const recentMeetings = await client.query(`
@@ -12739,7 +12789,7 @@ app.post('/api/meetings/generate', requirePI, async (req, res) => {
             const rng = seededRandom(meeting_date);
 
             // Sort users by fairness: longest since last major slot first
-            const eligible = activeUsers.rows.map(u => ({
+            const eligible = activeUserRows.map(u => ({
                 ...u,
                 pool: poolMap[u.researcher_id] || { allow_deep: false, allow_focus: true, allow_flash: true },
                 lastMajorDate: lastMajor[u.researcher_id] || '1970-01-01',
@@ -12873,21 +12923,35 @@ app.delete('/api/meetings/:id', requirePI, async (req, res) => {
     }
 });
 
-// POST /api/meetings/month-plan — generate drafts for next N Thursdays
+// POST /api/meetings/month-plan — generate drafts for next N weeks on group's default day
 app.post('/api/meetings/month-plan', requirePI, async (req, res) => {
     if (!(await checkMeetingTables())) return res.status(503).json({ error: 'Meeting tables not available' });
-    const { weeks, pattern, meeting_time, duration_minutes, location_text } = req.body;
+    const { weeks, pattern, meeting_time, duration_minutes, location_text, meeting_group_id } = req.body;
     const numWeeks = weeks || 4;
-    const mTime = meeting_time || '09:00';
     const mDuration = duration_minutes || 60;
     const mPattern = pattern || 'alternating'; // deep | focus | alternating
     const mLocation = location_text || null;
+    const hasGroups = await checkMeetingGroupsTable();
+    const mGroupId = hasGroups && meeting_group_id ? meeting_group_id : null;
 
-    // Find next N Thursdays
+    // Determine default day and time from group or fallback to Thursday 09:00
+    let defaultDay = 4; // Thursday
+    let mTime = meeting_time || '09:00';
+    if (mGroupId) {
+        try {
+            const gResult = await pool.query('SELECT default_day, default_time FROM meeting_groups WHERE id = $1', [mGroupId]);
+            if (gResult.rows.length > 0) {
+                if (gResult.rows[0].default_day != null) defaultDay = gResult.rows[0].default_day;
+                if (!meeting_time && gResult.rows[0].default_time) mTime = gResult.rows[0].default_time;
+            }
+        } catch (e) { /* use defaults */ }
+    }
+
+    // Find next N occurrences of the default day
     const dates = [];
     const now = new Date();
     let d = new Date(now);
-    d.setDate(d.getDate() + ((4 - d.getDay() + 7) % 7 || 7)); // next Thursday
+    d.setDate(d.getDate() + ((defaultDay - d.getDay() + 7) % 7 || 7));
     for (let i = 0; i < numWeeks; i++) {
         dates.push(d.toISOString().slice(0, 10));
         d = new Date(d);
@@ -12902,16 +12966,16 @@ app.post('/api/meetings/month-plan', requirePI, async (req, res) => {
         else fmt = i % 2 === 0 ? 'deep' : 'focus'; // alternating
 
         try {
-            // Use internal fetch to reuse generate logic
-            const genBody = { meeting_date: dates[i], meeting_time: mTime, duration_minutes: mDuration, format: fmt };
-            // Call generate inline
-            const existing = await pool.query('SELECT id, status FROM meeting_schedule WHERE meeting_date = $1', [dates[i]]);
+            let existing;
+            if (mGroupId) {
+                existing = await pool.query('SELECT id, status FROM meeting_schedule WHERE meeting_date = $1 AND meeting_group_id = $2', [dates[i], mGroupId]);
+            } else {
+                existing = await pool.query('SELECT id, status FROM meeting_schedule WHERE meeting_date = $1 AND meeting_group_id IS NULL', [dates[i]]);
+            }
             if (existing.rows.length > 0 && existing.rows[0].status === 'LOCKED') {
                 results.push({ date: dates[i], skipped: true, reason: 'Already locked' });
                 continue;
             }
-            // Delegate to the generate endpoint logic via a self-request simulation
-            // For simplicity, create draft shell here
             let meetingId;
             if (existing.rows.length > 0) {
                 meetingId = existing.rows[0].id;
@@ -12919,19 +12983,32 @@ app.post('/api/meetings/month-plan', requirePI, async (req, res) => {
                 await pool.query('DELETE FROM meeting_participation WHERE meeting_id = $1', [meetingId]);
             } else {
                 const ins = await pool.query(
-                    'INSERT INTO meeting_schedule (meeting_date, meeting_time, duration_minutes, status, created_by, location_text) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id',
-                    [dates[i], mTime, mDuration, 'DRAFT', req.session.user.researcher_id, mLocation]
+                    'INSERT INTO meeting_schedule (meeting_date, meeting_time, duration_minutes, status, created_by, location_text, meeting_group_id) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id',
+                    [dates[i], mTime, mDuration, 'DRAFT', req.session.user.researcher_id, mLocation, mGroupId]
                 );
                 meetingId = ins.rows[0].id;
             }
 
-            // Auto-assign using pool + fairness
-            const poolRows = await pool.query('SELECT * FROM meeting_speaker_pool');
-            const poolMap = {};
-            poolRows.rows.forEach(r => { poolMap[r.user_id] = r; });
-            const activeUsers = await pool.query(
-                "SELECT researcher_id, name FROM di_allowlist WHERE active = true AND role IN ('researcher','supervisor') ORDER BY name"
-            );
+            // Auto-assign using pool + fairness (group-scoped if applicable)
+            let poolMap = {};
+            let activeUserRows;
+            if (mGroupId) {
+                const memberRows = await pool.query(
+                    `SELECT mgm.researcher_id, mgm.can_deep, mgm.can_focus, mgm.can_flash, a.name
+                     FROM meeting_group_members mgm
+                     JOIN di_allowlist a ON a.researcher_id = mgm.researcher_id AND a.active = true
+                     WHERE mgm.meeting_group_id = $1 ORDER BY a.name`, [mGroupId]
+                );
+                activeUserRows = memberRows.rows.map(r => ({ researcher_id: r.researcher_id, name: r.name }));
+                memberRows.rows.forEach(r => { poolMap[r.researcher_id] = { allow_deep: r.can_deep, allow_focus: r.can_focus, allow_flash: r.can_flash }; });
+            } else {
+                const poolRows = await pool.query('SELECT * FROM meeting_speaker_pool');
+                poolRows.rows.forEach(r => { poolMap[r.user_id] = r; });
+                const au = await pool.query(
+                    "SELECT researcher_id, name FROM di_allowlist WHERE active = true AND role IN ('researcher','supervisor') ORDER BY name"
+                );
+                activeUserRows = au.rows;
+            }
             const recentMeetings = await pool.query(`
                 SELECT mp.user_id, mp.slot_type, ms.meeting_date
                 FROM meeting_participation mp JOIN meeting_schedule ms ON ms.id = mp.meeting_id
@@ -12951,7 +13028,7 @@ app.post('/api/meetings/month-plan', requirePI, async (req, res) => {
             }
             const rng = seededRandom(dates[i]);
 
-            const eligible = activeUsers.rows.map(u => ({
+            const eligible = activeUserRows.map(u => ({
                 ...u,
                 pool: poolMap[u.researcher_id] || { allow_deep: false, allow_focus: true, allow_flash: true },
                 lastMajorDate: lastMajor[u.researcher_id] || '1970-01-01',
@@ -13144,6 +13221,127 @@ app.post('/api/meetings/update-details', requirePI, async (req, res) => {
         res.json({ success: true });
     } catch (err) {
         console.error('[MEETING] update-details error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// =====================================================
+// MEETING GROUPS
+// =====================================================
+
+// GET /api/meeting-groups — list active meeting groups
+app.get('/api/meeting-groups', requirePI, async (req, res) => {
+    if (!(await checkMeetingGroupsTable())) return res.json({ groups: [] });
+    try {
+        const result = await pool.query(
+            'SELECT * FROM meeting_groups WHERE is_active = true ORDER BY name'
+        );
+        res.json({ groups: result.rows });
+    } catch (err) {
+        console.error('[MEETING-GROUPS] list error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/meeting-groups — create a new meeting group
+app.post('/api/meeting-groups', requirePI, async (req, res) => {
+    if (!(await checkMeetingGroupsTable())) return res.status(503).json({ error: 'Meeting groups not available' });
+    const { name, site, default_day, default_time, location } = req.body;
+    if (!name || !name.trim()) return res.status(400).json({ error: 'Name is required' });
+    try {
+        const result = await pool.query(
+            `INSERT INTO meeting_groups (name, site, default_day, default_time, location)
+             VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+            [name.trim(), site || null, default_day != null ? default_day : null, default_time || '09:00', location || null]
+        );
+        res.json({ success: true, group: result.rows[0] });
+    } catch (err) {
+        if (err.code === '23505') return res.status(409).json({ error: 'A meeting group with this name already exists' });
+        console.error('[MEETING-GROUPS] create error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// PUT /api/meeting-groups/:id — update a meeting group
+app.put('/api/meeting-groups/:id', requirePI, async (req, res) => {
+    if (!(await checkMeetingGroupsTable())) return res.status(503).json({ error: 'Meeting groups not available' });
+    const { name, site, default_day, default_time, location, is_active } = req.body;
+    try {
+        const sets = [];
+        const vals = [];
+        let idx = 1;
+        if (name !== undefined) { sets.push(`name = $${idx++}`); vals.push(name.trim()); }
+        if (site !== undefined) { sets.push(`site = $${idx++}`); vals.push(site || null); }
+        if (default_day !== undefined) { sets.push(`default_day = $${idx++}`); vals.push(default_day); }
+        if (default_time !== undefined) { sets.push(`default_time = $${idx++}`); vals.push(default_time || '09:00'); }
+        if (location !== undefined) { sets.push(`location = $${idx++}`); vals.push(location || null); }
+        if (is_active !== undefined) { sets.push(`is_active = $${idx++}`); vals.push(!!is_active); }
+        if (sets.length === 0) return res.status(400).json({ error: 'No fields to update' });
+        sets.push(`updated_at = now()`);
+        vals.push(req.params.id);
+        const result = await pool.query(
+            `UPDATE meeting_groups SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`,
+            vals
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Meeting group not found' });
+        res.json({ success: true, group: result.rows[0] });
+    } catch (err) {
+        if (err.code === '23505') return res.status(409).json({ error: 'A meeting group with this name already exists' });
+        console.error('[MEETING-GROUPS] update error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/meeting-groups/:id/members — get group members (pool)
+app.get('/api/meeting-groups/:id/members', requirePI, async (req, res) => {
+    if (!(await checkMeetingGroupsTable())) return res.json({ members: [] });
+    try {
+        const activeUsers = await pool.query(
+            "SELECT researcher_id, name, role FROM di_allowlist WHERE active = true AND role IN ('researcher','supervisor') ORDER BY name"
+        );
+        const memberRows = await pool.query(
+            'SELECT * FROM meeting_group_members WHERE meeting_group_id = $1',
+            [req.params.id]
+        );
+        const memberMap = {};
+        memberRows.rows.forEach(r => { memberMap[r.researcher_id] = r; });
+        const result = activeUsers.rows.map(u => ({
+            user_id: u.researcher_id,
+            name: u.name,
+            role: u.role,
+            in_group: !!memberMap[u.researcher_id],
+            can_deep: memberMap[u.researcher_id]?.can_deep ?? false,
+            can_focus: memberMap[u.researcher_id]?.can_focus ?? true,
+            can_flash: memberMap[u.researcher_id]?.can_flash ?? true
+        }));
+        res.json({ members: result });
+    } catch (err) {
+        console.error('[MEETING-GROUPS] members error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/meeting-groups/:id/members — save group members (pool)
+app.post('/api/meeting-groups/:id/members', requirePI, async (req, res) => {
+    if (!(await checkMeetingGroupsTable())) return res.status(503).json({ error: 'Meeting groups not available' });
+    const { entries } = req.body;
+    if (!Array.isArray(entries)) return res.status(400).json({ error: 'entries array required' });
+    const groupId = req.params.id;
+    try {
+        // Delete all existing members for this group, then re-insert
+        await pool.query('DELETE FROM meeting_group_members WHERE meeting_group_id = $1', [groupId]);
+        for (const e of entries) {
+            if (!e.user_id || !e.in_group) continue;
+            await pool.query(
+                `INSERT INTO meeting_group_members (meeting_group_id, researcher_id, can_deep, can_focus, can_flash)
+                 VALUES ($1, $2, $3, $4, $5)
+                 ON CONFLICT (meeting_group_id, researcher_id) DO UPDATE SET can_deep = $3, can_focus = $4, can_flash = $5`,
+                [groupId, e.user_id, !!e.can_deep, e.can_focus !== false, e.can_flash !== false]
+            );
+        }
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[MEETING-GROUPS] members save error:', err);
         res.status(500).json({ error: 'Server error' });
     }
 });

@@ -3424,6 +3424,60 @@
 
     <!-- ==================== GROUP MEETING TAB ==================== -->
     <div class="tab-content" id="tab-group-meeting">
+        <!-- Meeting Group Selector -->
+        <div id="mtgGroupBar" style="display:flex;align-items:center;gap:10px;margin-bottom:14px;padding:10px 16px;background:#fff;border:1px solid #e0e0e0;border-radius:10px;">
+            <label style="font-size:13px;font-weight:600;color:#1a365d;white-space:nowrap;">Meeting Group</label>
+            <select id="mtgGroupSelect" onchange="mtgSelectGroup()" style="padding:6px 10px;font-size:13px;border:1px solid #d1d5db;border-radius:6px;min-width:200px;">
+                <option value="">Loading...</option>
+            </select>
+            <button class="btn btn-sm btn-secondary" onclick="mtgEditGroupModal()" style="font-size:12px;padding:5px 12px;">Edit</button>
+            <button class="btn btn-sm" onclick="mtgCreateGroupModal()" style="font-size:12px;padding:5px 12px;background:#f0f2f5;border:1px solid #d1d5db;color:#374151;cursor:pointer;">+ Add Meeting</button>
+        </div>
+
+        <!-- Meeting Group Edit/Create Modal -->
+        <div id="mtgGroupModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.4);z-index:9999;justify-content:center;align-items:center;">
+            <div style="background:#fff;border-radius:12px;padding:24px;max-width:420px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.2);">
+                <h3 id="mtgGroupModalTitle" style="margin:0 0 16px;font-size:16px;color:#1a365d;">Edit Meeting Group</h3>
+                <input type="hidden" id="mtgGroupModalId">
+                <div class="form-group" style="margin-bottom:12px;">
+                    <label style="font-size:12px;font-weight:600;">Name</label>
+                    <input type="text" id="mtgGroupModalName" style="width:100%;padding:6px 10px;font-size:13px;border:1px solid #d1d5db;border-radius:6px;box-sizing:border-box;">
+                </div>
+                <div style="display:flex;gap:10px;margin-bottom:12px;">
+                    <div class="form-group" style="margin:0;flex:1;">
+                        <label style="font-size:12px;font-weight:600;">Site</label>
+                        <input type="text" id="mtgGroupModalSite" placeholder="e.g. LiU, UNAV" style="width:100%;padding:6px 10px;font-size:13px;border:1px solid #d1d5db;border-radius:6px;box-sizing:border-box;">
+                    </div>
+                    <div class="form-group" style="margin:0;flex:1;">
+                        <label style="font-size:12px;font-weight:600;">Default Day</label>
+                        <select id="mtgGroupModalDay" style="width:100%;padding:6px 10px;font-size:13px;border:1px solid #d1d5db;border-radius:6px;">
+                            <option value="">None</option>
+                            <option value="1">Monday</option>
+                            <option value="2">Tuesday</option>
+                            <option value="3">Wednesday</option>
+                            <option value="4">Thursday</option>
+                            <option value="5">Friday</option>
+                        </select>
+                    </div>
+                </div>
+                <div style="display:flex;gap:10px;margin-bottom:12px;">
+                    <div class="form-group" style="margin:0;flex:1;">
+                        <label style="font-size:12px;font-weight:600;">Default Time</label>
+                        <input type="time" id="mtgGroupModalTime" value="09:00" style="width:100%;padding:6px 10px;font-size:13px;border:1px solid #d1d5db;border-radius:6px;box-sizing:border-box;">
+                    </div>
+                    <div class="form-group" style="margin:0;flex:1;">
+                        <label style="font-size:12px;font-weight:600;">Location</label>
+                        <input type="text" id="mtgGroupModalLocation" placeholder="e.g. Lab meeting room" style="width:100%;padding:6px 10px;font-size:13px;border:1px solid #d1d5db;border-radius:6px;box-sizing:border-box;">
+                    </div>
+                </div>
+                <div id="mtgGroupModalMsg" style="font-size:12px;margin-bottom:10px;display:none;"></div>
+                <div style="display:flex;gap:8px;justify-content:flex-end;">
+                    <button class="btn btn-sm btn-secondary" onclick="mtgCloseGroupModal()">Cancel</button>
+                    <button class="btn btn-sm btn-primary" onclick="mtgSaveGroupModal()">Save</button>
+                </div>
+            </div>
+        </div>
+
         <!-- Sub-toggle: Generator / Schedule -->
         <div style="display:flex;gap:6px;margin-bottom:18px;padding:4px;background:#f0f2f5;border-radius:10px;">
             <button class="btn btn-sm" id="mtgSubGen" onclick="mtgSetView('generator')" style="border:none;border-radius:8px;color:#1a365d;font-weight:600;font-size:14px;padding:10px 22px;background:#fff;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.1);transition:background 180ms ease,color 180ms ease,box-shadow 180ms ease,transform 180ms ease;">Generator</button>
@@ -3841,6 +3895,141 @@ function dicInitEmbedModeFromUrl() {
           let mtgCurrentMeeting = null;
           let mtgPoolData = [];
           let mtgCurrentView = 'generator';
+          let mtgGroups = [];
+          let mtgSelectedGroup = null;
+
+          async function mtgLoadGroups() {
+              try {
+                  const resp = await fetch('/api/meeting-groups', { credentials: 'include' });
+                  const data = await resp.json();
+                  mtgGroups = data.groups || [];
+              } catch { mtgGroups = []; }
+              const sel = document.getElementById('mtgGroupSelect');
+              if (!sel) return;
+              if (mtgGroups.length === 0) {
+                  sel.innerHTML = '<option value="">No groups available</option>';
+                  mtgSelectedGroup = null;
+                  return;
+              }
+              let html = '';
+              mtgGroups.forEach(g => {
+                  html += '<option value="' + g.id + '">' + (g.name || 'Unnamed') + (g.site ? ' (' + g.site + ')' : '') + '</option>';
+              });
+              sel.innerHTML = html;
+              // Restore previously selected group or select first
+              const prevId = localStorage.getItem('mtg_selected_group_id');
+              if (prevId && mtgGroups.find(g => g.id === prevId)) {
+                  sel.value = prevId;
+              }
+              mtgSelectGroup();
+          }
+
+          function mtgSelectGroup() {
+              const sel = document.getElementById('mtgGroupSelect');
+              const gId = sel ? sel.value : '';
+              mtgSelectedGroup = mtgGroups.find(g => g.id === gId) || null;
+              if (mtgSelectedGroup) {
+                  localStorage.setItem('mtg_selected_group_id', mtgSelectedGroup.id);
+                  // Apply group defaults to form
+                  mtgApplyGroupDefaults();
+              }
+              mtgCurrentMeeting = null;
+              document.getElementById('mtgScheduleDisplay').style.display = 'none';
+              mtgLoadPool();
+              if (mtgCurrentView === 'schedule') mtgLoadScheduleView();
+          }
+
+          function mtgApplyGroupDefaults() {
+              if (!mtgSelectedGroup) return;
+              const g = mtgSelectedGroup;
+              // Set default date to next occurrence of group's default_day
+              if (g.default_day != null) {
+                  const now = new Date();
+                  const d = new Date(now);
+                  d.setDate(d.getDate() + ((g.default_day - d.getDay() + 7) % 7 || 7));
+                  const dateInput = document.getElementById('mtgDate');
+                  if (dateInput) dateInput.value = d.toISOString().slice(0, 10);
+              }
+              if (g.default_time) {
+                  const timeInput = document.getElementById('mtgTime');
+                  if (timeInput) timeInput.value = (g.default_time || '09:00').slice(0, 5);
+              }
+              if (g.location) {
+                  const locInput = document.getElementById('mtgLocation');
+                  if (locInput && !locInput.value) locInput.value = g.location;
+              }
+          }
+
+          function mtgEditGroupModal() {
+              if (!mtgSelectedGroup) return;
+              const g = mtgSelectedGroup;
+              document.getElementById('mtgGroupModalTitle').textContent = 'Edit Meeting Group';
+              document.getElementById('mtgGroupModalId').value = g.id;
+              document.getElementById('mtgGroupModalName').value = g.name || '';
+              document.getElementById('mtgGroupModalSite').value = g.site || '';
+              document.getElementById('mtgGroupModalDay').value = g.default_day != null ? String(g.default_day) : '';
+              document.getElementById('mtgGroupModalTime').value = (g.default_time || '09:00').slice(0, 5);
+              document.getElementById('mtgGroupModalLocation').value = g.location || '';
+              document.getElementById('mtgGroupModalMsg').style.display = 'none';
+              document.getElementById('mtgGroupModal').style.display = 'flex';
+          }
+
+          function mtgCreateGroupModal() {
+              document.getElementById('mtgGroupModalTitle').textContent = 'Add Meeting Group';
+              document.getElementById('mtgGroupModalId').value = '';
+              document.getElementById('mtgGroupModalName').value = '';
+              document.getElementById('mtgGroupModalSite').value = '';
+              document.getElementById('mtgGroupModalDay').value = '';
+              document.getElementById('mtgGroupModalTime').value = '09:00';
+              document.getElementById('mtgGroupModalLocation').value = '';
+              document.getElementById('mtgGroupModalMsg').style.display = 'none';
+              document.getElementById('mtgGroupModal').style.display = 'flex';
+          }
+
+          function mtgCloseGroupModal() {
+              document.getElementById('mtgGroupModal').style.display = 'none';
+          }
+
+          async function mtgSaveGroupModal() {
+              const id = document.getElementById('mtgGroupModalId').value;
+              const name = document.getElementById('mtgGroupModalName').value.trim();
+              const site = document.getElementById('mtgGroupModalSite').value.trim();
+              const dayVal = document.getElementById('mtgGroupModalDay').value;
+              const time = document.getElementById('mtgGroupModalTime').value;
+              const location = document.getElementById('mtgGroupModalLocation').value.trim();
+              const msgEl = document.getElementById('mtgGroupModalMsg');
+
+              if (!name) { msgEl.textContent = 'Name is required'; msgEl.style.color = '#dc3545'; msgEl.style.display = 'block'; return; }
+
+              const body = {
+                  name,
+                  site: site || null,
+                  default_day: dayVal !== '' ? parseInt(dayVal) : null,
+                  default_time: time || '09:00',
+                  location: location || null
+              };
+
+              try {
+                  const isEdit = !!id;
+                  const url = isEdit ? '/api/meeting-groups/' + id : '/api/meeting-groups';
+                  const method = isEdit ? 'PUT' : 'POST';
+                  const resp = await fetch(url, {
+                      method, credentials: 'include',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(body)
+                  });
+                  const data = await resp.json();
+                  if (!resp.ok) { msgEl.textContent = data.error || 'Error'; msgEl.style.color = '#dc3545'; msgEl.style.display = 'block'; return; }
+                  mtgCloseGroupModal();
+                  // Reload groups and select the saved one
+                  await mtgLoadGroups();
+                  if (data.group) {
+                      const sel = document.getElementById('mtgGroupSelect');
+                      if (sel) sel.value = data.group.id;
+                      mtgSelectGroup();
+                  }
+              } catch (err) { msgEl.textContent = 'Network error'; msgEl.style.color = '#dc3545'; msgEl.style.display = 'block'; }
+          }
 
           function mtgSetView(view) {
               mtgCurrentView = view;
@@ -3889,15 +4078,19 @@ function dicInitEmbedModeFromUrl() {
               return dn[d.getDay()] + ' ' + mn[d.getMonth()] + ' ' + d.getDate();
           }
 
-          function mtgInit() {
-              const dateInput = document.getElementById('mtgDate');
-              if (dateInput && !dateInput.value) {
-                  const now = new Date();
-                  const d = new Date(now);
-                  d.setDate(d.getDate() + ((4 - d.getDay() + 7) % 7 || 7));
-                  dateInput.value = d.toISOString().slice(0, 10);
+          async function mtgInit() {
+              await mtgLoadGroups();
+              if (!mtgSelectedGroup) {
+                  // Fallback: set default date to next Thursday if no group
+                  const dateInput = document.getElementById('mtgDate');
+                  if (dateInput && !dateInput.value) {
+                      const now = new Date();
+                      const d = new Date(now);
+                      d.setDate(d.getDate() + ((4 - d.getDay() + 7) % 7 || 7));
+                      dateInput.value = d.toISOString().slice(0, 10);
+                  }
+                  mtgLoadPool();
               }
-              mtgLoadPool();
               mtgSetView('generator');
           }
 
@@ -3918,10 +4111,12 @@ function dicInitEmbedModeFromUrl() {
               if (!date) { mtgMsg('Select a date', 'error'); return; }
               mtgMsg('Generating...', '');
               try {
+                  const payload = { meeting_date: date, meeting_time: time, duration_minutes: dur, format: fmt, location_text: loc || null };
+                  if (mtgSelectedGroup) payload.meeting_group_id = mtgSelectedGroup.id;
                   const resp = await fetch('/api/meetings/generate', {
                       method: 'POST', credentials: 'include',
                       headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ meeting_date: date, meeting_time: time, duration_minutes: dur, format: fmt, location_text: loc || null })
+                      body: JSON.stringify(payload)
                   });
                   const data = await resp.json();
                   if (!resp.ok) { mtgMsg(data.error || 'Error', 'error'); return; }
@@ -4104,10 +4299,12 @@ function dicInitEmbedModeFromUrl() {
               const el = document.getElementById('mtgMonthResult');
               el.innerHTML = 'Generating...';
               try {
+                  const payload = { weeks, pattern, meeting_time: time, duration_minutes: dur, location_text: loc || null };
+                  if (mtgSelectedGroup) payload.meeting_group_id = mtgSelectedGroup.id;
                   const resp = await fetch('/api/meetings/month-plan', {
                       method: 'POST', credentials: 'include',
                       headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ weeks, pattern, meeting_time: time, duration_minutes: dur, location_text: loc || null })
+                      body: JSON.stringify(payload)
                   });
                   const data = await resp.json();
                   if (!resp.ok) { el.innerHTML = '<span style="color:#dc3545;">' + (data.error || 'Error') + '</span>'; return; }
@@ -4127,7 +4324,8 @@ function dicInitEmbedModeFromUrl() {
               if (!el) return;
               el.innerHTML = '<div class="loading"><div class="spinner"></div>Loading...</div>';
               try {
-                  const resp = await fetch('/api/meetings/list', { credentials: 'include' });
+                  const listUrl = mtgSelectedGroup ? '/api/meetings/list?group_id=' + mtgSelectedGroup.id : '/api/meetings/list';
+                  const resp = await fetch(listUrl, { credentials: 'include' });
                   const data = await resp.json();
                   const meetings = data.meetings || [];
                   if (meetings.length === 0) { el.innerHTML = '<span style="color:#999;">No meetings yet</span>'; return; }
@@ -4344,54 +4542,145 @@ function dicInitEmbedModeFromUrl() {
 
           async function mtgLoadPool() {
               try {
-                  const resp = await fetch('/api/meetings/pool', { credentials: 'include' });
+                  let url, useGroupPool = false;
+                  if (mtgSelectedGroup) {
+                      url = '/api/meeting-groups/' + mtgSelectedGroup.id + '/members';
+                      useGroupPool = true;
+                  } else {
+                      url = '/api/meetings/pool';
+                  }
+                  const resp = await fetch(url, { credentials: 'include' });
                   const data = await resp.json();
-                  mtgPoolData = data.pool || [];
+                  mtgPoolData = useGroupPool ? (data.members || []) : (data.pool || []);
                   const tbody = document.getElementById('mtgPoolBody');
                   if (!tbody) return;
                   let html = '';
-                  mtgPoolData.forEach(u => {
-                      html += `<tr style="border-bottom:1px solid #f0f2f5;">
-                          <td style="padding:4px 6px;font-size:12px;">${u.name || u.user_id}</td>
-                          <td style="text-align:center;padding:4px 3px;"><input type="checkbox" data-uid="${u.user_id}" data-field="deep" ${u.allow_deep ? 'checked' : ''}></td>
-                          <td style="text-align:center;padding:4px 3px;"><input type="checkbox" data-uid="${u.user_id}" data-field="focus" ${u.allow_focus ? 'checked' : ''}></td>
-                          <td style="text-align:center;padding:4px 3px;"><input type="checkbox" data-uid="${u.user_id}" data-field="flash" ${u.allow_flash ? 'checked' : ''}></td>
-                      </tr>`;
-                  });
+                  if (useGroupPool) {
+                      // Group mode: show Member checkbox + Deep/Focus/Flash
+                      mtgPoolData.forEach(u => {
+                          const memberChecked = u.in_group ? 'checked' : '';
+                          const disabledAttr = u.in_group ? '' : 'disabled';
+                          html += `<tr style="border-bottom:1px solid #f0f2f5;${u.in_group ? '' : 'opacity:0.5;'}">
+                              <td style="padding:4px 6px;font-size:12px;">${u.name || u.user_id}</td>
+                              <td style="text-align:center;padding:4px 3px;"><input type="checkbox" data-uid="${u.user_id}" data-field="member" ${memberChecked} onchange="mtgToggleMember(this)"></td>
+                              <td style="text-align:center;padding:4px 3px;"><input type="checkbox" data-uid="${u.user_id}" data-field="deep" ${u.can_deep ? 'checked' : ''} ${disabledAttr}></td>
+                              <td style="text-align:center;padding:4px 3px;"><input type="checkbox" data-uid="${u.user_id}" data-field="focus" ${u.can_focus && u.in_group ? 'checked' : ''} ${disabledAttr}></td>
+                              <td style="text-align:center;padding:4px 3px;"><input type="checkbox" data-uid="${u.user_id}" data-field="flash" ${u.can_flash && u.in_group ? 'checked' : ''} ${disabledAttr}></td>
+                          </tr>`;
+                      });
+                  } else {
+                      // Legacy mode: no Member column
+                      mtgPoolData.forEach(u => {
+                          html += `<tr style="border-bottom:1px solid #f0f2f5;">
+                              <td style="padding:4px 6px;font-size:12px;">${u.name || u.user_id}</td>
+                              <td style="text-align:center;padding:4px 3px;"><input type="checkbox" data-uid="${u.user_id}" data-field="deep" ${u.allow_deep ? 'checked' : ''}></td>
+                              <td style="text-align:center;padding:4px 3px;"><input type="checkbox" data-uid="${u.user_id}" data-field="focus" ${u.allow_focus ? 'checked' : ''}></td>
+                              <td style="text-align:center;padding:4px 3px;"><input type="checkbox" data-uid="${u.user_id}" data-field="flash" ${u.allow_flash ? 'checked' : ''}></td>
+                          </tr>`;
+                      });
+                  }
                   tbody.innerHTML = html;
+                  // Update header for group mode
+                  mtgUpdatePoolHeader(useGroupPool);
               } catch (err) { console.error('[MTG] pool load error:', err); }
+          }
+
+          function mtgUpdatePoolHeader(useGroupPool) {
+              const thead = document.querySelector('#mtgPoolBody')?.closest('table')?.querySelector('thead tr');
+              if (!thead) return;
+              if (useGroupPool) {
+                  thead.innerHTML = `
+                      <th style="text-align:left;padding:4px 6px;font-weight:600;">Name</th>
+                      <th style="text-align:center;padding:4px 3px;font-weight:600;font-size:10px;">Member</th>
+                      <th style="text-align:center;padding:4px 3px;font-weight:600;font-size:10px;">Deep</th>
+                      <th style="text-align:center;padding:4px 3px;font-weight:600;font-size:10px;">Focus</th>
+                      <th style="text-align:center;padding:4px 3px;font-weight:600;font-size:10px;">Flash</th>`;
+              } else {
+                  thead.innerHTML = `
+                      <th style="text-align:left;padding:4px 6px;font-weight:600;">Name</th>
+                      <th style="text-align:center;padding:4px 3px;font-weight:600;font-size:10px;">Deep</th>
+                      <th style="text-align:center;padding:4px 3px;font-weight:600;font-size:10px;">Focus</th>
+                      <th style="text-align:center;padding:4px 3px;font-weight:600;font-size:10px;">Flash</th>`;
+              }
+          }
+
+          function mtgToggleMember(cb) {
+              const row = cb.closest('tr');
+              const isMember = cb.checked;
+              row.style.opacity = isMember ? '1' : '0.5';
+              row.querySelectorAll('[data-field="deep"],[data-field="focus"],[data-field="flash"]').forEach(el => {
+                  el.disabled = !isMember;
+                  if (!isMember) el.checked = false;
+              });
+              if (isMember) {
+                  // Set defaults for new member
+                  const focusCb = row.querySelector('[data-field="focus"]');
+                  const flashCb = row.querySelector('[data-field="flash"]');
+                  if (focusCb) focusCb.checked = true;
+                  if (flashCb) flashCb.checked = true;
+              }
           }
 
           async function mtgSavePool() {
               const entries = [];
               const rows = document.querySelectorAll('#mtgPoolBody tr');
-              rows.forEach(row => {
-                  const deepCb = row.querySelector('[data-field="deep"]');
-                  const focusCb = row.querySelector('[data-field="focus"]');
-                  const flashCb = row.querySelector('[data-field="flash"]');
-                  if (deepCb) {
-                      entries.push({
-                          user_id: deepCb.dataset.uid,
-                          allow_deep: deepCb.checked,
-                          allow_focus: focusCb ? focusCb.checked : true,
-                          allow_flash: flashCb ? flashCb.checked : true
-                      });
-                  }
-              });
-              try {
-                  const resp = await fetch('/api/meetings/pool', {
-                      method: 'POST', credentials: 'include',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ entries })
+              if (mtgSelectedGroup) {
+                  // Group mode
+                  rows.forEach(row => {
+                      const memberCb = row.querySelector('[data-field="member"]');
+                      const deepCb = row.querySelector('[data-field="deep"]');
+                      const focusCb = row.querySelector('[data-field="focus"]');
+                      const flashCb = row.querySelector('[data-field="flash"]');
+                      if (memberCb) {
+                          entries.push({
+                              user_id: memberCb.dataset.uid,
+                              in_group: memberCb.checked,
+                              can_deep: deepCb ? deepCb.checked : false,
+                              can_focus: focusCb ? focusCb.checked : true,
+                              can_flash: flashCb ? flashCb.checked : true
+                          });
+                      }
                   });
-                  const data = await resp.json();
-                  if (data.success) mtgMsg('Pool saved', 'success');
-                  else mtgMsg(data.error || 'Error', 'error');
-              } catch (err) { mtgMsg('Network error', 'error'); }
+                  try {
+                      const resp = await fetch('/api/meeting-groups/' + mtgSelectedGroup.id + '/members', {
+                          method: 'POST', credentials: 'include',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ entries })
+                      });
+                      const data = await resp.json();
+                      if (data.success) mtgMsg('Pool saved', 'success');
+                      else mtgMsg(data.error || 'Error', 'error');
+                  } catch (err) { mtgMsg('Network error', 'error'); }
+              } else {
+                  // Legacy mode
+                  rows.forEach(row => {
+                      const deepCb = row.querySelector('[data-field="deep"]');
+                      const focusCb = row.querySelector('[data-field="focus"]');
+                      const flashCb = row.querySelector('[data-field="flash"]');
+                      if (deepCb) {
+                          entries.push({
+                              user_id: deepCb.dataset.uid,
+                              allow_deep: deepCb.checked,
+                              allow_focus: focusCb ? focusCb.checked : true,
+                              allow_flash: flashCb ? flashCb.checked : true
+                          });
+                      }
+                  });
+                  try {
+                      const resp = await fetch('/api/meetings/pool', {
+                          method: 'POST', credentials: 'include',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ entries })
+                      });
+                      const data = await resp.json();
+                      if (data.success) mtgMsg('Pool saved', 'success');
+                      else mtgMsg(data.error || 'Error', 'error');
+                  } catch (err) { mtgMsg('Network error', 'error'); }
+              }
           }
 
           function mtgRefresh() {
-              mtgLoadPool();
+              mtgLoadGroups();
               if (mtgCurrentView === 'schedule') mtgLoadScheduleView();
               if (mtgCurrentView === 'live') mtgRenderLive();
               if (mtgCurrentMeeting) mtgLoadMeeting(mtgCurrentMeeting.id);
