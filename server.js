@@ -2825,7 +2825,7 @@ app.get('/api/di/sop-inventory', requireAuth, async (req, res) => {
                     ROW_NUMBER() OVER (PARTITION BY s.researcher_id ORDER BY s.signed_at ASC) as version_number
              FROM di_submissions s
              LEFT JOIN di_allowlist a ON s.researcher_id = a.researcher_id
-             WHERE s.file_type = 'SOP' AND s.status = 'APPROVED'
+             WHERE s.file_type = 'SOP' AND s.status = 'APPROVED' AND s.researcher_id <> 'FJH2'
              ORDER BY s.signed_at DESC NULLS LAST`
         );
 
