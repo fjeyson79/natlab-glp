@@ -6,7 +6,6 @@ const multer = require('multer');
 const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
 const session = require('express-session');
-const PgSession = require('connect-pg-simple')(session);
 const path = require('path');
 const FormData = require('form-data');
 const fetch = require('node-fetch');
@@ -39,13 +38,8 @@ console.log('Environment:', { isProduction, NODE_ENV: process.env.NODE_ENV, RAIL
 // Trust proxy in production (Railway uses reverse proxy)
 app.set('trust proxy', 1);
 
-// Session configuration (PostgreSQL store)
+// Session configuration (in memory for V1)
 app.use(session({
-    store: new PgSession({
-        pool: pool,
-        tableName: 'user_sessions',
-        createTableIfMissing: true
-    }),
     secret: process.env.SESSION_SECRET || 'fallback_secret_change_me',
     resave: false,
     saveUninitialized: false,
