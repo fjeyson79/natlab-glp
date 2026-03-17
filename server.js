@@ -15369,6 +15369,23 @@ app.post("/api/oligo/libraries/from-order", requirePI, async (req, res) => {
         }
         const actor = req.session?.user?.researcher_id || req.session?.user?.id || 'unknown';
 
+        // --- Prefetch outside transaction (shared pool, no client hold) ---
+        const oligosR = await pool.query(
+            `SELECT ps.id AS synthesis_id, ps.probe_id
+             FROM probe_syntheses ps
+             WHERE ps.order_number=$1 AND ps.supplier=$2
+               AND ps.probe_id IS NOT NULL
+               AND (ps.excel_status IS NULL OR ps.excel_status = 'active')
+             ORDER BY ps.import_row_index ASC NULLS LAST, ps.created_at ASC`,
+            [orderNumber, supplier]
+        );
+
+        // --- Build arrays for batched insert ---
+        const probeIds     = oligosR.rows.map(r => r.probe_id);
+        const synthesisIds = oligosR.rows.map(r => r.synthesis_id);
+        const sortOrders   = oligosR.rows.map((_, i) => i);
+
+        // --- Short transaction: INSERT library + batch members ---
         const client = await pool.connect();
         try {
             await client.query("BEGIN");
@@ -15379,24 +15396,12 @@ app.post("/api/oligo/libraries/from-order", requirePI, async (req, res) => {
             );
             const libId = libR.rows[0].id;
 
-            // Select ALL synthesis rows for the order, preserving source row order.
-            // Do NOT use DISTINCT – duplicate probe identities are intentional.
-            const oligosR = await client.query(
-                `SELECT ps.id AS synthesis_id, ps.probe_id
-                 FROM probe_syntheses ps
-                 WHERE ps.order_number=$1 AND ps.supplier=$2
-                   AND ps.probe_id IS NOT NULL
-                   AND (ps.excel_status IS NULL OR ps.excel_status = 'active')
-                 ORDER BY ps.import_row_index ASC NULLS LAST, ps.created_at ASC`,
-                [orderNumber, supplier]
-            );
-            for (let i = 0; i < oligosR.rows.length; i++) {
-                const row = oligosR.rows[i];
+            if (oligosR.rows.length > 0) {
                 await client.query(
                     `INSERT INTO probe_library_members (library_id, probe_id, synthesis_id, sort_order, added_by)
-                     VALUES ($1,$2,$3,$4,$5)
+                     SELECT $1, unnest($2::uuid[]), unnest($3::uuid[]), unnest($4::int[]), $5
                      ON CONFLICT (library_id, synthesis_id) WHERE synthesis_id IS NOT NULL DO NOTHING`,
-                    [libId, row.probe_id, row.synthesis_id, i, actor]
+                    [libId, probeIds, synthesisIds, sortOrders, actor]
                 );
             }
             await client.query("COMMIT");
