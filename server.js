@@ -544,6 +544,27 @@ async function checkStudioTables() {
     return studioTablesExist;
 }
 
+// Helper function to check if portal health tables exist (migration 034)
+let portalHealthTablesExist = null;
+let portalHealthTablesLastCheck = 0;
+
+async function checkPortalHealthTables() {
+    const now = Date.now();
+    if (portalHealthTablesExist === null || portalHealthTablesExist === false || (now - portalHealthTablesLastCheck > ROLE_COLUMN_CHECK_INTERVAL)) {
+        try {
+            const result = await pool.query(`
+                SELECT table_name FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'portal_health_snapshots'
+            `);
+            portalHealthTablesExist = result.rows.length > 0;
+            portalHealthTablesLastCheck = now;
+        } catch (err) {
+            portalHealthTablesExist = false;
+        }
+    }
+    return portalHealthTablesExist;
+}
+
 // Helper to get allowlist query based on role column existence
 function getAllowlistQuery(hasRole) {
     if (hasRole) {
@@ -1229,9 +1250,10 @@ app.post('/api/di/upload', requireAuth, upload.single('file'), async (req, res) 
         const { fileType } = req.body;
         const file = req.file;
 
-        const normalizedType = String(fileType || '').trim().toUpperCase();
-        if (!normalizedType || !['SOP', 'DATA', 'PRESENTATION'].includes(normalizedType)) {
-            return res.status(400).json({ error: 'fileType must be SOP, DATA or PRESENTATION' });
+        let normalizedType = String(fileType || '').trim().toUpperCase();
+        if (normalizedType === 'PRESENTATION') normalizedType = 'PRES'; // canonical form
+        if (!normalizedType || !['SOP', 'DATA', 'PRES'].includes(normalizedType)) {
+            return res.status(400).json({ error: 'fileType must be SOP, DATA or PRES' });
         }
 
         if (!file) {
@@ -1242,7 +1264,7 @@ app.post('/api/di/upload', requireAuth, upload.single('file'), async (req, res) 
             return res.status(400).json({ error: 'Only PDF files are accepted' });
         }
 
-        const sizeLimit = normalizedType === 'PRESENTATION' ? 20 * 1024 * 1024 : 10 * 1024 * 1024;
+        const sizeLimit = normalizedType === 'PRES' ? 20 * 1024 * 1024 : 10 * 1024 * 1024;
         if (file.size > sizeLimit) {
             return res.status(400).json({ error: `File exceeds ${sizeLimit / (1024 * 1024)}MB limit` });
         }
@@ -1250,7 +1272,7 @@ app.post('/api/di/upload', requireAuth, upload.single('file'), async (req, res) 
         // Validate presentation metadata
         let presentationType = null;
         let presentationOther = null;
-        if (normalizedType === 'PRESENTATION') {
+        if (normalizedType === 'PRES') {
             const validPresTypes = ['1 on 1 supervision', 'Group meeting', 'External presentation', 'Conference', 'Project Evaluation', 'Other'];
             presentationType = (req.body.presentation_type || '').trim();
             if (!presentationType || !validPresTypes.includes(presentationType)) {
@@ -15815,6 +15837,340 @@ app.post("/api/oligo/backfill-identity", requirePI, async (req, res) => {
     } catch (err) {
         console.error("[OLIGO] backfill-identity error:", err);
         res.status(500).json({ error: "Server error" });
+    }
+});
+
+// =====================================================
+// PORTAL HEALTH & PI ACTIONS (Migration 034)
+// =====================================================
+
+// --- Debounce state for health recompute ---
+let lastHealthRecomputeAt = 0;
+const HEALTH_RECOMPUTE_DEBOUNCE_MS = 5 * 60 * 1000; // 5 minutes minimum between recomputes
+
+// --- Centralized portal health recompute ---
+async function recomputePortalHealth() {
+    const now = Date.now();
+    if (now - lastHealthRecomputeAt < HEALTH_RECOMPUTE_DEBOUNCE_MS) {
+        console.log('[HEALTH] Recompute skipped (debounce)');
+        return;
+    }
+    lastHealthRecomputeAt = now;
+
+    if (!(await checkPortalHealthTables())) {
+        console.log('[HEALTH] Recompute skipped (tables not available)');
+        return;
+    }
+
+    try {
+        const categories = {};
+
+        // 1. Portal Runtime — lightweight self-check
+        try {
+            await pool.query('SELECT 1');
+            categories.portal_runtime = { status: 'healthy', summary: 'Portal is running and responsive' };
+        } catch (e) {
+            categories.portal_runtime = { status: 'critical', summary: 'Internal runtime check failed' };
+        }
+
+        // 2. Automation Health — n8n workflow failures in last 24h
+        try {
+            const eventsResult = await pool.query(`
+                SELECT COUNT(*)::int as total_failures,
+                       COUNT(DISTINCT workflow_name)::int as distinct_workflows
+                FROM n8n_workflow_events
+                WHERE status = 'failure' AND created_at >= NOW() - INTERVAL '24 hours'
+            `);
+            const latestFailure = await pool.query(`
+                SELECT workflow_name, detail, created_at
+                FROM n8n_workflow_events
+                WHERE status = 'failure' AND created_at >= NOW() - INTERVAL '24 hours'
+                ORDER BY created_at DESC LIMIT 1
+            `);
+            const failures = eventsResult.rows[0]?.total_failures || 0;
+            const distinctWf = eventsResult.rows[0]?.distinct_workflows || 0;
+            const latest = latestFailure.rows[0] || null;
+
+            let aStatus = 'healthy';
+            let aSummary = 'No workflow failures in the last 24h';
+            if (failures >= 3 || distinctWf >= 2) {
+                aStatus = 'critical';
+                aSummary = `${failures} workflow failure(s) in the last 24h`;
+            } else if (failures > 0) {
+                aStatus = 'warning';
+                aSummary = `${failures} workflow failure(s) in the last 24h`;
+            }
+            categories.automation_health = {
+                status: aStatus, summary: aSummary, failure_count: failures,
+                latest_failure: latest ? { workflow: latest.workflow_name, detail: latest.detail, at: latest.created_at } : null
+            };
+        } catch (e) {
+            categories.automation_health = { status: 'healthy', summary: 'No workflow events table yet', failure_count: 0 };
+        }
+
+        // 3. Database Health — connectivity + anomaly check
+        try {
+            await pool.query('SELECT 1');
+            // Check for stuck submissions (PENDING > 14 days as anomaly)
+            const anomalyResult = await pool.query(`
+                SELECT COUNT(*)::int as stuck_count
+                FROM di_submissions
+                WHERE status = 'PENDING' AND created_at < NOW() - INTERVAL '14 days'
+            `);
+            // Check for missing r2_object_key on active records
+            const missingR2 = await pool.query(`
+                SELECT COUNT(*)::int as cnt
+                FROM di_submissions
+                WHERE r2_object_key IS NULL AND status NOT IN ('DISCARDED')
+                LIMIT 1
+            `);
+            const stuckCount = anomalyResult.rows[0]?.stuck_count || 0;
+            const missingCount = missingR2.rows[0]?.cnt || 0;
+            let dbStatus = 'healthy';
+            let dbSummary = 'PostgreSQL reachable, no anomalies detected';
+            const anomalies = [];
+            if (stuckCount > 0) { anomalies.push(`${stuckCount} submission(s) pending >14 days`); }
+            if (missingCount > 0) { anomalies.push(`${missingCount} record(s) missing storage key`); }
+            if (anomalies.length > 0) {
+                dbStatus = 'warning';
+                dbSummary = anomalies.join('; ');
+            }
+            categories.database_health = { status: dbStatus, summary: dbSummary, stuck_count: stuckCount, missing_r2: missingCount };
+        } catch (e) {
+            categories.database_health = { status: 'critical', summary: 'PostgreSQL not reachable' };
+        }
+
+        // 4. Operational Health — backlog / aging queues
+        try {
+            const oldestPending = await pool.query(`
+                SELECT EXTRACT(EPOCH FROM (NOW() - MIN(created_at))) / 86400.0 as oldest_days,
+                       COUNT(*)::int as pending_count
+                FROM di_submissions
+                WHERE status = 'PENDING'
+            `);
+            const revisionBacklog = await pool.query(`
+                SELECT COUNT(*)::int as cnt
+                FROM di_submissions
+                WHERE status = 'REVISION_NEEDED' AND created_at < NOW() - INTERVAL '5 days'
+            `);
+            const oldestDays = parseFloat(oldestPending.rows[0]?.oldest_days || 0);
+            const pendingCount = oldestPending.rows[0]?.pending_count || 0;
+            const revBacklog = revisionBacklog.rows[0]?.cnt || 0;
+
+            let opStatus = 'healthy';
+            let opSummary = 'No aging queues detected';
+            if (oldestDays > 7 || revBacklog >= 3) {
+                opStatus = 'critical';
+                opSummary = oldestDays > 7
+                    ? `Oldest pending approval: ${Math.round(oldestDays)} days`
+                    : `${revBacklog} revision(s) unresolved >5 days`;
+            } else if (oldestDays > 3 || revBacklog > 0) {
+                opStatus = 'warning';
+                opSummary = oldestDays > 3
+                    ? `Oldest pending approval: ${Math.round(oldestDays)} days`
+                    : `${revBacklog} revision(s) unresolved >5 days`;
+            }
+            categories.operational_health = {
+                status: opStatus, summary: opSummary,
+                oldest_pending_days: Math.round(oldestDays * 10) / 10,
+                pending_count: pendingCount,
+                revision_backlog: revBacklog
+            };
+        } catch (e) {
+            categories.operational_health = { status: 'healthy', summary: 'Unable to compute operational metrics' };
+        }
+
+        // Compute overall status from worst category
+        const statusOrder = { healthy: 0, warning: 1, critical: 2 };
+        let worstStatus = 'healthy';
+        for (const cat of Object.values(categories)) {
+            if ((statusOrder[cat.status] || 0) > (statusOrder[worstStatus] || 0)) {
+                worstStatus = cat.status;
+            }
+        }
+
+        // Upsert snapshot
+        await pool.query(`
+            UPDATE portal_health_snapshots
+            SET overall_status = $1, checked_at = NOW(), categories = $2, updated_at = NOW()
+            WHERE id = 1
+        `, [worstStatus, JSON.stringify(categories)]);
+
+        console.log(`[HEALTH] Recompute complete: overall=${worstStatus}`);
+    } catch (err) {
+        console.error('[HEALTH] Recompute error:', err);
+    }
+}
+
+// Schedule health recompute every 2 hours with jitter to avoid synchronized executions
+const HEALTH_TWO_HOURS = 2 * 60 * 60 * 1000;
+const HEALTH_JITTER = Math.floor(Math.random() * 5 * 60 * 1000);
+let healthIntervalHandle = null;
+
+setTimeout(() => {
+    recomputePortalHealth().catch(e => console.error('[HEALTH] initial recompute failed:', e));
+    if (!healthIntervalHandle) {
+        healthIntervalHandle = setInterval(() => {
+            recomputePortalHealth().catch(e => console.error('[HEALTH] scheduled recompute failed:', e));
+        }, HEALTH_TWO_HOURS);
+    }
+}, 30000 + HEALTH_JITTER);
+
+// --- POST /api/internal/workflow-event — n8n failure/success logging ---
+app.post('/api/internal/workflow-event', async (req, res) => {
+    // Auth: same API key used by other internal/n8n endpoints
+    const apiKey = req.headers['x-api-key'];
+    if (!apiKey || apiKey !== ((process.env.API_SECRET_KEY || '').toString().trim())) {
+        return res.status(403).json({ error: 'Unauthorized' });
+    }
+    if (!(await checkPortalHealthTables())) {
+        return res.status(501).json({ error: 'Portal health tables not available' });
+    }
+
+    const { workflow_name, status, detail } = req.body || {};
+    if (!workflow_name) {
+        return res.status(400).json({ error: 'workflow_name is required' });
+    }
+    const eventStatus = status === 'success' ? 'success' : 'failure';
+
+    try {
+        await pool.query(
+            `INSERT INTO n8n_workflow_events (workflow_name, status, detail) VALUES ($1, $2, $3)`,
+            [workflow_name, eventStatus, detail || null]
+        );
+
+        // Trigger immediate health recompute on failure events
+        if (eventStatus === 'failure') {
+            recomputePortalHealth().catch(e => console.error('[HEALTH] failure-triggered recompute error:', e));
+        }
+
+        res.json({ success: true, logged: eventStatus });
+    } catch (err) {
+        console.error('[WORKFLOW-EVENT] error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+// n8n usage: POST /api/internal/workflow-event
+// Headers: { "x-api-key": "<API_KEY>", "Content-Type": "application/json" }
+// Body: { "workflow_name": "Weekly GLP Snapshot", "status": "failure", "detail": "Azure timeout after 30s" }
+
+// --- GET /api/pi/health-snapshot — read cached portal health ---
+app.get('/api/pi/health-snapshot', requirePI, async (req, res) => {
+    if (!(await checkPortalHealthTables())) {
+        return res.json({ success: true, snapshot: null });
+    }
+    try {
+        const result = await pool.query('SELECT overall_status, checked_at, categories FROM portal_health_snapshots WHERE id = 1');
+        const row = result.rows[0] || null;
+        res.json({ success: true, snapshot: row });
+    } catch (err) {
+        console.error('[HEALTH] snapshot read error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// --- GET /api/pi/actions — unified PI action items (excludes file approvals) ---
+app.get('/api/pi/actions', requirePI, async (req, res) => {
+    try {
+        const items = [];
+
+        // 1. Training packs awaiting PI review
+        if (await checkTrainingTables()) {
+            try {
+                const trainingResult = await pool.query(`
+                    SELECT p.id, p.researcher_id, al.name as researcher_name, p.title, p.updated_at,
+                           (SELECT COUNT(*)::int FROM di_training_entries WHERE pack_id = p.id) as entry_count
+                    FROM di_training_packs p
+                    JOIN di_allowlist al ON al.researcher_id = p.researcher_id
+                    WHERE p.status = 'SUBMITTED'
+                    ORDER BY p.updated_at ASC
+                `);
+                for (const tp of trainingResult.rows) {
+                    const ageDays = Math.round((Date.now() - new Date(tp.updated_at).getTime()) / 86400000);
+                    items.push({
+                        category: 'action_required',
+                        type: 'training_review',
+                        title: `Training pack: ${tp.title || 'Untitled'}`,
+                        subtitle: `${tp.researcher_name || tp.researcher_id} — ${tp.entry_count} entries`,
+                        target_id: tp.id,
+                        researcher_id: tp.researcher_id,
+                        created_at: tp.updated_at,
+                        age_days: ageDays,
+                        urgency_level: ageDays > 5 ? 'high' : ageDays > 2 ? 'medium' : 'low',
+                        source: 'training'
+                    });
+                }
+            } catch (e) { /* training tables may not exist */ }
+        }
+
+        // 2. Revision follow-ups — REVISION_NEEDED items unresolved > 3 days
+        try {
+            const revResult = await pool.query(`
+                SELECT s.submission_id, s.original_filename, s.researcher_id, s.file_type, s.created_at,
+                       a.name as researcher_name
+                FROM di_submissions s
+                LEFT JOIN di_allowlist a ON s.researcher_id = a.researcher_id
+                WHERE s.status = 'REVISION_NEEDED'
+                  AND s.created_at < NOW() - INTERVAL '3 days'
+                ORDER BY s.created_at ASC
+                LIMIT 20
+            `);
+            for (const r of revResult.rows) {
+                const ageDays = Math.round((Date.now() - new Date(r.created_at).getTime()) / 86400000);
+                items.push({
+                    category: 'follow_up',
+                    type: 'revision_aging',
+                    title: `Revision pending: ${r.original_filename}`,
+                    subtitle: `${r.researcher_name || r.researcher_id} — ${r.file_type} — ${ageDays} days`,
+                    target_id: r.submission_id,
+                    researcher_id: r.researcher_id,
+                    created_at: r.created_at,
+                    age_days: ageDays,
+                    urgency_level: ageDays > 7 ? 'high' : 'medium',
+                    source: 'submissions'
+                });
+            }
+        } catch (e) { /* revision query failed */ }
+
+        // 3. Portal Health items (read from cached snapshot)
+        if (await checkPortalHealthTables()) {
+            try {
+                const hResult = await pool.query('SELECT overall_status, checked_at, categories FROM portal_health_snapshots WHERE id = 1');
+                const snapshot = hResult.rows[0];
+                if (snapshot && snapshot.categories) {
+                    const cats = typeof snapshot.categories === 'string' ? JSON.parse(snapshot.categories) : snapshot.categories;
+                    for (const [key, cat] of Object.entries(cats)) {
+                        if (cat.status === 'warning' || cat.status === 'critical') {
+                            items.push({
+                                category: 'portal_health',
+                                type: key,
+                                title: key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+                                subtitle: cat.summary,
+                                created_at: snapshot.checked_at,
+                                age_days: 0,
+                                urgency_level: cat.status === 'critical' ? 'high' : 'medium',
+                                source: 'health',
+                                health_status: cat.status
+                            });
+                        }
+                    }
+                }
+            } catch (e) { /* health snapshot not available */ }
+        }
+
+        // Sort: urgency high first, then by age descending
+        const urgencyOrder = { high: 0, medium: 1, low: 2 };
+        items.sort((a, b) => {
+            const ua = urgencyOrder[a.urgency_level] ?? 2;
+            const ub = urgencyOrder[b.urgency_level] ?? 2;
+            if (ua !== ub) return ua - ub;
+            return (b.age_days || 0) - (a.age_days || 0);
+        });
+
+        res.json({ success: true, items, count: items.length });
+    } catch (err) {
+        console.error('[PI-ACTIONS] error:', err);
+        res.status(500).json({ error: 'Server error' });
     }
 });
 

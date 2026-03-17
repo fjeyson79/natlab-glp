@@ -134,60 +134,165 @@
         /* Panels */
         .panel {
             background: white;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+            border-radius: 12px;
+            box-shadow: 0 1px 6px rgba(0,0,0,0.06);
+            border: 1px solid #e8ecf0;
             overflow: hidden;
             margin-bottom: 20px;
         }
         .panel-header {
-            background: #f8f9fa;
-            padding: 15px 20px;
-            border-bottom: 1px solid #e0e0e0;
+            background: #fafbfc;
+            padding: 14px 20px;
+            border-bottom: 1px solid #e8ecf0;
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
         .panel-header h2 {
-            font-size: 16px;
+            font-size: 15px;
+            font-weight: 600;
             color: #1a365d;
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 8px;
         }
-        .panel-header .icon { font-size: 20px; }
+        .panel-header .icon { font-size: 18px; }
         .panel-content { padding: 20px; }
 
         /* Stats Cards */
         .stats-row {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin-bottom: 20px;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            margin-bottom: 24px;
         }
         .stat-card {
             background: white;
             border-radius: 10px;
-            padding: 20px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+            padding: 18px 16px;
+            box-shadow: 0 1px 6px rgba(0,0,0,0.06);
             text-align: center;
+            border: 1px solid #e8ecf0;
+            transition: box-shadow 0.2s;
         }
+        .stat-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.10); }
         .stat-card .stat-value {
-            font-size: 36px;
-            font-weight: bold;
+            font-size: 32px;
+            font-weight: 700;
             color: #1a365d;
+            line-height: 1.1;
         }
         .stat-card .stat-label {
-            font-size: 13px;
-            color: #666;
-            margin-top: 5px;
+            font-size: 12px;
+            color: #7a8a9e;
+            margin-top: 4px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
         }
-        .stat-card.pending .stat-value { color: #ffc107; }
+        .stat-card.pending .stat-value { color: #d4a017; }
         .stat-card.approved .stat-value { color: #28a745; }
         .stat-card.revision .stat-value { color: #dc3545; }
+        .stat-card.active-total { border-top: 2px solid #2d5a87; }
+        .stat-card.active-total .stat-value { color: #2d5a87; }
+        .stat-secondary { font-size: 11px; color: #999; margin-top: 2px; font-weight: 400; }
 
-        /* Grid Layouts */
-        .two-column { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-        .upload-column { max-width: 500px; }
+        /* Segmented Control — inside panel header */
+        .segmented-control {
+            display: flex;
+            background: #e8ecf0;
+            border-radius: 8px;
+            padding: 3px;
+            gap: 2px;
+        }
+        .segmented-control .seg-btn {
+            padding: 7px 18px;
+            border: none;
+            background: transparent;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #5a6a7e;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+        .segmented-control .seg-btn.active {
+            background: white;
+            color: #1a365d;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.10);
+        }
+        .segmented-control .seg-btn:hover:not(.active) { color: #1a365d; }
+        .seg-badge {
+            display: inline-block;
+            background: #dc3545;
+            color: white;
+            font-size: 10px;
+            font-weight: 700;
+            border-radius: 10px;
+            padding: 1px 6px;
+            margin-left: 5px;
+            vertical-align: middle;
+        }
+        .seg-btn.has-items {
+            color: #1a365d;
+            background: rgba(45, 90, 135, 0.06);
+        }
+        .seg-btn.has-items.active {
+            background: white;
+        }
+
+        /* PI Actions list */
+        .pi-action-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 12px 0;
+            border-bottom: 1px solid #f0f2f5;
+        }
+        .pi-action-item:last-child { border-bottom: none; }
+        .pi-action-badge {
+            flex-shrink: 0;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        .pi-action-badge.action_required { background: #fff3cd; color: #856404; }
+        .pi-action-badge.follow_up { background: #e3f2fd; color: #1565c0; }
+        .pi-action-badge.portal_health { background: #f3e8ff; color: #7c3aed; }
+        .pi-action-body { flex: 1; min-width: 0; }
+        .pi-action-title { font-size: 13px; font-weight: 600; color: #1a365d; }
+        .pi-action-subtitle { font-size: 12px; color: #7a8a9e; margin-top: 2px; }
+        .pi-action-age { font-size: 11px; color: #999; margin-top: 2px; }
+        .pi-action-urgency { flex-shrink: 0; width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; }
+        .pi-action-urgency.high { background: #dc3545; }
+        .pi-action-urgency.medium { background: #ffc107; }
+        .pi-action-urgency.low { background: #28a745; }
+
+        /* Portal Health section inside PI Actions */
+        .health-section { margin-top: 16px; padding-top: 12px; border-top: 1px solid #e8ecf0; }
+        .health-section-title { font-size: 11px; font-weight: 700; color: #7a8a9e; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
+        .health-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; }
+        .health-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+        .health-dot.healthy { background: #28a745; }
+        .health-dot.warning { background: #ffc107; }
+        .health-dot.critical { background: #dc3545; }
+        .health-label { font-size: 13px; font-weight: 500; color: #1a365d; min-width: 140px; }
+        .health-summary { font-size: 12px; color: #7a8a9e; flex: 1; }
+        .health-age { font-size: 11px; color: #bbb; margin-left: auto; white-space: nowrap; }
+
+        /* Empty state */
+        .empty-state { text-align: center; padding: 32px 20px; }
+        .empty-state-icon { font-size: 36px; margin-bottom: 8px; opacity: 0.5; }
+        .empty-state-text { font-size: 14px; color: #7a8a9e; }
+        .empty-state-hint { font-size: 12px; color: #aab5c4; margin-top: 6px; }
+
+        /* Grid Layouts — Dashboard 65/35 split */
+        .two-column { display: grid; grid-template-columns: 2fr 1fr; gap: 24px; }
+        .upload-column { max-width: 380px; }
 
         /* Forms */
         .form-group { margin-bottom: 15px; }
@@ -237,9 +342,9 @@
 
         /* File Upload */
         .file-upload {
-            border: 2px dashed #ddd;
+            border: 2px dashed #dde2e8;
             border-radius: 8px;
-            padding: 25px;
+            padding: 18px;
             text-align: center;
             cursor: pointer;
             transition: all 0.3s;
@@ -247,9 +352,9 @@
         .file-upload:hover { border-color: #2d5a87; background: #f8f9fa; }
         .file-upload.has-file { border-color: #28a745; background: #f0fff4; }
         .file-upload input[type="file"] { display: none; }
-        .file-upload-text { color: #666; font-size: 13px; }
+        .file-upload-text { color: #666; font-size: 12px; }
         .file-upload-text strong { color: #2d5a87; }
-        .file-name { margin-top: 8px; color: #28a745; font-weight: bold; font-size: 13px; }
+        .file-name { margin-top: 6px; color: #28a745; font-weight: bold; font-size: 12px; }
 
         /* Buttons */
         .btn {
@@ -2094,7 +2199,7 @@
 
     <!-- ==================== DASHBOARD TAB ==================== -->
     <div class="tab-content active" id="tab-dashboard">
-        <!-- Stats Row -->
+        <!-- Stats Row — KPI Cards -->
         <div class="stats-row">
             <div class="stat-card pending">
                 <div class="stat-value" id="statPending">-</div>
@@ -2108,60 +2213,69 @@
                 <div class="stat-value" id="statRevision">-</div>
                 <div class="stat-label">Revision Needed</div>
             </div>
-            <div class="stat-card">
-                <div class="stat-value" id="statTotal">-</div>
-                <div class="stat-label">Total Submissions</div>
+            <div class="stat-card active-total">
+                <div class="stat-value" id="statActive">-</div>
+                <div class="stat-label">Active Submissions</div>
+                <div class="stat-secondary" id="statDiscarded" style="display:none;"></div>
             </div>
         </div>
 
         <div class="two-column">
-            <!-- Pending Approvals -->
-            <div class="panel">
+            <!-- Main card: Pending Approvals / PI Actions -->
+            <div class="panel" id="mainDashPanel">
                 <div class="panel-header">
-                    <h2><span class="icon">&#128203;</span> Pending Approvals</h2>
-                    <button class="btn btn-sm btn-secondary" onclick="loadPendingApprovals()">Refresh</button>
+                    <div class="segmented-control" id="mainSegControl">
+                        <button class="seg-btn active" data-seg="approvals" onclick="switchMainSeg('approvals')">Pending Approvals</button>
+                        <button class="seg-btn" data-seg="actions" onclick="switchMainSeg('actions')">PI Actions <span class="seg-badge" id="piActionsBadge" style="display:none;">0</span></button>
+                    </div>
+                    <button class="btn btn-sm btn-secondary" id="mainRefreshBtn" onclick="loadPendingApprovals()">Refresh</button>
                 </div>
-                <div class="panel-content" style="max-height: 500px; overflow-y: auto;">
+                <div class="panel-content" style="max-height: 600px; overflow-y: auto;">
+                    <!-- Pending Approvals view -->
                     <div id="pendingApprovalsContainer">
+                        <div class="loading"><div class="spinner"></div>Loading...</div>
+                    </div>
+                    <!-- PI Actions view (hidden by default) -->
+                    <div id="piActionsContainer" style="display:none;">
                         <div class="loading"><div class="spinner"></div>Loading...</div>
                     </div>
                 </div>
             </div>
 
-            <!-- Quick Upload -->
+            <!-- Quick Upload — compact -->
             <div class="panel upload-column">
                 <div class="panel-header">
                     <h2><span class="icon">&#128194;</span> Quick Upload</h2>
-                </div>              
-<div class="panel-content">
+                </div>
+                <div class="panel-content" style="padding: 16px;">
                     <div id="uploadMessage" class="message"></div>
                     <form id="uploadForm">
-                        <div class="form-group">
-                            <label for="uploadResearcher">Upload for Researcher</label>
-                            <select id="uploadResearcher" required>
+                        <div class="form-group" style="margin-bottom:12px;">
+                            <label for="uploadResearcher" style="font-size:13px;">Researcher</label>
+                            <select id="uploadResearcher" required style="padding:8px; font-size:13px;">
                                 <option value="">Select researcher...</option>
                             </select>
                         </div>
-                        <div class="form-group">
-                            <label for="fileType">File Type</label>
-                            <select id="fileType" required>
+                        <div class="form-group" style="margin-bottom:12px;">
+                            <label for="fileType" style="font-size:13px;">File Type</label>
+                            <select id="fileType" required style="padding:8px; font-size:13px;">
                                 <option value="">Select file type...</option>
                                 <option value="SOP">SOP (Standard Operating Procedure)</option>
                                 <option value="DATA">DATA (Research Data)</option>
+                                <option value="PRES">PRES (Presentation)</option>
                             </select>
                         </div>
-                        <div class="form-group">
-                            <label>File</label>
+                        <div class="form-group" style="margin-bottom:12px;">
+                            <label style="font-size:13px;">File</label>
                             <div class="file-upload" id="fileUploadArea">
                                 <input type="file" id="fileInput" accept=".pdf" required>
                                 <p class="file-upload-text">
-                                    <strong>Click to select a file</strong><br>
-                                    or drag and drop here
+                                    <strong>Click to select</strong> or drag & drop
                                 </p>
                                 <p class="file-name" id="fileName"></p>
                             </div>
                         </div>
-                        <button type="submit" class="btn btn-primary btn-full" id="uploadBtn">Upload File</button>
+                        <button type="submit" class="btn btn-primary btn-full" id="uploadBtn" style="padding:8px 16px; font-size:13px;">Upload File</button>
                     </form>
                 </div>
             </div>
@@ -4947,7 +5061,7 @@ function dicInitEmbedModeFromUrl() {
         async function loadDashboardData() {
             loadPendingApprovals();
             loadStats();
-            // loadInventoryBadge removed (CSV imports deprecated)
+            loadPiActions();
         }
 
         async function loadStats() {
@@ -4955,13 +5069,25 @@ function dicInitEmbedModeFromUrl() {
                 const response = await fetch('/api/di/metrics', { credentials: 'include' });
                 if (response.ok) {
                     const data = await response.json();
-                    document.getElementById('statPending').textContent = data.byStatus?.PENDING || 0;
-                    document.getElementById('statApproved').textContent = data.byStatus?.APPROVED || 0;
-                    document.getElementById('statRevision').textContent = data.openRevisionRequests ?? data.byStatus?.REVISION_NEEDED ?? 0;
-                    document.getElementById('statTotal').textContent = data.total || 0;
-
-                    // Update badge
                     const pending = data.byStatus?.PENDING || 0;
+                    const approved = data.byStatus?.APPROVED || 0;
+                    const revision = data.openRevisionRequests ?? data.byStatus?.REVISION_NEEDED ?? 0;
+                    const active = pending + approved + revision;
+
+                    document.getElementById('statPending').textContent = pending;
+                    document.getElementById('statApproved').textContent = approved;
+                    document.getElementById('statRevision').textContent = revision;
+                    document.getElementById('statActive').textContent = active;
+
+                    // Show discarded as secondary metric if available
+                    const discarded = data.byStatus?.DISCARDED || 0;
+                    const discardedEl = document.getElementById('statDiscarded');
+                    if (discarded > 0) {
+                        discardedEl.textContent = `${discarded} discarded`;
+                        discardedEl.style.display = 'block';
+                    }
+
+                    // Update tab badge
                     const badge = document.getElementById('pendingBadge');
                     if (pending > 0) {
                         badge.textContent = pending;
@@ -4973,6 +5099,148 @@ function dicInitEmbedModeFromUrl() {
             } catch (err) {
                 console.error('Error loading stats:', err);
             }
+        }
+
+        // --- Segmented control: Pending Approvals / PI Actions ---
+        let currentMainSeg = 'approvals';
+
+        function switchMainSeg(seg) {
+            currentMainSeg = seg;
+            document.querySelectorAll('#mainSegControl .seg-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.seg === seg);
+            });
+            const approvalsCont = document.getElementById('pendingApprovalsContainer');
+            const actionsCont = document.getElementById('piActionsContainer');
+            const refreshBtn = document.getElementById('mainRefreshBtn');
+            if (seg === 'approvals') {
+                approvalsCont.style.display = '';
+                actionsCont.style.display = 'none';
+                refreshBtn.onclick = () => loadPendingApprovals();
+                refreshBtn.textContent = 'Refresh';
+            } else {
+                approvalsCont.style.display = 'none';
+                actionsCont.style.display = '';
+                refreshBtn.onclick = () => loadPiActions();
+                refreshBtn.textContent = 'Refresh';
+                loadPiActions();
+            }
+        }
+
+        // --- PI Actions ---
+        let piActionsCache = null;
+
+        async function loadPiActions() {
+            const container = document.getElementById('piActionsContainer');
+            container.innerHTML = '<div class="loading"><div class="spinner"></div>Loading...</div>';
+            try {
+                const [actionsResp, healthResp] = await Promise.all([
+                    fetch('/api/pi/actions', { credentials: 'include' }),
+                    fetch('/api/pi/health-snapshot', { credentials: 'include' })
+                ]);
+                const actionsData = actionsResp.ok ? await actionsResp.json() : { items: [] };
+                const healthData = healthResp.ok ? await healthResp.json() : { snapshot: null };
+                piActionsCache = actionsData;
+
+                // Update badge count and highlight
+                const badge = document.getElementById('piActionsBadge');
+                const actionsBtn = document.querySelector('#mainSegControl .seg-btn[data-seg="actions"]');
+                const count = actionsData.count || 0;
+                if (count > 0) {
+                    badge.textContent = count;
+                    badge.style.display = 'inline';
+                    if (actionsBtn) actionsBtn.classList.add('has-items');
+                } else {
+                    badge.style.display = 'none';
+                    if (actionsBtn) actionsBtn.classList.remove('has-items');
+                }
+
+                renderPiActions(actionsData.items || [], healthData.snapshot);
+            } catch (err) {
+                console.error('Error loading PI actions:', err);
+                container.innerHTML = '<p style="color:#dc3545;text-align:center;">Error loading PI actions</p>';
+            }
+        }
+
+        function renderPiActions(items, healthSnapshot) {
+            const container = document.getElementById('piActionsContainer');
+            const actionItems = items.filter(i => i.category !== 'portal_health');
+
+            let html = '';
+
+            if (actionItems.length === 0 && (!healthSnapshot || healthSnapshot.overall_status === 'healthy')) {
+                html = `<div class="empty-state">
+                    <div class="empty-state-icon">&#10003;</div>
+                    <div class="empty-state-text">No actions required</div>
+                    <div class="empty-state-hint">All clear — no training reviews, revision follow-ups, or portal issues</div>
+                </div>`;
+            } else {
+                // Render action items grouped by category
+                const actionRequired = actionItems.filter(i => i.category === 'action_required');
+                const followUp = actionItems.filter(i => i.category === 'follow_up');
+
+                if (actionRequired.length > 0) {
+                    html += `<div style="margin-bottom:12px;"><div class="health-section-title">Action Required</div>`;
+                    html += actionRequired.map(renderActionItem).join('');
+                    html += `</div>`;
+                }
+                if (followUp.length > 0) {
+                    html += `<div style="margin-bottom:12px;"><div class="health-section-title">Follow-up</div>`;
+                    html += followUp.map(renderActionItem).join('');
+                    html += `</div>`;
+                }
+            }
+
+            // Always render Portal Health section
+            html += renderPortalHealthSection(healthSnapshot);
+
+            container.innerHTML = html;
+        }
+
+        function renderActionItem(item) {
+            const catLabel = { action_required: 'Action', follow_up: 'Follow-up', portal_health: 'Health' };
+            const ageText = item.age_days > 0 ? `${item.age_days}d ago` : 'today';
+            return `<div class="pi-action-item">
+                <div class="pi-action-urgency ${item.urgency_level || 'low'}"></div>
+                <div class="pi-action-body">
+                    <div class="pi-action-title">${escapeHtml(item.title)}</div>
+                    <div class="pi-action-subtitle">${escapeHtml(item.subtitle || '')}</div>
+                    <div class="pi-action-age">${ageText}</div>
+                </div>
+                <span class="pi-action-badge ${item.category}">${catLabel[item.category] || item.category}</span>
+            </div>`;
+        }
+
+        function renderPortalHealthSection(snapshot) {
+            const healthCategories = [
+                { key: 'portal_runtime', label: 'Portal Runtime' },
+                { key: 'automation_health', label: 'Automation Health' },
+                { key: 'database_health', label: 'Database Health' },
+                { key: 'operational_health', label: 'Operational Health' }
+            ];
+
+            let html = '<div class="health-section"><div class="health-section-title">Portal Health</div>';
+
+            if (!snapshot || !snapshot.categories) {
+                html += '<div style="font-size:12px;color:#999;padding:8px 0;">Health snapshot not yet available</div>';
+            } else {
+                const cats = typeof snapshot.categories === 'string' ? JSON.parse(snapshot.categories) : snapshot.categories;
+                const checkedAt = snapshot.checked_at ? new Date(snapshot.checked_at) : null;
+                const ageMin = checkedAt ? Math.round((Date.now() - checkedAt.getTime()) / 60000) : null;
+                const ageText = ageMin !== null ? (ageMin < 60 ? `${ageMin}m ago` : `${Math.round(ageMin / 60)}h ago`) : '';
+
+                for (const { key, label } of healthCategories) {
+                    const cat = cats[key] || { status: 'healthy', summary: 'No data' };
+                    html += `<div class="health-row">
+                        <div class="health-dot ${cat.status}"></div>
+                        <div class="health-label">${label}</div>
+                        <div class="health-summary">${escapeHtml(cat.summary)}</div>
+                        <div class="health-age">${ageText}</div>
+                    </div>`;
+                }
+            }
+
+            html += '</div>';
+            return html;
         }
 
         async function loadPendingApprovals() {
@@ -4991,7 +5259,15 @@ function dicInitEmbedModeFromUrl() {
                 data.submissions.forEach(s => { window._paSubmissions[s.submission_id] = s; });
 
                 if (!data.submissions || data.submissions.length === 0) {
-                    container.innerHTML = '<p style="text-align:center;color:#666;padding:20px;">No pending approvals</p>';
+                    // Check if PI Actions has items, hint if so
+                    const actionsBadge = document.getElementById('piActionsBadge');
+                    const hasActions = actionsBadge && actionsBadge.style.display !== 'none' && parseInt(actionsBadge.textContent) > 0;
+                    const hint = hasActions ? '<div class="empty-state-hint">Check <strong>PI Actions</strong> for other items requiring attention</div>' : '';
+                    container.innerHTML = `<div class="empty-state">
+                        <div class="empty-state-icon">&#128203;</div>
+                        <div class="empty-state-text">No pending approvals</div>
+                        ${hint}
+                    </div>`;
                     return;
                 }
 
