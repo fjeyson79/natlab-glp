@@ -1,4 +1,5 @@
 // redeploy ping 2026-02-25T20:11:45
+process.env.UV_THREADPOOL_SIZE = process.env.UV_THREADPOOL_SIZE || '8';
 ﻿require('dotenv').config();
 
 const express = require('express');
@@ -743,11 +744,11 @@ app.post('/api/di/login', async (req, res) => {
             });
         }
 
-        // Update last login
-        await pool.query(
+        // Update last login (fire-and-forget — not user-facing, no need to block response)
+        pool.query(
             'UPDATE di_users SET last_login = CURRENT_TIMESTAMP WHERE LOWER(institution_email) = $1',
             [emailLower]
-        );
+        ).catch(err => console.error('[LOGIN] last_login update failed:', err.message));
 
         // Set session with role
         req.session.user = {
