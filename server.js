@@ -14183,7 +14183,7 @@ app.post("/api/oligo/excel-upload", requirePI, oligoExcelUpload.single("file"), 
         // SHA256 dedup guard
         const crypto = require('crypto');
         const file_sha256 = crypto.createHash('sha256').update(req.file.buffer).digest('hex');
-        const _db = (process.env.DATABASE_URL || ""); const _host = (_db.includes("@")==true ? _db.split("@")[1].split("/")[0] : "unknown"); console.log("[OLIGO-EXCEL]", "bytes=", (req.file && req.file.buffer ? req.file.buffer.length : 0), "sha256=", file_sha256, "dbhost=", _host);
+        console.log("[OLIGO-EXCEL]", "bytes=", req.file.buffer.length, "sha256=", file_sha256);
         const dupCheck = await pool.query(
             `SELECT id, file_name FROM oligo_data_sources WHERE file_sha256 = $1 LIMIT 1`,
             [file_sha256]
@@ -14207,7 +14207,6 @@ app.post("/api/oligo/excel-upload", requirePI, oligoExcelUpload.single("file"), 
         const rows = rawRows.map(r => oligoNormalizeExcelRow(r))
             .filter(r => r.sequence && r.sequence.length >= 4 && r.orderNo && r.oligoNo);
         if (rows.length === 0) {
-            // Provide helpful diagnosis
             const sample = rawRows.slice(0, 3).map(r => Object.keys(r).join(', ')).join(' | ');
             return res.status(400).json({
                 error: 'No valid rows found. Required columns: ORDERNO, OLIGONO, SEQUENCE (min 4 nucleotides). Detected columns: ' + sample
@@ -14223,16 +14222,12 @@ app.post("/api/oligo/excel-upload", requirePI, oligoExcelUpload.single("file"), 
         const oligosDetected = rows.length;
 
         // Library detection: orders with ≥12 rows are library candidates
-        const orderCounts = {};
         const orderGroups = {};
-
         for (const r of rows) {
-            orderCounts[r.orderNo] = (orderCounts[r.orderNo] || 0) + 1;
-
             if (!orderGroups[r.orderNo]) orderGroups[r.orderNo] = [];
             orderGroups[r.orderNo].push({ probe_id: r.probe_id });
         }
-        const libraryCandidates = Object.entries(orderGroups || {})
+        const libraryCandidates = Object.entries(orderGroups)
             .filter(([, items]) => items.length >= 12)
             .map(([order_number, items]) => ({
                 order_number,
@@ -14240,16 +14235,107 @@ app.post("/api/oligo/excel-upload", requirePI, oligoExcelUpload.single("file"), 
                 probe_ids: items.map(i => i.probe_id)
             }));
 
+        // ── Phase 1: Prepare all row data in memory (no DB, no pool) ──
+        const preparedRows = rows.map((row, rowIdx) => {
+            const { orderNo, oligoNo, oligoName, sequence, mod5s, mod3s, modi5, modi6, modi7, modi8, scale, purification, odValue, mw, amountNmol, amountUg, createDate } = row;
+            const seqNorm      = sequence.toLowerCase();
+            const lengthNt     = sequence.length;
+            const polymerType  = oligoDeriveBasis(scale);
+            const identityHash = oligoComputeIdentityHash(seqNorm, mod5s, mod3s, modi5, modi6, modi7, modi8, polymerType);
+            const chemCode     = 'IDH_' + identityHash.slice(0, 10);
+            const displayName  = oligoName || `${orderNo}_${oligoNo}`;
+            const canonicalId  = `${supplier}_${orderNo}_${oligoNo}`.replace(/[^\w\-]/g, '_');
+            return {
+                rowIdx, orderNo, oligoNo, sequence, seqNorm, lengthNt,
+                mod5s, mod3s, modi5, modi6, modi7, modi8,
+                scale, purification, odValue, mw, amountNmol, amountUg, createDate,
+                polymerType, identityHash, chemCode, displayName, canonicalId
+            };
+        });
+
+        // Collect unique identity hashes for prefetch
+        const allHashes = [...new Set(preparedRows.map(r => r.identityHash))];
+
+        // ── Phase 2: Prefetch existing probes (single query, no pool.connect) ──
+        const existingProbeMap = {};  // identityHash → { id, display_name, canonical_id }
+        if (allHashes.length > 0) {
+            const existResult = await pool.query(
+                `SELECT id, identity_hash, display_name, canonical_id, polymer_type
+                 FROM probe_catalog WHERE identity_hash = ANY($1)`,
+                [allHashes]
+            );
+            for (const r of existResult.rows) {
+                existingProbeMap[r.identity_hash] = r;
+            }
+        }
+
+        // Prefetch existing syntheses to detect duplicates without relying on constraint errors
+        const synthKeys = preparedRows.map(r => `${supplier}|${r.orderNo}|${r.oligoNo}`);
+        const existingSynthMap = {};  // "supplier|order|oligo" → id
+        if (synthKeys.length > 0) {
+            const uniqueOrders = [...new Set(preparedRows.map(r => r.orderNo))];
+            const existSynths = await pool.query(
+                `SELECT id, supplier, order_number, oligo_number
+                 FROM probe_syntheses
+                 WHERE supplier = $1 AND order_number = ANY($2) AND oligo_number IS NOT NULL`,
+                [supplier, uniqueOrders]
+            );
+            for (const r of existSynths.rows) {
+                existingSynthMap[`${r.supplier}|${r.order_number}|${r.oligo_number}`] = r.id;
+            }
+        }
+
+        // ── Phase 3: Classify rows into batches (pure logic, no DB) ──
+        // Probes that need INSERT (new identity_hash)
+        const newProbeRows = [];       // rows needing probe INSERT
+        const reusedProbeRows = [];    // rows with existing probe (may need display_name update)
+        const seenNewHashes = new Set();
+
+        for (const pr of preparedRows) {
+            if (existingProbeMap[pr.identityHash]) {
+                reusedProbeRows.push(pr);
+            } else {
+                newProbeRows.push(pr);
+                seenNewHashes.add(pr.identityHash);
+            }
+        }
+
+        // Deduplicate new probes: only first occurrence of each identity_hash
+        const uniqueNewProbes = [];
+        const seenForInsert = new Set();
+        for (const pr of newProbeRows) {
+            if (!seenForInsert.has(pr.identityHash)) {
+                seenForInsert.add(pr.identityHash);
+                uniqueNewProbes.push(pr);
+            }
+        }
+
+        // Classify syntheses
+        const newSynthRows = [];       // rows to INSERT into probe_syntheses
+        const dupSynthRows = [];       // rows that are duplicate syntheses
+        for (const pr of preparedRows) {
+            const key = `${supplier}|${pr.orderNo}|${pr.oligoNo}`;
+            if (existingSynthMap[key]) {
+                dupSynthRows.push({ ...pr, existing_id: existingSynthMap[key] });
+            } else {
+                newSynthRows.push(pr);
+            }
+        }
+
+        // ── Phase 4: Short transaction — batch writes only ──
         const client = await pool.connect();
-        let committed = false;
         let dataSourceId = null;
-        let insertedProbes = 0, reusedProbes = 0, insertedSynths = 0, duplicateSynths = 0;
-        const duplicateQueue = [];
+        let insertedProbes = 0, reusedProbes = reusedProbeRows.length;
+        let insertedSynths = 0;
+        const duplicateSynths = dupSynthRows.length;
+        const duplicateQueue = dupSynthRows.map(r => ({
+            supplier, order_number: r.orderNo, oligo_number: r.oligoNo, existing_id: r.existing_id
+        }));
 
         try {
             await client.query("BEGIN");
 
-            // Create data source record
+            // 1. Insert data source
             const dsResult = await client.query(
                 `INSERT INTO oligo_data_sources
                     (file_name, supplier, orders_detected, oligos_detected, date_range_start, date_range_end, imported_by, file_sha256)
@@ -14259,97 +14345,170 @@ app.post("/api/oligo/excel-upload", requirePI, oligoExcelUpload.single("file"), 
             );
             dataSourceId = dsResult.rows[0].id;
 
-            // Process each row
-            for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
-                const row = rows[rowIdx];
-                const { orderNo, oligoNo, oligoName, sequence, mod5s, mod3s, modi5, modi6, modi7, modi8, scale, purification, odValue, mw, amountNmol, amountUg, createDate } = row;
-
-                const seqNorm    = sequence.toLowerCase();
-                const lengthNt   = sequence.length;
-                // Derive DNA/RNA basis from scale (not the raw scale itself)
-                const polymerType = oligoDeriveBasis(scale);
-                // Identity hash uses normalized sequence + mods + basis
-                const identityHash = oligoComputeIdentityHash(seqNorm, mod5s, mod3s, modi5, modi6, modi7, modi8, polymerType);
-                // chemistry_code is derived from identity so (sequence_norm, chemistry_code) unique index is satisfied
-                const chemCode   = 'IDH_' + identityHash.slice(0, 10);
-                // Primary display label: OLIGONAME from Excel; fall back to orderNo_oligoNo
-                const displayName = oligoName || `${orderNo}_${oligoNo}`;
-                // Canonical id: supplier-scoped order+oligo key
-                const canonicalId = `${supplier}_${orderNo}_${oligoNo}`.replace(/[^\w\-]/g, '_');
-
-                // Upsert oligonucleotide identity by identity_hash
-                let probeId;
-                const existingProbe = await client.query(
-                    `SELECT id FROM probe_catalog WHERE identity_hash = $1 LIMIT 1`,
-                    [identityHash]
+            // 2. Batch INSERT new probes (single query via unnest)
+            if (uniqueNewProbes.length > 0) {
+                const insertedProbeResult = await client.query(
+                    `INSERT INTO probe_catalog
+                        (canonical_id, display_name, sequence, sequence_norm, length_nt,
+                         mod5, mod3, mod_int_5, mod_int_6, mod_int_7, mod_int_8,
+                         identity_hash, chemistry_code, oligo_kind, polymer_type, status, created_by)
+                     SELECT * FROM unnest(
+                         $1::text[], $2::text[], $3::text[], $4::text[], $5::int[],
+                         $6::text[], $7::text[], $8::text[], $9::text[], $10::text[], $11::text[],
+                         $12::text[], $13::text[], $14::text[], $15::text[], $16::text[], $17::text[]
+                     )
+                     ON CONFLICT (identity_hash) WHERE identity_hash IS NOT NULL DO NOTHING
+                     RETURNING id, identity_hash`,
+                    [
+                        uniqueNewProbes.map(r => r.canonicalId),
+                        uniqueNewProbes.map(r => r.displayName),
+                        uniqueNewProbes.map(r => r.sequence),
+                        uniqueNewProbes.map(r => r.seqNorm),
+                        uniqueNewProbes.map(r => r.lengthNt),
+                        uniqueNewProbes.map(r => r.mod5s),
+                        uniqueNewProbes.map(r => r.mod3s),
+                        uniqueNewProbes.map(r => r.modi5),
+                        uniqueNewProbes.map(r => r.modi6),
+                        uniqueNewProbes.map(r => r.modi7),
+                        uniqueNewProbes.map(r => r.modi8),
+                        uniqueNewProbes.map(r => r.identityHash),
+                        uniqueNewProbes.map(r => r.chemCode),
+                        uniqueNewProbes.map(() => 'OLIGO'),
+                        uniqueNewProbes.map(r => r.polymerType),
+                        uniqueNewProbes.map(() => 'ACTIVE'),
+                        uniqueNewProbes.map(() => actor)
+                    ]
                 );
-                if (existingProbe.rows.length > 0) {
-                    probeId = existingProbe.rows[0].id;
-                    // Update display_name and polymer_type for reused identities
-                    await client.query(
-                        `UPDATE probe_catalog
-                         SET display_name = CASE WHEN (display_name IS NULL OR display_name = canonical_id OR display_name ~ '^EXL_') AND $1 != '' THEN $1 ELSE display_name END,
-                             polymer_type = CASE WHEN polymer_type IS NULL OR polymer_type = '' THEN $3 ELSE polymer_type END
-                         WHERE id = $2`,
-                        [displayName, probeId, polymerType]
-                    );
-                    reusedProbes++;
-                } else {
-                    const insertProbe = await client.query(
-                        `INSERT INTO probe_catalog
-                            (canonical_id, display_name, sequence, sequence_norm, length_nt,
-                             mod5, mod3, mod_int_5, mod_int_6, mod_int_7, mod_int_8,
-                             identity_hash, chemistry_code, oligo_kind, polymer_type, status, created_by)
-                         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'OLIGO',$14,'ACTIVE',$15)
-                         ON CONFLICT (identity_hash) WHERE identity_hash IS NOT NULL DO NOTHING
-                         RETURNING id`,
-                        [canonicalId, displayName, sequence, seqNorm, lengthNt,
-                         mod5s, mod3s, modi5, modi6, modi7, modi8,
-                         identityHash, chemCode, polymerType, actor]
-                    );
-                    if (insertProbe.rows.length > 0) {
-                        probeId = insertProbe.rows[0].id;
-                        insertedProbes++;
-                    } else {
-                        const retry = await client.query(`SELECT id FROM probe_catalog WHERE identity_hash=$1 LIMIT 1`, [identityHash]);
-                        probeId = retry.rows[0]?.id;
-                        reusedProbes++;
-                    }
+                // Map newly inserted probes into the lookup
+                for (const row of insertedProbeResult.rows) {
+                    existingProbeMap[row.identity_hash] = { id: row.id, display_name: null, canonical_id: null, polymer_type: null };
+                    insertedProbes++;
                 }
-
-                if (!probeId) continue;
-
-                // Insert synthesis record – detect duplicates via partial unique index
-                try {
-                    await client.query(
-                        `INSERT INTO probe_syntheses
-                            (probe_id, supplier, order_number, oligo_number, synthesis_date,
-                             scale, purification, od_value, amount_nmol, amount_ug, mw_value,
-                             source_file_id, excel_status, certificate_status, review_status, created_by, import_row_index)
-                         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'active','none','PENDING',$13,$14)`,
-                        [probeId, supplier, orderNo, oligoNo,
-                         createDate ? createDate.toISOString().split('T')[0] : null,
-                         scale || null, purification || null, odValue, amountNmol, amountUg, mw, dataSourceId, actor, rowIdx]
+                // For conflict rows that weren't returned, fetch them in one query
+                const missingHashes = uniqueNewProbes
+                    .filter(r => !existingProbeMap[r.identityHash])
+                    .map(r => r.identityHash);
+                if (missingHashes.length > 0) {
+                    const fallback = await client.query(
+                        `SELECT id, identity_hash, display_name, canonical_id, polymer_type
+                         FROM probe_catalog WHERE identity_hash = ANY($1)`,
+                        [missingHashes]
                     );
-                    insertedSynths++;
-                } catch (synthErr) {
-                    if (synthErr.code === '23505') {
-                        // Duplicate synthesis – insert as discarded
-                        const existSynth = await client.query(
-                            `SELECT id FROM probe_syntheses WHERE supplier=$1 AND order_number=$2 AND oligo_number=$3 LIMIT 1`,
-                            [supplier, orderNo, oligoNo]
-                        );
-                        const existId = existSynth.rows[0]?.id || null;
-                        duplicateSynths++;
-                        duplicateQueue.push({ supplier, order_number: orderNo, oligo_number: oligoNo, existing_id: existId });
-                    } else {
-                        throw synthErr;
+                    for (const row of fallback.rows) {
+                        existingProbeMap[row.identity_hash] = row;
+                        reusedProbes++;
                     }
                 }
             }
 
+            // 3. Batch UPDATE display_name/polymer_type for reused probes (single query)
+            const probesNeedingUpdate = reusedProbeRows.filter(r => {
+                const existing = existingProbeMap[r.identityHash];
+                if (!existing) return false;
+                const nameNeedsUpdate = r.displayName && r.displayName !== '' &&
+                    (existing.display_name === null || existing.display_name === existing.canonical_id ||
+                     (existing.display_name && existing.display_name.startsWith('EXL_')));
+                const polyNeedsUpdate = (!existing.polymer_type || existing.polymer_type === '') && r.polymerType;
+                return nameNeedsUpdate || polyNeedsUpdate;
+            });
+            if (probesNeedingUpdate.length > 0) {
+                // Deduplicate by probe id (first occurrence wins for display_name)
+                const updateMap = new Map();
+                for (const r of probesNeedingUpdate) {
+                    const probeId = existingProbeMap[r.identityHash]?.id;
+                    if (probeId && !updateMap.has(probeId)) {
+                        updateMap.set(probeId, r);
+                    }
+                }
+                const updateIds = [];
+                const updateNames = [];
+                const updatePolymers = [];
+                for (const [probeId, r] of updateMap) {
+                    updateIds.push(probeId);
+                    updateNames.push(r.displayName);
+                    updatePolymers.push(r.polymerType);
+                }
+                await client.query(
+                    `UPDATE probe_catalog AS pc
+                     SET display_name = CASE
+                            WHEN (pc.display_name IS NULL OR pc.display_name = pc.canonical_id OR pc.display_name ~ '^EXL_')
+                                 AND v.new_name != '' THEN v.new_name
+                            ELSE pc.display_name END,
+                         polymer_type = CASE
+                            WHEN pc.polymer_type IS NULL OR pc.polymer_type = '' THEN v.new_poly
+                            ELSE pc.polymer_type END
+                     FROM (SELECT unnest($1::uuid[]) AS id, unnest($2::text[]) AS new_name, unnest($3::text[]) AS new_poly) AS v
+                     WHERE pc.id = v.id`,
+                    [updateIds, updateNames, updatePolymers]
+                );
+            }
+
+            // 4. Batch INSERT new syntheses (single query via unnest)
+            if (newSynthRows.length > 0) {
+                // Resolve probe_id for each synthesis row
+                const synthProbeIds = [];
+                const synthSuppliers = [];
+                const synthOrders = [];
+                const synthOligos = [];
+                const synthDates = [];
+                const synthScales = [];
+                const synthPurifs = [];
+                const synthOds = [];
+                const synthNmols = [];
+                const synthUgs = [];
+                const synthMws = [];
+                const synthFileIds = [];
+                const synthActors = [];
+                const synthRowIdxs = [];
+                const skippedSynthRows = [];
+
+                for (const r of newSynthRows) {
+                    const probe = existingProbeMap[r.identityHash];
+                    if (!probe) { skippedSynthRows.push(r); continue; }
+                    synthProbeIds.push(probe.id);
+                    synthSuppliers.push(supplier);
+                    synthOrders.push(r.orderNo);
+                    synthOligos.push(r.oligoNo);
+                    synthDates.push(r.createDate ? r.createDate.toISOString().split('T')[0] : null);
+                    synthScales.push(r.scale || null);
+                    synthPurifs.push(r.purification || null);
+                    synthOds.push(r.odValue);
+                    synthNmols.push(r.amountNmol);
+                    synthUgs.push(r.amountUg);
+                    synthMws.push(r.mw);
+                    synthFileIds.push(dataSourceId);
+                    synthActors.push(actor);
+                    synthRowIdxs.push(r.rowIdx);
+                }
+
+                if (synthProbeIds.length > 0) {
+                    const synthInsResult = await client.query(
+                        `INSERT INTO probe_syntheses
+                            (probe_id, supplier, order_number, oligo_number, synthesis_date,
+                             scale, purification, od_value, amount_nmol, amount_ug, mw_value,
+                             source_file_id, excel_status, certificate_status, review_status, created_by, import_row_index)
+                         SELECT
+                             v.probe_id, v.supplier, v.order_number, v.oligo_number, v.synthesis_date,
+                             v.scale, v.purification, v.od_value, v.amount_nmol, v.amount_ug, v.mw_value,
+                             v.source_file_id, 'active', 'none', 'PENDING', v.actor, v.row_idx
+                         FROM unnest(
+                             $1::uuid[], $2::text[], $3::text[], $4::text[], $5::date[],
+                             $6::text[], $7::text[], $8::numeric[], $9::numeric[], $10::numeric[], $11::numeric[],
+                             $12::uuid[], $13::text[], $14::int[]
+                         ) AS v(probe_id, supplier, order_number, oligo_number, synthesis_date,
+                                scale, purification, od_value, amount_nmol, amount_ug, mw_value,
+                                source_file_id, actor, row_idx)
+                         ON CONFLICT (supplier, order_number, oligo_number) WHERE oligo_number IS NOT NULL DO NOTHING
+                         RETURNING id`,
+                        [synthProbeIds, synthSuppliers, synthOrders, synthOligos, synthDates,
+                         synthScales, synthPurifs, synthOds, synthNmols, synthUgs, synthMws,
+                         synthFileIds, synthActors, synthRowIdxs]
+                    );
+                    insertedSynths = synthInsResult.rowCount;
+                }
+            }
+
             await client.query("COMMIT");
-            committed = true;
 
         } catch (e) {
             try { await client.query("ROLLBACK"); } catch (_) {}
@@ -14357,6 +14516,13 @@ app.post("/api/oligo/excel-upload", requirePI, oligoExcelUpload.single("file"), 
         } finally {
             client.release();
         }
+
+        // Audit log (fire-and-forget, outside transaction)
+        pool.query(
+            `INSERT INTO probe_audit_log (entity_type, entity_id, action, actor, new_values)
+             VALUES ('import', gen_random_uuid(), 'EXCEL_IMPORT', $1, $2)`,
+            [actor, JSON.stringify({ inserted_count: insertedProbes, reused_count: reusedProbes, synths_inserted: insertedSynths, duplicates: duplicateSynths, filename: req.file.originalname })]
+        ).catch(err => console.error("[OLIGO-EXCEL] audit log error (non-fatal):", err.message));
 
         console.log(`[OLIGO-EXCEL] file=${req.file.originalname} supplier=${supplier} probes_new=${insertedProbes} probes_reused=${reusedProbes} synths=${insertedSynths} dupes=${duplicateSynths} actor=${actor}`);
 
