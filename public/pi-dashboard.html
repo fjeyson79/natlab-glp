@@ -2487,6 +2487,12 @@
                       <span class="gd-switch"></span>
                       <span class="gd-label">Internal documents</span>
                   </label>
+
+                  <label class="gd-toggle" style="margin-top:10px;">
+                      <input type="checkbox" id="gdToggleSharing">
+                      <span class="gd-switch"></span>
+                      <span class="gd-label">File Sharing</span>
+                  </label>
               </div>
 
             <div class="panel-content">
@@ -2559,6 +2565,69 @@
                         <tr><td colspan="6"><div class="loading"><div class="spinner"></div>Loading...</div></td></tr>
                     </tbody>
                 </table>
+            </div>
+        </div>
+
+        <!-- ===== File Sharing Panel ===== -->
+        <div id="gdSharingBlock" style="display:none;">
+            <div class="panel">
+                <div class="panel-header">
+                    <h2><span class="icon">&#128279;</span> File Sharing</h2>
+                    <button class="btn btn-sm btn-secondary" onclick="fsLoadShares()">Refresh</button>
+                </div>
+                <div class="panel-content">
+                    <!-- Pick from GLP Vision -->
+                    <div style="background:#f8f9fa; padding:16px; border-radius:12px; margin-bottom:16px;">
+                        <h3 style="font-size:14px; color:#1a365d; margin-bottom:12px;">Share a File</h3>
+                        <div id="fsPickArea">
+                            <button class="btn btn-primary btn-sm" onclick="fsStartPick()">Pick from GLP Vision</button>
+                        </div>
+                        <div id="fsPickActive" style="display:none; margin-top:10px; padding:10px; background:#fff3cd; border-radius:8px; font-size:13px;">
+                            Selection mode active. Open a file in GLP Vision to select it.
+                        </div>
+                        <div id="fsPickSelected" style="display:none; margin-top:10px; padding:14px; background:#fff; border:1px solid #dee2e6; border-radius:8px;">
+                            <div style="margin-bottom:10px;">
+                                <strong id="fsSelFilename"></strong>
+                                <span id="fsSelType" style="margin-left:8px; font-size:11px; padding:2px 8px; border-radius:8px; background:#e0e0e0;"></span>
+                            </div>
+                            <div style="font-size:12px; color:#666; margin-bottom:12px;">Owner: <span id="fsSelOwner"></span></div>
+                            <div class="form-group" style="margin-bottom:10px;">
+                                <label for="fsRecipient" style="font-size:12px;">Recipient *</label>
+                                <select id="fsRecipient" style="width:100%; padding:6px 10px; border:1px solid #ccc; border-radius:6px; font-size:13px;">
+                                    <option value="">Select researcher...</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="margin-bottom:12px;">
+                                <label for="fsNote" style="font-size:12px;">Note (optional)</label>
+                                <input type="text" id="fsNote" placeholder="Reason for sharing" style="width:100%; padding:6px 10px; border:1px solid #ccc; border-radius:6px; font-size:13px;">
+                            </div>
+                            <div style="display:flex; gap:8px;">
+                                <button class="btn btn-primary btn-sm" onclick="fsDoShare()">Share</button>
+                                <button class="btn btn-sm btn-secondary" onclick="fsStartPick()">Pick another</button>
+                                <button class="btn btn-sm" onclick="fsClearPick()" style="color:#666;">Clear</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Shared Files Table -->
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>File</th>
+                                <th>Type</th>
+                                <th>Owner</th>
+                                <th>Recipient</th>
+                                <th>Shared by</th>
+                                <th>Date</th>
+                                <th>Status</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="fsSharesTableBody">
+                            <tr><td colspan="8" style="text-align:center;color:#666;padding:20px;">No shared files</td></tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
@@ -3999,7 +4068,155 @@ function dicInitEmbedModeFromUrl() {
               }
               if (tUpload) tUpload.addEventListener("change", applyUploadVis);
               applyUploadVis();
+
+              // Sharing toggle
+              const tSharing = document.getElementById("gdToggleSharing");
+              const sharingBlock = document.getElementById("gdSharingBlock");
+              function applySharingVis() {
+                  if (!tSharing || !sharingBlock) return;
+                  sharingBlock.style.display = tSharing.checked ? "" : "none";
+                  if (tSharing.checked) fsLoadShares();
+              }
+              if (tSharing) tSharing.addEventListener("change", applySharingVis);
+              applySharingVis();
           })();
+
+          // =====================================================
+          // FILE SHARING (PI)
+          // =====================================================
+          let _fsMembersCache = null;
+
+          async function _fsLoadMembers() {
+              if (_fsMembersCache) return _fsMembersCache;
+              try {
+                  const r = await fetch('/api/di/members', { credentials: 'include' });
+                  const d = await r.json();
+                  _fsMembersCache = (d.members || []).filter(m => m.role === 'researcher');
+                  return _fsMembersCache;
+              } catch { return []; }
+          }
+
+          function fsStartPick() {
+              sessionStorage.setItem('share_pick_mode', 'true');
+              sessionStorage.removeItem('share_selected_file');
+              document.getElementById('fsPickArea').style.display = 'none';
+              document.getElementById('fsPickActive').style.display = '';
+              document.getElementById('fsPickSelected').style.display = 'none';
+              // Poll for selection
+              if (window._fsPickInterval) clearInterval(window._fsPickInterval);
+              window._fsPickInterval = setInterval(() => {
+                  const sel = sessionStorage.getItem('share_selected_file');
+                  if (sel) {
+                      clearInterval(window._fsPickInterval);
+                      fsShowSelected(JSON.parse(sel));
+                  }
+              }, 500);
+          }
+
+          async function fsShowSelected(file) {
+              document.getElementById('fsPickArea').style.display = 'none';
+              document.getElementById('fsPickActive').style.display = 'none';
+              document.getElementById('fsPickSelected').style.display = '';
+              document.getElementById('fsSelFilename').textContent = file.filename || '';
+              document.getElementById('fsSelType').textContent = file.file_type || '';
+              document.getElementById('fsSelOwner').textContent = file.owner_name || '';
+              // Populate recipient dropdown
+              const sel = document.getElementById('fsRecipient');
+              sel.innerHTML = '<option value="">Select researcher...</option>';
+              const members = await _fsLoadMembers();
+              for (const m of members) {
+                  if (m.researcher_id === file.owner_name) continue;
+                  sel.innerHTML += `<option value="${m.researcher_id}">${escapeHtml(m.name)} (${m.researcher_id})</option>`;
+              }
+              document.getElementById('fsNote').value = '';
+          }
+
+          function fsClearPick() {
+              sessionStorage.removeItem('share_pick_mode');
+              sessionStorage.removeItem('share_selected_file');
+              if (window._fsPickInterval) clearInterval(window._fsPickInterval);
+              document.getElementById('fsPickArea').style.display = '';
+              document.getElementById('fsPickActive').style.display = 'none';
+              document.getElementById('fsPickSelected').style.display = 'none';
+          }
+
+          async function fsDoShare() {
+              const fileData = sessionStorage.getItem('share_selected_file');
+              if (!fileData) return;
+              const file = JSON.parse(fileData);
+              const recipient = document.getElementById('fsRecipient').value;
+              if (!recipient) return alert('Please select a recipient.');
+              const note = document.getElementById('fsNote').value.trim();
+              try {
+                  const r = await fetch('/api/files/share', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      credentials: 'include',
+                      body: JSON.stringify({
+                          submission_id: file.submission_id,
+                          recipient_researcher_id: recipient,
+                          share_note: note || undefined
+                      })
+                  });
+                  const d = await r.json();
+                  if (!r.ok) return alert(d.error || 'Share failed');
+                  sessionStorage.removeItem('share_selected_file');
+                  sessionStorage.removeItem('share_pick_mode');
+                  if (window._fsPickInterval) clearInterval(window._fsPickInterval);
+                  fsClearPick();
+                  fsLoadShares();
+              } catch (err) { alert('Error: ' + err.message); }
+          }
+
+          async function fsLoadShares() {
+              const tbody = document.getElementById('fsSharesTableBody');
+              if (!tbody) return;
+              tbody.innerHTML = '<tr><td colspan="8"><div class="loading"><div class="spinner"></div>Loading...</div></td></tr>';
+              try {
+                  const r = await fetch('/api/files/shared', { credentials: 'include' });
+                  const d = await r.json();
+                  const shares = d.shares || [];
+                  if (shares.length === 0) {
+                      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#666;padding:20px;">No shared files</td></tr>';
+                      return;
+                  }
+                  tbody.innerHTML = shares.map(s => {
+                      const date = new Date(s.shared_at).toLocaleDateString();
+                      const statusLabel = s.is_active
+                          ? '<span style="color:#28a745;font-weight:600;">Active</span>'
+                          : '<span style="color:#999;">Revoked</span>';
+                      const revokeBtn = s.is_active
+                          ? `<button class="btn btn-sm btn-danger" onclick="fsRevoke('${s.submission_id}','${s.recipient_researcher_id}')">Revoke</button>`
+                          : '';
+                      return `<tr>
+                          <td>${escapeHtml(s.original_filename)}</td>
+                          <td>${escapeHtml(s.file_type || '')}</td>
+                          <td>${escapeHtml(s.owner_researcher_id)}</td>
+                          <td>${escapeHtml(s.recipient_researcher_id)}</td>
+                          <td>${escapeHtml(s.shared_by)}</td>
+                          <td>${date}</td>
+                          <td>${statusLabel}</td>
+                          <td>${revokeBtn}</td>
+                      </tr>`;
+                  }).join('');
+              } catch {
+                  tbody.innerHTML = '<tr><td colspan="8" style="color:#dc3545;text-align:center;">Error loading shares</td></tr>';
+              }
+          }
+
+          async function fsRevoke(submissionId, recipientId) {
+              if (!confirm('Revoke this share?')) return;
+              try {
+                  const r = await fetch('/api/files/revoke', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      credentials: 'include',
+                      body: JSON.stringify({ submission_id: submissionId, recipient_researcher_id: recipientId })
+                  });
+                  if (!r.ok) { const d = await r.json(); alert(d.error || 'Revoke failed'); return; }
+                  fsLoadShares();
+              } catch (err) { alert('Error: ' + err.message); }
+          }
 
           // =====================================================
 

@@ -502,6 +502,27 @@ async function checkLegacyColumns() {
     return legacyColumnsExist;
 }
 
+// Helper function to check if di_file_shares table exists (migration 035)
+let fileSharesTableExists = null;
+let fileSharesTableLastCheck = 0;
+
+async function checkFileSharesTable() {
+    const now = Date.now();
+    if (fileSharesTableExists === null || fileSharesTableExists === false || (now - fileSharesTableLastCheck > ROLE_COLUMN_CHECK_INTERVAL)) {
+        try {
+            const result = await pool.query(`
+                SELECT table_name FROM information_schema.tables
+                WHERE table_name = 'di_file_shares'
+            `);
+            fileSharesTableExists = result.rows.length > 0;
+            fileSharesTableLastCheck = now;
+        } catch (err) {
+            fileSharesTableExists = false;
+        }
+    }
+    return fileSharesTableExists;
+}
+
 // Helper function to check if vision columns exist on di_file_associations (migration 021)
 let visionColsExist = null;
 let visionColsLastCheck = 0;
@@ -1195,6 +1216,50 @@ app.get('/api/di/my-files', requireAuth, async (req, res) => {
                 revisionCount++;
             }
         }
+
+        // Fetch shared files and merge into existing folders (migration 035)
+        if (await checkFileSharesTable()) {
+            const sharedResult = await pool.query(
+                `SELECT s.submission_id, s.file_type, s.original_filename, s.status, s.created_at,
+                        s.signed_at, s.r2_object_key, fs.shared_by, fs.shared_at,
+                        fs.owner_researcher_id
+                 FROM di_submissions s
+                 JOIN di_file_shares fs ON fs.submission_id = s.submission_id
+                 WHERE fs.recipient_researcher_id = $1 AND fs.is_active = TRUE AND s.status != 'DISCARDED'
+                 ORDER BY fs.shared_at DESC`,
+                [user.researcher_id]
+            );
+            for (const file of sharedResult.rows) {
+                const status = file.status || 'PENDING';
+                const key = file.r2_object_key || null;
+                const fileNode = {
+                    name: file.original_filename,
+                    type: 'file',
+                    id: file.submission_id,
+                    status: status,
+                    fileType: file.file_type,
+                    date: file.shared_at,
+                    signedAt: file.signed_at,
+                    r2ObjectKey: key,
+                    viewUrl: key ? `/api/di/download/${file.submission_id}` : null,
+                    downloadUrl: key ? `/api/di/download/${file.submission_id}?download=true` : null,
+                    accessMode: 'shared',
+                    sharedBy: file.shared_by,
+                    sharedAt: file.shared_at,
+                    ownerName: file.owner_researcher_id
+                };
+                if (status === 'APPROVED') {
+                    approvedFiles.push(fileNode);
+                } else if (status === 'PENDING') {
+                    submittedFiles.push(fileNode);
+                }
+            }
+        }
+
+        // Sort each folder by display_date DESC (owned use created_at, shared use shared_at — both stored in .date)
+        const byDateDesc = (a, b) => new Date(b.date) - new Date(a.date);
+        submittedFiles.sort(byDateDesc);
+        approvedFiles.sort(byDateDesc);
 
         // Build the simple two-folder structure
         const tree = {
@@ -16170,6 +16235,86 @@ app.get('/api/pi/actions', requirePI, async (req, res) => {
         res.json({ success: true, items, count: items.length });
     } catch (err) {
         console.error('[PI-ACTIONS] error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// =====================================================
+// FILE SHARING (PI only) — migration 035
+// =====================================================
+
+// POST /api/files/share — Share a file with another researcher
+app.post('/api/files/share', requirePI, async (req, res) => {
+    try {
+        if (!(await checkFileSharesTable())) return res.status(400).json({ error: 'File sharing not available' });
+        const { submission_id, recipient_researcher_id, share_reason, share_note } = req.body;
+        if (!submission_id || !recipient_researcher_id) {
+            return res.status(400).json({ error: 'submission_id and recipient_researcher_id are required' });
+        }
+        // Fetch submission to get owner
+        const sub = await pool.query('SELECT researcher_id FROM di_submissions WHERE submission_id = $1', [submission_id]);
+        if (sub.rows.length === 0) return res.status(404).json({ error: 'Submission not found' });
+        const owner_researcher_id = sub.rows[0].researcher_id;
+        if (owner_researcher_id === recipient_researcher_id) {
+            return res.status(400).json({ error: 'Cannot share a file with its owner' });
+        }
+        const shared_by = req.session.user.name || req.session.user.researcher_id;
+        await pool.query(
+            `INSERT INTO di_file_shares (submission_id, owner_researcher_id, recipient_researcher_id, shared_by, share_reason, share_note)
+             VALUES ($1, $2, $3, $4, $5, $6)
+             ON CONFLICT (submission_id, recipient_researcher_id) WHERE is_active = TRUE DO NOTHING`,
+            [submission_id, owner_researcher_id, recipient_researcher_id, shared_by, share_reason || null, share_note || null]
+        );
+        console.log('[FILE-SHARE] Shared', submission_id, 'with', recipient_researcher_id);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[FILE-SHARE] Error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/files/shared — Get all shared files (PI view)
+app.get('/api/files/shared', requirePI, async (req, res) => {
+    try {
+        if (!(await checkFileSharesTable())) return res.json({ shares: [] });
+        const result = await pool.query(`
+            SELECT
+                s.original_filename,
+                s.file_type,
+                fs.submission_id,
+                fs.owner_researcher_id,
+                fs.recipient_researcher_id,
+                fs.shared_by,
+                fs.shared_at,
+                fs.is_active
+            FROM di_file_shares fs
+            JOIN di_submissions s ON s.submission_id = fs.submission_id
+            ORDER BY fs.shared_at DESC
+        `);
+        res.json({ success: true, shares: result.rows });
+    } catch (err) {
+        console.error('[FILE-SHARE] List error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/files/revoke — Revoke a file share
+app.post('/api/files/revoke', requirePI, async (req, res) => {
+    try {
+        if (!(await checkFileSharesTable())) return res.status(400).json({ error: 'File sharing not available' });
+        const { submission_id, recipient_researcher_id } = req.body;
+        if (!submission_id || !recipient_researcher_id) {
+            return res.status(400).json({ error: 'submission_id and recipient_researcher_id are required' });
+        }
+        await pool.query(
+            `UPDATE di_file_shares SET is_active = FALSE
+             WHERE submission_id = $1 AND recipient_researcher_id = $2 AND is_active = TRUE`,
+            [submission_id, recipient_researcher_id]
+        );
+        console.log('[FILE-SHARE] Revoked', submission_id, 'from', recipient_researcher_id);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[FILE-SHARE] Revoke error:', err.message);
         res.status(500).json({ error: 'Server error' });
     }
 });
