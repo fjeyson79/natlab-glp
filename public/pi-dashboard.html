@@ -4123,15 +4123,15 @@ function dicInitEmbedModeFromUrl() {
           }
 
           function fsStartPick() {
-              sessionStorage.setItem('share_pick_mode', 'true');
-              sessionStorage.removeItem('share_selected_file');
+              localStorage.setItem('share_pick_mode', 'true');
+              localStorage.removeItem('share_selected_file');
               document.getElementById('fsPickArea').style.display = 'none';
               document.getElementById('fsPickActive').style.display = '';
               document.getElementById('fsPickSelected').style.display = 'none';
               // Poll for selection
               if (window._fsPickInterval) clearInterval(window._fsPickInterval);
               window._fsPickInterval = setInterval(() => {
-                  const sel = sessionStorage.getItem('share_selected_file');
+                  const sel = localStorage.getItem('share_selected_file');
                   if (sel) {
                       clearInterval(window._fsPickInterval);
                       fsShowSelected(JSON.parse(sel));
@@ -4158,8 +4158,8 @@ function dicInitEmbedModeFromUrl() {
           }
 
           function fsClearPick() {
-              sessionStorage.removeItem('share_pick_mode');
-              sessionStorage.removeItem('share_selected_file');
+              localStorage.removeItem('share_pick_mode');
+              localStorage.removeItem('share_selected_file');
               if (window._fsPickInterval) clearInterval(window._fsPickInterval);
               document.getElementById('fsPickArea').style.display = '';
               document.getElementById('fsPickActive').style.display = 'none';
@@ -4167,7 +4167,7 @@ function dicInitEmbedModeFromUrl() {
           }
 
           async function fsDoShare() {
-              const fileData = sessionStorage.getItem('share_selected_file');
+              const fileData = localStorage.getItem('share_selected_file');
               if (!fileData) return;
               const file = JSON.parse(fileData);
               const recipient = document.getElementById('fsRecipient').value;
@@ -4186,8 +4186,8 @@ function dicInitEmbedModeFromUrl() {
                   });
                   const d = await r.json();
                   if (!r.ok) return alert(d.error || 'Share failed');
-                  sessionStorage.removeItem('share_selected_file');
-                  sessionStorage.removeItem('share_pick_mode');
+                  localStorage.removeItem('share_selected_file');
+                  localStorage.removeItem('share_pick_mode');
                   if (window._fsPickInterval) clearInterval(window._fsPickInterval);
                   fsClearPick();
                   fsLoadShares();

@@ -769,8 +769,8 @@ function gvSelectFile(fileId) {
     if (!file) return;
 
     // File sharing pick mode hook (migration 035)
-    if (sessionStorage.getItem('share_pick_mode') === 'true') {
-        sessionStorage.setItem('share_selected_file', JSON.stringify({
+    if (localStorage.getItem('share_pick_mode') === 'true') {
+        localStorage.setItem('share_selected_file', JSON.stringify({
             submission_id: file.submission_id,
             filename: file.original_filename,
             file_type: file.file_type,
