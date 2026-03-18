@@ -3232,7 +3232,35 @@ app.get('/api/di/lab-files-enriched', requirePI, async (req, res) => {
                ORDER BY s.created_at DESC`;
 
         const result = await pool.query(query, params);
-        res.json({ success: true, months_used: months, files: result.rows });
+        const files = result.rows.map(r => ({ ...r, access_mode: 'owned' }));
+
+        // Append active shared files (migration 035)
+        if (await checkFileSharesTable()) {
+            const sharedResult = await pool.query(`
+                SELECT s.submission_id, fs.recipient_researcher_id as researcher_id,
+                       s.original_filename, s.file_type, s.status,
+                       fs.shared_at as created_at, s.signed_at, s.ai_review,
+                       s.pi_dragon_seal, s.r2_object_key,
+                       a.name as researcher_name, ra.affiliation,
+                       0 as linked_sop_count, 0 as linked_pres_count,
+                       fs.shared_by, fs.owner_researcher_id
+                       ${hasLegacy ? ", NULL as record_origin, NULL as original_created_at, NULL as legacy_pack_id, NULL as legacy_pack_title, NULL as legacy_pack_context_type, NULL as legacy_pack_submitted_at" : ", NULL as record_origin, NULL as original_created_at, NULL as legacy_pack_id, NULL as legacy_pack_title, NULL as legacy_pack_context_type, NULL as legacy_pack_submitted_at"}
+                FROM di_file_shares fs
+                JOIN di_submissions s ON s.submission_id = fs.submission_id
+                LEFT JOIN di_allowlist a ON fs.recipient_researcher_id = a.researcher_id
+                LEFT JOIN di_allowlist ra ON fs.recipient_researcher_id = ra.researcher_id
+                WHERE fs.is_active = TRUE AND s.status != 'DISCARDED'
+                  AND fs.recipient_researcher_id != fs.owner_researcher_id
+                  AND fs.shared_at >= NOW() - make_interval(months => $1)
+                ORDER BY fs.shared_at DESC
+            `, [months]);
+            for (const row of sharedResult.rows) {
+                row.access_mode = 'shared';
+                files.push(row);
+            }
+        }
+
+        res.json({ success: true, months_used: months, files });
     } catch (err) {
         console.error('Get enriched lab files error:', err);
         res.status(500).json({ error: 'Server error' });
