@@ -2654,9 +2654,6 @@
                 const verifyBtn = isApproved && node.verificationCode ? `<button class="btn-verify" onclick="verifyDocument('${node.verificationCode}')" title="Verify signature">Verify</button>` : '';
                 const provenanceLine = isShared ? `<div style="font-size:11px;color:#888;margin-top:2px;padding-left:${level * 20 + 22}px;">Owner: ${node.ownerName || ''}${node.sharedBy ? ' &middot; Shared by: ' + node.sharedBy : ''}</div>` : '';
 
-                // Encode node data for viewFile hook
-                const nodeJson = btoa(JSON.stringify({ id: node.id, name: node.name, fileType: node.fileType, ownerName: node.ownerName || '' }));
-
                 // Use provided URLs from backend (R2 URLs via /api/di/download)
                 const viewUrl = node.viewUrl;
                 const downloadUrl = node.downloadUrl;
@@ -2671,7 +2668,7 @@
                         ${signedBadge}
                         ${sharedBadge}
                         <div class="file-actions">
-                            ${hasFile ? `<button class="btn-view" onclick="viewFile('${node.id}', JSON.parse(atob('${nodeJson}')))">View</button>
+                            ${hasFile ? `<button class="btn-view" onclick="window.open('${viewUrl}', '_blank')">View</button>
                             <button class="btn-download" onclick="window.location.href='${downloadUrl}'">Download</button>` : '<span style="color:#999;font-size:11px;">File removed</span>'}
                             ${verifyBtn}
                         </div>
@@ -2927,16 +2924,7 @@
             return (bytes / 1048576).toFixed(1) + ' MB';
         }
 
-        function viewFile(id, fileNode) {
-            // File sharing pick mode hook (migration 035)
-            if (sessionStorage.getItem('share_pick_mode') === 'true' && fileNode) {
-                sessionStorage.setItem('share_selected_file', JSON.stringify({
-                    submission_id: fileNode.id || id,
-                    filename: fileNode.name,
-                    file_type: fileNode.fileType,
-                    owner_name: fileNode.ownerName || ''
-                }));
-            }
+        function viewFile(id) {
             window.open(`/api/di/download/${id}`, '_blank');
         }
 
