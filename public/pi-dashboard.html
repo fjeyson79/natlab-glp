@@ -832,6 +832,18 @@
         .dic-result-icon.data { background: #2d5a87; }
         .dic-result-icon.sop { background: #6366f1; }
         .dic-result-icon.pres { background: #0891b2; }
+        .dic-shared-pill {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin-top: 6px;
+            padding: 2px 8px;
+            font-size: 11px;
+            font-weight: 700;
+            border-radius: 999px;
+            background-color: #E8C96B;
+            color: #1F3D66;
+        }
         .dic-result-body { flex: 1; min-width: 0; }
         .dic-result-title {
             font-size: 13px;
@@ -7900,8 +7912,12 @@ async function dicIntdocsFolderChanged(sel) {
                 if (sopCount > 0) metaHtml += `<span class="dic-assoc-chip">${sopCount} SOP</span>`;
                 if (presCount > 0) metaHtml += `<span class="dic-assoc-chip">${presCount} PRES</span>`;
 
+                const isShared = f.access_mode === 'shared';
                 return `<div class="dic-result-item${isActive ? ' active' : ''}" onclick="dicSelectFile('${f.submission_id}')">
-                    <div class="dic-result-icon ${typeClass}">${typeLabel}</div>
+                    <div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;">
+                        <div class="dic-result-icon ${typeClass}">${typeLabel}</div>
+                        ${isShared ? '<div class="dic-shared-pill">Shared</div>' : ''}
+                    </div>
                     <div class="dic-result-body">
                         <div class="dic-result-title" title="${(f.original_filename || '').replace(/"/g, '&quot;')}">${title}</div>
                         <div class="dic-result-sub">${subtitle}</div>
