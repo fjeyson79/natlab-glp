@@ -8092,6 +8092,17 @@ function dicBuildPdfViewerSrc(fileUrl) {
             const f = dicAllFiles.find(x => x.submission_id === fileId);
             if (!f) return;
 
+            // File sharing pick mode hook (migration 035)
+            if (localStorage.getItem('share_pick_mode') === 'true') {
+                localStorage.setItem('share_selected_file', JSON.stringify({
+                    submission_id: f.submission_id,
+                    filename: f.original_filename,
+                    file_type: f.file_type,
+                    owner_name: f.researcher_name || f.researcher_id || ''
+                }));
+                if (typeof fsShowSelected === 'function') fsShowSelected();
+            }
+
             // Update results active state
             document.querySelectorAll('.dic-result-item').forEach(el => {
                 el.classList.toggle('active', el.onclick && el.onclick.toString().includes(fileId));

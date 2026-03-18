@@ -768,16 +768,6 @@ function gvSelectFile(fileId) {
     const file = gvAllFiles.find(f => f.submission_id === fileId);
     if (!file) return;
 
-    // File sharing pick mode hook (migration 035)
-    if (localStorage.getItem('share_pick_mode') === 'true') {
-        localStorage.setItem('share_selected_file', JSON.stringify({
-            submission_id: file.submission_id,
-            filename: file.original_filename,
-            file_type: file.file_type,
-            owner_name: file.researcher_name || file.researcher_id || ''
-        }));
-    }
-
     // Update active state in list
     document.querySelectorAll('.gv-result-item').forEach(el => el.classList.remove('active'));
     const clicked = [...document.querySelectorAll('.gv-result-item')].find(el => el.onclick.toString().includes(fileId));
