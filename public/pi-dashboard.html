@@ -4013,6 +4013,19 @@ function dicInitEmbedModeFromUrl() {
               top.classList.add('active');
           }
 
+          function _gdSetSharingToggle(on) {
+              const t = document.getElementById("gdToggleSharing");
+              if (t) t.checked = !!on;
+          }
+
+          function _gdApplySharingVis(show) {
+              const sharingBlock = document.getElementById("gdSharingBlock");
+              const gdMainPanel = document.querySelector('#tab-group-docs > .panel');
+              if (sharingBlock) sharingBlock.style.display = show ? "" : "none";
+              if (gdMainPanel) gdMainPanel.style.display = show ? "none" : "";
+              if (show && typeof fsLoadShares === "function") fsLoadShares();
+          }
+
           function gdOpenMode(mode) {
               if (mode === "internal") {
                   document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
@@ -4021,6 +4034,8 @@ function dicInitEmbedModeFromUrl() {
                   _gdActivateTopTab();
                   _gdSetInternalToggle(true);
                   const tm = document.getElementById("gdToggleMeeting"); if (tm) tm.checked = false;
+                  _gdSetSharingToggle(false);
+                  _gdApplySharingVis(false);
                   if (typeof intdocInit === "function") intdocInit();
                   return;
               }
@@ -4031,7 +4046,20 @@ function dicInitEmbedModeFromUrl() {
                   _gdActivateTopTab();
                   _gdSetInternalToggle(false);
                   const tm = document.getElementById("gdToggleMeeting"); if (tm) tm.checked = true;
+                  _gdSetSharingToggle(false);
+                  _gdApplySharingVis(false);
                   if (typeof mtgInit === "function") mtgInit();
+                  return;
+              }
+              if (mode === "sharing") {
+                  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+                  const el = document.getElementById("tab-group-docs");
+                  if (el) el.classList.add('active');
+                  _gdActivateTopTab();
+                  _gdSetInternalToggle(false);
+                  const tm = document.getElementById("gdToggleMeeting"); if (tm) tm.checked = false;
+                  _gdSetSharingToggle(true);
+                  _gdApplySharingVis(true);
                   return;
               }
               // default: group docs
@@ -4041,22 +4069,31 @@ function dicInitEmbedModeFromUrl() {
               _gdActivateTopTab();
               _gdSetInternalToggle(false);
               const tm2 = document.getElementById("gdToggleMeeting"); if (tm2) tm2.checked = false;
+              _gdSetSharingToggle(false);
+              _gdApplySharingVis(false);
               if (typeof loadGroupDocuments === "function") loadGroupDocuments();
           }
 
           (function _wireGroupDocsToggles() {
               const tInternal = document.getElementById("gdToggleInternal");
               const tMeeting = document.getElementById("gdToggleMeeting");
+              const tSharing = document.getElementById("gdToggleSharing");
               if (tInternal) {
                   tInternal.addEventListener("change", () => {
-                      if (tInternal.checked) { if (tMeeting) tMeeting.checked = false; }
+                      if (tInternal.checked) { if (tMeeting) tMeeting.checked = false; if (tSharing) tSharing.checked = false; }
                       gdOpenMode(tInternal.checked ? "internal" : "docs");
                   });
               }
               if (tMeeting) {
                   tMeeting.addEventListener("change", () => {
-                      if (tMeeting.checked) { if (tInternal) tInternal.checked = false; }
+                      if (tMeeting.checked) { if (tInternal) tInternal.checked = false; if (tSharing) tSharing.checked = false; }
                       gdOpenMode(tMeeting.checked ? "meeting" : "docs");
+                  });
+              }
+              if (tSharing) {
+                  tSharing.addEventListener("change", () => {
+                      if (tSharing.checked) { if (tInternal) tInternal.checked = false; if (tMeeting) tMeeting.checked = false; }
+                      gdOpenMode(tSharing.checked ? "sharing" : "docs");
                   });
               }
 
@@ -4068,17 +4105,6 @@ function dicInitEmbedModeFromUrl() {
               }
               if (tUpload) tUpload.addEventListener("change", applyUploadVis);
               applyUploadVis();
-
-              // Sharing toggle
-              const tSharing = document.getElementById("gdToggleSharing");
-              const sharingBlock = document.getElementById("gdSharingBlock");
-              function applySharingVis() {
-                  if (!tSharing || !sharingBlock) return;
-                  sharingBlock.style.display = tSharing.checked ? "" : "none";
-                  if (tSharing.checked) fsLoadShares();
-              }
-              if (tSharing) tSharing.addEventListener("change", applySharingVis);
-              applySharingVis();
           })();
 
           // =====================================================
