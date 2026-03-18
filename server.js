@@ -1316,9 +1316,9 @@ app.post('/api/di/upload', requireAuth, upload.single('file'), async (req, res) 
         const file = req.file;
 
         let normalizedType = String(fileType || '').trim().toUpperCase();
-        if (normalizedType === 'PRESENTATION') normalizedType = 'PRES'; // canonical form
-        if (!normalizedType || !['SOP', 'DATA', 'PRES'].includes(normalizedType)) {
-            return res.status(400).json({ error: 'fileType must be SOP, DATA or PRES' });
+        if (normalizedType === 'PRES') normalizedType = 'PRESENTATION'; // accept legacy shorthand
+        if (!normalizedType || !['SOP', 'DATA', 'PRESENTATION'].includes(normalizedType)) {
+            return res.status(400).json({ error: 'fileType must be SOP, DATA or PRESENTATION' });
         }
 
         if (!file) {
@@ -1329,7 +1329,7 @@ app.post('/api/di/upload', requireAuth, upload.single('file'), async (req, res) 
             return res.status(400).json({ error: 'Only PDF files are accepted' });
         }
 
-        const sizeLimit = normalizedType === 'PRES' ? 20 * 1024 * 1024 : 10 * 1024 * 1024;
+        const sizeLimit = normalizedType === 'PRESENTATION' ? 20 * 1024 * 1024 : 10 * 1024 * 1024;
         if (file.size > sizeLimit) {
             return res.status(400).json({ error: `File exceeds ${sizeLimit / (1024 * 1024)}MB limit` });
         }
@@ -1337,7 +1337,7 @@ app.post('/api/di/upload', requireAuth, upload.single('file'), async (req, res) 
         // Validate presentation metadata
         let presentationType = null;
         let presentationOther = null;
-        if (normalizedType === 'PRES') {
+        if (normalizedType === 'PRESENTATION') {
             const validPresTypes = ['1 on 1 supervision', 'Group meeting', 'External presentation', 'Conference', 'Project Evaluation', 'Other'];
             presentationType = (req.body.presentation_type || '').trim();
             if (!presentationType || !validPresTypes.includes(presentationType)) {
