@@ -3457,13 +3457,12 @@ app.post('/api/di/file-associations', requirePI, async (req, res) => {
 app.delete('/api/di/file-associations/:id', requirePI, async (req, res) => {
     try {
         if (!await checkAssociationsTable()) return res.status(404).json({ error: 'Feature not available' });
-        // Phase 3A: hardcoded NAT-Lab workspace guard
-        const NATLAB_WORKSPACE_ID = '43a32f1d-8ff1-465b-9231-c366fafcec70';
+        const workspaceId = req.workspace_id;
         const result = await pool.query(
             `DELETE FROM di_file_associations fa
              USING di_submissions s
              WHERE fa.id = $1 AND fa.source_id = s.submission_id AND s.workspace_id = $2`,
-            [req.params.id, NATLAB_WORKSPACE_ID]
+            [req.params.id, workspaceId]
         );
         if (result.rowCount === 0) return res.status(404).json({ error: 'Association not found' });
         res.json({ success: true });
