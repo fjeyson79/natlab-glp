@@ -3568,12 +3568,11 @@ app.get('/api/di/vision/files', requireAuth, async (req, res) => {
 app.post('/api/di/vision/submissions/:id/archive', requirePI, async (req, res) => {
     try {
         const id = req.params.id;
-        // Phase 3A: hardcoded NAT-Lab workspace guard
-        const NATLAB_WORKSPACE_ID = '43a32f1d-8ff1-465b-9231-c366fafcec70';
+        const workspaceId = req.workspace_id;
 
         const cur = await pool.query(
             'SELECT submission_id, status, researcher_id, original_filename FROM di_submissions WHERE submission_id = $1 AND workspace_id = $2',
-            [id, NATLAB_WORKSPACE_ID]
+            [id, workspaceId]
         );
         if (cur.rows.length === 0) return res.status(404).json({ error: 'Submission not found' });
 
@@ -3587,7 +3586,7 @@ app.post('/api/di/vision/submissions/:id/archive', requirePI, async (req, res) =
 
         await pool.query(
             "UPDATE di_submissions SET status = 'ARCHIVED', updated_at = NOW() WHERE submission_id = $1 AND workspace_id = $2",
-            [id, NATLAB_WORKSPACE_ID]
+            [id, workspaceId]
         );
 
         res.json({ success: true });
