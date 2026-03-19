@@ -16288,8 +16288,8 @@ app.post('/api/files/share', requirePI, async (req, res) => {
         }
         const shared_by = req.session.user.name || req.session.user.researcher_id;
         await pool.query(
-            `INSERT INTO di_file_shares (submission_id, owner_researcher_id, recipient_researcher_id, shared_by, share_reason, share_note)
-             VALUES ($1, $2, $3, $4, $5, $6)
+            `INSERT INTO di_file_shares (submission_id, owner_researcher_id, recipient_researcher_id, shared_by, share_reason, share_note, workspace_id)
+             VALUES ($1, $2, $3, $4, $5, $6, (SELECT workspace_id FROM di_submissions WHERE submission_id = $1))
              ON CONFLICT (submission_id, recipient_researcher_id) WHERE is_active = TRUE DO NOTHING`,
             [submission_id, owner_researcher_id, recipient_researcher_id, shared_by, share_reason || null, share_note || null]
         );
