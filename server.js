@@ -3713,8 +3713,10 @@ app.post('/api/di/vision/associations', requireAuth, async (req, res) => {
         if (!['SOP', 'PRESENTATION'].includes(link_type)) return res.status(400).json({ error: 'Invalid link_type' });
         if (source_id === target_id) return res.status(400).json({ error: 'Cannot link a file to itself' });
 
+        const workspaceId = req.workspace_id;
+
         // Validate user owns the source file
-        const srcCheck = await pool.query('SELECT researcher_id FROM di_submissions WHERE submission_id = $1', [source_id]);
+        const srcCheck = await pool.query('SELECT researcher_id FROM di_submissions WHERE submission_id = $1 AND workspace_id = $2', [source_id, workspaceId]);
         if (srcCheck.rows.length === 0) return res.status(404).json({ error: 'Source file not found' });
         if (srcCheck.rows[0].researcher_id !== req.session.user.researcher_id) {
             return res.status(403).json({ error: 'Cannot create associations for files you do not own' });
@@ -3723,7 +3725,7 @@ app.post('/api/di/vision/associations', requireAuth, async (req, res) => {
         // Researcher/Supervisor: must also own target file (PI unrestricted)
         const role = (req.session.user.role || '').trim().toLowerCase();
         if (role !== 'pi' && role !== 'principal_investigator' && role !== 'principal investigator') {
-            const tgtCheck = await pool.query('SELECT researcher_id FROM di_submissions WHERE submission_id = $1', [target_id]);
+            const tgtCheck = await pool.query('SELECT researcher_id FROM di_submissions WHERE submission_id = $1 AND workspace_id = $2', [target_id, workspaceId]);
             if (tgtCheck.rows.length === 0) return res.status(404).json({ error: 'Target file not found' });
             if (tgtCheck.rows[0].researcher_id !== req.session.user.researcher_id) {
                 return res.status(403).json({ error: 'You can only link your own documents.' });
