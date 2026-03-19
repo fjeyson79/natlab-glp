@@ -8014,7 +8014,7 @@ app.get('/api/di/inventory-v2/sample-pack/all', requirePI, async (req, res) => {
         if (!await checkSamplePacksTable()) return res.json({ packs: [] });
         const user = req.session.user;
         const result = await pool.query(
-            `SELECT sp.*, a.full_name AS created_by_name
+            `SELECT sp.*, a.name AS created_by_name
              FROM di_sample_packs sp
              LEFT JOIN di_allowlist a ON a.researcher_id = sp.created_by
              WHERE sp.affiliation = $1
