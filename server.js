@@ -1369,7 +1369,7 @@ app.post('/api/di/upload', requireAuth, upload.single('file'), async (req, res) 
         await uploadToR2(file.buffer, key, file.mimetype);
 
         const submissionResult = await pool.query(
-            'INSERT INTO di_submissions (researcher_id, affiliation, file_type, original_filename, r2_object_key, presentation_type, presentation_other, workspace_id) VALUES ($1, $2, $3, $4, $5, $6, $7, (SELECT id FROM workspaces WHERE slug = 'natlab')) RETURNING submission_id',
+            `INSERT INTO di_submissions (researcher_id, affiliation, file_type, original_filename, r2_object_key, presentation_type, presentation_other, workspace_id) VALUES ($1, $2, $3, $4, $5, $6, $7, (SELECT id FROM workspaces WHERE slug = 'natlab')) RETURNING submission_id`,
             [user.researcher_id, user.affiliation, normalizedType, file.originalname, key, presentationType, presentationOther]
         );
 
