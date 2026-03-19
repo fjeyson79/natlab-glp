@@ -994,8 +994,8 @@ app.post('/api/di/legacy-upload', requireAuth, upload.single('file'), async (req
         const submissionResult = await pool.query(
             `INSERT INTO di_submissions
              (researcher_id, affiliation, file_type, original_filename, r2_object_key,
-              status, record_origin, original_created_at, legacy_note)
-             VALUES ($1, $2, $3, $4, $5, 'SUBMITTED', 'legacy_pre2026', $6, $7)
+              status, record_origin, original_created_at, legacy_note, workspace_id)
+             VALUES ($1, $2, $3, $4, $5, 'SUBMITTED', 'legacy_pre2026', $6, $7, (SELECT id FROM workspaces WHERE slug = 'natlab'))
              RETURNING submission_id`,
             [user.researcher_id, user.affiliation, normalizedType, file.originalname,
              key, parsedDate.toISOString(), (legacy_note || '').trim() || null]
@@ -1369,7 +1369,7 @@ app.post('/api/di/upload', requireAuth, upload.single('file'), async (req, res) 
         await uploadToR2(file.buffer, key, file.mimetype);
 
         const submissionResult = await pool.query(
-            'INSERT INTO di_submissions (researcher_id, affiliation, file_type, original_filename, r2_object_key, presentation_type, presentation_other) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING submission_id',
+            'INSERT INTO di_submissions (researcher_id, affiliation, file_type, original_filename, r2_object_key, presentation_type, presentation_other, workspace_id) VALUES ($1, $2, $3, $4, $5, $6, $7, (SELECT id FROM workspaces WHERE slug = 'natlab')) RETURNING submission_id',
             [user.researcher_id, user.affiliation, normalizedType, file.originalname, key, presentationType, presentationOther]
         );
 
@@ -1485,8 +1485,8 @@ app.post('/api/di/external-upload', upload.single('file'), async (req, res) => {
 
         // Record submission in database
         const submissionResult = await pool.query(
-            `INSERT INTO di_submissions (researcher_id, affiliation, file_type, original_filename, presentation_type, presentation_other)
-             VALUES ($1, $2, $3, $4, $5, $6)
+            `INSERT INTO di_submissions (researcher_id, affiliation, file_type, original_filename, presentation_type, presentation_other, workspace_id)
+             VALUES ($1, $2, $3, $4, $5, $6, (SELECT id FROM workspaces WHERE slug = 'natlab'))
              RETURNING submission_id`,
             [researcher_id, affiliation, fileType, file.originalname, extPresType, extPresOther]
         );
@@ -2750,8 +2750,8 @@ app.post('/api/di/pi-upload-old', requirePI, upload.single('file'), async (req, 
 
         // Record submission
         const submissionResult = await pool.query(
-            `INSERT INTO di_submissions (researcher_id, affiliation, file_type, original_filename)
-             VALUES ($1, $2, $3, $4)
+            `INSERT INTO di_submissions (researcher_id, affiliation, file_type, original_filename, workspace_id)
+             VALUES ($1, $2, $3, $4, (SELECT id FROM workspaces WHERE slug = 'natlab'))
              RETURNING submission_id`,
             [researcher_id, researcher.affiliation, fileType, file.originalname]
         );
@@ -5495,8 +5495,8 @@ app.post('/api/di/inventory/upload', requireAuth, requireInternal, inventoryUplo
 
         // Insert into di_submissions with status SUBMITTED
         const result = await pool.query(
-            `INSERT INTO di_submissions (researcher_id, affiliation, file_type, original_filename, r2_object_key, status)
-             VALUES ($1, $2, 'INVENTORY', $3, $4, 'SUBMITTED')
+            `INSERT INTO di_submissions (researcher_id, affiliation, file_type, original_filename, r2_object_key, status, workspace_id)
+             VALUES ($1, $2, 'INVENTORY', $3, $4, 'SUBMITTED', (SELECT id FROM workspaces WHERE slug = 'natlab'))
              RETURNING submission_id`,
             [user.researcher_id, user.affiliation, file.originalname, key]
         );
