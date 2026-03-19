@@ -3205,12 +3205,11 @@ app.get('/api/di/lab-files-enriched', requirePI, async (req, res) => {
             : `, NULL as record_origin, NULL as original_created_at, NULL as legacy_pack_id,
                  NULL as legacy_pack_title, NULL as legacy_pack_context_type, NULL as legacy_pack_submitted_at`;
 
-        // Phase 3A: hardcoded NAT-Lab workspace filter
-        const NATLAB_WORKSPACE_ID = '43a32f1d-8ff1-465b-9231-c366fafcec70';
+        const workspaceId = req.workspace_id;
 
         // Implementation note: structured for easy future extension with ?researcher_id=
         const conditions = ['s.created_at >= NOW() - make_interval(months => $1)', "s.status != 'DISCARDED'", 's.workspace_id = $2'];
-        const params = [months, NATLAB_WORKSPACE_ID];
+        const params = [months, workspaceId];
 
         const whereClause = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
 
@@ -3268,7 +3267,7 @@ app.get('/api/di/lab-files-enriched', requirePI, async (req, res) => {
                   AND fs.shared_at >= NOW() - make_interval(months => $1)
                   AND fs.workspace_id = $2 AND s.workspace_id = $2
                 ORDER BY fs.shared_at DESC
-            `, [months, NATLAB_WORKSPACE_ID]);
+            `, [months, workspaceId]);
             for (const row of sharedResult.rows) {
                 row.access_mode = 'shared';
                 files.push(row);
@@ -3315,12 +3314,10 @@ app.get('/api/di/file-associations/:id', requirePI, async (req, res) => {
     try {
         const sourceFileId = req.params.id;
         const hasAssoc = await checkAssociationsTable();
-
-        // Phase 3A: hardcoded NAT-Lab workspace filter
-        const NATLAB_WORKSPACE_ID = '43a32f1d-8ff1-465b-9231-c366fafcec70';
+        const workspaceId = req.workspace_id;
 
         // Get source file
-        const srcResult = await pool.query('SELECT * FROM di_submissions WHERE submission_id = $1 AND workspace_id = $2', [sourceFileId, NATLAB_WORKSPACE_ID]);
+        const srcResult = await pool.query('SELECT * FROM di_submissions WHERE submission_id = $1 AND workspace_id = $2', [sourceFileId, workspaceId]);
         if (srcResult.rows.length === 0) return res.status(404).json({ error: 'File not found' });
         const sourceFile = srcResult.rows[0];
         const sourceParsed = parseNatlabFilename(sourceFile.original_filename);
@@ -3339,7 +3336,7 @@ app.get('/api/di/file-associations/:id', requirePI, async (req, res) => {
                 LEFT JOIN di_allowlist a ON s.researcher_id = a.researcher_id
                 WHERE fa.source_id = $1 AND s.workspace_id = $2${delFilter}
                 ORDER BY fa.link_type, fa.created_at DESC
-            `, [sourceFileId, NATLAB_WORKSPACE_ID]);
+            `, [sourceFileId, workspaceId]);
             manual = manualResult.rows;
         }
 
@@ -3397,7 +3394,7 @@ app.get('/api/di/file-associations/:id', requirePI, async (req, res) => {
             AND s.workspace_id = $3
             ${sopExclusion}
             ORDER BY s.created_at DESC LIMIT 30
-        `, [sourceFile.researcher_id, sourceFileId, NATLAB_WORKSPACE_ID]);
+        `, [sourceFile.researcher_id, sourceFileId, workspaceId]);
         heuristic_sops = sopResult.rows.map(scoreCandidate).sort((a, b) => b.score - a.score).slice(0, 2);
 
         // Heuristic PRES candidates
@@ -3412,7 +3409,7 @@ app.get('/api/di/file-associations/:id', requirePI, async (req, res) => {
             AND s.workspace_id = $3
             ${presExclusion}
             ORDER BY s.created_at DESC LIMIT 30
-        `, [sourceFile.researcher_id, sourceFileId, NATLAB_WORKSPACE_ID]);
+        `, [sourceFile.researcher_id, sourceFileId, workspaceId]);
         heuristic_presentations = presResult.rows.map(scoreCandidate).sort((a, b) => b.score - a.score).slice(0, 2);
 
         res.json({ success: true, manual, heuristic_sops, heuristic_presentations });
