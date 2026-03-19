@@ -52,6 +52,17 @@ app.use(session({
     }
 }));
 
+// Phase 3B: central workspace resolver (NAT-Lab fallback only)
+const DEFAULT_WORKSPACE_ID = '43a32f1d-8ff1-465b-9231-c366fafcec70';
+const DEFAULT_WORKSPACE_SLUG = 'natlab';
+
+function resolveWorkspace(req, res, next) {
+    req.workspace_id = DEFAULT_WORKSPACE_ID;
+    req.workspace_slug = DEFAULT_WORKSPACE_SLUG;
+    next();
+}
+app.use(resolveWorkspace);
+
 // Multer configuration for file uploads (memory storage)
 const upload = multer({
     storage: multer.memoryStorage(),
