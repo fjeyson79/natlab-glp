@@ -3274,6 +3274,9 @@ app.get('/api/di/lab-files-enriched', requirePI, async (req, res) => {
 // GET /api/di/researcher-file-metrics — Per-researcher counts
 app.get('/api/di/researcher-file-metrics', requirePI, async (req, res) => {
     try {
+        // Phase 3A: hardcoded NAT-Lab workspace filter
+        const NATLAB_WORKSPACE_ID = '43a32f1d-8ff1-465b-9231-c366fafcec70';
+
         const result = await pool.query(`
             SELECT s.researcher_id, a.name as researcher_name,
                 COUNT(*)::int as total_count,
@@ -3285,9 +3288,10 @@ app.get('/api/di/researcher-file-metrics', requirePI, async (req, res) => {
             FROM di_submissions s
             LEFT JOIN di_allowlist a ON s.researcher_id = a.researcher_id
             WHERE s.status != 'DISCARDED'
+              AND s.workspace_id = $1
             GROUP BY s.researcher_id, a.name
             ORDER BY a.name
-        `);
+        `, [NATLAB_WORKSPACE_ID]);
         res.json({ success: true, metrics: result.rows });
     } catch (err) {
         console.error('Get researcher metrics error:', err);
