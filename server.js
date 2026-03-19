@@ -3194,9 +3194,12 @@ app.get('/api/di/lab-files-enriched', requirePI, async (req, res) => {
             : `, NULL as record_origin, NULL as original_created_at, NULL as legacy_pack_id,
                  NULL as legacy_pack_title, NULL as legacy_pack_context_type, NULL as legacy_pack_submitted_at`;
 
+        // Phase 3A: hardcoded NAT-Lab workspace filter
+        const NATLAB_WORKSPACE_ID = '43a32f1d-8ff1-465b-9231-c366fafcec70';
+
         // Implementation note: structured for easy future extension with ?researcher_id=
-        const conditions = ['s.created_at >= NOW() - make_interval(months => $1)', "s.status != 'DISCARDED'"];
-        const params = [months];
+        const conditions = ['s.created_at >= NOW() - make_interval(months => $1)', "s.status != 'DISCARDED'", 's.workspace_id = $2'];
+        const params = [months, NATLAB_WORKSPACE_ID];
 
         const whereClause = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
 
@@ -3252,8 +3255,9 @@ app.get('/api/di/lab-files-enriched', requirePI, async (req, res) => {
                 WHERE fs.is_active = TRUE AND s.status != 'DISCARDED'
                   AND fs.recipient_researcher_id != fs.owner_researcher_id
                   AND fs.shared_at >= NOW() - make_interval(months => $1)
+                  AND fs.workspace_id = $2 AND s.workspace_id = $2
                 ORDER BY fs.shared_at DESC
-            `, [months]);
+            `, [months, NATLAB_WORKSPACE_ID]);
             for (const row of sharedResult.rows) {
                 row.access_mode = 'shared';
                 files.push(row);
