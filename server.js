@@ -3429,11 +3429,10 @@ app.post('/api/di/file-associations', requirePI, async (req, res) => {
         if (!['SOP', 'PRESENTATION'].includes(link_type)) return res.status(400).json({ error: 'Invalid link_type' });
         if (source_id === target_id) return res.status(400).json({ error: 'Cannot link a file to itself' });
 
-        // Phase 3A: hardcoded NAT-Lab workspace guard
-        const NATLAB_WORKSPACE_ID = '43a32f1d-8ff1-465b-9231-c366fafcec70';
+        const workspaceId = req.workspace_id;
         const wsCheck = await pool.query(
             `SELECT submission_id FROM di_submissions WHERE submission_id IN ($1, $2) AND workspace_id = $3`,
-            [source_id, target_id, NATLAB_WORKSPACE_ID]
+            [source_id, target_id, workspaceId]
         );
         const foundIds = new Set(wsCheck.rows.map(r => r.submission_id));
         if (!foundIds.has(source_id) || !foundIds.has(target_id)) {
