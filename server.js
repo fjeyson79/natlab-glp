@@ -3305,8 +3305,11 @@ app.get('/api/di/file-associations/:id', requirePI, async (req, res) => {
         const sourceFileId = req.params.id;
         const hasAssoc = await checkAssociationsTable();
 
+        // Phase 3A: hardcoded NAT-Lab workspace filter
+        const NATLAB_WORKSPACE_ID = '43a32f1d-8ff1-465b-9231-c366fafcec70';
+
         // Get source file
-        const srcResult = await pool.query('SELECT * FROM di_submissions WHERE submission_id = $1', [sourceFileId]);
+        const srcResult = await pool.query('SELECT * FROM di_submissions WHERE submission_id = $1 AND workspace_id = $2', [sourceFileId, NATLAB_WORKSPACE_ID]);
         if (srcResult.rows.length === 0) return res.status(404).json({ error: 'File not found' });
         const sourceFile = srcResult.rows[0];
         const sourceParsed = parseNatlabFilename(sourceFile.original_filename);
@@ -3323,9 +3326,9 @@ app.get('/api/di/file-associations/:id', requirePI, async (req, res) => {
                 FROM di_file_associations fa
                 JOIN di_submissions s ON fa.target_id = s.submission_id
                 LEFT JOIN di_allowlist a ON s.researcher_id = a.researcher_id
-                WHERE fa.source_id = $1${delFilter}
+                WHERE fa.source_id = $1 AND s.workspace_id = $2${delFilter}
                 ORDER BY fa.link_type, fa.created_at DESC
-            `, [sourceFileId]);
+            `, [sourceFileId, NATLAB_WORKSPACE_ID]);
             manual = manualResult.rows;
         }
 
@@ -3380,9 +3383,10 @@ app.get('/api/di/file-associations/:id', requirePI, async (req, res) => {
             SELECT s.submission_id, s.researcher_id, s.original_filename, s.status, s.created_at
             FROM di_submissions s
             WHERE s.file_type = 'SOP' AND s.researcher_id = $1 AND s.submission_id != $2 AND s.status != 'DISCARDED'
+            AND s.workspace_id = $3
             ${sopExclusion}
             ORDER BY s.created_at DESC LIMIT 30
-        `, [sourceFile.researcher_id, sourceFileId]);
+        `, [sourceFile.researcher_id, sourceFileId, NATLAB_WORKSPACE_ID]);
         heuristic_sops = sopResult.rows.map(scoreCandidate).sort((a, b) => b.score - a.score).slice(0, 2);
 
         // Heuristic PRES candidates
@@ -3394,9 +3398,10 @@ app.get('/api/di/file-associations/:id', requirePI, async (req, res) => {
             SELECT s.submission_id, s.researcher_id, s.original_filename, s.status, s.created_at
             FROM di_submissions s
             WHERE s.file_type = 'PRESENTATION' AND s.researcher_id = $1 AND s.submission_id != $2 AND s.status != 'DISCARDED'
+            AND s.workspace_id = $3
             ${presExclusion}
             ORDER BY s.created_at DESC LIMIT 30
-        `, [sourceFile.researcher_id, sourceFileId]);
+        `, [sourceFile.researcher_id, sourceFileId, NATLAB_WORKSPACE_ID]);
         heuristic_presentations = presResult.rows.map(scoreCandidate).sort((a, b) => b.score - a.score).slice(0, 2);
 
         res.json({ success: true, manual, heuristic_sops, heuristic_presentations });
