@@ -2194,8 +2194,8 @@ async function performRevision(submissionId, comments) {
             );
         } else {
             await pool.query(
-                `INSERT INTO di_revision_requests (file_id, researcher_id, year, doc_type, filename, pi_comment)
-                 VALUES ($1, $2, $3, $4, $5, $6)`,
+                `INSERT INTO di_revision_requests (file_id, researcher_id, year, doc_type, filename, pi_comment, workspace_id)
+                 VALUES ($1, $2, $3, $4, $5, $6, (SELECT workspace_id FROM di_submissions WHERE submission_id = $1))`,
                 [submissionId, submission.researcher_id, submissionYear, docType, submission.original_filename, comments || '']
             );
         }
