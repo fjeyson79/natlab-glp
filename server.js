@@ -3591,13 +3591,16 @@ app.post('/api/di/vision/submissions/:id/archive', requirePI, async (req, res) =
 // GET /api/di/vision/associations/:fileId — Get associations for a file
 app.get('/api/di/vision/associations/:fileId', requireAuth, async (req, res) => {
     try {
+        // Phase 3A: hardcoded NAT-Lab workspace filter
+        const NATLAB_WORKSPACE_ID = '43a32f1d-8ff1-465b-9231-c366fafcec70';
+
         const user = req.session.user;
         const fileId = req.params.fileId;
         const hasAssoc = await checkAssociationsTable();
         const hasVisionCols = await checkVisionColumns();
 
         // Verify access: user owns the file or is supervisor assigned to the file's researcher
-        const srcResult = await pool.query('SELECT * FROM di_submissions WHERE submission_id = $1', [fileId]);
+        const srcResult = await pool.query('SELECT * FROM di_submissions WHERE submission_id = $1 AND workspace_id = $2', [fileId, NATLAB_WORKSPACE_ID]);
         if (srcResult.rows.length === 0) return res.status(404).json({ error: 'File not found' });
         const sourceFile = srcResult.rows[0];
 
@@ -3625,9 +3628,9 @@ app.get('/api/di/vision/associations/:fileId', requireAuth, async (req, res) => 
                 FROM di_file_associations fa
                 JOIN di_submissions s ON fa.target_id = s.submission_id
                 LEFT JOIN di_allowlist al ON s.researcher_id = al.researcher_id
-                WHERE fa.source_id = $1${deletedFilter}
+                WHERE fa.source_id = $1 AND s.workspace_id = $2${deletedFilter}
                 ORDER BY fa.link_type, fa.created_at DESC
-            `, [fileId]);
+            `, [fileId, NATLAB_WORKSPACE_ID]);
             manual = manualResult.rows;
         }
 
@@ -3671,9 +3674,10 @@ app.get('/api/di/vision/associations/:fileId', requireAuth, async (req, res) => 
             SELECT s.submission_id, s.researcher_id, s.original_filename, s.status, s.created_at
             FROM di_submissions s
             WHERE s.file_type = 'SOP' AND s.researcher_id = $1 AND s.submission_id != $2 AND s.status != 'DISCARDED'
+            AND s.workspace_id = $3
             ${sopExcl}
             ORDER BY s.created_at DESC LIMIT 30
-        `, [sourceFile.researcher_id, fileId]);
+        `, [sourceFile.researcher_id, fileId, NATLAB_WORKSPACE_ID]);
         heuristic_sops = sopResult.rows.map(scoreCandidate).sort((a, b) => b.score - a.score).slice(0, 2);
 
         let heuristic_presentations = [];
@@ -3682,9 +3686,10 @@ app.get('/api/di/vision/associations/:fileId', requireAuth, async (req, res) => 
             SELECT s.submission_id, s.researcher_id, s.original_filename, s.status, s.created_at
             FROM di_submissions s
             WHERE s.file_type = 'PRESENTATION' AND s.researcher_id = $1 AND s.submission_id != $2 AND s.status != 'DISCARDED'
+            AND s.workspace_id = $3
             ${presExcl}
             ORDER BY s.created_at DESC LIMIT 30
-        `, [sourceFile.researcher_id, fileId]);
+        `, [sourceFile.researcher_id, fileId, NATLAB_WORKSPACE_ID]);
         heuristic_presentations = presResult.rows.map(scoreCandidate).sort((a, b) => b.score - a.score).slice(0, 2);
 
         res.json({ success: true, manual, heuristic_sops, heuristic_presentations, is_owner: isOwner });
