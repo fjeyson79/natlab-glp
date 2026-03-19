@@ -3498,6 +3498,9 @@ app.get('/api/di/vision/me', requireAuth, async (req, res) => {
 // GET /api/di/vision/files — List files (own or assigned researcher)
 app.get('/api/di/vision/files', requireAuth, async (req, res) => {
     try {
+        // Phase 3A: hardcoded NAT-Lab workspace filter
+        const NATLAB_WORKSPACE_ID = '43a32f1d-8ff1-465b-9231-c366fafcec70';
+
         const user = req.session.user;
         const scope = req.query.scope || 'my';
         let targetResearcherId = user.researcher_id;
@@ -3543,8 +3546,9 @@ app.get('/api/di/vision/files', requireAuth, async (req, res) => {
             ${sopCountJoin}
             ${presCountJoin}
             WHERE s.researcher_id = $1 AND s.status NOT IN ('DISCARDED', 'ARCHIVED')
+              AND s.workspace_id = $2
             ORDER BY s.created_at DESC
-        `, [targetResearcherId]);
+        `, [targetResearcherId, NATLAB_WORKSPACE_ID]);
 
         res.json({ success: true, files: result.rows, scope, researcher_id: targetResearcherId });
     } catch (err) {
