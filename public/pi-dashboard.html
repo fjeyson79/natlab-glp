@@ -4129,7 +4129,7 @@ function dicInitEmbedModeFromUrl() {
               try {
                   const r = await fetch('/api/di/members', { credentials: 'include' });
                   const d = await r.json();
-                  _fsMembersCache = (d.members || []).filter(m => m.role === 'researcher');
+                  _fsMembersCache = (d.members || []).filter(m => m.role === 'researcher' || m.role === 'supervisor');
                   return _fsMembersCache;
               } catch { return []; }
           }
@@ -4160,7 +4160,7 @@ function dicInitEmbedModeFromUrl() {
               document.getElementById('fsSelOwner').textContent = file.owner_name || '';
               // Populate recipient dropdown
               const sel = document.getElementById('fsRecipient');
-              sel.innerHTML = '<option value="">Select researcher...</option>';
+              sel.innerHTML = '<option value="">Select recipient...</option>';
               const members = await _fsLoadMembers();
               for (const m of members) {
                   if (m.researcher_id === file.owner_name) continue;
