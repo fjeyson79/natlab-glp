@@ -3013,8 +3013,8 @@ app.post('/api/di/group-documents', requirePI, groupDocUpload.single('file'), as
         await uploadToR2(file.buffer, key, file.mimetype);
 
         const result = await pool.query(
-            `INSERT INTO di_group_documents (title, category, description, filename, file_type, r2_object_key, uploaded_by, can_download)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            `INSERT INTO di_group_documents (title, category, description, filename, file_type, r2_object_key, uploaded_by, can_download, workspace_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, (SELECT id FROM workspaces WHERE slug = 'natlab'))
              RETURNING id, title, category, description, filename, file_type, created_at, can_download`,
             [title, category, description || null, file.originalname, fileType, key, user.researcher_id, canDownload]
         );
