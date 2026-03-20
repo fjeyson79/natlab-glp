@@ -1,3 +1,4 @@
+const path = require('path');
 // redeploy ping 2026-02-25T20:11:45
 process.env.UV_THREADPOOL_SIZE = process.env.UV_THREADPOOL_SIZE || '8';
 ﻿require('dotenv').config();
