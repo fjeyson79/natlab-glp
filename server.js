@@ -7,7 +7,6 @@ const multer = require('multer');
 const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
 const session = require('express-session');
-const path = require('path');
 const FormData = require('form-data');
 const fetch = require('node-fetch');
 const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
@@ -16571,4 +16570,16 @@ app.listen(PORT, "0.0.0.0", async () => {
 
 
 
+
+
+
+// SKINOTEK portal route
+app.get('/skinotek', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'access-skinotek.html'));
+});
+
+// Theralia portal route
+app.get('/theralia', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'access-theralia.html'));
+});
 
