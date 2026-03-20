@@ -52,14 +52,34 @@ app.use(session({
     }
 }));
 
-// Phase 3B: central workspace resolver (NAT-Lab fallback only)
+// Phase 4B: central workspace resolver, safe internal override + NAT-Lab fallback
 const DEFAULT_WORKSPACE_ID = '43a32f1d-8ff1-465b-9231-c366fafcec70';
 const DEFAULT_WORKSPACE_SLUG = 'natlab';
 
-function resolveWorkspace(req, res, next) {
-    req.workspace_id = DEFAULT_WORKSPACE_ID;
-    req.workspace_slug = DEFAULT_WORKSPACE_SLUG;
-    next();
+async function resolveWorkspace(req, res, next) {
+    try {
+        const requestedSlug =
+            req.headers['x-workspace-slug'] ||
+            req.query.ws ||
+            DEFAULT_WORKSPACE_SLUG;
+
+        const ws = await pool.query(
+            `SELECT id, slug FROM workspaces WHERE slug = $1 AND is_active = TRUE LIMIT 1`,
+            [requestedSlug]
+        );
+
+        if (ws.rows.length === 0) {
+            return res.status(400).json({ error: 'Invalid workspace' });
+        }
+
+        req.workspace = ws.rows[0];
+        req.workspace_id = ws.rows[0].id;
+        req.workspace_slug = ws.rows[0].slug;
+        next();
+    } catch (err) {
+        console.error('Workspace resolve error:', err);
+        res.status(500).json({ error: 'Workspace resolution failed' });
+    }
 }
 app.use(resolveWorkspace);
 
@@ -3205,7 +3225,7 @@ app.get('/api/di/lab-files-enriched', requirePI, async (req, res) => {
             : `, NULL as record_origin, NULL as original_created_at, NULL as legacy_pack_id,
                  NULL as legacy_pack_title, NULL as legacy_pack_context_type, NULL as legacy_pack_submitted_at`;
 
-        const workspaceId = req.workspace_id;
+        const workspaceId = req.workspace.id;
 
         // Implementation note: structured for easy future extension with ?researcher_id=
         const conditions = ['s.created_at >= NOW() - make_interval(months => $1)', "s.status != 'DISCARDED'", 's.workspace_id = $2'];
@@ -3284,8 +3304,7 @@ app.get('/api/di/lab-files-enriched', requirePI, async (req, res) => {
 // GET /api/di/researcher-file-metrics — Per-researcher counts
 app.get('/api/di/researcher-file-metrics', requirePI, async (req, res) => {
     try {
-        // Phase 3A: hardcoded NAT-Lab workspace filter
-        const NATLAB_WORKSPACE_ID = '43a32f1d-8ff1-465b-9231-c366fafcec70';
+        const workspaceId = req.workspace.id;
 
         const result = await pool.query(`
             SELECT s.researcher_id, a.name as researcher_name,
@@ -3301,7 +3320,7 @@ app.get('/api/di/researcher-file-metrics', requirePI, async (req, res) => {
               AND s.workspace_id = $1
             GROUP BY s.researcher_id, a.name
             ORDER BY a.name
-        `, [NATLAB_WORKSPACE_ID]);
+        `, [workspaceId]);
         res.json({ success: true, metrics: result.rows });
     } catch (err) {
         console.error('Get researcher metrics error:', err);
@@ -3314,7 +3333,7 @@ app.get('/api/di/file-associations/:id', requirePI, async (req, res) => {
     try {
         const sourceFileId = req.params.id;
         const hasAssoc = await checkAssociationsTable();
-        const workspaceId = req.workspace_id;
+        const workspaceId = req.workspace.id;
 
         // Get source file
         const srcResult = await pool.query('SELECT * FROM di_submissions WHERE submission_id = $1 AND workspace_id = $2', [sourceFileId, workspaceId]);
@@ -3429,7 +3448,7 @@ app.post('/api/di/file-associations', requirePI, async (req, res) => {
         if (!['SOP', 'PRESENTATION'].includes(link_type)) return res.status(400).json({ error: 'Invalid link_type' });
         if (source_id === target_id) return res.status(400).json({ error: 'Cannot link a file to itself' });
 
-        const workspaceId = req.workspace_id;
+        const workspaceId = req.workspace.id;
         const wsCheck = await pool.query(
             `SELECT submission_id FROM di_submissions WHERE submission_id IN ($1, $2) AND workspace_id = $3`,
             [source_id, target_id, workspaceId]
@@ -3457,7 +3476,7 @@ app.post('/api/di/file-associations', requirePI, async (req, res) => {
 app.delete('/api/di/file-associations/:id', requirePI, async (req, res) => {
     try {
         if (!await checkAssociationsTable()) return res.status(404).json({ error: 'Feature not available' });
-        const workspaceId = req.workspace_id;
+        const workspaceId = req.workspace.id;
         const result = await pool.query(
             `DELETE FROM di_file_associations fa
              USING di_submissions s
@@ -3504,7 +3523,7 @@ app.get('/api/di/vision/me', requireAuth, async (req, res) => {
 // GET /api/di/vision/files — List files (own or assigned researcher)
 app.get('/api/di/vision/files', requireAuth, async (req, res) => {
     try {
-        const workspaceId = req.workspace_id;
+        const workspaceId = req.workspace.id;
 
         const user = req.session.user;
         const scope = req.query.scope || 'my';
@@ -3566,7 +3585,7 @@ app.get('/api/di/vision/files', requireAuth, async (req, res) => {
 app.post('/api/di/vision/submissions/:id/archive', requirePI, async (req, res) => {
     try {
         const id = req.params.id;
-        const workspaceId = req.workspace_id;
+        const workspaceId = req.workspace.id;
 
         const cur = await pool.query(
             'SELECT submission_id, status, researcher_id, original_filename FROM di_submissions WHERE submission_id = $1 AND workspace_id = $2',
@@ -3597,7 +3616,7 @@ app.post('/api/di/vision/submissions/:id/archive', requirePI, async (req, res) =
 // GET /api/di/vision/associations/:fileId — Get associations for a file
 app.get('/api/di/vision/associations/:fileId', requireAuth, async (req, res) => {
     try {
-        const workspaceId = req.workspace_id;
+        const workspaceId = req.workspace.id;
 
         const user = req.session.user;
         const fileId = req.params.fileId;
@@ -3713,7 +3732,7 @@ app.post('/api/di/vision/associations', requireAuth, async (req, res) => {
         if (!['SOP', 'PRESENTATION'].includes(link_type)) return res.status(400).json({ error: 'Invalid link_type' });
         if (source_id === target_id) return res.status(400).json({ error: 'Cannot link a file to itself' });
 
-        const workspaceId = req.workspace_id;
+        const workspaceId = req.workspace.id;
 
         // Validate user owns the source file
         const srcCheck = await pool.query('SELECT researcher_id FROM di_submissions WHERE submission_id = $1 AND workspace_id = $2', [source_id, workspaceId]);
