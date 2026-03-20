@@ -3785,11 +3785,18 @@ app.delete('/api/di/vision/associations/:id', requireAuth, async (req, res) => {
         if (!await checkVisionColumns()) return res.status(404).json({ error: 'Feature not available' });
 
         const userId = req.session.user.researcher_id;
-        // Only allow deleting own associations (not PI-created)
+        const workspaceId = req.workspace.id;
+        // Only allow deleting own associations inside current workspace
         const result = await pool.query(
-            `UPDATE di_file_associations SET deleted_at = NOW()
-             WHERE id = $1 AND created_by = $2 AND deleted_at IS NULL`,
-            [req.params.id, userId]
+            `UPDATE di_file_associations fa
+             SET deleted_at = NOW()
+             FROM di_submissions s
+             WHERE fa.id = $1
+               AND fa.source_id = s.submission_id
+               AND fa.created_by = $2
+               AND s.workspace_id = $3
+               AND fa.deleted_at IS NULL`,
+            [req.params.id, userId, workspaceId]
         );
         if (result.rowCount === 0) return res.status(404).json({ error: 'Association not found or not yours' });
         res.json({ success: true });
