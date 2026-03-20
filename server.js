@@ -3289,9 +3289,10 @@ app.post('/api/di/transfer-to-workspace', requirePI, async (req, res) => {
                 r2_object_key,
                 source_workspace_id,
                 source_submission_id,
-                transferred_at
+                transferred_at,
+                transferred_by
             )
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW(),$10,$11,$12,$13,NOW())
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW(),$10,$11,$12,$13,NOW(),$14)
             RETURNING submission_id`,
             [
                 f.researcher_id,
@@ -3306,7 +3307,8 @@ app.post('/api/di/transfer-to-workspace', requirePI, async (req, res) => {
                 targetWorkspaceId,
                 f.r2_object_key,
                 sourceWorkspaceId,
-                submission_id
+                submission_id,
+                req.user.researcher_id
             ]
         );
 
