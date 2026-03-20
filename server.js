@@ -58,6 +58,7 @@ const DEFAULT_WORKSPACE_SLUG = 'natlab';
 
 async function resolveWorkspace(req, res, next) {
     try {
+        console.log('[TRANSFER DEBUG] req.user:', req.user);
         const requestedSlug =
             req.headers['x-workspace-slug'] ||
             req.query.ws ||
