@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SKINOTEK – Data Management Portal</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: linear-gradient(135deg, #005f6b 0%, #007C91 50%, #009ba8 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .container {
+            background: #ffffff;
+            padding: 44px 40px;
+            border-radius: 14px;
+            box-shadow: 0 16px 56px rgba(0, 0, 0, 0.25);
+            max-width: 450px;
+            width: 100%;
+        }
+        .logo {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+        .logo img {
+            max-width: 140px;
+            height: auto;
+        }
+        h1 {
+            color: #007C91;
+            margin-bottom: 6px;
+            font-size: 22px;
+            line-height: 1.3;
+            text-align: center;
+        }
+        h2 {
+            color: #009ba8;
+            margin-bottom: 14px;
+            font-size: 15px;
+            font-weight: 400;
+            text-align: center;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 13px;
+            line-height: 1.6;
+            text-align: center;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        input[type="email"] {
+            width: 100%;
+            padding: 13px 14px;
+            border: 2px solid #d4dde4;
+            border-radius: 8px;
+            font-size: 15px;
+            margin-bottom: 20px;
+            transition: border-color 0.3s, box-shadow 0.3s;
+            background: #fafbfc;
+        }
+        input[type="email"]:focus {
+            outline: none;
+            border-color: #007C91;
+            box-shadow: 0 0 0 3px rgba(0, 124, 145, 0.12);
+            background: #fff;
+        }
+        button {
+            width: 100%;
+            padding: 14px;
+            background: #007C91;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.3s, box-shadow 0.3s;
+            letter-spacing: 0.3px;
+        }
+        button:hover {
+            background: #005f6b;
+            box-shadow: 0 4px 14px rgba(0, 124, 145, 0.3);
+        }
+        button:disabled { background: #b0c4cc; cursor: not-allowed; box-shadow: none; }
+        .message {
+            margin-top: 20px;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 14px;
+            display: none;
+        }
+        .message.error {
+            background: #fef0f0;
+            color: #c00;
+            border: 1px solid #fcc;
+            display: block;
+        }
+        .message.info {
+            background: #e6f7f9;
+            color: #007C91;
+            border: 1px solid #a8dde4;
+            display: block;
+        }
+        .divider {
+            height: 3px;
+            background: linear-gradient(90deg, transparent, #007C91, transparent);
+            border: none;
+            margin: 0 0 24px;
+            border-radius: 2px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">
+            <img src="//assets/logos/skinotek_logo.png" alt="SKINOTEK Logo" onerror="this.style.display='none'">
+        </div>
+        <h1>SKINOTEK</h1>
+        <h2>Data Management Portal</h2>
+        <hr class="divider">
+        <p class="subtitle">Secure access to validated experimental data, SOP-aligned workflows, and data integrity</p>
+
+        <form id="accessForm">
+            <label for="email">Institution Email</label>
+            <input type="email" id="email" name="email" placeholder="your.name@institution.com" required>
+            <button type="submit" id="submitBtn">Continue</button>
+        </form>
+
+        <div id="message" class="message"></div>
+    </div>
+
+    <script>
+        const WORKSPACE_SLUG = 'skinotek';
+        const form = document.getElementById('accessForm');
+        const messageDiv = document.getElementById('message');
+        const submitBtn = document.getElementById('submitBtn');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('email').value.trim();
+            if (!email) return;
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Checking...';
+            messageDiv.className = 'message';
+            messageDiv.style.display = 'none';
+
+            try {
+                const response = await fetch('/api/di/access-check?ws=' + WORKSPACE_SLUG, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Workspace-Slug': WORKSPACE_SLUG
+                    },
+                    body: JSON.stringify({ institution_email: email })
+                });
+
+                const data = await response.json();
+
+                if (!data.allowed) {
+                    messageDiv.textContent = data.message || 'Access denied. Your email is not in the allowlist.';
+                    messageDiv.className = 'message error';
+                } else {
+                    sessionStorage.setItem('di_email', email);
+                    sessionStorage.setItem('di_name', data.name || '');
+                    sessionStorage.setItem('di_affiliation', data.affiliation || '');
+                    sessionStorage.setItem('di_role', data.role || 'researcher');
+                    sessionStorage.setItem('di_workspace_slug', WORKSPACE_SLUG);
+
+                    if (data.next === 'register') {
+                        window.location.href = 'register.html?ws=' + WORKSPACE_SLUG;
+                    } else {
+                        window.location.href = 'login.html?ws=' + WORKSPACE_SLUG;
+                    }
+                }
+            } catch (err) {
+                messageDiv.textContent = 'Connection error. Please try again.';
+                messageDiv.className = 'message error';
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Continue';
+            }
+        });
+    </script>
+</body>
+</html>
