@@ -3206,6 +3206,95 @@ app.get('/api/di/lab-files', requirePI, async (req, res) => {
     }
 });
 
+
+
+// =====================================================
+// Phase 4C — Transfer Engine (NAT-Lab → Startup, minimal)
+// =====================================================
+
+app.post('/api/di/transfer-to-workspace', requirePI, async (req, res) => {
+    try {
+        const { submission_id, target_workspace_slug } = req.body;
+
+        if (!submission_id || !target_workspace_slug) {
+            return res.status(400).json({ error: 'Missing parameters' });
+        }
+
+        const sourceWorkspaceId = req.workspace.id;
+
+        // Resolve target workspace
+        const ws = await pool.query(
+            `SELECT id FROM workspaces WHERE slug = $1 AND is_active = TRUE LIMIT 1`,
+            [target_workspace_slug]
+        );
+
+        if (ws.rows.length === 0) {
+            return res.status(404).json({ error: 'Target workspace not found' });
+        }
+
+        const targetWorkspaceId = ws.rows[0].id;
+
+        if (targetWorkspaceId === sourceWorkspaceId) {
+            return res.status(400).json({ error: 'Cannot transfer within same workspace' });
+        }
+
+        // Get source submission
+        const src = await pool.query(
+            `SELECT * FROM di_submissions WHERE submission_id = $1 AND workspace_id = $2`,
+            [submission_id, sourceWorkspaceId]
+        );
+
+        if (src.rows.length === 0) {
+            return res.status(404).json({ error: 'Source file not found' });
+        }
+
+        const f = src.rows[0];
+
+        // Insert copy into target workspace (minimal copy)
+        const insert = await pool.query(
+            `INSERT INTO di_submissions (
+                researcher_id,
+                affiliation,
+                file_type,
+                original_filename,
+                status,
+                sender_email,
+                ai_review,
+                revision_comments,
+                signed_at,
+                created_at,
+                workspace_id,
+                r2_object_key
+            )
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW(),$10,$11)
+            RETURNING submission_id`,
+            [
+                f.researcher_id,
+                f.affiliation,
+                f.file_type,
+                f.original_filename,
+                f.status,
+                f.sender_email,
+                f.ai_review,
+                f.revision_comments,
+                f.signed_at,
+                targetWorkspaceId,
+                f.r2_object_key
+            ]
+        );
+
+        res.json({
+            success: true,
+            new_submission_id: insert.rows[0].submission_id
+        });
+
+    } catch (err) {
+        console.error('[TRANSFER] Error:', err);
+        res.status(500).json({ error: 'Transfer failed' });
+    }
+});
+
+
 // =====================================================
 // DIC (Data Intelligence Console) ENDPOINTS
 // =====================================================
