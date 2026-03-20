@@ -3250,6 +3250,10 @@ app.post('/api/di/transfer-to-workspace', requirePI, async (req, res) => {
 
         const f = src.rows[0];
 
+        if (f.status !== 'APPROVED') {
+            return res.status(400).json({ error: 'Only APPROVED files can be transferred' });
+        }
+
         // Prevent duplicate transfer of same file into same target workspace
         const dup = await pool.query(
             `SELECT submission_id
