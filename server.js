@@ -58,7 +58,8 @@ const DEFAULT_WORKSPACE_SLUG = 'natlab';
 
 async function resolveWorkspace(req, res, next) {
     try {
-        console.log('[TRANSFER DEBUG] req.user:', req.user);
+        const transferredBy = (req.user && transferredBy) || (req.session && req.session.researcher_id) || 'UNKNOWN';
+
         const requestedSlug =
             req.headers['x-workspace-slug'] ||
             req.query.ws ||
@@ -3309,7 +3310,7 @@ app.post('/api/di/transfer-to-workspace', requirePI, async (req, res) => {
                 f.r2_object_key,
                 sourceWorkspaceId,
                 submission_id,
-                (req.user && req.user.researcher_id) || 'UNKNOWN'
+                (req.user && transferredBy) || 'UNKNOWN'
             ]
         );
 
