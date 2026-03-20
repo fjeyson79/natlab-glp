@@ -3309,7 +3309,7 @@ app.post('/api/di/transfer-to-workspace', requirePI, async (req, res) => {
                 f.r2_object_key,
                 sourceWorkspaceId,
                 submission_id,
-                req.user.researcher_id
+                (req.user && req.user.researcher_id) || 'UNKNOWN'
             ]
         );
 
