@@ -135,7 +135,7 @@
         </form>
 
         <div id="message" class="message"></div>
-        <a href="access.html" class="back-link">Use a different email</a>
+        <a id="backLink" href="access.html" class="back-link">Use a different email</a>
     </div>
 
     <script>
@@ -144,8 +144,18 @@
         const name = sessionStorage.getItem('di_name');
         const affiliation = sessionStorage.getItem('di_affiliation');
 
+        // Phase 6.2.1: read workspace slug from query param or sessionStorage
+        const _urlWs = new URLSearchParams(window.location.search).get('ws');
+        const wsSlug = _urlWs || sessionStorage.getItem('di_workspace_slug') || '';
+        if (_urlWs && _urlWs !== sessionStorage.getItem('di_workspace_slug')) {
+            sessionStorage.setItem('di_workspace_slug', _urlWs);
+        }
+
         if (!email) {
-            window.location.href = 'access.html';
+            // redirect to workspace-specific access page if known
+            if (wsSlug === 'skinotek') { window.location.href = 'access-skinotek.html'; }
+            else if (wsSlug === 'theralia') { window.location.href = 'access-theralia.html'; }
+            else { window.location.href = 'access.html'; }
         }
 
         document.getElementById('institution_email').value = email;
@@ -153,6 +163,10 @@
         const badge = document.getElementById('affiliationBadge');
         badge.textContent = affiliation;
         badge.classList.add(affiliation);
+
+        // Phase 6.2.1: point back-link to workspace-specific access page
+        if (wsSlug === 'skinotek') document.getElementById('backLink').href = 'access-skinotek.html';
+        else if (wsSlug === 'theralia') document.getElementById('backLink').href = 'access-theralia.html';
 
         const form = document.getElementById('loginForm');
         const messageDiv = document.getElementById('message');
@@ -169,10 +183,15 @@
             messageDiv.style.display = 'none';
 
             try {
-                const response = await fetch('/api/di/login', {
+                // Phase 6.2.1: forward workspace slug to backend
+                const loginHeaders = { 'Content-Type': 'application/json' };
+                if (wsSlug) loginHeaders['X-Workspace-Slug'] = wsSlug;
+                const loginUrl = wsSlug ? '/api/di/login?ws=' + encodeURIComponent(wsSlug) : '/api/di/login';
+
+                const response = await fetch(loginUrl, {
                     method: 'POST',
                     credentials: 'include',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: loginHeaders,
                     body: JSON.stringify({
                         institution_email: email,
                         password: password
