@@ -3268,7 +3268,7 @@ app.post('/api/di/transfer-to-workspace', requirePI, async (req, res) => {
             });
         }
 
-        // Insert copy into target workspace (minimal copy)
+        // Insert copy into target workspace with provenance
         const insert = await pool.query(
             `INSERT INTO di_submissions (
                 researcher_id,
@@ -3282,9 +3282,12 @@ app.post('/api/di/transfer-to-workspace', requirePI, async (req, res) => {
                 signed_at,
                 created_at,
                 workspace_id,
-                r2_object_key
+                r2_object_key,
+                source_workspace_id,
+                source_submission_id,
+                transferred_at
             )
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW(),$10,$11)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW(),$10,$11,$12,$13,NOW())
             RETURNING submission_id`,
             [
                 f.researcher_id,
@@ -3297,7 +3300,9 @@ app.post('/api/di/transfer-to-workspace', requirePI, async (req, res) => {
                 f.revision_comments,
                 f.signed_at,
                 targetWorkspaceId,
-                f.r2_object_key
+                f.r2_object_key,
+                sourceWorkspaceId,
+                submission_id
             ]
         );
 
