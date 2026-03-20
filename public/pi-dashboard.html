@@ -3896,6 +3896,30 @@
         let labFilesData = [];
         let selectedLabFiles = new Set();
 
+        const __nativeFetch = window.fetch.bind(window);
+        window.fetch = function(input, init = {}) {
+            try {
+                const url = typeof input === 'string' ? input : (input && input.url) || '';
+                const isSameOriginApi = url.startsWith('/api/');
+                if (!isSameOriginApi) {
+                    return __nativeFetch(input, init);
+                }
+
+                const ws = localStorage.getItem('ws') || 'natlab';
+                const headers = new Headers(init.headers || {});
+                if (!headers.has('x-workspace-slug')) {
+                    headers.set('x-workspace-slug', ws);
+                }
+                if (!init.credentials) {
+                    init.credentials = 'include';
+                }
+
+                return __nativeFetch(input, { ...init, headers });
+            } catch (err) {
+                return __nativeFetch(input, init);
+            }
+        };
+
         // Check authentication and PI role
         async function checkAuth() {
             try {
