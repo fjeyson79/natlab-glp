@@ -52,28 +52,13 @@ app.use(session({
     }
 }));
 
-// Phase 4A.1: host-based workspace resolver with NAT-Lab fallback
+// Phase 3B: central workspace resolver (NAT-Lab fallback only)
 const DEFAULT_WORKSPACE_ID = '43a32f1d-8ff1-465b-9231-c366fafcec70';
 const DEFAULT_WORKSPACE_SLUG = 'natlab';
-const SKINOTEK_WORKSPACE_ID = 'b1fbeacf-59a8-4b0c-9536-b226b41a3c91';
-const SKINOTEK_WORKSPACE_SLUG = 'skinotek';
-const THERALIA_WORKSPACE_ID = '630fb728-2181-4a86-8fa4-668b113e41aa';
-const THERALIA_WORKSPACE_SLUG = 'theralia';
 
 function resolveWorkspace(req, res, next) {
-    const rawHost = (req.headers['x-forwarded-host'] || req.headers.host || req.hostname || '').toLowerCase();
-    const host = rawHost.split(':')[0];
-
-    if (host === 'portal.skinotek.com') {
-        req.workspace_id = SKINOTEK_WORKSPACE_ID;
-        req.workspace_slug = SKINOTEK_WORKSPACE_SLUG;
-    } else if (host === 'portal.theralia.com') {
-        req.workspace_id = THERALIA_WORKSPACE_ID;
-        req.workspace_slug = THERALIA_WORKSPACE_SLUG;
-    } else {
-        req.workspace_id = DEFAULT_WORKSPACE_ID;
-        req.workspace_slug = DEFAULT_WORKSPACE_SLUG;
-    }
+    req.workspace_id = DEFAULT_WORKSPACE_ID;
+    req.workspace_slug = DEFAULT_WORKSPACE_SLUG;
     next();
 }
 app.use(resolveWorkspace);
