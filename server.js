@@ -3250,6 +3250,24 @@ app.post('/api/di/transfer-to-workspace', requirePI, async (req, res) => {
 
         const f = src.rows[0];
 
+        // Prevent duplicate transfer of same file into same target workspace
+        const dup = await pool.query(
+            `SELECT submission_id
+             FROM di_submissions
+             WHERE workspace_id = $1
+               AND r2_object_key = $2
+               AND original_filename = $3
+             LIMIT 1`,
+            [targetWorkspaceId, f.r2_object_key, f.original_filename]
+        );
+
+        if (dup.rows.length > 0) {
+            return res.status(409).json({
+                error: 'File already transferred to target workspace',
+                existing_submission_id: dup.rows[0].submission_id
+            });
+        }
+
         // Insert copy into target workspace (minimal copy)
         const insert = await pool.query(
             `INSERT INTO di_submissions (
