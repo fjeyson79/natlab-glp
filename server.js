@@ -16540,6 +16540,322 @@ app.post('/api/files/revoke', requirePI, async (req, res) => {
     }
 });
 
+// =====================================================
+// MODULE STUDIO – Phase 1  (/api/modules/*)
+// Isolated product boundary – future extraction to module-studio service
+// =====================================================
+
+let modulesTableExists = null;
+let modulesTableLastCheck = 0;
+async function checkModulesTable() {
+    const now = Date.now();
+    if (modulesTableExists === null || modulesTableExists === false || (now - modulesTableLastCheck > ROLE_COLUMN_CHECK_INTERVAL)) {
+        try {
+            const r = await pool.query(`SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_name='modules'`);
+            modulesTableExists = r.rows.length > 0;
+            modulesTableLastCheck = now;
+        } catch (e) { modulesTableExists = false; }
+    }
+    return modulesTableExists;
+}
+
+// GET /api/modules/list – all modules with toggle count and workspace count
+app.get('/api/modules/list', requirePI, async (req, res) => {
+    try {
+        if (!(await checkModulesTable())) return res.status(501).json({ error: 'Modules tables not available' });
+        const result = await pool.query(`
+            SELECT m.*,
+                (SELECT COUNT(*) FROM module_toggles mt WHERE mt.module_id = m.id AND mt.status = 'active') AS toggle_count,
+                (SELECT COUNT(*) FROM workspace_modules wm WHERE wm.module_id = m.id) AS workspace_count
+            FROM modules m
+            ORDER BY m.category, m.name
+        `);
+        res.json({ modules: result.rows });
+    } catch (err) {
+        console.error('[MODULES] list error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/modules/workspaces – list workspaces for transfer UI
+app.get('/api/modules/workspaces', requirePI, async (req, res) => {
+    try {
+        const result = await pool.query(`SELECT id, slug, display_name FROM workspaces ORDER BY slug`);
+        res.json({ workspaces: result.rows });
+    } catch (err) {
+        console.error('[MODULES] workspaces error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/modules/:id – single module with toggles and workspace assignments
+app.get('/api/modules/:id', requirePI, async (req, res) => {
+    try {
+        if (!(await checkModulesTable())) return res.status(501).json({ error: 'Modules tables not available' });
+        const mod = await pool.query(`SELECT * FROM modules WHERE id = $1`, [req.params.id]);
+        if (mod.rows.length === 0) return res.status(404).json({ error: 'Module not found' });
+        const toggles = await pool.query(`SELECT * FROM module_toggles WHERE module_id = $1 ORDER BY sort_order`, [req.params.id]);
+        const assignments = await pool.query(`
+            SELECT wm.*, w.slug AS workspace_slug, w.display_name AS workspace_name
+            FROM workspace_modules wm
+            LEFT JOIN workspaces w ON w.id = wm.workspace_id
+            WHERE wm.module_id = $1 ORDER BY w.slug
+        `, [req.params.id]);
+        // For each assignment, get toggle overrides
+        for (const a of assignments.rows) {
+            const overrides = await pool.query(`
+                SELECT wmt.*, mt.toggle_key, mt.label AS toggle_label
+                FROM workspace_module_toggles wmt
+                JOIN module_toggles mt ON mt.id = wmt.module_toggle_id
+                WHERE wmt.workspace_module_id = $1 ORDER BY wmt.sort_order, mt.sort_order
+            `, [a.id]);
+            a.toggle_overrides = overrides.rows;
+        }
+        res.json({ module: mod.rows[0], toggles: toggles.rows, assignments: assignments.rows });
+    } catch (err) {
+        console.error('[MODULES] get error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/modules – create module
+app.post('/api/modules', requirePI, async (req, res) => {
+    try {
+        if (!(await checkModulesTable())) return res.status(501).json({ error: 'Modules tables not available' });
+        const { module_key, name, category, family, description, transferable, version_label, build_notes } = req.body;
+        if (!module_key || !name || !category) return res.status(400).json({ error: 'module_key, name, and category are required' });
+        if (!['admin', 'user'].includes(category)) return res.status(400).json({ error: 'category must be admin or user' });
+        const created_by = req.session?.user?.researcher_id || req.session?.user?.id || null;
+        const result = await pool.query(`
+            INSERT INTO modules (module_key, name, category, family, description, transferable, version_label, build_notes, created_by)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            RETURNING *
+        `, [module_key, name, category, family || null, description || null, transferable !== false, version_label || 'v1', build_notes || null, created_by]);
+        console.log('[MODULES] Created module:', module_key);
+        res.json({ module: result.rows[0] });
+    } catch (err) {
+        if (err.code === '23505') return res.status(409).json({ error: 'Module key already exists' });
+        console.error('[MODULES] create error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// PUT /api/modules/:id – update module
+app.put('/api/modules/:id', requirePI, async (req, res) => {
+    try {
+        if (!(await checkModulesTable())) return res.status(501).json({ error: 'Modules tables not available' });
+        const { name, category, family, description, status, transferable, version_label, build_notes } = req.body;
+        const result = await pool.query(`
+            UPDATE modules SET
+                name = COALESCE($1, name),
+                category = COALESCE($2, category),
+                family = $3,
+                description = $4,
+                status = COALESCE($5, status),
+                transferable = COALESCE($6, transferable),
+                version_label = COALESCE($7, version_label),
+                build_notes = $8,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = $9 RETURNING *
+        `, [name, category, family, description, status, transferable, version_label, build_notes, req.params.id]);
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Module not found' });
+        res.json({ module: result.rows[0] });
+    } catch (err) {
+        console.error('[MODULES] update error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/modules/:id/toggles – create toggle
+app.post('/api/modules/:id/toggles', requirePI, async (req, res) => {
+    try {
+        if (!(await checkModulesTable())) return res.status(501).json({ error: 'Modules tables not available' });
+        const { toggle_key, label, description, default_enabled, sort_order } = req.body;
+        if (!toggle_key || !label) return res.status(400).json({ error: 'toggle_key and label are required' });
+        const result = await pool.query(`
+            INSERT INTO module_toggles (module_id, toggle_key, label, description, default_enabled, sort_order)
+            VALUES ($1, $2, $3, $4, $5, $6) RETURNING *
+        `, [req.params.id, toggle_key, label, description || null, default_enabled !== false, sort_order || 0]);
+        res.json({ toggle: result.rows[0] });
+    } catch (err) {
+        if (err.code === '23505') return res.status(409).json({ error: 'Toggle key already exists for this module' });
+        console.error('[MODULES] create toggle error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// PUT /api/modules/toggles/:toggleId – update toggle
+app.put('/api/modules/toggles/:toggleId', requirePI, async (req, res) => {
+    try {
+        if (!(await checkModulesTable())) return res.status(501).json({ error: 'Modules tables not available' });
+        const { label, description, default_enabled, sort_order, status } = req.body;
+        const result = await pool.query(`
+            UPDATE module_toggles SET
+                label = COALESCE($1, label),
+                description = $2,
+                default_enabled = COALESCE($3, default_enabled),
+                sort_order = COALESCE($4, sort_order),
+                status = COALESCE($5, status),
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = $6 RETURNING *
+        `, [label, description, default_enabled, sort_order, status, req.params.toggleId]);
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Toggle not found' });
+        res.json({ toggle: result.rows[0] });
+    } catch (err) {
+        console.error('[MODULES] update toggle error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/modules/:id/transfer – create/update workspace assignment
+app.post('/api/modules/:id/transfer', requirePI, async (req, res) => {
+    try {
+        if (!(await checkModulesTable())) return res.status(501).json({ error: 'Modules tables not available' });
+        const { workspace_id, placement_type, placement_target, tab_label, tab_position, toggle_location, selected_variant, is_enabled, publish_scope, toggle_overrides } = req.body;
+        if (!workspace_id) return res.status(400).json({ error: 'workspace_id is required' });
+        // Upsert workspace_modules
+        const result = await pool.query(`
+            INSERT INTO workspace_modules (module_id, workspace_id, placement_type, placement_target, tab_label, tab_position, toggle_location, selected_variant, is_enabled, publish_scope)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            ON CONFLICT (module_id, workspace_id) DO UPDATE SET
+                placement_type = EXCLUDED.placement_type,
+                placement_target = EXCLUDED.placement_target,
+                tab_label = EXCLUDED.tab_label,
+                tab_position = EXCLUDED.tab_position,
+                toggle_location = EXCLUDED.toggle_location,
+                selected_variant = EXCLUDED.selected_variant,
+                is_enabled = EXCLUDED.is_enabled,
+                publish_scope = EXCLUDED.publish_scope,
+                updated_at = CURRENT_TIMESTAMP
+            RETURNING *
+        `, [req.params.id, workspace_id, placement_type || 'tab', placement_target || null, tab_label || null, tab_position || null, toggle_location || null, selected_variant || null, is_enabled !== false, publish_scope || null]);
+        const wm = result.rows[0];
+        // Handle toggle overrides if provided
+        if (Array.isArray(toggle_overrides)) {
+            for (const to of toggle_overrides) {
+                await pool.query(`
+                    INSERT INTO workspace_module_toggles (workspace_module_id, module_toggle_id, is_enabled, sort_order)
+                    VALUES ($1, $2, $3, $4)
+                    ON CONFLICT (workspace_module_id, module_toggle_id) DO UPDATE SET
+                        is_enabled = EXCLUDED.is_enabled,
+                        sort_order = EXCLUDED.sort_order,
+                        updated_at = CURRENT_TIMESTAMP
+                `, [wm.id, to.module_toggle_id, to.is_enabled !== false, to.sort_order || null]);
+            }
+        }
+        console.log('[MODULES] Transfer:', req.params.id, '->', workspace_id);
+        res.json({ assignment: wm });
+    } catch (err) {
+        if (err.code === '23503') return res.status(400).json({ error: 'Invalid module or workspace ID' });
+        console.error('[MODULES] transfer error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/modules/:id/publish – set status to published
+app.post('/api/modules/:id/publish', requirePI, async (req, res) => {
+    try {
+        if (!(await checkModulesTable())) return res.status(501).json({ error: 'Modules tables not available' });
+        const { scope, workspace_id } = req.body; // scope: 'all' or 'workspace'
+        // Publish guard: require at least one workspace assignment
+        const assignCheck = await pool.query(`SELECT COUNT(*) AS cnt FROM workspace_modules WHERE module_id = $1`, [req.params.id]);
+        if (parseInt(assignCheck.rows[0].cnt, 10) === 0) {
+            return res.status(400).json({ error: 'Module cannot be published without at least one workspace assignment.' });
+        }
+        const result = await pool.query(`
+            UPDATE modules SET status = 'published', updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *
+        `, [req.params.id]);
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Module not found' });
+        // If scoped to a single workspace, enable only that one
+        if (scope === 'workspace' && workspace_id) {
+            await pool.query(`UPDATE workspace_modules SET is_enabled = FALSE, updated_at = CURRENT_TIMESTAMP WHERE module_id = $1 AND workspace_id != $2`, [req.params.id, workspace_id]);
+            await pool.query(`UPDATE workspace_modules SET is_enabled = TRUE, updated_at = CURRENT_TIMESTAMP WHERE module_id = $1 AND workspace_id = $2`, [req.params.id, workspace_id]);
+        } else {
+            // Enable all assigned workspaces
+            await pool.query(`UPDATE workspace_modules SET is_enabled = TRUE, updated_at = CURRENT_TIMESTAMP WHERE module_id = $1`, [req.params.id]);
+        }
+        console.log('[MODULES] Published:', req.params.id, 'scope:', scope || 'all');
+        res.json({ module: result.rows[0] });
+    } catch (err) {
+        console.error('[MODULES] publish error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/modules/:id/archive – set status to archived
+app.post('/api/modules/:id/archive', requirePI, async (req, res) => {
+    try {
+        if (!(await checkModulesTable())) return res.status(501).json({ error: 'Modules tables not available' });
+        const result = await pool.query(`
+            UPDATE modules SET status = 'archived', updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *
+        `, [req.params.id]);
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Module not found' });
+        console.log('[MODULES] Archived:', req.params.id);
+        res.json({ module: result.rows[0] });
+    } catch (err) {
+        console.error('[MODULES] archive error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// DELETE /api/modules/:id – delete (draft only, otherwise archive)
+app.delete('/api/modules/:id', requirePI, async (req, res) => {
+    try {
+        if (!(await checkModulesTable())) return res.status(501).json({ error: 'Modules tables not available' });
+        const mod = await pool.query(`SELECT status FROM modules WHERE id = $1`, [req.params.id]);
+        if (mod.rows.length === 0) return res.status(404).json({ error: 'Module not found' });
+        if (mod.rows[0].status !== 'draft') {
+            return res.status(400).json({ error: 'Only draft modules can be deleted. Use archive for non-draft modules.' });
+        }
+        await pool.query(`DELETE FROM modules WHERE id = $1`, [req.params.id]);
+        console.log('[MODULES] Deleted draft module:', req.params.id);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[MODULES] delete error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/modules/seed – seed initial modules (idempotent)
+app.post('/api/modules/seed', requirePI, async (req, res) => {
+    try {
+        if (!(await checkModulesTable())) return res.status(501).json({ error: 'Modules tables not available' });
+        // Guard: skip seed if modules already exist (unless force flag)
+        const existing = await pool.query(`SELECT COUNT(*) AS cnt FROM modules`);
+        if (parseInt(existing.rows[0].cnt, 10) > 0 && !req.body.force) {
+            return res.json({ created: 0, skipped: parseInt(existing.rows[0].cnt, 10), message: 'Seed skipped — modules already exist. Send { "force": true } to reseed.' });
+        }
+        const seeds = [
+            { module_key: 'glp_vision_pi', name: 'GLP Vision (PI)', category: 'admin', family: 'glp_vision', description: 'PI review and approval of GLP documentation submissions', version_label: 'v1' },
+            { module_key: 'oligo_id', name: 'Oligo-ID', category: 'admin', family: 'oligo', description: 'Oligonucleotide import, review, and catalog management', version_label: 'v1' },
+            { module_key: 'inventory_control', name: 'Inventory Control', category: 'admin', family: 'inventory', description: 'Purchase requests, inventory tracking, and sample pack management', version_label: 'v1' },
+            { module_key: 'modules_studio', name: 'Modules', category: 'admin', family: null, description: 'Central studio for managing reusable platform capabilities', version_label: 'v1' },
+            { module_key: 'glp_vision_researcher', name: 'GLP Vision (Researcher)', category: 'user', family: 'glp_vision', description: 'Researcher file upload, signing, and document management', version_label: 'v1' },
+            { module_key: 'oligo_explorer', name: 'Oligo Explorer', category: 'user', family: 'oligo', description: 'Researcher-facing oligonucleotide catalog browser', version_label: 'v1' },
+        ];
+        let created = 0, skipped = 0;
+        const actor = req.session?.user?.researcher_id || req.session?.user?.id || null;
+        for (const s of seeds) {
+            const exists = await pool.query(`SELECT id FROM modules WHERE module_key = $1`, [s.module_key]);
+            if (exists.rows.length > 0) { skipped++; continue; }
+            await pool.query(`
+                INSERT INTO modules (module_key, name, category, family, description, version_label, created_by)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+            `, [s.module_key, s.name, s.category, s.family, s.description, s.version_label, actor]);
+            created++;
+        }
+        console.log(`[MODULES] Seed complete: ${created} created, ${skipped} skipped`);
+        res.json({ created, skipped });
+    } catch (err) {
+        console.error('[MODULES] seed error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// =====================================================
+// END MODULE STUDIO
+// =====================================================
+
 app.listen(PORT, "0.0.0.0", async () => {
     console.log("[STARTUP] Server listening on port " + PORT);
     // Safety check: warn if any di_submissions row has no r2_object_key
