@@ -3912,6 +3912,7 @@
                 <p style="margin:0; color:#666; font-size:13px;">Central studio for reusable platform capabilities. Manage, transfer, and publish modules across workspaces.</p>
             </div>
             <div style="display:flex; gap:8px;">
+                <button onclick="msOpenBlueprintCreate()" style="padding:8px 16px; background:#0e7c3a; color:white; border:none; border-radius:6px; cursor:pointer; font-size:13px; font-weight:600;">⚡ Create from Tab</button>
                 <button onclick="msOpenCreateModule()" style="padding:8px 16px; background:#1a365d; color:white; border:none; border-radius:6px; cursor:pointer; font-size:13px;">+ Create Module</button>
                 <button onclick="msOpenCreateToggle()" style="padding:8px 16px; background:#2d7d46; color:white; border:none; border-radius:6px; cursor:pointer; font-size:13px;">+ Create Toggle</button>
                 <button onclick="msSeed()" style="padding:8px 16px; background:#e2e8f0; color:#1a365d; border:none; border-radius:6px; cursor:pointer; font-size:13px;" title="Seed initial modules">Seed</button>
@@ -12783,6 +12784,133 @@ function dicBuildPdfViewerSrc(fileUrl) {
                 alert(`Seed complete: ${data.created} module(s) created` + (data.skipped ? `, ${data.skipped} already existed` : '') + '.');
             }
             await msLoadModules();
+        } catch (e) { alert('Error: ' + e.message); }
+    }
+
+    // ── Blueprint Quick-Create Flow ──
+    let msBlueprintsCache = null;
+    let msBpSelectedCategory = null;
+    let msBpSelectedBlueprint = null;
+
+    async function msLoadBlueprints() {
+        if (msBlueprintsCache) return msBlueprintsCache;
+        try {
+            const r = await fetch('/api/modules/blueprints', { credentials: 'include' });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.error || 'Failed');
+            msBlueprintsCache = d.blueprints;
+            return msBlueprintsCache;
+        } catch (e) { alert('Error loading blueprints: ' + e.message); return null; }
+    }
+
+    async function msOpenBlueprintCreate() {
+        const bps = await msLoadBlueprints();
+        if (!bps) return;
+        msBpSelectedCategory = null;
+        msBpSelectedBlueprint = null;
+        msShowModal(`
+            <h3 style="margin:0 0 4px 0; color:#0e7c3a;">Create from Tab</h3>
+            <p style="margin:0 0 16px 0; color:#666; font-size:13px;">Quickly create a module from an existing portal surface.</p>
+            <div id="msBpFlow">
+                <div style="margin-bottom:8px; font-weight:600; font-size:13px; color:#333;">Step 1: Choose audience</div>
+                <div style="display:flex; gap:10px; margin-bottom:16px;">
+                    <button onclick="msBpPickCategory('admin')" style="flex:1; padding:14px; border:2px solid #d0d5dd; border-radius:8px; background:white; cursor:pointer; font-size:14px; font-weight:600; color:#1a365d;">Admin<div style="font-size:11px; font-weight:400; color:#94a3b8; margin-top:4px;">PI portal tabs</div></button>
+                    <button onclick="msBpPickCategory('user')" style="flex:1; padding:14px; border:2px solid #d0d5dd; border-radius:8px; background:white; cursor:pointer; font-size:14px; font-weight:600; color:#1a365d;">User<div style="font-size:11px; font-weight:400; color:#94a3b8; margin-top:4px;">Researcher surfaces</div></button>
+                </div>
+            </div>
+            <div style="display:flex; justify-content:flex-end;">
+                <button onclick="msCloseModal()" style="padding:8px 16px; background:#e2e8f0; border:none; border-radius:6px; cursor:pointer;">Cancel</button>
+            </div>
+        `);
+    }
+
+    function msBpPickCategory(cat) {
+        msBpSelectedCategory = cat;
+        const bps = msBlueprintsCache[cat] || [];
+        const cards = bps.map(b => {
+            const existingKeys = msModules.map(m => m.module_key);
+            const alreadyExists = existingKeys.includes(b.module_key);
+            const dimStyle = alreadyExists ? 'opacity:0.5;' : '';
+            const badge = alreadyExists ? '<span style="font-size:10px; background:#fef3c7; color:#92400e; padding:1px 6px; border-radius:4px; margin-left:6px;">exists</span>' : '';
+            return `<button onclick="msBpPickBlueprint('${b.blueprint_key}')" style="text-align:left; padding:12px; border:2px solid #d0d5dd; border-radius:8px; background:white; cursor:pointer; ${dimStyle}" ${alreadyExists ? 'title="Module key already exists — will need override"' : ''}>
+                <div style="font-weight:600; font-size:13px; color:#1a365d;">${msEsc(b.name)}${badge}</div>
+                <div style="font-size:11px; color:#94a3b8; margin-top:2px;">${msEsc(b.source_type)}:${msEsc(b.source_key)}</div>
+                <div style="font-size:12px; color:#555; margin-top:4px;">${msEsc(b.description)}</div>
+            </button>`;
+        }).join('');
+        document.getElementById('msBpFlow').innerHTML = `
+            <div style="margin-bottom:8px; font-weight:600; font-size:13px; color:#333;">Step 2: Select surface <span style="font-weight:400; color:#94a3b8; cursor:pointer;" onclick="msOpenBlueprintCreate()">← back</span></div>
+            <div style="display:grid; gap:8px; margin-bottom:16px;">${cards}</div>
+        `;
+    }
+
+    function msBpPickBlueprint(bpKey) {
+        const bp = (msBlueprintsCache[msBpSelectedCategory] || []).find(b => b.blueprint_key === bpKey);
+        if (!bp) return;
+        msBpSelectedBlueprint = bp;
+        const toggleChecks = (bp.toggles || []).map((t, i) => `
+            <label style="display:flex; align-items:center; gap:6px; font-size:12px;">
+                <input type="checkbox" class="msBpToggle" data-key="${t.toggle_key}" checked>
+                ${msEsc(t.label)}
+            </label>
+        `).join('');
+        document.getElementById('msBpFlow').innerHTML = `
+            <div style="margin-bottom:8px; font-weight:600; font-size:13px; color:#333;">Step 3: Review & Create <span style="font-weight:400; color:#94a3b8; cursor:pointer;" onclick="msBpPickCategory('${msBpSelectedCategory}')">← back</span></div>
+            <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px; margin-bottom:12px;">
+                <div style="display:grid; gap:8px;">
+                    <div><span style="font-size:11px; color:#94a3b8;">Blueprint</span><div style="font-size:13px; font-weight:600; color:#0e7c3a;">${msEsc(bp.name)}</div></div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                        <div><span style="font-size:11px; color:#94a3b8;">Module Key</span><div style="font-size:12px;">${msEsc(bp.module_key)}</div></div>
+                        <div><span style="font-size:11px; color:#94a3b8;">Family</span><div style="font-size:12px;">${msEsc(bp.family || '—')}</div></div>
+                        <div><span style="font-size:11px; color:#94a3b8;">Source</span><div style="font-size:12px;">${msEsc(bp.source_type)}:${msEsc(bp.source_key)}</div></div>
+                        <div><span style="font-size:11px; color:#94a3b8;">Category</span><div style="font-size:12px;">${bp.category}</div></div>
+                    </div>
+                    <div><span style="font-size:11px; color:#94a3b8;">Description</span><div style="font-size:12px;">${msEsc(bp.description)}</div></div>
+                </div>
+            </div>
+            ${toggleChecks.length ? `<div style="margin-bottom:12px;"><span style="font-size:12px; font-weight:600; color:#333;">Toggles</span><div style="display:grid; gap:4px; margin-top:6px;">${toggleChecks}</div></div>` : ''}
+            <details style="margin-bottom:12px;">
+                <summary style="cursor:pointer; font-size:12px; color:#64748b;">Override defaults (optional)</summary>
+                <div style="display:grid; gap:8px; margin-top:8px;">
+                    <label style="font-size:12px;">Name<input id="msBpOvName" style="width:100%; padding:5px; border:1px solid #d0d5dd; border-radius:4px; margin-top:2px; font-size:12px;" placeholder="${msEsc(bp.name)}"></label>
+                    <label style="font-size:12px;">Module Key<input id="msBpOvKey" style="width:100%; padding:5px; border:1px solid #d0d5dd; border-radius:4px; margin-top:2px; font-size:12px;" placeholder="${msEsc(bp.module_key)}"></label>
+                    <label style="font-size:12px;">Build Notes<textarea id="msBpOvNotes" rows="2" style="width:100%; padding:5px; border:1px solid #d0d5dd; border-radius:4px; margin-top:2px; font-size:12px; font-family:monospace;"></textarea></label>
+                </div>
+            </details>
+            <div style="display:flex; gap:8px; justify-content:flex-end;">
+                <button onclick="msCloseModal()" style="padding:8px 16px; background:#e2e8f0; border:none; border-radius:6px; cursor:pointer;">Cancel</button>
+                <button onclick="msBpDoCreate()" style="padding:8px 16px; background:#0e7c3a; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:600;">Create Draft</button>
+            </div>
+        `;
+    }
+
+    async function msBpDoCreate() {
+        const bp = msBpSelectedBlueprint;
+        if (!bp) return;
+        const toggleEls = document.querySelectorAll('.msBpToggle:checked');
+        const selected_toggles = Array.from(toggleEls).map(el => el.dataset.key);
+        const ovName = (document.getElementById('msBpOvName')?.value || '').trim();
+        const ovKey  = (document.getElementById('msBpOvKey')?.value || '').trim();
+        const ovNotes = (document.getElementById('msBpOvNotes')?.value || '').trim();
+        const overrides = {};
+        if (ovName) overrides.name = ovName;
+        if (ovKey)  overrides.module_key = ovKey;
+        if (ovNotes) overrides.build_notes = ovNotes;
+        try {
+            const r = await fetch('/api/modules/from-blueprint', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+                body: JSON.stringify({
+                    category: bp.category,
+                    blueprint_key: bp.blueprint_key,
+                    overrides: Object.keys(overrides).length ? overrides : undefined,
+                    selected_toggles: selected_toggles.length ? selected_toggles : undefined
+                })
+            });
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.error || 'Failed');
+            msCloseModal();
+            await msLoadModules();
+            await msOpenDetail(data.module.id);
         } catch (e) { alert('Error: ' + e.message); }
     }
 

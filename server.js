@@ -16853,6 +16853,186 @@ app.post('/api/modules/seed', requirePI, async (req, res) => {
 });
 
 // =====================================================
+// MODULE STUDIO – Phase 1.2  Blueprint Registry & Endpoints
+// =====================================================
+
+const MODULE_BLUEPRINTS = [
+    // ── Admin blueprints ──
+    {
+        category: 'admin', blueprint_key: 'dashboard',
+        source_type: 'pi_tab', source_key: 'dashboard',
+        name: 'Dashboard', module_key: 'dashboard', family: 'core',
+        description: 'PI overview dashboard with key metrics and quick actions',
+        render_key: null,
+        toggles: [
+            { toggle_key: 'metrics_overview', label: 'Metrics Overview', default_enabled: true },
+            { toggle_key: 'quick_actions', label: 'Quick Actions', default_enabled: true },
+            { toggle_key: 'recent_activity', label: 'Recent Activity', default_enabled: true }
+        ]
+    },
+    {
+        category: 'admin', blueprint_key: 'glp_vision_pi',
+        source_type: 'pi_tab', source_key: 'glp_vision',
+        name: 'GLP Vision (PI)', module_key: 'glp_vision_pi', family: 'glp_vision',
+        description: 'PI review and approval of GLP documentation submissions',
+        render_key: null,
+        toggles: [
+            { toggle_key: 'weekly_feedback', label: 'Weekly Feedback', default_enabled: true },
+            { toggle_key: 'harmony_map', label: 'Harmony Map', default_enabled: true },
+            { toggle_key: 'submission_metrics', label: 'Submission Metrics', default_enabled: true },
+            { toggle_key: 'supervisor_notes', label: 'Supervisor Notes', default_enabled: true }
+        ]
+    },
+    {
+        category: 'admin', blueprint_key: 'glp_status',
+        source_type: 'pi_tab', source_key: 'glp_status',
+        name: 'GLP Status', module_key: 'glp_status', family: 'glp_vision',
+        description: 'GLP compliance status overview and tracking',
+        render_key: null,
+        toggles: [
+            { toggle_key: 'status_board', label: 'Status Board', default_enabled: true },
+            { toggle_key: 'compliance_alerts', label: 'Compliance Alerts', default_enabled: true }
+        ]
+    },
+    {
+        category: 'admin', blueprint_key: 'group_docs',
+        source_type: 'pi_tab', source_key: 'group_docs',
+        name: 'Group Docs', module_key: 'group_docs', family: 'documents',
+        description: 'Shared group documentation management',
+        render_key: null,
+        toggles: [
+            { toggle_key: 'doc_browser', label: 'Document Browser', default_enabled: true },
+            { toggle_key: 'upload_panel', label: 'Upload Panel', default_enabled: true }
+        ]
+    },
+    {
+        category: 'admin', blueprint_key: 'inventory_control',
+        source_type: 'pi_tab', source_key: 'inventory',
+        name: 'Inventory Control', module_key: 'inventory_control', family: 'inventory',
+        description: 'Purchase requests, inventory tracking, and sample pack management',
+        render_key: null,
+        toggles: [
+            { toggle_key: 'stock_view', label: 'Stock View', default_enabled: true },
+            { toggle_key: 'purchase_requests', label: 'Purchase Requests', default_enabled: true },
+            { toggle_key: 'supplier_view', label: 'Supplier View', default_enabled: true },
+            { toggle_key: 'low_stock_alerts', label: 'Low Stock Alerts', default_enabled: true }
+        ]
+    },
+    {
+        category: 'admin', blueprint_key: 'oligo_id',
+        source_type: 'pi_tab', source_key: 'oligo_id',
+        name: 'Oligo-ID', module_key: 'oligo_id', family: 'oligo',
+        description: 'Oligonucleotide import, review, and catalog management',
+        render_key: null,
+        toggles: [
+            { toggle_key: 'registry_view', label: 'Registry View', default_enabled: true },
+            { toggle_key: 'data_sources', label: 'Data Sources', default_enabled: true },
+            { toggle_key: 'library_management', label: 'Library Management', default_enabled: true },
+            { toggle_key: 'duplicate_review', label: 'Duplicate Review', default_enabled: true }
+        ]
+    },
+    {
+        category: 'admin', blueprint_key: 'modules_studio',
+        source_type: 'pi_tab', source_key: 'modules',
+        name: 'Modules', module_key: 'modules_studio', family: null,
+        description: 'Central studio for managing reusable platform capabilities',
+        render_key: null,
+        toggles: [
+            { toggle_key: 'module_management', label: 'Module Management', default_enabled: true },
+            { toggle_key: 'transfer_panel', label: 'Transfer Panel', default_enabled: true }
+        ]
+    },
+    // ── User blueprints ──
+    {
+        category: 'user', blueprint_key: 'glp_vision_researcher',
+        source_type: 'user_surface', source_key: 'glp_vision',
+        name: 'GLP Vision (Researcher)', module_key: 'glp_vision_researcher', family: 'glp_vision',
+        description: 'Researcher file upload, signing, and document management',
+        render_key: null,
+        toggles: [
+            { toggle_key: 'file_upload', label: 'File Upload', default_enabled: true },
+            { toggle_key: 'signing_panel', label: 'Signing Panel', default_enabled: true },
+            { toggle_key: 'submission_history', label: 'Submission History', default_enabled: true }
+        ]
+    },
+    {
+        category: 'user', blueprint_key: 'oligo_explorer',
+        source_type: 'user_surface', source_key: 'oligo_explorer',
+        name: 'Oligo Explorer', module_key: 'oligo_explorer', family: 'oligo',
+        description: 'Researcher-facing oligonucleotide catalog browser',
+        render_key: null,
+        toggles: [
+            { toggle_key: 'sequence_view', label: 'Sequence View', default_enabled: true },
+            { toggle_key: 'chemistry_view', label: 'Chemistry View', default_enabled: true },
+            { toggle_key: 'lot_view', label: 'Lot View', default_enabled: true },
+            { toggle_key: 'export', label: 'Export', default_enabled: true }
+        ]
+    }
+];
+
+// GET /api/modules/blueprints – list available blueprints grouped by category
+app.get('/api/modules/blueprints', requirePI, async (req, res) => {
+    const admin = MODULE_BLUEPRINTS.filter(b => b.category === 'admin');
+    const user  = MODULE_BLUEPRINTS.filter(b => b.category === 'user');
+    res.json({ blueprints: { admin, user } });
+});
+
+// POST /api/modules/from-blueprint – create a module from a blueprint
+app.post('/api/modules/from-blueprint', requirePI, async (req, res) => {
+    try {
+        if (!(await checkModulesTable())) return res.status(501).json({ error: 'Modules tables not available' });
+        const { category, blueprint_key, overrides, selected_toggles } = req.body;
+        if (!category || !blueprint_key) return res.status(400).json({ error: 'category and blueprint_key are required' });
+
+        const bp = MODULE_BLUEPRINTS.find(b => b.category === category && b.blueprint_key === blueprint_key);
+        if (!bp) return res.status(404).json({ error: 'Blueprint not found for category ' + category });
+
+        const ov = overrides || {};
+        const moduleName = ov.name || bp.name;
+        const moduleKey  = ov.module_key || bp.module_key;
+        const created_by = req.session?.user?.researcher_id || req.session?.user?.id || null;
+
+        // Insert module with blueprint metadata
+        const result = await pool.query(`
+            INSERT INTO modules (module_key, name, category, family, description, transferable, version_label, build_notes, created_by, blueprint_key, source_type, source_key, render_key)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+            RETURNING *
+        `, [
+            moduleKey, moduleName, bp.category, bp.family || null,
+            ov.description || bp.description || null,
+            ov.transferable !== undefined ? ov.transferable : true,
+            'v1', ov.build_notes || null, created_by,
+            bp.blueprint_key, bp.source_type, bp.source_key, bp.render_key || null
+        ]);
+        const mod = result.rows[0];
+
+        // Determine which toggles to create
+        let toggleDefs = bp.toggles || [];
+        if (Array.isArray(selected_toggles) && selected_toggles.length > 0) {
+            toggleDefs = toggleDefs.filter(t => selected_toggles.includes(t.toggle_key));
+        }
+
+        // Create toggles
+        const createdToggles = [];
+        for (let i = 0; i < toggleDefs.length; i++) {
+            const t = toggleDefs[i];
+            const tr = await pool.query(`
+                INSERT INTO module_toggles (module_id, toggle_key, label, description, default_enabled, sort_order)
+                VALUES ($1,$2,$3,$4,$5,$6) RETURNING *
+            `, [mod.id, t.toggle_key, t.label, t.description || null, t.default_enabled !== false, i]);
+            createdToggles.push(tr.rows[0]);
+        }
+
+        console.log('[MODULES] Created from blueprint:', bp.blueprint_key, '→', moduleKey);
+        res.json({ module: mod, toggles: createdToggles });
+    } catch (err) {
+        if (err.code === '23505') return res.status(409).json({ error: 'Module key already exists' });
+        console.error('[MODULES] from-blueprint error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// =====================================================
 // END MODULE STUDIO
 // =====================================================
 
