@@ -2207,6 +2207,7 @@
         <button class="tab-btn" data-tab="purchases-inventory">Inventory</button>
         <button class="tab-btn" data-tab="backup">Backup</button>
         <button class="tab-btn" data-tab="oligo-id" onclick="window.location.href='oligo-id.html'">Oligo-ID</button>
+        <button class="tab-btn" data-tab="modules">Modules</button>
     </div>
 
     <!-- ==================== DASHBOARD TAB ==================== -->
@@ -3903,7 +3904,48 @@
         </div>
     </div>
 
-    
+    <!-- ==================== MODULES TAB ==================== -->
+    <div class="tab-content" id="tab-modules">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:18px;">
+            <div>
+                <h2 style="margin:0 0 4px 0; color:#1a365d;">Modules</h2>
+                <p style="margin:0; color:#666; font-size:13px;">Central studio for reusable platform capabilities. Manage, transfer, and publish modules across workspaces.</p>
+            </div>
+            <div style="display:flex; gap:8px;">
+                <button onclick="msOpenCreateModule()" style="padding:8px 16px; background:#1a365d; color:white; border:none; border-radius:6px; cursor:pointer; font-size:13px;">+ Create Module</button>
+                <button onclick="msOpenCreateToggle()" style="padding:8px 16px; background:#2d7d46; color:white; border:none; border-radius:6px; cursor:pointer; font-size:13px;">+ Create Toggle</button>
+                <button onclick="msSeed()" style="padding:8px 16px; background:#e2e8f0; color:#1a365d; border:none; border-radius:6px; cursor:pointer; font-size:13px;" title="Seed initial modules">Seed</button>
+            </div>
+        </div>
+        <!-- Filters -->
+        <div style="display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap; align-items:center;">
+            <div style="display:flex; border:1px solid #d0d5dd; border-radius:6px; overflow:hidden;">
+                <button class="ms-cat-btn active" onclick="msSetCategory('all')" data-cat="all" style="padding:6px 14px; border:none; cursor:pointer; font-size:12px; background:#1a365d; color:white;">All</button>
+                <button class="ms-cat-btn" onclick="msSetCategory('admin')" data-cat="admin" style="padding:6px 14px; border:none; cursor:pointer; font-size:12px; background:white; color:#333;">Admin</button>
+                <button class="ms-cat-btn" onclick="msSetCategory('user')" data-cat="user" style="padding:6px 14px; border:none; cursor:pointer; font-size:12px; background:white; color:#333;">User</button>
+            </div>
+            <input type="text" id="msSearch" placeholder="Search modules..." oninput="msRender()" style="padding:6px 12px; border:1px solid #d0d5dd; border-radius:6px; font-size:13px; width:200px;">
+            <select id="msStatusFilter" onchange="msRender()" style="padding:6px 12px; border:1px solid #d0d5dd; border-radius:6px; font-size:13px;">
+                <option value="">All statuses</option>
+                <option value="draft">Draft</option>
+                <option value="in_build">In Build</option>
+                <option value="testing">Testing</option>
+                <option value="published">Published</option>
+                <option value="archived">Archived</option>
+            </select>
+        </div>
+        <!-- Module list -->
+        <div id="msModuleList" style="display:grid; gap:10px;"></div>
+        <!-- Detail panel (shown when a module is open) -->
+        <div id="msDetailPanel" style="display:none; margin-top:20px; border:1px solid #d0d5dd; border-radius:8px; background:white; padding:20px;"></div>
+    </div>
+
+    <!-- Module Studio Modals -->
+    <div id="msModalOverlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.4); z-index:9000; justify-content:center; align-items:center;">
+        <div id="msModalContent" style="background:white; border-radius:10px; padding:24px; max-width:560px; width:90%; max-height:80vh; overflow-y:auto; box-shadow:0 8px 32px rgba(0,0,0,0.2);"></div>
+    </div>
+
+
     <script>
         // =====================================================
         // GLOBAL STATE & INIT
@@ -3985,6 +4027,7 @@
                   if (tabId === 'glp-console') glpcInit();
                   if (tabId === 'purchases-inventory') { loadAllPurchaseRequests(); loadAllInventoryV2(); loadPONumbers(); piLoadSamplePacks(); }
                   if (tabId === 'training') { loadTrainingDocuments(); loadPendingTrainingPacks(); loadSealedTrainingPacks(); }
+                  if (tabId === 'modules') { msInit(); }
               });
           });
 
@@ -4006,6 +4049,7 @@
               if (tabId === 'glp-console') glpcInit();
               if (tabId === 'purchases-inventory') { loadAllPurchaseRequests(); loadAllInventoryV2(); loadPONumbers(); }
               if (tabId === 'training') { loadTrainingDocuments(); loadPendingTrainingPacks(); loadSealedTrainingPacks(); }
+              if (tabId === 'modules') { msInit(); }
           }
 
 function dicInitEmbedModeFromUrl() {
@@ -12257,6 +12301,487 @@ function dicBuildPdfViewerSrc(fileUrl) {
                 alert("Error: " + err.message);
             }
         }
+
+    // =====================================================
+    // MODULE STUDIO – Isolated namespace (ms*)
+    // Future extraction: move to module-studio service
+    // =====================================================
+    let msModules = [];
+    let msWorkspaces = [];
+    let msCurrentModule = null;
+    let msCategoryFilter = 'all';
+    let msInited = false;
+
+    async function msInit() {
+        if (msInited && msModules.length > 0) { msRender(); return; }
+        msInited = true;
+        await msLoadModules();
+        await msLoadWorkspaces();
+    }
+
+    async function msLoadModules() {
+        try {
+            const r = await fetch('/api/modules/list', { credentials: 'include' });
+            if (!r.ok) { msModules = []; msRender(); return; }
+            const data = await r.json();
+            msModules = data.modules || [];
+            msRender();
+        } catch (e) { console.error('[MS] load error:', e); }
+    }
+
+    async function msLoadWorkspaces() {
+        try {
+            const r = await fetch('/api/modules/workspaces', { credentials: 'include' });
+            if (!r.ok) return;
+            const data = await r.json();
+            msWorkspaces = data.workspaces || [];
+        } catch (e) { console.error('[MS] workspaces error:', e); }
+    }
+
+    function msSetCategory(cat) {
+        msCategoryFilter = cat;
+        document.querySelectorAll('.ms-cat-btn').forEach(b => {
+            const active = b.dataset.cat === cat;
+            b.style.background = active ? '#1a365d' : 'white';
+            b.style.color = active ? 'white' : '#333';
+            b.classList.toggle('active', active);
+        });
+        msRender();
+    }
+
+    function msStatusColor(status) {
+        const m = { draft: '#94a3b8', in_build: '#f59e0b', testing: '#3b82f6', published: '#22c55e', archived: '#9ca3af' };
+        return m[status] || '#94a3b8';
+    }
+
+    function msRender() {
+        const search = (document.getElementById('msSearch')?.value || '').toLowerCase();
+        const statusF = document.getElementById('msStatusFilter')?.value || '';
+        let filtered = msModules.filter(m => {
+            if (msCategoryFilter !== 'all' && m.category !== msCategoryFilter) return false;
+            if (statusF && m.status !== statusF) return false;
+            if (search && !m.name.toLowerCase().includes(search) && !m.module_key.toLowerCase().includes(search)) return false;
+            return true;
+        });
+        const el = document.getElementById('msModuleList');
+        if (!filtered.length) { el.innerHTML = '<p style="color:#999; text-align:center; padding:30px;">No modules found. Click "Seed" to create initial modules or "Create Module" to add one.</p>'; return; }
+        el.innerHTML = filtered.map(m => `
+            <div style="border:1px solid #e2e8f0; border-radius:8px; padding:14px 18px; background:white; display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="msOpenDetail('${m.id}')">
+                <div style="flex:1;">
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+                        <strong style="font-size:14px; color:#1a365d;">${msEsc(m.name)}</strong>
+                        <span style="font-size:11px; background:${m.category === 'admin' ? '#dbeafe' : '#dcfce7'}; color:${m.category === 'admin' ? '#1e40af' : '#166534'}; padding:2px 8px; border-radius:10px;">${m.category}</span>
+                        <span style="font-size:11px; background:${msStatusColor(m.status)}22; color:${msStatusColor(m.status)}; padding:2px 8px; border-radius:10px; border:1px solid ${msStatusColor(m.status)}44;">${m.status}</span>
+                        <span style="font-size:11px; color:#64748b;">${msEsc(m.version_label)}</span>
+                    </div>
+                    <div style="font-size:12px; color:#64748b;">
+                        <code style="font-size:11px; background:#f1f5f9; padding:1px 5px; border-radius:3px;">${msEsc(m.module_key)}</code>
+                        ${m.description ? ' — ' + msEsc(m.description.substring(0, 80)) : ''}
+                    </div>
+                </div>
+                <div style="display:flex; gap:6px; align-items:center; font-size:11px; color:#94a3b8; margin-left:12px; white-space:nowrap;">
+                    <span title="Toggles">${m.toggle_count || 0} toggles</span>
+                    <span>·</span>
+                    <span title="Workspaces">${m.workspace_count || 0} ws</span>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    async function msOpenDetail(id) {
+        try {
+            const r = await fetch(`/api/modules/${id}`, { credentials: 'include' });
+            if (!r.ok) throw new Error('Failed to load module');
+            const data = await r.json();
+            msCurrentModule = data;
+            msRenderDetail();
+        } catch (e) { alert('Error: ' + e.message); }
+    }
+
+    function msRenderDetail() {
+        const d = msCurrentModule;
+        if (!d) return;
+        const m = d.module;
+        const panel = document.getElementById('msDetailPanel');
+        panel.style.display = 'block';
+        panel.innerHTML = `
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px;">
+                <div>
+                    <h3 style="margin:0 0 4px 0; color:#1a365d;">${msEsc(m.name)}</h3>
+                    <code style="font-size:12px; background:#f1f5f9; padding:2px 6px; border-radius:3px;">${msEsc(m.module_key)}</code>
+                    <span style="margin-left:8px; font-size:11px; background:${m.category === 'admin' ? '#dbeafe' : '#dcfce7'}; color:${m.category === 'admin' ? '#1e40af' : '#166534'}; padding:2px 8px; border-radius:10px;">${m.category}</span>
+                    <span style="margin-left:4px; font-size:11px; background:${msStatusColor(m.status)}22; color:${msStatusColor(m.status)}; padding:2px 8px; border-radius:10px;">${m.status}</span>
+                </div>
+                <button onclick="document.getElementById('msDetailPanel').style.display='none'; msCurrentModule=null;" style="background:none; border:none; font-size:20px; cursor:pointer; color:#94a3b8;">&times;</button>
+            </div>
+
+            <!-- Overview -->
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px 20px; font-size:13px; margin-bottom:20px; background:#f8fafc; padding:12px; border-radius:6px;">
+                <div><strong>Family:</strong> ${msEsc(m.family || '—')}</div>
+                <div><strong>Version:</strong> <input id="msVerInput" value="${msEsc(m.version_label)}" style="border:1px solid #d0d5dd; border-radius:4px; padding:2px 6px; width:60px; font-size:12px;" onchange="msUpdateField('version_label', this.value)"></div>
+                <div><strong>Transferable:</strong> ${m.transferable ? 'Yes' : 'No'}</div>
+                <div><strong>Created:</strong> ${new Date(m.created_at).toLocaleDateString()}</div>
+                <div style="grid-column:1/-1;"><strong>Description:</strong> ${msEsc(m.description || '—')}</div>
+            </div>
+
+            <!-- Toggles -->
+            <div style="margin-bottom:20px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <h4 style="margin:0; color:#1a365d; font-size:14px;">Toggles</h4>
+                    <button onclick="msOpenCreateToggle('${m.id}')" style="font-size:12px; padding:4px 10px; background:#2d7d46; color:white; border:none; border-radius:4px; cursor:pointer;">+ Add Toggle</button>
+                </div>
+                ${d.toggles.length ? d.toggles.map(t => `
+                    <div style="border:1px solid #e2e8f0; border-radius:6px; padding:8px 12px; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center; font-size:13px;">
+                        <div>
+                            <strong>${msEsc(t.label)}</strong> <code style="font-size:11px; color:#64748b;">${msEsc(t.toggle_key)}</code>
+                            ${t.description ? '<br><span style="font-size:12px; color:#64748b;">' + msEsc(t.description) + '</span>' : ''}
+                        </div>
+                        <div style="display:flex; gap:8px; align-items:center;">
+                            <span style="font-size:11px; color:${t.default_enabled ? '#22c55e' : '#94a3b8'};">${t.default_enabled ? 'ON' : 'OFF'}</span>
+                            <span style="font-size:11px; padding:2px 6px; border-radius:4px; background:${t.status === 'active' ? '#dcfce7' : '#f1f5f9'}; color:${t.status === 'active' ? '#166534' : '#64748b'};">${t.status}</span>
+                            <button onclick="msArchiveToggle('${t.id}', '${t.status}')" style="font-size:11px; padding:2px 8px; background:#f1f5f9; border:1px solid #d0d5dd; border-radius:4px; cursor:pointer;">${t.status === 'active' ? 'Archive' : 'Activate'}</button>
+                        </div>
+                    </div>
+                `).join('') : '<p style="color:#94a3b8; font-size:12px;">No toggles defined.</p>'}
+            </div>
+
+            <!-- Transfer Configurations -->
+            <div style="margin-bottom:20px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <h4 style="margin:0; color:#1a365d; font-size:14px;">Workspace Assignments</h4>
+                    <button onclick="msOpenTransfer('${m.id}')" style="font-size:12px; padding:4px 10px; background:#1a365d; color:white; border:none; border-radius:4px; cursor:pointer;">Transfer</button>
+                </div>
+                ${d.assignments.length ? d.assignments.map(a => `
+                    <div style="border:1px solid #e2e8f0; border-radius:6px; padding:8px 12px; margin-bottom:6px; font-size:13px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <div>
+                                <strong>${msEsc(a.workspace_name || a.workspace_slug || 'Unknown')}</strong>
+                                <span style="margin-left:8px; font-size:11px; padding:2px 6px; border-radius:4px; background:#f1f5f9;">${a.placement_type}</span>
+                                ${a.tab_label ? '<span style="margin-left:4px; font-size:11px; color:#64748b;">Label: ' + msEsc(a.tab_label) + '</span>' : ''}
+                                ${a.tab_position ? '<span style="margin-left:4px; font-size:11px; color:#64748b;">Pos: ' + a.tab_position + '</span>' : ''}
+                            </div>
+                            <span style="font-size:11px; color:${a.is_enabled ? '#22c55e' : '#94a3b8'};">${a.is_enabled ? 'Enabled' : 'Disabled'}</span>
+                        </div>
+                        ${a.toggle_overrides && a.toggle_overrides.length ? '<div style="margin-top:4px; font-size:11px; color:#64748b;">Toggles: ' + a.toggle_overrides.map(to => msEsc(to.toggle_label) + (to.is_enabled ? ' ✓' : ' ✗')).join(', ') + '</div>' : ''}
+                    </div>
+                `).join('') : '<p style="color:#94a3b8; font-size:12px;">Not assigned to any workspace.</p>'}
+            </div>
+
+            <!-- Preview -->
+            <div style="margin-bottom:20px;">
+                <h4 style="margin:0 0 8px 0; color:#1a365d; font-size:14px;">Preview</h4>
+                <div style="background:#f8fafc; border:1px dashed #d0d5dd; border-radius:6px; padding:12px; font-size:12px; color:#64748b;">
+                    ${d.assignments.length ? d.assignments.map(a => `
+                        <div style="margin-bottom:6px;">
+                            <strong>${msEsc(a.workspace_name || a.workspace_slug)}</strong> →
+                            ${a.placement_type === 'tab' ? 'Tab' : 'Toggle'}
+                            ${a.tab_label ? ': "' + msEsc(a.tab_label) + '"' : ''}
+                            ${a.toggle_location ? ' at ' + msEsc(a.toggle_location) : ''}
+                            — ${a.is_enabled ? '<span style="color:#22c55e;">Active</span>' : '<span style="color:#94a3b8;">Inactive</span>'}
+                            ${a.toggle_overrides && a.toggle_overrides.length ? '<br>Toggles: ' + a.toggle_overrides.filter(t => t.is_enabled).map(t => msEsc(t.toggle_label)).join(', ') : ''}
+                        </div>
+                    `).join('') : '<em>No workspace assignments to preview. Use Transfer to assign.</em>'}
+                </div>
+            </div>
+
+            <!-- Build Notes -->
+            <div style="margin-bottom:20px;">
+                <h4 style="margin:0 0 8px 0; color:#1a365d; font-size:14px;">Build Notes</h4>
+                <textarea id="msBuildNotes" rows="4" style="width:100%; border:1px solid #d0d5dd; border-radius:6px; padding:8px; font-size:12px; font-family:monospace; resize:vertical;" placeholder="Claude prompts, terminal commands, build instructions...">${msEsc(m.build_notes || '')}</textarea>
+                <button onclick="msUpdateField('build_notes', document.getElementById('msBuildNotes').value)" style="margin-top:4px; font-size:12px; padding:4px 12px; background:#e2e8f0; border:none; border-radius:4px; cursor:pointer;">Save Notes</button>
+            </div>
+
+            <!-- Actions -->
+            <div style="display:flex; gap:8px; border-top:1px solid #e2e8f0; padding-top:14px;">
+                ${m.status !== 'published' ? '<button onclick="msPublish(\'' + m.id + '\')" style="padding:6px 14px; background:#22c55e; color:white; border:none; border-radius:6px; cursor:pointer; font-size:13px;">Publish</button>' : ''}
+                ${m.status !== 'archived' ? '<button onclick="msArchive(\'' + m.id + '\')" style="padding:6px 14px; background:#f59e0b; color:white; border:none; border-radius:6px; cursor:pointer; font-size:13px;">Archive</button>' : ''}
+                ${m.status === 'draft' ? '<button onclick="msDelete(\'' + m.id + '\')" style="padding:6px 14px; background:#ef4444; color:white; border:none; border-radius:6px; cursor:pointer; font-size:13px;">Delete</button>' : ''}
+            </div>
+        `;
+        panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function msEsc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = String(s); return d.innerHTML; }
+
+    async function msUpdateField(field, value) {
+        if (!msCurrentModule) return;
+        try {
+            const body = {};
+            body[field] = value;
+            const r = await fetch(`/api/modules/${msCurrentModule.module.id}`, {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+                body: JSON.stringify(body)
+            });
+            if (!r.ok) throw new Error((await r.json()).error || 'Failed');
+            await msLoadModules();
+            await msOpenDetail(msCurrentModule.module.id);
+        } catch (e) { alert('Error: ' + e.message); }
+    }
+
+    // Create Module Modal
+    function msOpenCreateModule() {
+        msShowModal(`
+            <h3 style="margin:0 0 16px 0; color:#1a365d;">Create Module</h3>
+            <div style="display:grid; gap:10px;">
+                <label style="font-size:13px;">Name *<input id="msCmName" style="width:100%; padding:6px; border:1px solid #d0d5dd; border-radius:4px; margin-top:2px;" placeholder="GLP Vision (PI)"></label>
+                <label style="font-size:13px;">Module Key *<input id="msCmKey" style="width:100%; padding:6px; border:1px solid #d0d5dd; border-radius:4px; margin-top:2px;" placeholder="glp_vision_pi"></label>
+                <label style="font-size:13px;">Category *
+                    <select id="msCmCat" style="width:100%; padding:6px; border:1px solid #d0d5dd; border-radius:4px; margin-top:2px;">
+                        <option value="admin">Admin</option>
+                        <option value="user">User</option>
+                    </select>
+                </label>
+                <label style="font-size:13px;">Family <input id="msCmFamily" style="width:100%; padding:6px; border:1px solid #d0d5dd; border-radius:4px; margin-top:2px;" placeholder="glp_vision"></label>
+                <label style="font-size:13px;">Description<textarea id="msCmDesc" rows="2" style="width:100%; padding:6px; border:1px solid #d0d5dd; border-radius:4px; margin-top:2px;"></textarea></label>
+                <label style="font-size:13px;">Version Label <input id="msCmVer" value="v1" style="width:100%; padding:6px; border:1px solid #d0d5dd; border-radius:4px; margin-top:2px;"></label>
+                <label style="font-size:13px;"><input type="checkbox" id="msCmTransferable" checked> Transferable</label>
+                <label style="font-size:13px;">Build Notes<textarea id="msCmNotes" rows="3" style="width:100%; padding:6px; border:1px solid #d0d5dd; border-radius:4px; margin-top:2px; font-family:monospace;" placeholder="Claude prompts, terminal commands..."></textarea></label>
+                <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:8px;">
+                    <button onclick="msCloseModal()" style="padding:8px 16px; background:#e2e8f0; border:none; border-radius:6px; cursor:pointer;">Cancel</button>
+                    <button onclick="msDoCreateModule()" style="padding:8px 16px; background:#1a365d; color:white; border:none; border-radius:6px; cursor:pointer;">Create</button>
+                </div>
+            </div>
+        `);
+    }
+
+    async function msDoCreateModule() {
+        const name = document.getElementById('msCmName').value.trim();
+        const module_key = document.getElementById('msCmKey').value.trim();
+        const category = document.getElementById('msCmCat').value;
+        if (!name || !module_key) { alert('Name and Module Key are required'); return; }
+        try {
+            const r = await fetch('/api/modules', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+                body: JSON.stringify({
+                    name, module_key, category,
+                    family: document.getElementById('msCmFamily').value.trim() || null,
+                    description: document.getElementById('msCmDesc').value.trim() || null,
+                    version_label: document.getElementById('msCmVer').value.trim() || 'v1',
+                    transferable: document.getElementById('msCmTransferable').checked,
+                    build_notes: document.getElementById('msCmNotes').value.trim() || null
+                })
+            });
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.error || 'Failed');
+            msCloseModal();
+            await msLoadModules();
+        } catch (e) { alert('Error: ' + e.message); }
+    }
+
+    // Create Toggle Modal
+    function msOpenCreateToggle(moduleId) {
+        const moduleOptions = msModules.map(m => `<option value="${m.id}" ${m.id === moduleId ? 'selected' : ''}>${msEsc(m.name)}</option>`).join('');
+        msShowModal(`
+            <h3 style="margin:0 0 16px 0; color:#1a365d;">Create Toggle</h3>
+            <div style="display:grid; gap:10px;">
+                <label style="font-size:13px;">Parent Module *
+                    <select id="msCtModule" style="width:100%; padding:6px; border:1px solid #d0d5dd; border-radius:4px; margin-top:2px;">${moduleOptions}</select>
+                </label>
+                <label style="font-size:13px;">Label *<input id="msCtLabel" style="width:100%; padding:6px; border:1px solid #d0d5dd; border-radius:4px; margin-top:2px;" placeholder="Dark mode"></label>
+                <label style="font-size:13px;">Toggle Key *<input id="msCtKey" style="width:100%; padding:6px; border:1px solid #d0d5dd; border-radius:4px; margin-top:2px;" placeholder="dark_mode"></label>
+                <label style="font-size:13px;">Description<textarea id="msCtDesc" rows="2" style="width:100%; padding:6px; border:1px solid #d0d5dd; border-radius:4px; margin-top:2px;"></textarea></label>
+                <label style="font-size:13px;"><input type="checkbox" id="msCtEnabled" checked> Default Enabled</label>
+                <label style="font-size:13px;">Sort Order <input id="msCtSort" type="number" value="0" style="width:80px; padding:6px; border:1px solid #d0d5dd; border-radius:4px; margin-top:2px;"></label>
+                <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:8px;">
+                    <button onclick="msCloseModal()" style="padding:8px 16px; background:#e2e8f0; border:none; border-radius:6px; cursor:pointer;">Cancel</button>
+                    <button onclick="msDoCreateToggle()" style="padding:8px 16px; background:#2d7d46; color:white; border:none; border-radius:6px; cursor:pointer;">Create</button>
+                </div>
+            </div>
+        `);
+    }
+
+    async function msDoCreateToggle() {
+        const module_id = document.getElementById('msCtModule').value;
+        const label = document.getElementById('msCtLabel').value.trim();
+        const toggle_key = document.getElementById('msCtKey').value.trim();
+        if (!module_id || !label || !toggle_key) { alert('Module, Label, and Toggle Key are required'); return; }
+        try {
+            const r = await fetch(`/api/modules/${module_id}/toggles`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+                body: JSON.stringify({
+                    label, toggle_key,
+                    description: document.getElementById('msCtDesc').value.trim() || null,
+                    default_enabled: document.getElementById('msCtEnabled').checked,
+                    sort_order: parseInt(document.getElementById('msCtSort').value) || 0
+                })
+            });
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.error || 'Failed');
+            msCloseModal();
+            await msLoadModules();
+            if (msCurrentModule && msCurrentModule.module.id === module_id) await msOpenDetail(module_id);
+        } catch (e) { alert('Error: ' + e.message); }
+    }
+
+    async function msArchiveToggle(toggleId, currentStatus) {
+        const newStatus = currentStatus === 'active' ? 'archived' : 'active';
+        try {
+            const r = await fetch(`/api/modules/toggles/${toggleId}`, {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+                body: JSON.stringify({ status: newStatus })
+            });
+            if (!r.ok) throw new Error((await r.json()).error || 'Failed');
+            if (msCurrentModule) await msOpenDetail(msCurrentModule.module.id);
+        } catch (e) { alert('Error: ' + e.message); }
+    }
+
+    // Transfer Modal
+    function msOpenTransfer(moduleId) {
+        const mod = msCurrentModule;
+        const toggleChecks = mod && mod.toggles.length ? mod.toggles.filter(t => t.status === 'active').map(t => `
+            <label style="display:flex; align-items:center; gap:6px; font-size:12px; margin-bottom:2px;">
+                <input type="checkbox" class="ms-xfer-toggle" data-toggle-id="${t.id}" checked> ${msEsc(t.label)}
+            </label>
+        `).join('') : '<span style="font-size:12px; color:#94a3b8;">No active toggles.</span>';
+
+        const wsOptions = msWorkspaces.map(w => `<option value="${w.id}">${msEsc(w.display_name || w.slug)}</option>`).join('');
+
+        msShowModal(`
+            <h3 style="margin:0 0 16px 0; color:#1a365d;">Transfer Module</h3>
+            <div style="display:grid; gap:10px;">
+                <label style="font-size:13px;">Target Workspace *
+                    <select id="msXferWs" style="width:100%; padding:6px; border:1px solid #d0d5dd; border-radius:4px; margin-top:2px;">${wsOptions}</select>
+                </label>
+                <label style="font-size:13px;">Placement Type *
+                    <select id="msXferType" onchange="msXferTypeChange()" style="width:100%; padding:6px; border:1px solid #d0d5dd; border-radius:4px; margin-top:2px;">
+                        <option value="tab">Tab</option>
+                        <option value="toggle">Toggle</option>
+                    </select>
+                </label>
+                <div id="msXferTabFields">
+                    <label style="font-size:13px;">Tab Label<input id="msXferTabLabel" style="width:100%; padding:6px; border:1px solid #d0d5dd; border-radius:4px; margin-top:2px;" placeholder="Module name in tab bar"></label>
+                    <label style="font-size:13px; margin-top:6px; display:block;">Tab Position<input id="msXferTabPos" type="number" style="width:80px; padding:6px; border:1px solid #d0d5dd; border-radius:4px; margin-top:2px;" placeholder="1"></label>
+                    <label style="font-size:13px; margin-top:6px; display:block;">Placement Target<input id="msXferTarget" style="width:100%; padding:6px; border:1px solid #d0d5dd; border-radius:4px; margin-top:2px;" placeholder="nav section or target area"></label>
+                </div>
+                <div id="msXferToggleFields" style="display:none;">
+                    <label style="font-size:13px;">Toggle Location<input id="msXferToggleLoc" style="width:100%; padding:6px; border:1px solid #d0d5dd; border-radius:4px; margin-top:2px;" placeholder="target tab or section"></label>
+                </div>
+                <label style="font-size:13px;">Variant <input id="msXferVariant" style="width:100%; padding:6px; border:1px solid #d0d5dd; border-radius:4px; margin-top:2px;" placeholder="optional variant identifier"></label>
+                <div style="margin-top:4px;">
+                    <strong style="font-size:13px;">Toggle Selection:</strong>
+                    <div style="margin-top:4px;">${toggleChecks}</div>
+                </div>
+                <label style="font-size:13px;"><input type="checkbox" id="msXferEnabled" checked> Enable immediately</label>
+                <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:8px;">
+                    <button onclick="msCloseModal()" style="padding:8px 16px; background:#e2e8f0; border:none; border-radius:6px; cursor:pointer;">Cancel</button>
+                    <button onclick="msDoTransfer('${moduleId}')" style="padding:8px 16px; background:#1a365d; color:white; border:none; border-radius:6px; cursor:pointer;">Transfer</button>
+                </div>
+            </div>
+        `);
+    }
+
+    function msXferTypeChange() {
+        const isTab = document.getElementById('msXferType').value === 'tab';
+        document.getElementById('msXferTabFields').style.display = isTab ? 'block' : 'none';
+        document.getElementById('msXferToggleFields').style.display = isTab ? 'none' : 'block';
+    }
+
+    async function msDoTransfer(moduleId) {
+        const workspace_id = document.getElementById('msXferWs').value;
+        const placement_type = document.getElementById('msXferType').value;
+        if (!workspace_id) { alert('Select a workspace'); return; }
+        const toggle_overrides = [];
+        document.querySelectorAll('.ms-xfer-toggle').forEach(cb => {
+            toggle_overrides.push({ module_toggle_id: cb.dataset.toggleId, is_enabled: cb.checked });
+        });
+        try {
+            const r = await fetch(`/api/modules/${moduleId}/transfer`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+                body: JSON.stringify({
+                    workspace_id, placement_type,
+                    placement_target: document.getElementById('msXferTarget')?.value?.trim() || null,
+                    tab_label: document.getElementById('msXferTabLabel')?.value?.trim() || null,
+                    tab_position: parseInt(document.getElementById('msXferTabPos')?.value) || null,
+                    toggle_location: document.getElementById('msXferToggleLoc')?.value?.trim() || null,
+                    selected_variant: document.getElementById('msXferVariant')?.value?.trim() || null,
+                    is_enabled: document.getElementById('msXferEnabled').checked,
+                    toggle_overrides
+                })
+            });
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.error || 'Failed');
+            msCloseModal();
+            await msLoadModules();
+            await msOpenDetail(moduleId);
+        } catch (e) { alert('Error: ' + e.message); }
+    }
+
+    // Publish
+    async function msPublish(moduleId) {
+        const scope = prompt('Publish scope: type "all" for all assigned workspaces, or "workspace" for a specific one.', 'all');
+        if (!scope) return;
+        let workspace_id = null;
+        if (scope === 'workspace') {
+            const wsName = prompt('Enter workspace slug (e.g., natlab, skinotek, theralia):');
+            if (!wsName) return;
+            const ws = msWorkspaces.find(w => w.slug === wsName);
+            if (!ws) { alert('Workspace not found: ' + wsName); return; }
+            workspace_id = ws.id;
+        }
+        try {
+            const r = await fetch(`/api/modules/${moduleId}/publish`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+                body: JSON.stringify({ scope, workspace_id })
+            });
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.error || 'Failed');
+            await msLoadModules();
+            await msOpenDetail(moduleId);
+        } catch (e) { alert('Error: ' + e.message); }
+    }
+
+    // Archive
+    async function msArchive(moduleId) {
+        if (!confirm('Archive this module? It will be preserved but hidden from active use.')) return;
+        try {
+            const r = await fetch(`/api/modules/${moduleId}/archive`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include'
+            });
+            if (!r.ok) throw new Error((await r.json()).error || 'Failed');
+            await msLoadModules();
+            await msOpenDetail(moduleId);
+        } catch (e) { alert('Error: ' + e.message); }
+    }
+
+    // Delete
+    async function msDelete(moduleId) {
+        if (!confirm('Delete this draft module? This cannot be undone.')) return;
+        try {
+            const r = await fetch(`/api/modules/${moduleId}`, {
+                method: 'DELETE', credentials: 'include'
+            });
+            if (!r.ok) throw new Error((await r.json()).error || 'Failed');
+            document.getElementById('msDetailPanel').style.display = 'none';
+            msCurrentModule = null;
+            await msLoadModules();
+        } catch (e) { alert('Error: ' + e.message); }
+    }
+
+    // Seed
+    async function msSeed() {
+        if (!confirm('Seed initial modules? This is idempotent and safe to run multiple times.')) return;
+        try {
+            const r = await fetch('/api/modules/seed', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include'
+            });
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.error || 'Failed');
+            alert(`Seed complete: ${data.created} created, ${data.skipped} already existed.`);
+            await msLoadModules();
+        } catch (e) { alert('Error: ' + e.message); }
+    }
+
+    // Modal helpers
+    function msShowModal(html) {
+        document.getElementById('msModalContent').innerHTML = html;
+        document.getElementById('msModalOverlay').style.display = 'flex';
+    }
+    function msCloseModal() {
+        document.getElementById('msModalOverlay').style.display = 'none';
+    }
+    document.addEventListener('click', function(e) {
+        if (e.target.id === 'msModalOverlay') msCloseModal();
+    });
 
     </script>
 <script src="/js/presentation-mode.js"></script>
