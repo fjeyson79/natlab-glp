@@ -16580,7 +16580,7 @@ app.get('/api/modules/list', requirePI, async (req, res) => {
 // GET /api/modules/workspaces – list workspaces for transfer UI
 app.get('/api/modules/workspaces', requirePI, async (req, res) => {
     try {
-        const result = await pool.query(`SELECT id, slug, display_name FROM workspaces ORDER BY slug`);
+        const result = await pool.query(`SELECT id, slug, name, workspace_type FROM workspaces WHERE is_active = TRUE ORDER BY slug`);
         res.json({ workspaces: result.rows });
     } catch (err) {
         console.error('[MODULES] workspaces error:', err.message);
@@ -16596,7 +16596,7 @@ app.get('/api/modules/:id', requirePI, async (req, res) => {
         if (mod.rows.length === 0) return res.status(404).json({ error: 'Module not found' });
         const toggles = await pool.query(`SELECT * FROM module_toggles WHERE module_id = $1 ORDER BY sort_order`, [req.params.id]);
         const assignments = await pool.query(`
-            SELECT wm.*, w.slug AS workspace_slug, w.display_name AS workspace_name
+            SELECT wm.*, w.slug AS workspace_slug, w.name AS workspace_name
             FROM workspace_modules wm
             LEFT JOIN workspaces w ON w.id = wm.workspace_id
             WHERE wm.module_id = $1 ORDER BY w.slug

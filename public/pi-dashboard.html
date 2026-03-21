@@ -3908,7 +3908,7 @@
     <div class="tab-content" id="tab-modules">
         <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:18px;">
             <div>
-                <h2 style="margin:0 0 4px 0; color:#1a365d;">Modules</h2>
+                <h2 style="margin:0 0 4px 0; color:#1a365d;">Modules <span id="msCountBadge" style="font-size:14px; font-weight:400; color:#64748b;"></span></h2>
                 <p style="margin:0; color:#666; font-size:13px;">Central studio for reusable platform capabilities. Manage, transfer, and publish modules across workspaces.</p>
             </div>
             <div style="display:flex; gap:8px;">
@@ -12363,8 +12363,18 @@ function dicBuildPdfViewerSrc(fileUrl) {
             if (search && !m.name.toLowerCase().includes(search) && !m.module_key.toLowerCase().includes(search)) return false;
             return true;
         });
+        // Update count badge
+        const badge = document.getElementById('msCountBadge');
+        if (badge) badge.textContent = '(' + msModules.length + ')';
         const el = document.getElementById('msModuleList');
-        if (!filtered.length) { el.innerHTML = '<p style="color:#999; text-align:center; padding:30px;">No modules found. Click "Seed" to create initial modules or "Create Module" to add one.</p>'; return; }
+        if (!filtered.length) {
+            el.innerHTML = `<div style="text-align:center; padding:40px 20px; border:1px dashed #d0d5dd; border-radius:10px; background:#f8fafc; max-width:420px; margin:20px auto;">
+                <div style="font-size:28px; margin-bottom:8px; opacity:0.4;">&#9881;</div>
+                <p style="color:#64748b; font-size:14px; margin:0 0 6px 0; font-weight:500;">No modules found</p>
+                <p style="color:#94a3b8; font-size:12px; margin:0;">Click <strong>Seed</strong> to create initial modules or <strong>+ Create Module</strong> to add one.</p>
+            </div>`;
+            return;
+        }
         el.innerHTML = filtered.map(m => `
             <div style="border:1px solid #e2e8f0; border-radius:8px; padding:14px 18px; background:white; display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="msOpenDetail('${m.id}')">
                 <div style="flex:1;">
@@ -12524,21 +12534,22 @@ function dicBuildPdfViewerSrc(fileUrl) {
             <h3 style="margin:0 0 16px 0; color:#1a365d;">Create Module</h3>
             <div style="display:grid; gap:10px;">
                 <label style="font-size:13px;">Name *<input id="msCmName" style="width:100%; padding:6px; border:1px solid #d0d5dd; border-radius:4px; margin-top:2px;" placeholder="GLP Vision (PI)"></label>
-                <label style="font-size:13px;">Module Key *<input id="msCmKey" style="width:100%; padding:6px; border:1px solid #d0d5dd; border-radius:4px; margin-top:2px;" placeholder="glp_vision_pi"></label>
+                <label style="font-size:13px;">Module Key *<input id="msCmKey" style="width:100%; padding:6px; border:1px solid #d0d5dd; border-radius:4px; margin-top:2px;" placeholder="glp_vision_pi"><span style="font-size:11px; color:#94a3b8; display:block; margin-top:1px;">Unique internal key, lowercase with underscores</span></label>
                 <label style="font-size:13px;">Category *
                     <select id="msCmCat" style="width:100%; padding:6px; border:1px solid #d0d5dd; border-radius:4px; margin-top:2px;">
                         <option value="admin">Admin</option>
                         <option value="user">User</option>
                     </select>
                 </label>
-                <label style="font-size:13px;">Family <input id="msCmFamily" style="width:100%; padding:6px; border:1px solid #d0d5dd; border-radius:4px; margin-top:2px;" placeholder="glp_vision"></label>
-                <label style="font-size:13px;">Description<textarea id="msCmDesc" rows="2" style="width:100%; padding:6px; border:1px solid #d0d5dd; border-radius:4px; margin-top:2px;"></textarea></label>
+                <label style="font-size:13px;">Family <input id="msCmFamily" style="width:100%; padding:6px; border:1px solid #d0d5dd; border-radius:4px; margin-top:2px;" placeholder="glp_vision"><span style="font-size:11px; color:#94a3b8; display:block; margin-top:1px;">Optional grouping, e.g. glp_vision or oligo</span></label>
+                <label style="font-size:13px;">Description<textarea id="msCmDesc" rows="1" style="width:100%; padding:6px; border:1px solid #d0d5dd; border-radius:4px; margin-top:2px;"></textarea></label>
                 <label style="font-size:13px;">Version Label <input id="msCmVer" value="v1" style="width:100%; padding:6px; border:1px solid #d0d5dd; border-radius:4px; margin-top:2px;"></label>
                 <label style="font-size:13px;"><input type="checkbox" id="msCmTransferable" checked> Transferable</label>
-                <label style="font-size:13px;">Build Notes<textarea id="msCmNotes" rows="3" style="width:100%; padding:6px; border:1px solid #d0d5dd; border-radius:4px; margin-top:2px; font-family:monospace;" placeholder="Claude prompts, terminal commands..."></textarea></label>
+                <label style="font-size:13px;">Build Notes<textarea id="msCmNotes" rows="2" style="width:100%; padding:6px; border:1px solid #d0d5dd; border-radius:4px; margin-top:2px; font-family:monospace;" placeholder="Claude prompts, terminal commands..."></textarea></label>
+                <div style="font-size:11px; color:#94a3b8; margin-top:2px;">Initial status: <strong>draft</strong></div>
                 <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:8px;">
                     <button onclick="msCloseModal()" style="padding:8px 16px; background:#e2e8f0; border:none; border-radius:6px; cursor:pointer;">Cancel</button>
-                    <button onclick="msDoCreateModule()" style="padding:8px 16px; background:#1a365d; color:white; border:none; border-radius:6px; cursor:pointer;">Create</button>
+                    <button onclick="msDoCreateModule()" style="padding:8px 16px; background:#1a365d; color:white; border:none; border-radius:6px; cursor:pointer;">Create Draft</button>
                 </div>
             </div>
         `);
@@ -12634,7 +12645,7 @@ function dicBuildPdfViewerSrc(fileUrl) {
             </label>
         `).join('') : '<span style="font-size:12px; color:#94a3b8;">No active toggles.</span>';
 
-        const wsOptions = msWorkspaces.map(w => `<option value="${w.id}">${msEsc(w.display_name || w.slug)}</option>`).join('');
+        const wsOptions = msWorkspaces.map(w => `<option value="${w.id}">${msEsc(w.name || w.slug)}</option>`).join('');
 
         msShowModal(`
             <h3 style="margin:0 0 16px 0; color:#1a365d;">Transfer Module</h3>
@@ -12766,7 +12777,11 @@ function dicBuildPdfViewerSrc(fileUrl) {
             });
             const data = await r.json();
             if (!r.ok) throw new Error(data.error || 'Failed');
-            alert(`Seed complete: ${data.created} created, ${data.skipped} already existed.`);
+            if (data.message) {
+                alert(data.message);
+            } else {
+                alert(`Seed complete: ${data.created} module(s) created` + (data.skipped ? `, ${data.skipped} already existed` : '') + '.');
+            }
             await msLoadModules();
         } catch (e) { alert('Error: ' + e.message); }
     }
