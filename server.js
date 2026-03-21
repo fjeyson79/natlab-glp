@@ -16588,6 +16588,68 @@ app.get('/api/modules/workspaces', requirePI, async (req, res) => {
     }
 });
 
+// GET /api/modules/blueprints – list available blueprints grouped by category
+app.get('/api/modules/blueprints', requirePI, async (req, res) => {
+    const admin = MODULE_BLUEPRINTS.filter(b => b.category === 'admin');
+    const user  = MODULE_BLUEPRINTS.filter(b => b.category === 'user');
+    res.json({ blueprints: { admin, user } });
+});
+
+// POST /api/modules/from-blueprint – create a module from a blueprint
+app.post('/api/modules/from-blueprint', requirePI, async (req, res) => {
+    try {
+        if (!(await checkModulesTable())) return res.status(501).json({ error: 'Modules tables not available' });
+        const { category, blueprint_key, overrides, selected_toggles } = req.body;
+        if (!category || !blueprint_key) return res.status(400).json({ error: 'category and blueprint_key are required' });
+
+        const bp = MODULE_BLUEPRINTS.find(b => b.category === category && b.blueprint_key === blueprint_key);
+        if (!bp) return res.status(404).json({ error: 'Blueprint not found for category ' + category });
+
+        const ov = overrides || {};
+        const moduleName = ov.name || bp.name;
+        const moduleKey  = ov.module_key || bp.module_key;
+        const created_by = req.session?.user?.researcher_id || req.session?.user?.id || null;
+
+        // Insert module with blueprint metadata
+        const result = await pool.query(`
+            INSERT INTO modules (module_key, name, category, family, description, transferable, version_label, build_notes, created_by, blueprint_key, source_type, source_key, render_key)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+            RETURNING *
+        `, [
+            moduleKey, moduleName, bp.category, bp.family || null,
+            ov.description || bp.description || null,
+            ov.transferable !== undefined ? ov.transferable : true,
+            'v1', ov.build_notes || null, created_by,
+            bp.blueprint_key, bp.source_type, bp.source_key, bp.render_key || null
+        ]);
+        const mod = result.rows[0];
+
+        // Determine which toggles to create
+        let toggleDefs = bp.toggles || [];
+        if (Array.isArray(selected_toggles) && selected_toggles.length > 0) {
+            toggleDefs = toggleDefs.filter(t => selected_toggles.includes(t.toggle_key));
+        }
+
+        // Create toggles
+        const createdToggles = [];
+        for (let i = 0; i < toggleDefs.length; i++) {
+            const t = toggleDefs[i];
+            const tr = await pool.query(`
+                INSERT INTO module_toggles (module_id, toggle_key, label, description, default_enabled, sort_order)
+                VALUES ($1,$2,$3,$4,$5,$6) RETURNING *
+            `, [mod.id, t.toggle_key, t.label, t.description || null, t.default_enabled !== false, i]);
+            createdToggles.push(tr.rows[0]);
+        }
+
+        console.log('[MODULES] Created from blueprint:', bp.blueprint_key, '→', moduleKey);
+        res.json({ module: mod, toggles: createdToggles });
+    } catch (err) {
+        if (err.code === '23505') return res.status(409).json({ error: 'Module key already exists' });
+        console.error('[MODULES] from-blueprint error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
 // GET /api/modules/:id – single module with toggles and workspace assignments
 app.get('/api/modules/:id', requirePI, async (req, res) => {
     try {
@@ -16969,68 +17031,6 @@ const MODULE_BLUEPRINTS = [
         ]
     }
 ];
-
-// GET /api/modules/blueprints – list available blueprints grouped by category
-app.get('/api/modules/blueprints', requirePI, async (req, res) => {
-    const admin = MODULE_BLUEPRINTS.filter(b => b.category === 'admin');
-    const user  = MODULE_BLUEPRINTS.filter(b => b.category === 'user');
-    res.json({ blueprints: { admin, user } });
-});
-
-// POST /api/modules/from-blueprint – create a module from a blueprint
-app.post('/api/modules/from-blueprint', requirePI, async (req, res) => {
-    try {
-        if (!(await checkModulesTable())) return res.status(501).json({ error: 'Modules tables not available' });
-        const { category, blueprint_key, overrides, selected_toggles } = req.body;
-        if (!category || !blueprint_key) return res.status(400).json({ error: 'category and blueprint_key are required' });
-
-        const bp = MODULE_BLUEPRINTS.find(b => b.category === category && b.blueprint_key === blueprint_key);
-        if (!bp) return res.status(404).json({ error: 'Blueprint not found for category ' + category });
-
-        const ov = overrides || {};
-        const moduleName = ov.name || bp.name;
-        const moduleKey  = ov.module_key || bp.module_key;
-        const created_by = req.session?.user?.researcher_id || req.session?.user?.id || null;
-
-        // Insert module with blueprint metadata
-        const result = await pool.query(`
-            INSERT INTO modules (module_key, name, category, family, description, transferable, version_label, build_notes, created_by, blueprint_key, source_type, source_key, render_key)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-            RETURNING *
-        `, [
-            moduleKey, moduleName, bp.category, bp.family || null,
-            ov.description || bp.description || null,
-            ov.transferable !== undefined ? ov.transferable : true,
-            'v1', ov.build_notes || null, created_by,
-            bp.blueprint_key, bp.source_type, bp.source_key, bp.render_key || null
-        ]);
-        const mod = result.rows[0];
-
-        // Determine which toggles to create
-        let toggleDefs = bp.toggles || [];
-        if (Array.isArray(selected_toggles) && selected_toggles.length > 0) {
-            toggleDefs = toggleDefs.filter(t => selected_toggles.includes(t.toggle_key));
-        }
-
-        // Create toggles
-        const createdToggles = [];
-        for (let i = 0; i < toggleDefs.length; i++) {
-            const t = toggleDefs[i];
-            const tr = await pool.query(`
-                INSERT INTO module_toggles (module_id, toggle_key, label, description, default_enabled, sort_order)
-                VALUES ($1,$2,$3,$4,$5,$6) RETURNING *
-            `, [mod.id, t.toggle_key, t.label, t.description || null, t.default_enabled !== false, i]);
-            createdToggles.push(tr.rows[0]);
-        }
-
-        console.log('[MODULES] Created from blueprint:', bp.blueprint_key, '→', moduleKey);
-        res.json({ module: mod, toggles: createdToggles });
-    } catch (err) {
-        if (err.code === '23505') return res.status(409).json({ error: 'Module key already exists' });
-        console.error('[MODULES] from-blueprint error:', err.message);
-        res.status(500).json({ error: 'Server error' });
-    }
-});
 
 // =====================================================
 // END MODULE STUDIO
