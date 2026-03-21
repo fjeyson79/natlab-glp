@@ -441,9 +441,44 @@
         .role-badge.pi { background: #ffc107; color: #333; }
         .role-badge.supervisor { background: #17a2b8; color: white; }
         .role-badge.researcher { background: #e0e0e0; color: #333; }
+        .role-badge.custom { background: #9b59b6; color: white; }
+        .role-badge.founder { background: #e67e22; color: white; }
+        .role-badge.admin { background: #3498db; color: white; }
+        .role-badge.r_and_d { background: #1abc9c; color: white; }
+        .role-badge.advisor { background: #95a5a6; color: white; }
+        .role-badge.investor { background: #34495e; color: white; }
+
+        .membership-badge { display: inline-block; padding: 2px 6px; border-radius: 8px; font-size: 9px; font-weight: 600; margin-left: 4px; }
+        .membership-badge.core { background: #d4edda; color: #155724; }
+        .membership-badge.collaborator { background: #fff3cd; color: #856404; }
+        .ws-badge { display: inline-block; padding: 1px 5px; border-radius: 6px; font-size: 9px; font-weight: 600; margin-right: 3px; }
+        .ws-badge.natlab { background: #e3f2fd; color: #1565c0; }
+        .ws-badge.skinotek { background: #fce4ec; color: #c62828; }
+        .ws-badge.theralia { background: #f3e5f5; color: #6a1b9a; }
+
+        /* Clearance modal */
+        .clearance-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; display: none; align-items: flex-start; justify-content: center; padding-top: 40px; overflow-y: auto; }
+        .clearance-overlay.show { display: flex; }
+        .clearance-modal { background: white; border-radius: 10px; width: 720px; max-width: 95vw; max-height: 90vh; overflow-y: auto; box-shadow: 0 8px 32px rgba(0,0,0,0.2); }
+        .clearance-modal .modal-header { padding: 16px 20px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; }
+        .clearance-modal .modal-header h2 { margin: 0; font-size: 16px; }
+        .clearance-modal .modal-body { padding: 20px; }
+        .clearance-modal .modal-footer { padding: 12px 20px; border-top: 1px solid #e5e7eb; display: flex; justify-content: flex-end; gap: 8px; }
+        .clearance-section { margin-bottom: 18px; padding: 14px; background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb; }
+        .clearance-section h3 { margin: 0 0 10px 0; font-size: 13px; color: #374151; text-transform: uppercase; letter-spacing: 0.5px; }
+        .clearance-section .helper-text { font-size: 11px; color: #6b7280; margin-top: 4px; }
+        .custom-role-hint { background: #f3e8ff; border: 1px solid #d8b4fe; border-radius: 6px; padding: 8px 12px; font-size: 11px; color: #6b21a8; margin-top: 6px; display: none; }
+        .ws-membership-row { border: 1px solid #d1d5db; border-radius: 6px; padding: 12px; margin-bottom: 10px; background: white; }
+        .ws-membership-row h4 { margin: 0 0 8px 0; font-size: 13px; }
+        .ws-membership-row .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .ws-membership-row .form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+        .ws-membership-row label { font-size: 11px; font-weight: 600; color: #374151; display: block; margin-bottom: 3px; }
+        .ws-membership-row select, .ws-membership-row input[type="text"], .ws-membership-row textarea { width: 100%; padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 12px; }
+        .ws-membership-row .checkbox-row { display: flex; gap: 14px; align-items: center; margin-top: 6px; }
+        .ws-membership-row .checkbox-row label { font-weight: normal; display: flex; align-items: center; gap: 4px; margin-bottom: 0; }
 
         /* Actions */
-        .actions { display: flex; gap: 5px; }
+        .actions { display: flex; gap: 5px; flex-wrap: wrap; }
 
         /* Filter Bar */
         .filter-bar {
@@ -2665,7 +2700,7 @@
     <!-- ==================== USER MANAGEMENT TAB ==================== -->
     <div class="tab-content" id="tab-user-mgmt">
         <div class="two-column">
-            <!-- Add User Form -->
+            <!-- Add User Form (Phase 1.3 — governance-aware onboarding) -->
             <div class="panel">
                 <div class="panel-header">
                     <h2><span class="icon">&#128100;</span> Add New User</h2>
@@ -2673,21 +2708,22 @@
                 <div class="panel-content">
                     <div id="addUserMessage" class="message"></div>
                     <form id="addUserForm">
-                        <div class="form-group">
-                            <label for="newUserName">Full Name *</label>
-                            <input type="text" id="newUserName" required placeholder="John Doe">
-                        </div>
-                        <div class="form-group">
-                            <label for="newUserEmail">Institution Email *</label>
-                            <input type="email" id="newUserEmail" required placeholder="john.doe@liu.se">
-                        </div>
-                        <div class="form-group">
-                            <label for="newResearcherId">Researcher ID *</label>
-                            <input type="text" id="newResearcherId" required placeholder="e.g. NM, FJH3"
-                                   pattern="[A-Za-z0-9_]{2,12}" minlength="2" maxlength="12"
-                                   title="2–12 characters: letters, numbers, or underscore">
-                        </div>
-                        <div class="form-row">
+                        <div class="clearance-section">
+                            <h3>Identity</h3>
+                            <div class="form-group">
+                                <label for="newUserName">Full Name *</label>
+                                <input type="text" id="newUserName" required placeholder="John Doe">
+                            </div>
+                            <div class="form-group">
+                                <label for="newUserEmail">Institution Email *</label>
+                                <input type="email" id="newUserEmail" required placeholder="john.doe@liu.se">
+                            </div>
+                            <div class="form-group">
+                                <label for="newResearcherId">Researcher ID *</label>
+                                <input type="text" id="newResearcherId" required placeholder="e.g. NM, FJH3"
+                                       pattern="[A-Za-z0-9_]{2,12}" minlength="2" maxlength="12"
+                                       title="2–12 characters: letters, numbers, or underscore">
+                            </div>
                             <div class="form-group">
                                 <label for="newUserAffiliation">Affiliation *</label>
                                 <select id="newUserAffiliation" required>
@@ -2697,15 +2733,31 @@
                                     <option value="EXTERNAL">External</option>
                                 </select>
                             </div>
-                            <div class="form-group">
-                                <label for="newUserRole">Role *</label>
-                                <select id="newUserRole" required>
-                                    <option value="researcher">Researcher</option>
-                                    <option value="supervisor">Supervisor</option>
-                                    <option value="pi">Principal Investigator</option>
-                                </select>
+                        </div>
+
+                        <div class="clearance-section">
+                            <h3>Initial Workspace Access</h3>
+                            <div class="helper-text" style="margin-bottom:8px;">Select one or more workspaces to assign the user to.</div>
+                            <div id="addUserWorkspaces"></div>
+                        </div>
+
+                        <div class="clearance-section">
+                            <h3>Status</h3>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="newUserStatus">Initial Status</label>
+                                    <select id="newUserStatus">
+                                        <option value="active" selected>Active</option>
+                                        <option value="suspended">Suspended</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="newUserNotes">Notes (optional)</label>
+                                    <input type="text" id="newUserNotes" placeholder="e.g. Onboarding context...">
+                                </div>
                             </div>
                         </div>
+
                         <button type="submit" class="btn btn-primary btn-full" id="addUserBtn">Add User</button>
                     </form>
                 </div>
@@ -2731,6 +2783,11 @@
                             <li>All previous data, roles, and submissions are restored</li>
                             <li>They can log in again with the same credentials</li>
                         </ul>
+                    </div>
+                    <div class="message info show" style="margin-top:10px;">
+                        <strong>Membership Classes:</strong><br><br>
+                        <strong>Core</strong> — Internal participant with broader default access according to role.<br>
+                        <strong>Collaborator</strong> — Restricted by default, expanded selectively when needed.
                     </div>
                 </div>
             </div>
@@ -2798,18 +2855,36 @@
                         <tr>
                             <th>Name</th>
                             <th>Email</th>
-                            <th>Researcher ID</th>
+                            <th>ID</th>
                             <th>Affiliation</th>
+                            <th>Workspaces</th>
                             <th>Role</th>
+                            <th>Class</th>
                             <th>Status</th>
-                            <th>Submissions</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody id="usersTableBody">
-                        <tr><td colspan="8"><div class="loading"><div class="spinner"></div>Loading...</div></td></tr>
+                        <tr><td colspan="9"><div class="loading"><div class="spinner"></div>Loading...</div></td></tr>
                     </tbody>
                 </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- User Clearance Modal Overlay -->
+    <div class="clearance-overlay" id="clearanceOverlay">
+        <div class="clearance-modal">
+            <div class="modal-header">
+                <h2><span class="icon">&#128272;</span> User Clearance</h2>
+                <button class="btn btn-sm btn-secondary" onclick="closeClearance()">&times; Close</button>
+            </div>
+            <div class="modal-body" id="clearanceBody">
+                <div class="loading"><div class="spinner"></div>Loading...</div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeClearance()">Cancel</button>
+                <button class="btn btn-primary" id="saveClearanceBtn" onclick="saveClearance()">Save Changes</button>
             </div>
         </div>
     </div>
@@ -8893,9 +8968,163 @@ function dicBuildPdfViewerSrc(fileUrl) {
         // =====================================================
         // USER MANAGEMENT TAB
         // =====================================================
+        // ---- Phase 1.3 workspace/role constants ----
+        const UC_NATLAB_ROLES = [
+            { value: 'researcher', label: 'Researcher' },
+            { value: 'supervisor', label: 'Supervisor' },
+            { value: 'pi', label: 'Principal Investigator' },
+            { value: 'custom', label: 'Custom' }
+        ];
+        const UC_STARTUP_ROLES = [
+            { value: 'founder', label: 'Founder' },
+            { value: 'admin', label: 'Admin' },
+            { value: 'r_and_d', label: 'R&D' },
+            { value: 'advisor', label: 'Advisor' },
+            { value: 'investor', label: 'Investor' },
+            { value: 'custom', label: 'Custom' }
+        ];
+        const UC_CLEARANCE_PROFILES = [
+            { value: 'upload_only', label: 'Upload Only' },
+            { value: 'standard', label: 'Standard' },
+            { value: 'scientific', label: 'Scientific' },
+            { value: 'non_scientific', label: 'Non-Scientific' },
+            { value: 'custom', label: 'Custom' }
+        ];
+        let ucWorkspaces = [
+            { slug: 'natlab', name: 'NAT-Lab', workspace_type: 'LAB' },
+            { slug: 'skinotek', name: 'SKINOTEK', workspace_type: 'COMPANY' },
+            { slug: 'theralia', name: 'Theralia', workspace_type: 'COMPANY' }
+        ];
+
+        // Load workspace list from server
+        async function ucLoadWorkspaces() {
+            try {
+                const resp = await fetch('/api/di/workspaces', { credentials: 'include' });
+                if (resp.ok) {
+                    const data = await resp.json();
+                    if (data.workspaces) ucWorkspaces = data.workspaces;
+                }
+            } catch (e) { /* use defaults */ }
+        }
+
+        function ucRolesFor(wsSlug) {
+            return wsSlug === 'natlab' ? UC_NATLAB_ROLES : UC_STARTUP_ROLES;
+        }
+
+        function ucRoleOptions(wsSlug, selected) {
+            return ucRolesFor(wsSlug).map(r =>
+                `<option value="${r.value}" ${r.value === selected ? 'selected' : ''}>${r.label}</option>`
+            ).join('');
+        }
+
+        function ucClearanceOptions(selected) {
+            return UC_CLEARANCE_PROFILES.map(c =>
+                `<option value="${c.value}" ${c.value === selected ? 'selected' : ''}>${c.label}</option>`
+            ).join('');
+        }
+
+        function ucRenderWsRow(ws, data, prefix) {
+            const d = data || {};
+            const checked = d._enabled !== false;
+            const id = prefix + '_' + ws.slug;
+            return `
+                <div class="ws-membership-row" id="${id}_row">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                        <label style="margin:0;"><input type="checkbox" id="${id}_enabled" ${checked ? 'checked' : ''}
+                            onchange="ucToggleWs('${id}')"> <strong>${escapeHtml(ws.name)}</strong></label>
+                        <span class="ws-badge ${ws.slug}">${ws.workspace_type}</span>
+                    </div>
+                    <div id="${id}_fields" style="${checked ? '' : 'display:none;'}">
+                        <div class="form-row">
+                            <div>
+                                <label>Role</label>
+                                <select id="${id}_role" onchange="ucCheckCustomRole('${id}')">
+                                    ${ucRoleOptions(ws.slug, d.role || '')}
+                                </select>
+                                <div class="custom-role-hint" id="${id}_customHint">Custom role: access is defined manually through clearance and module settings.</div>
+                            </div>
+                            <div>
+                                <label>Membership Class</label>
+                                <select id="${id}_class">
+                                    <option value="core" ${d.membership_class === 'core' || !d.membership_class ? 'selected' : ''}>Core</option>
+                                    <option value="collaborator" ${d.membership_class === 'collaborator' ? 'selected' : ''}>Collaborator</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-row" style="margin-top:8px;">
+                            <div>
+                                <label>Clearance Profile</label>
+                                <select id="${id}_clearance">${ucClearanceOptions(d.clearance_profile || 'standard')}</select>
+                            </div>
+                            <div>
+                                <label>Status</label>
+                                <select id="${id}_status">
+                                    <option value="active" ${d.status === 'active' || !d.status ? 'selected' : ''}>Active</option>
+                                    <option value="suspended" ${d.status === 'suspended' ? 'selected' : ''}>Suspended</option>
+                                    <option value="removed" ${d.status === 'removed' ? 'selected' : ''}>Removed</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="checkbox-row" style="margin-top:8px;">
+                            <label><input type="checkbox" id="${id}_sci" ${d.scientific_access !== false ? 'checked' : ''}> Scientific</label>
+                            <label><input type="checkbox" id="${id}_ops" ${d.operational_access !== false ? 'checked' : ''}> Operational</label>
+                            <label><input type="checkbox" id="${id}_admin" ${d.administrative_access === true ? 'checked' : ''}> Administrative</label>
+                        </div>
+                        <div style="margin-top:8px;">
+                            <label>Notes</label>
+                            <input type="text" id="${id}_notes" value="${escapeHtml(d.notes || '')}" placeholder="Optional note...">
+                        </div>
+                    </div>
+                </div>`;
+        }
+
+        function ucToggleWs(id) {
+            const enabled = document.getElementById(id + '_enabled').checked;
+            document.getElementById(id + '_fields').style.display = enabled ? '' : 'none';
+        }
+
+        function ucCheckCustomRole(id) {
+            const sel = document.getElementById(id + '_role');
+            const hint = document.getElementById(id + '_customHint');
+            if (hint) hint.style.display = sel.value === 'custom' ? 'block' : 'none';
+        }
+
+        function ucCollectWsData(prefix) {
+            const result = [];
+            for (const ws of ucWorkspaces) {
+                const id = prefix + '_' + ws.slug;
+                const enabledEl = document.getElementById(id + '_enabled');
+                if (!enabledEl || !enabledEl.checked) continue;
+                result.push({
+                    workspace_slug: ws.slug,
+                    role: document.getElementById(id + '_role')?.value || '',
+                    membership_class: document.getElementById(id + '_class')?.value || 'core',
+                    clearance_profile: document.getElementById(id + '_clearance')?.value || 'standard',
+                    status: document.getElementById(id + '_status')?.value || 'active',
+                    scientific_access: document.getElementById(id + '_sci')?.checked !== false,
+                    operational_access: document.getElementById(id + '_ops')?.checked !== false,
+                    administrative_access: document.getElementById(id + '_admin')?.checked === true,
+                    notes: document.getElementById(id + '_notes')?.value || ''
+                });
+            }
+            return result;
+        }
+
+        // Render Add New User workspace rows
+        function ucInitAddUserWorkspaces() {
+            const container = document.getElementById('addUserWorkspaces');
+            if (!container) return;
+            container.innerHTML = ucWorkspaces.map(ws =>
+                ucRenderWsRow(ws, { _enabled: ws.slug === 'natlab', role: ws.slug === 'natlab' ? 'researcher' : '' }, 'addWs')
+            ).join('');
+            // Init custom hints
+            ucWorkspaces.forEach(ws => ucCheckCustomRole('addWs_' + ws.slug));
+        }
+
+        // ---- loadAllUsers (Phase 1.3 — with workspace badges & clearance button) ----
         async function loadAllUsers() {
             const tbody = document.getElementById('usersTableBody');
-            tbody.innerHTML = '<tr><td colspan="8"><div class="loading"><div class="spinner"></div>Loading...</div></td></tr>';
+            tbody.innerHTML = '<tr><td colspan="9"><div class="loading"><div class="spinner"></div>Loading...</div></td></tr>';
 
             try {
                 const response = await fetch('/api/di/all-members', { credentials: 'include' });
@@ -8903,27 +9132,40 @@ function dicBuildPdfViewerSrc(fileUrl) {
                 const data = await response.json();
 
                 if (!data.members || data.members.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#666;">No users found</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#666;">No users found</td></tr>';
                     return;
                 }
 
                 tbody.innerHTML = data.members.map(u => {
-                    const roleClass = u.role === 'pi' ? 'pi' : (u.role === 'supervisor' ? 'supervisor' : 'researcher');
+                    const roleClass = u.role === 'pi' ? 'pi' : (u.role === 'supervisor' ? 'supervisor' : (u.role === 'custom' ? 'custom' : 'researcher'));
                     const statusClass = u.active ? 'status-active' : 'status-inactive';
                     const canResetPassword = u.active && u.role !== 'pi' && u.last_login;
                     const legacyActive = u.legacy_enabled && u.legacy_expires_at && new Date(u.legacy_expires_at) > new Date();
                     const canLegacy = u.active && u.role !== 'pi';
+
+                    // Workspace badges
+                    const wsBadges = (u.workspace_memberships || []).map(wm =>
+                        `<span class="ws-badge ${wm.workspace_slug}">${escapeHtml(wm.workspace_slug)}</span>`
+                    ).join('') || '<span style="color:#999;font-size:10px;">—</span>';
+
+                    // Membership class from first workspace or fallback
+                    const firstWm = (u.workspace_memberships || [])[0];
+                    const mClass = firstWm ? firstWm.membership_class : '';
+                    const mBadge = mClass ? `<span class="membership-badge ${mClass}">${mClass}</span>` : '<span style="color:#999;font-size:10px;">—</span>';
+
                     return `
                         <tr>
                             <td>${escapeHtml(u.name || '-')}</td>
-                            <td>${escapeHtml(u.institution_email || '-')}</td>
+                            <td style="font-size:11px;">${escapeHtml(u.institution_email || '-')}</td>
                             <td>${escapeHtml(u.researcher_id)}</td>
                             <td>${escapeHtml(u.affiliation)}</td>
+                            <td>${wsBadges}</td>
                             <td><span class="role-badge ${roleClass}">${(u.role || 'researcher').toUpperCase()}</span></td>
+                            <td>${mBadge}</td>
                             <td><span class="status-badge ${statusClass}">${u.active ? 'Active' : 'Inactive'}</span></td>
-                            <td>${u.submission_count || 0}</td>
                             <td>
                                 <div class="actions">
+                                    <button class="btn btn-sm" style="background:#7c3aed;color:white;" onclick="openClearance('${u.researcher_id}')">Clearance</button>
                                     ${u.active ?
                                         `<button class="btn btn-sm btn-danger" onclick="deactivateUser('${u.researcher_id}', '${escapeHtml(u.name || u.researcher_id)}')">Deactivate</button>` :
                                         `<button class="btn btn-sm btn-success" onclick="reactivateUser('${u.researcher_id}', '${escapeHtml(u.name || u.researcher_id)}')">Reactivate</button>`
@@ -8941,10 +9183,107 @@ function dicBuildPdfViewerSrc(fileUrl) {
                     `;
                 }).join('');
             } catch (err) {
-                tbody.innerHTML = '<tr><td colspan="8" style="color:#dc3545;text-align:center;">Error loading users</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="9" style="color:#dc3545;text-align:center;">Error loading users</td></tr>';
             }
         }
 
+        // ---- User Clearance modal ----
+        let ucCurrentUserId = null;
+
+        async function openClearance(userId) {
+            ucCurrentUserId = userId;
+            const overlay = document.getElementById('clearanceOverlay');
+            const body = document.getElementById('clearanceBody');
+            overlay.classList.add('show');
+            body.innerHTML = '<div class="loading"><div class="spinner"></div>Loading clearance data...</div>';
+
+            try {
+                const resp = await fetch(`/api/di/user-clearance/${userId}`, { credentials: 'include' });
+                if (!resp.ok) throw new Error('Failed to load');
+                const data = await resp.json();
+                const u = data.user;
+                const memberships = data.memberships || [];
+
+                // Build membership map by slug
+                const mMap = {};
+                memberships.forEach(m => { mMap[m.workspace_slug] = { ...m, _enabled: true }; });
+
+                body.innerHTML = `
+                    <div class="clearance-section">
+                        <h3>Identity Overview</h3>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;">
+                            <div><strong>Name:</strong> ${escapeHtml(u.name)}</div>
+                            <div><strong>Email:</strong> ${escapeHtml(u.institution_email)}</div>
+                            <div><strong>Researcher ID:</strong> ${escapeHtml(u.researcher_id)}</div>
+                            <div><strong>NAT-Lab Role:</strong> <span class="role-badge ${u.role}">${(u.role || '-').toUpperCase()}</span></div>
+                            <div><strong>Status:</strong> <span class="status-badge ${u.active ? 'status-active' : 'status-inactive'}">${u.active ? 'Active' : 'Inactive'}</span></div>
+                        </div>
+                    </div>
+
+                    <div class="clearance-section">
+                        <h3>Affiliation</h3>
+                        <select id="uc_affiliation">
+                            <option value="LiU" ${u.affiliation === 'LiU' ? 'selected' : ''}>LiU</option>
+                            <option value="UNAV" ${u.affiliation === 'UNAV' ? 'selected' : ''}>UNAV</option>
+                            <option value="EXTERNAL" ${u.affiliation === 'EXTERNAL' ? 'selected' : ''}>External</option>
+                        </select>
+                        <div class="helper-text">Affiliation is descriptive metadata only. It does not directly drive permissions.</div>
+                    </div>
+
+                    <div class="clearance-section">
+                        <h3>Workspace Access</h3>
+                        <div id="ucWorkspaceRows">
+                            ${ucWorkspaces.map(ws => ucRenderWsRow(ws, mMap[ws.slug] || { _enabled: false }, 'ucWs')).join('')}
+                        </div>
+                    </div>
+                `;
+
+                // Init custom role hints
+                ucWorkspaces.forEach(ws => ucCheckCustomRole('ucWs_' + ws.slug));
+
+            } catch (err) {
+                body.innerHTML = '<div style="color:#dc3545;">Error loading clearance data. Please try again.</div>';
+            }
+        }
+
+        function closeClearance() {
+            document.getElementById('clearanceOverlay').classList.remove('show');
+            ucCurrentUserId = null;
+        }
+
+        async function saveClearance() {
+            if (!ucCurrentUserId) return;
+            const btn = document.getElementById('saveClearanceBtn');
+            btn.disabled = true;
+            btn.textContent = 'Saving...';
+
+            const memberships = ucCollectWsData('ucWs');
+            const affiliation = document.getElementById('uc_affiliation')?.value;
+
+            try {
+                const resp = await fetch(`/api/di/user-clearance/${ucCurrentUserId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ affiliation, memberships }),
+                    credentials: 'include'
+                });
+                const data = await resp.json();
+                if (!resp.ok) {
+                    alert(data.error || 'Failed to save clearance');
+                } else {
+                    alert('User clearance updated successfully.');
+                    closeClearance();
+                    loadAllUsers();
+                }
+            } catch (err) {
+                alert('Connection error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Save Changes';
+            }
+        }
+
+        // ---- Add User form (Phase 1.3 — governance-aware) ----
         document.getElementById('addUserForm').addEventListener('submit', async (e) => {
             e.preventDefault();
 
@@ -8952,15 +9291,24 @@ function dicBuildPdfViewerSrc(fileUrl) {
             const email = document.getElementById('newUserEmail').value.trim().toLowerCase();
             const researcher_id = document.getElementById('newResearcherId').value.trim();
             const affiliation = document.getElementById('newUserAffiliation').value;
-            const role = document.getElementById('newUserRole').value;
 
-            if (!name || !email || !researcher_id || !affiliation || !role) {
-                showMessage('addUserMessage', 'Please fill all fields', 'error');
+            // Determine primary role from first enabled workspace (NAT-Lab preferred)
+            const wsData = ucCollectWsData('addWs');
+            const natlabWs = wsData.find(w => w.workspace_slug === 'natlab');
+            const role = natlabWs ? natlabWs.role : (wsData[0]?.role || 'researcher');
+
+            if (!name || !email || !researcher_id || !affiliation) {
+                showMessage('addUserMessage', 'Please fill all identity fields', 'error');
                 return;
             }
 
             if (!/^[A-Za-z0-9_]{2,12}$/.test(researcher_id)) {
                 showMessage('addUserMessage', 'Researcher ID must be 2–12 characters (letters, numbers, underscore)', 'error');
+                return;
+            }
+
+            if (wsData.length === 0) {
+                showMessage('addUserMessage', 'Please select at least one workspace', 'error');
                 return;
             }
 
@@ -8972,7 +9320,10 @@ function dicBuildPdfViewerSrc(fileUrl) {
                 const response = await fetch('/api/di/members', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name, institution_email: email, researcher_id, affiliation, role }),
+                    body: JSON.stringify({
+                        name, institution_email: email, researcher_id, affiliation, role,
+                        workspaces: wsData
+                    }),
                     credentials: 'include'
                 });
 
@@ -8983,6 +9334,7 @@ function dicBuildPdfViewerSrc(fileUrl) {
                 } else {
                     showMessage('addUserMessage', `User added: ${data.researcher_id}`, 'success');
                     document.getElementById('addUserForm').reset();
+                    ucInitAddUserWorkspaces();
                     loadAllUsers();
                     populateResearcherDropdown();
                 }
@@ -10059,8 +10411,9 @@ function dicBuildPdfViewerSrc(fileUrl) {
             } catch (err) { console.error(err); }
         }
 
-        // Load delegation data on page load
+        // Load delegation data and workspace list on page load
         loadDelegationData();
+        ucLoadWorkspaces().then(() => ucInitAddUserWorkspaces());
 
         // =====================================================
         // BACKUP & RECOVERY TAB

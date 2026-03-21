@@ -556,6 +556,69 @@ async function checkFileSharesTable() {
     return fileSharesTableExists;
 }
 
+// Helper function to check if workspace_users clearance columns exist (migration 041)
+let wuClearanceColsExist = null;
+let wuClearanceColsLastCheck = 0;
+
+async function checkWuClearanceCols() {
+    const now = Date.now();
+    if (wuClearanceColsExist === null || wuClearanceColsExist === false || (now - wuClearanceColsLastCheck > ROLE_COLUMN_CHECK_INTERVAL)) {
+        try {
+            const result = await pool.query(`
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'workspace_users' AND column_name = 'membership_class'
+            `);
+            wuClearanceColsExist = result.rows.length > 0;
+            wuClearanceColsLastCheck = now;
+        } catch (err) {
+            wuClearanceColsExist = false;
+        }
+    }
+    return wuClearanceColsExist;
+}
+
+// Helper function to check if workspace_users table exists (migration 036)
+let wuTableExists = null;
+let wuTableLastCheck = 0;
+
+async function checkWuTable() {
+    const now = Date.now();
+    if (wuTableExists === null || wuTableExists === false || (now - wuTableLastCheck > ROLE_COLUMN_CHECK_INTERVAL)) {
+        try {
+            const result = await pool.query(`
+                SELECT table_name FROM information_schema.tables
+                WHERE table_name = 'workspace_users'
+            `);
+            wuTableExists = result.rows.length > 0;
+            wuTableLastCheck = now;
+        } catch (err) {
+            wuTableExists = false;
+        }
+    }
+    return wuTableExists;
+}
+
+// Helper function to check if workspaces table exists (migration 036)
+let wsTableExists = null;
+let wsTableLastCheck = 0;
+
+async function checkWsTable() {
+    const now = Date.now();
+    if (wsTableExists === null || wsTableExists === false || (now - wsTableLastCheck > ROLE_COLUMN_CHECK_INTERVAL)) {
+        try {
+            const result = await pool.query(`
+                SELECT table_name FROM information_schema.tables
+                WHERE table_name = 'workspaces'
+            `);
+            wsTableExists = result.rows.length > 0;
+            wsTableLastCheck = now;
+        } catch (err) {
+            wsTableExists = false;
+        }
+    }
+    return wsTableExists;
+}
+
 // Helper function to check if vision columns exist on di_file_associations (migration 021)
 let visionColsExist = null;
 let visionColsLastCheck = 0;
@@ -2573,8 +2636,8 @@ app.post('/api/di/members', requirePI, async (req, res) => {
         }
 
         const memberRole = role || 'researcher';
-        if (!['researcher', 'supervisor', 'pi'].includes(memberRole)) {
-            return res.status(400).json({ error: 'Role must be researcher, supervisor, or pi' });
+        if (!['researcher', 'supervisor', 'pi', 'custom'].includes(memberRole)) {
+            return res.status(400).json({ error: 'Role must be researcher, supervisor, pi, or custom' });
         }
 
         // Check if already exists
@@ -2601,6 +2664,50 @@ app.post('/api/di/members', requirePI, async (req, res) => {
                  VALUES ($1, $2, $3, $4, true, CURRENT_TIMESTAMP)`,
                 [researcher_id, name, emailLower, affiliation]
             );
+        }
+
+        // Phase 1.3: Create workspace memberships if provided
+        const { workspaces: wsList } = req.body;
+        const hasWu = await checkWuTable();
+        const hasClearance = await checkWuClearanceCols();
+        if (hasWu && Array.isArray(wsList) && wsList.length > 0) {
+            for (const ws of wsList) {
+                if (!ws.workspace_slug) continue;
+                const wsRes = await pool.query(
+                    'SELECT id, workspace_type FROM workspaces WHERE slug = $1', [ws.workspace_slug]
+                );
+                if (wsRes.rows.length === 0) continue;
+                const wsId = wsRes.rows[0].id;
+                const wsRole = ws.role || (ws.workspace_slug === 'natlab' ? memberRole : 'admin');
+                const isActive = ws.status !== 'suspended' && ws.status !== 'removed';
+
+                if (hasClearance) {
+                    await pool.query(
+                        `INSERT INTO workspace_users (workspace_id, user_id, role, is_active,
+                            membership_class, clearance_profile, scientific_access,
+                            operational_access, administrative_access, status, notes)
+                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                         ON CONFLICT (workspace_id, user_id) DO NOTHING`,
+                        [
+                            wsId, researcher_id, wsRole, isActive,
+                            ws.membership_class || 'core',
+                            ws.clearance_profile || 'standard',
+                            ws.scientific_access !== false,
+                            ws.operational_access !== false,
+                            ws.administrative_access === true,
+                            ws.status || 'active',
+                            ws.notes || null
+                        ]
+                    );
+                } else {
+                    await pool.query(
+                        `INSERT INTO workspace_users (workspace_id, user_id, role, is_active)
+                         VALUES ($1, $2, $3, $4)
+                         ON CONFLICT (workspace_id, user_id) DO NOTHING`,
+                        [wsId, researcher_id, wsRole, isActive]
+                    );
+                }
+            }
         }
 
         res.json({
@@ -4125,10 +4232,38 @@ app.get('/api/di/all-members', requirePI, async (req, res) => {
              ORDER BY a.active DESC, a.name`
         );
 
+        // Enrich with workspace memberships if available
+        const hasWu = await checkWuTable();
+        const hasClearance = await checkWuClearanceCols();
+        let wuMap = {};
+        if (hasWu) {
+            const clearanceCols = hasClearance
+                ? `, wu.membership_class, wu.status as wu_status`
+                : `, 'core' as membership_class, CASE WHEN wu.is_active THEN 'active' ELSE 'suspended' END as wu_status`;
+            const wuRes = await pool.query(
+                `SELECT wu.user_id, w.slug as workspace_slug, wu.role as ws_role ${clearanceCols}
+                 FROM workspace_users wu JOIN workspaces w ON w.id = wu.workspace_id`
+            );
+            for (const row of wuRes.rows) {
+                if (!wuMap[row.user_id]) wuMap[row.user_id] = [];
+                wuMap[row.user_id].push({
+                    workspace_slug: row.workspace_slug,
+                    role: row.ws_role,
+                    membership_class: row.membership_class,
+                    status: row.wu_status
+                });
+            }
+        }
+
+        const members = result.rows.map(m => ({
+            ...m,
+            workspace_memberships: wuMap[m.researcher_id] || []
+        }));
+
         res.json({
             success: true,
-            count: result.rows.length,
-            members: result.rows
+            count: members.length,
+            members
         });
 
     } catch (err) {
@@ -4306,6 +4441,192 @@ app.post('/api/di/members/:id/reset-password', requirePI, async (req, res) => {
 
     } catch (err) {
         console.error('Reset password error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// =====================================================
+// USER CLEARANCE & WORKSPACE MEMBERSHIP (Phase 1.3)
+// =====================================================
+
+// GET /api/di/user-clearance/:id
+// Get full clearance data for a user across all workspaces
+app.get('/api/di/user-clearance/:id', requirePI, async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // Get base user info from di_allowlist
+        const userRes = await pool.query(
+            `SELECT a.researcher_id, a.name, a.institution_email, a.affiliation,
+                    COALESCE(a.role, 'researcher') as role, a.active
+             FROM di_allowlist a WHERE a.researcher_id = $1`,
+            [id]
+        );
+        if (userRes.rows.length === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        const user = userRes.rows[0];
+
+        // Get workspace memberships if tables exist
+        let memberships = [];
+        const hasWu = await checkWuTable();
+        const hasClearance = await checkWuClearanceCols();
+        if (hasWu) {
+            const clearanceCols = hasClearance
+                ? `, wu.membership_class, wu.clearance_profile, wu.scientific_access,
+                     wu.operational_access, wu.administrative_access, wu.status, wu.notes`
+                : `, 'core' as membership_class, 'standard' as clearance_profile,
+                     true as scientific_access, true as operational_access, false as administrative_access,
+                     CASE WHEN wu.is_active THEN 'active' ELSE 'suspended' END as status, NULL as notes`;
+            const wsRes = await pool.query(
+                `SELECT w.slug as workspace_slug, w.name as workspace_name, w.workspace_type,
+                        wu.role, wu.is_active ${clearanceCols}
+                 FROM workspace_users wu
+                 JOIN workspaces w ON w.id = wu.workspace_id
+                 WHERE wu.user_id = $1
+                 ORDER BY w.name`,
+                [id]
+            );
+            memberships = wsRes.rows;
+        }
+
+        res.json({ success: true, user, memberships });
+    } catch (err) {
+        console.error('Get user clearance error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// PUT /api/di/user-clearance/:id
+// Update clearance for a user (workspace memberships, affiliation, etc.)
+app.put('/api/di/user-clearance/:id', requirePI, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { affiliation, memberships } = req.body;
+
+        // Verify user exists
+        const userRes = await pool.query(
+            'SELECT researcher_id FROM di_allowlist WHERE researcher_id = $1', [id]
+        );
+        if (userRes.rows.length === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+
+            // Update affiliation if provided
+            if (affiliation && ['LiU', 'UNAV', 'EXTERNAL'].includes(affiliation)) {
+                await client.query(
+                    'UPDATE di_allowlist SET affiliation = $1 WHERE researcher_id = $2',
+                    [affiliation, id]
+                );
+            }
+
+            // Update workspace memberships if tables exist and data provided
+            const hasWu = await checkWuTable();
+            const hasClearance = await checkWuClearanceCols();
+            if (hasWu && Array.isArray(memberships)) {
+                for (const m of memberships) {
+                    if (!m.workspace_slug) continue;
+                    // Resolve workspace_id
+                    const wsRes = await client.query(
+                        'SELECT id FROM workspaces WHERE slug = $1', [m.workspace_slug]
+                    );
+                    if (wsRes.rows.length === 0) continue;
+                    const wsId = wsRes.rows[0].id;
+
+                    // Validate role
+                    const validNatLabRoles = ['researcher', 'supervisor', 'pi', 'custom'];
+                    const validStartupRoles = ['founder', 'admin', 'r_and_d', 'advisor', 'investor', 'custom'];
+                    const validRoles = m.workspace_slug === 'natlab' ? validNatLabRoles : validStartupRoles;
+                    const role = validRoles.includes(m.role) ? m.role : validRoles[0];
+
+                    const isActive = m.status !== 'suspended' && m.status !== 'removed';
+
+                    if (hasClearance) {
+                        await client.query(
+                            `INSERT INTO workspace_users (workspace_id, user_id, role, is_active,
+                                membership_class, clearance_profile, scientific_access,
+                                operational_access, administrative_access, status, notes)
+                             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                             ON CONFLICT (workspace_id, user_id) DO UPDATE SET
+                                role = EXCLUDED.role,
+                                is_active = EXCLUDED.is_active,
+                                membership_class = EXCLUDED.membership_class,
+                                clearance_profile = EXCLUDED.clearance_profile,
+                                scientific_access = EXCLUDED.scientific_access,
+                                operational_access = EXCLUDED.operational_access,
+                                administrative_access = EXCLUDED.administrative_access,
+                                status = EXCLUDED.status,
+                                notes = EXCLUDED.notes,
+                                updated_at = NOW()`,
+                            [
+                                wsId, id, role, isActive,
+                                m.membership_class || 'core',
+                                m.clearance_profile || 'standard',
+                                m.scientific_access !== false,
+                                m.operational_access !== false,
+                                m.administrative_access === true,
+                                m.status || 'active',
+                                m.notes || null
+                            ]
+                        );
+                    } else {
+                        await client.query(
+                            `INSERT INTO workspace_users (workspace_id, user_id, role, is_active)
+                             VALUES ($1, $2, $3, $4)
+                             ON CONFLICT (workspace_id, user_id) DO UPDATE SET
+                                role = EXCLUDED.role,
+                                is_active = EXCLUDED.is_active,
+                                updated_at = NOW()`,
+                            [wsId, id, role, isActive]
+                        );
+                    }
+
+                    // Sync NAT-Lab role back to di_allowlist.role for compatibility
+                    if (m.workspace_slug === 'natlab' && ['researcher', 'supervisor', 'pi'].includes(role)) {
+                        await client.query(
+                            'UPDATE di_allowlist SET role = $1 WHERE researcher_id = $2',
+                            [role, id]
+                        );
+                    }
+                }
+            }
+
+            await client.query('COMMIT');
+            res.json({ success: true, message: 'User clearance updated' });
+        } catch (innerErr) {
+            await client.query('ROLLBACK');
+            throw innerErr;
+        } finally {
+            client.release();
+        }
+    } catch (err) {
+        console.error('Update user clearance error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/di/workspaces
+// List all available workspaces (for clearance UI)
+app.get('/api/di/workspaces', requirePI, async (req, res) => {
+    try {
+        const hasWs = await checkWsTable();
+        if (!hasWs) {
+            return res.json({ success: true, workspaces: [
+                { slug: 'natlab', name: 'NAT-Lab', workspace_type: 'LAB' },
+                { slug: 'skinotek', name: 'SKINOTEK', workspace_type: 'COMPANY' },
+                { slug: 'theralia', name: 'Theralia', workspace_type: 'COMPANY' }
+            ]});
+        }
+        const result = await pool.query(
+            'SELECT slug, name, workspace_type FROM workspaces WHERE is_active = TRUE ORDER BY name'
+        );
+        res.json({ success: true, workspaces: result.rows });
+    } catch (err) {
+        console.error('Get workspaces error:', err);
         res.status(500).json({ error: 'Server error' });
     }
 });
