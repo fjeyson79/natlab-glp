@@ -456,6 +456,38 @@ async function requireInternal(req, res, next) {
     return res.status(403).json({ error: 'Inventory access is restricted to internal members.' });
 }
 
+// STARTUP MASTER MIDDLEWARE — gates startup management features (future use)
+// Checks is_workspace_master flag on workspace_users for COMPANY workspaces.
+async function requireStartupMaster(req, res, next) {
+    if (!req.session.user) {
+        return res.status(401).json({ error: 'Not authenticated' });
+    }
+    const wsSlug = req.query.workspace || req.headers['x-workspace-slug'] || '';
+    if (!wsSlug || wsSlug === 'natlab') {
+        return res.status(403).json({ error: 'This action requires startup workspace context.' });
+    }
+    try {
+        const hasWu = await checkWuTable();
+        const hasPos = hasWu && await checkStartupPositionCols();
+        if (!hasPos) {
+            return res.status(403).json({ error: 'Startup authority not configured.' });
+        }
+        const result = await pool.query(
+            `SELECT wu.is_workspace_master
+             FROM workspace_users wu
+             JOIN workspaces w ON w.id = wu.workspace_id
+             WHERE wu.user_id = $1 AND w.slug = $2 AND wu.is_active = TRUE`,
+            [req.session.user.researcher_id, wsSlug]
+        );
+        if (result.rows.length > 0 && result.rows[0].is_workspace_master) {
+            return next();
+        }
+    } catch (err) {
+        console.error('requireStartupMaster check error:', err);
+    }
+    return res.status(403).json({ error: 'Startup master authority required.' });
+}
+
 // API ENDPOINTS
 
 // Helper function to check if role column exists
@@ -670,6 +702,30 @@ async function checkModuleAccessCol() {
     }
     return moduleAccessColExists;
 }
+
+// Helper function to check if startup position/authority columns exist (migration 043)
+let startupPositionColsExist = null;
+let startupPositionColsLastCheck = 0;
+
+async function checkStartupPositionCols() {
+    const now = Date.now();
+    if (startupPositionColsExist === null || startupPositionColsExist === false || (now - startupPositionColsLastCheck > ROLE_COLUMN_CHECK_INTERVAL)) {
+        try {
+            const result = await pool.query(`
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'workspace_users' AND column_name IN ('workspace_position', 'is_workspace_master')
+            `);
+            startupPositionColsExist = result.rows.length >= 2;
+            startupPositionColsLastCheck = now;
+        } catch (err) {
+            startupPositionColsExist = false;
+        }
+    }
+    return startupPositionColsExist;
+}
+
+// Valid startup positions (COMPANY workspaces only)
+const VALID_STARTUP_POSITIONS = ['CEO', 'CSO', 'CTO', 'COO', 'Advisor'];
 
 // Phase 1.4: Compute effective access flags for a user in a workspace
 // Combines role, affiliation, clearance_profile, membership_class, and manual module selections.
@@ -1167,15 +1223,53 @@ app.get('/api/di/pending-reset-info', (req, res) => {
 });
 
 // GET /api/di/me
-// Get current user profile
-app.get('/api/di/me', requireAuth, (req, res) => {
-    res.json({
+// Get current user profile (includes startup position/authority for COMPANY workspaces)
+app.get('/api/di/me', requireAuth, async (req, res) => {
+    const base = {
         name: req.session.user.name,
         researcher_id: req.session.user.researcher_id,
         affiliation: req.session.user.affiliation,
         role: req.session.user.role || 'researcher',
         institution_email: req.session.user.institution_email
-    });
+    };
+
+    // Enrich with startup position if requesting from a COMPANY workspace
+    const wsSlug = req.query.workspace || req.headers['x-workspace-slug'] || '';
+    if (wsSlug && wsSlug !== 'natlab') {
+        try {
+            const hasWu = await checkWuTable();
+            const hasPos = hasWu && await checkStartupPositionCols();
+            if (hasWu) {
+                const posCols = hasPos ? ', wu.workspace_position, wu.is_workspace_master, wu.can_manage_users, wu.can_manage_workspace, wu.can_manage_portal, wu.view_management_tab' : '';
+                const result = await pool.query(
+                    `SELECT wu.role${posCols}
+                     FROM workspace_users wu
+                     JOIN workspaces w ON w.id = wu.workspace_id
+                     WHERE wu.user_id = $1 AND w.slug = $2 AND wu.is_active = TRUE`,
+                    [req.session.user.researcher_id, wsSlug]
+                );
+                if (result.rows.length > 0) {
+                    const row = result.rows[0];
+                    base.role = row.role || base.role;
+                    if (hasPos) {
+                        base.workspace_position = row.workspace_position || null;
+                        // Authority flags — internal, never shown in role display
+                        base._authority = {
+                            is_workspace_master: row.is_workspace_master || false,
+                            can_manage_users: row.can_manage_users || false,
+                            can_manage_workspace: row.can_manage_workspace || false,
+                            can_manage_portal: row.can_manage_portal || false,
+                            view_management_tab: row.view_management_tab || false
+                        };
+                    }
+                }
+            }
+        } catch (err) {
+            console.error('[ME] Startup position lookup error:', err.message);
+        }
+    }
+
+    res.json(base);
 });
 
 // GET /api/di/effective-access
@@ -2986,6 +3080,19 @@ app.post('/api/di/members', requirePI, async (req, res) => {
                          ON CONFLICT (workspace_id, user_id) DO NOTHING`,
                         [wsId, researcher_id, wsRole, isActive]
                     );
+                }
+
+                // Set startup position if provided (COMPANY workspaces only, migration 043)
+                const hasPos = await checkStartupPositionCols();
+                if (hasPos && wsRes.rows[0].workspace_type === 'COMPANY' && ws.workspace_position) {
+                    const pos = ws.workspace_position.toUpperCase();
+                    if (VALID_STARTUP_POSITIONS.includes(pos) || VALID_STARTUP_POSITIONS.map(p => p.toUpperCase()).includes(pos)) {
+                        await pool.query(
+                            `UPDATE workspace_users SET workspace_position = $1
+                             WHERE workspace_id = $2 AND user_id = $3`,
+                            [ws.workspace_position, wsId, researcher_id]
+                        );
+                    }
                 }
             }
         }

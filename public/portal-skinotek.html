@@ -145,9 +145,12 @@
     </div>
 
     <script>
+        // Internal authority state (not displayed, used for future gating)
+        let _userAuthority = {};
+
         async function loadUser() {
             try {
-                const response = await fetch('/api/di/me', { credentials: 'include' });
+                const response = await fetch('/api/di/me?workspace=skinotek', { credentials: 'include' });
                 if (response.status === 401) {
                     window.location.href = 'access-skinotek.html';
                     return;
@@ -155,11 +158,28 @@
                 const data = await response.json();
                 const user = data.user || data;
                 document.getElementById('userName').textContent = user.name || user.researcher_id || '';
-                document.getElementById('roleBadge').textContent = (user.role || '').toUpperCase();
+
+                // Build role display: "FOUNDER · CSO" if position exists
+                let roleText = (user.role || '').toUpperCase();
+                if (user.workspace_position) {
+                    roleText += ' \u00B7 ' + user.workspace_position.toUpperCase();
+                }
+                document.getElementById('roleBadge').textContent = roleText;
+
+                // Store authority flags internally (never shown in UI)
+                if (user._authority) {
+                    _userAuthority = user._authority;
+                }
             } catch (err) {
                 window.location.href = 'access-skinotek.html';
             }
         }
+
+        // Helper: check if current user has a specific authority flag
+        function hasAuthority(flag) {
+            return !!_userAuthority[flag];
+        }
+
         loadUser();
 
         document.getElementById('logoutBtn').addEventListener('click', async () => {
