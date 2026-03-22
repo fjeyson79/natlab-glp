@@ -149,7 +149,7 @@
         </form>
 
         <div id="message" class="message"></div>
-        <a href="access.html" class="back-link">Back to email entry</a>
+        <a id="backLink" href="access.html" class="back-link">Back to email entry</a>
     </div>
 
     <script>
@@ -158,8 +158,17 @@
         const name = sessionStorage.getItem('di_name');
         const affiliation = sessionStorage.getItem('di_affiliation');
 
+        // Workspace-aware redirect (same pattern as login.html)
+        const _urlWs = new URLSearchParams(window.location.search).get('ws');
+        const wsSlug = _urlWs || sessionStorage.getItem('di_workspace_slug') || '';
+        if (_urlWs && _urlWs !== sessionStorage.getItem('di_workspace_slug')) {
+            sessionStorage.setItem('di_workspace_slug', _urlWs);
+        }
+
         if (!email) {
-            window.location.href = 'access.html';
+            if (wsSlug === 'skinotek') { window.location.href = 'access-skinotek.html'; }
+            else if (wsSlug === 'theralia') { window.location.href = 'access-theralia.html'; }
+            else { window.location.href = 'access.html'; }
         }
 
         document.getElementById('institution_email').value = email;
@@ -167,6 +176,10 @@
         const badge = document.getElementById('affiliationBadge');
         badge.textContent = affiliation;
         badge.classList.add(affiliation);
+
+        // Workspace-aware back-link
+        if (wsSlug === 'skinotek') document.getElementById('backLink').href = 'access-skinotek.html';
+        else if (wsSlug === 'theralia') document.getElementById('backLink').href = 'access-theralia.html';
 
         const form = document.getElementById('registerForm');
         const messageDiv = document.getElementById('message');
@@ -197,10 +210,14 @@
             messageDiv.style.display = 'none';
 
             try {
-                const response = await fetch('/api/di/register', {
+                const regHeaders = { 'Content-Type': 'application/json' };
+                if (wsSlug) regHeaders['X-Workspace-Slug'] = wsSlug;
+                const regUrl = wsSlug ? '/api/di/register?ws=' + encodeURIComponent(wsSlug) : '/api/di/register';
+
+                const response = await fetch(regUrl, {
                     method: 'POST',
                     credentials: 'include',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: regHeaders,
                     body: JSON.stringify({
                         institution_email: email,
                         personal_email: personalEmail || null,

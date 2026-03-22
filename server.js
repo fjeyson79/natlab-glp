@@ -863,6 +863,23 @@ app.post('/api/di/access-check', async (req, res) => {
             return res.json({ allowed: false, message: 'Account is inactive' });
         }
 
+        // Workspace-scoped access check: if ?ws= is provided, verify membership
+        const wsSlug = req.query.ws || req.headers['x-workspace-slug'] || '';
+        if (wsSlug && wsSlug !== 'natlab') {
+            const hasWu = await checkWuTable();
+            if (hasWu) {
+                const wsMemberCheck = await pool.query(
+                    `SELECT wu.role FROM workspace_users wu
+                     JOIN workspaces w ON w.id = wu.workspace_id
+                     WHERE wu.user_id = $1 AND w.slug = $2 AND wu.is_active = true`,
+                    [allowlistEntry.researcher_id, wsSlug]
+                );
+                if (wsMemberCheck.rows.length === 0) {
+                    return res.json({ allowed: false, message: 'You do not have access to this workspace' });
+                }
+            }
+        }
+
         // Check if user already registered
         const userResult = await pool.query(
             'SELECT institution_email FROM di_users WHERE LOWER(institution_email) = $1',
@@ -945,10 +962,14 @@ app.post('/api/di/register', async (req, res) => {
             role: allowlistEntry.role
         };
 
-        // Determine redirect based on role
-        // Supervisors go to upload.html (same as researchers) but get additional supervision panel
+        // Determine redirect based on role and workspace context
+        const wsSlug = req.query.ws || req.headers['x-workspace-slug'] || '';
         let redirectPage = 'upload.html';
-        if (allowlistEntry.role === 'pi') redirectPage = 'pi-dashboard.html';
+        if (wsSlug && wsSlug !== 'natlab') {
+            redirectPage = `portal-${wsSlug}.html`;
+        } else if (allowlistEntry.role === 'pi') {
+            redirectPage = 'pi-dashboard.html';
+        }
 
         res.json({
             success: true,
@@ -1042,14 +1063,21 @@ app.post('/api/di/login', async (req, res) => {
             role: user.role
         };
 
-        // Determine redirect based on role
-        // Supervisors go to upload.html (same as researchers) but get additional supervision panel
+        // Determine redirect based on role and workspace context
+        const wsSlug = req.query.ws || req.headers['x-workspace-slug'] || '';
         let redirectPage = 'upload.html';
-        if (user.role === 'pi') redirectPage = 'pi-dashboard.html';
+        if (wsSlug && wsSlug !== 'natlab') {
+            // Workspace-specific portal redirect
+            redirectPage = `portal-${wsSlug}.html`;
+        } else if (user.role === 'pi') {
+            redirectPage = 'pi-dashboard.html';
+        }
+        // Supervisors go to upload.html (same as researchers) but get additional supervision panel
 
         res.json({
             success: true,
             message: 'Login successful',
+            role: user.role,
             user: req.session.user,
             redirect: redirectPage
         });
