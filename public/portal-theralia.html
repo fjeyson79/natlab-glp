@@ -78,17 +78,21 @@
             padding: 0 28px;
             display: flex;
             gap: 0;
+            overflow-x: auto;
         }
+        .tab-nav::-webkit-scrollbar { height: 0; }
         .tab-btn {
             background: none;
             border: none;
             color: #78787f;
-            padding: 12px 20px;
+            padding: 12px 18px;
             font-size: 13px;
             font-weight: 500;
             cursor: pointer;
             border-bottom: 2px solid transparent;
             transition: all 0.2s;
+            white-space: nowrap;
+            flex-shrink: 0;
         }
         .tab-btn:hover { color: #c8c8cf; }
         .tab-btn.active {
@@ -98,25 +102,481 @@
 
         /* ---- Main Content ---- */
         .main {
-            max-width: 960px;
+            max-width: 1080px;
             margin: 0 auto;
-            padding: 40px 28px;
+            padding: 0 28px 60px;
         }
-        .main h2 {
-            font-size: 22px;
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* ---- Dashboard Control Bar ---- */
+        .dash-control {
+            padding: 28px 0 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .dash-control-left {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .dash-title {
+            font-size: 20px;
             font-weight: 600;
             color: #ffffff;
-            margin-bottom: 24px;
+            letter-spacing: -0.2px;
         }
-        .empty-state {
-            background: #18181B;
+        .dash-meta {
+            font-size: 12px;
+            color: #5a5a65;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .dash-control-right {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+        .cycle-select {
+            background: #1a1a1f;
+            color: #c8c8cf;
             border: 1px solid #2A2A2E;
+            border-radius: 8px;
+            padding: 7px 14px;
+            font-size: 12px;
+            font-family: inherit;
+            cursor: pointer;
+            appearance: none;
+            -webkit-appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%235a5a65'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 10px center;
+            padding-right: 30px;
+        }
+        .cycle-select:hover { border-color: #3a3a44; }
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.3px;
+            text-transform: uppercase;
+        }
+        .status-pill.stable { background: rgba(52,211,153,0.1); color: #34d399; }
+        .status-pill.watch { background: rgba(251,191,36,0.1); color: #fbbf24; }
+        .status-pill.critical { background: rgba(248,113,113,0.1); color: #f87171; }
+        .status-pill::before {
+            content: '';
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+        .mode-toggle {
+            display: flex;
+            background: #1a1a1f;
+            border: 1px solid #2A2A2E;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .mode-toggle button {
+            background: none;
+            border: none;
+            color: #5a5a65;
+            padding: 6px 16px;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+        .mode-toggle button.active {
+            background: #2A2A2E;
+            color: #e0e0e6;
+        }
+
+        /* ---- Section Headings ---- */
+        .section-label {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #4a4a55;
+            margin: 32px 0 14px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #1e1e24;
+        }
+
+        /* ---- Cards ---- */
+        .card {
+            background: #16161A;
+            border: 1px solid #222228;
             border-radius: 10px;
-            padding: 48px 32px;
-            text-align: center;
-            color: #78787f;
+            padding: 22px 24px;
+            transition: border-color 0.2s;
+        }
+        .card:hover { border-color: #2e2e36; }
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+        .card-title {
             font-size: 14px;
+            font-weight: 600;
+            color: #d0d0d8;
+        }
+        .card-body {
+            font-size: 13px;
+            color: #8a8a95;
+            line-height: 1.65;
+        }
+        .card-body p { margin-bottom: 8px; }
+        .card-body p:last-child { margin-bottom: 0; }
+        .card-footer {
+            margin-top: 14px;
+            padding-top: 10px;
+            border-top: 1px solid #1e1e24;
+            font-size: 11px;
+            color: #4a4a55;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .card-footer .hint {
+            color: #3a3a48;
+            font-style: italic;
+        }
+
+        /* ---- Grid Layouts ---- */
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 14px;
+        }
+        .grid-3 {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 14px;
+        }
+        @media (max-width: 768px) {
+            .grid-2, .grid-3 { grid-template-columns: 1fr; }
+        }
+
+        /* ---- Inline Status Pills (card-level) ---- */
+        .card-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: 0.3px;
+            text-transform: uppercase;
+        }
+        .card-status.on-track { background: rgba(52,211,153,0.08); color: #34d399; }
+        .card-status.planning { background: rgba(96,165,250,0.08); color: #60a5fa; }
+        .card-status.active { background: rgba(167,139,250,0.08); color: #a78bfa; }
+        .card-status.review { background: rgba(251,191,36,0.08); color: #fbbf24; }
+        .card-status.pending { background: rgba(251,191,36,0.08); color: #fbbf24; }
+        .card-status.filed { background: rgba(52,211,153,0.08); color: #34d399; }
+        .card-status.engaged { background: rgba(96,165,250,0.08); color: #60a5fa; }
+        .card-status::before {
+            content: '';
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+
+        /* ---- Highlight / Concern Tags ---- */
+        .tag-highlight {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 500;
+            background: rgba(52,211,153,0.07);
+            color: #5ee8a8;
+            margin-top: 6px;
+        }
+        .tag-concern {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 500;
+            background: rgba(251,191,36,0.07);
+            color: #fbbf24;
+            margin-top: 6px;
+        }
+
+        /* ---- Executive Summary Card ---- */
+        .exec-card {
+            background: #16161A;
+            border: 1px solid #222228;
+            border-radius: 12px;
+            padding: 28px 28px 20px;
+        }
+        .exec-card:hover { border-color: #2e2e36; }
+        .exec-bullets {
+            list-style: none;
+            padding: 0;
+            margin: 0 0 14px;
+        }
+        .exec-bullets li {
+            position: relative;
+            padding-left: 16px;
+            margin-bottom: 7px;
+            font-size: 13px;
+            color: #9a9aa5;
             line-height: 1.6;
+        }
+        .exec-bullets li::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 8px;
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: #3a3a48;
+        }
+        .exec-kv {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 18px;
+            margin-top: 16px;
+            padding-top: 14px;
+            border-top: 1px solid #1e1e24;
+        }
+        .exec-kv-item {
+            flex: 1;
+            min-width: 180px;
+        }
+        .exec-kv-label {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: #4a4a55;
+            margin-bottom: 4px;
+        }
+        .exec-kv-value {
+            font-size: 13px;
+            color: #c0c0ca;
+            line-height: 1.5;
+        }
+
+        /* ---- Board Meeting Section ---- */
+        .board-section {
+            margin-top: 16px;
+        }
+        .agenda-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            counter-reset: agenda;
+        }
+        .agenda-list li {
+            counter-increment: agenda;
+            position: relative;
+            padding-left: 28px;
+            margin-bottom: 8px;
+            font-size: 13px;
+            color: #8a8a95;
+            line-height: 1.5;
+        }
+        .agenda-list li::before {
+            content: counter(agenda);
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #1e1e24;
+            color: #5a5a65;
+            font-size: 10px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .action-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 4px;
+        }
+        .action-table th {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            color: #4a4a55;
+            text-align: left;
+            padding: 8px 10px;
+            border-bottom: 1px solid #1e1e24;
+        }
+        .action-table td {
+            font-size: 12px;
+            color: #8a8a95;
+            padding: 9px 10px;
+            border-bottom: 1px solid #151519;
+        }
+        .action-table .status-done { color: #34d399; }
+        .action-table .status-progress { color: #60a5fa; }
+        .action-table .status-open { color: #5a5a65; }
+
+        /* ---- Update Mode Controls ---- */
+        .edit-controls { display: none; }
+        body.update-mode .edit-controls { display: block; }
+        body.update-mode .view-content { display: none; }
+        .edit-controls textarea {
+            width: 100%;
+            background: #111115;
+            border: 1px solid #2A2A2E;
+            border-radius: 8px;
+            color: #c8c8cf;
+            font-family: inherit;
+            font-size: 13px;
+            line-height: 1.6;
+            padding: 12px 14px;
+            resize: vertical;
+            min-height: 80px;
+            margin-bottom: 10px;
+        }
+        .edit-controls textarea:focus {
+            outline: none;
+            border-color: #3a3a48;
+        }
+        .edit-controls input[type="text"],
+        .edit-controls input[type="date"] {
+            background: #111115;
+            border: 1px solid #2A2A2E;
+            border-radius: 6px;
+            color: #c8c8cf;
+            font-family: inherit;
+            font-size: 12px;
+            padding: 7px 10px;
+            margin-bottom: 6px;
+        }
+        .edit-controls input:focus {
+            outline: none;
+            border-color: #3a3a48;
+        }
+        .edit-controls select {
+            background: #111115;
+            border: 1px solid #2A2A2E;
+            border-radius: 6px;
+            color: #c8c8cf;
+            font-family: inherit;
+            font-size: 12px;
+            padding: 7px 10px;
+            margin-bottom: 6px;
+            cursor: pointer;
+        }
+        .edit-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-bottom: 6px;
+        }
+        .btn-save {
+            background: #222230;
+            color: #a0a0b0;
+            border: 1px solid #2e2e3a;
+            border-radius: 6px;
+            padding: 5px 14px;
+            font-size: 11px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+        .btn-save:hover {
+            background: #2a2a3a;
+            color: #d0d0dd;
+            border-color: #3a3a4a;
+        }
+        .btn-upload {
+            background: none;
+            color: #5a5a68;
+            border: 1px dashed #2a2a34;
+            border-radius: 6px;
+            padding: 5px 12px;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+        .btn-upload:hover {
+            color: #8a8a98;
+            border-color: #3a3a48;
+        }
+        .edit-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 8px;
+        }
+        .edit-label {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            color: #4a4a55;
+            margin-bottom: 6px;
+        }
+
+        /* ---- Empty Tab States ---- */
+        .empty-tab {
+            padding: 48px 0;
+        }
+        .empty-tab-card {
+            background: #16161A;
+            border: 1px solid #222228;
+            border-radius: 12px;
+            padding: 56px 40px;
+            text-align: center;
+            max-width: 520px;
+            margin: 0 auto;
+        }
+        .empty-tab-icon {
+            width: 48px;
+            height: 48px;
+            margin: 0 auto 20px;
+            border-radius: 12px;
+            background: #1a1a22;
+            border: 1px solid #26262e;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            color: #3a3a48;
+        }
+        .empty-tab-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #d0d0d8;
+            margin-bottom: 10px;
+        }
+        .empty-tab-desc {
+            font-size: 13px;
+            color: #5a5a65;
+            line-height: 1.65;
+            max-width: 380px;
+            margin: 0 auto;
         }
     </style>
 </head>
@@ -132,21 +592,638 @@
         </div>
     </div>
 
-    <div class="tab-nav">
+    <div class="tab-nav" id="tabNav">
         <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+        <button class="tab-btn" data-tab="company">Company</button>
+        <button class="tab-btn" data-tab="rnd">R&D</button>
+        <button class="tab-btn" data-tab="glp">GLP Vision</button>
+        <button class="tab-btn" data-tab="inventory">Inventory</button>
+        <button class="tab-btn" data-tab="training">Training</button>
+        <button class="tab-btn" data-tab="finance">Finance</button>
+        <button class="tab-btn" data-tab="investors">Investors</button>
     </div>
 
     <div class="main">
-        <div id="tab-dashboard">
-            <h2>Dashboard</h2>
-            <div class="empty-state">
-                Theralia workspace is ready. Modules will appear here as they are activated.
+
+        <!-- ============================================== -->
+        <!-- TAB: DASHBOARD                                 -->
+        <!-- ============================================== -->
+        <div class="tab-content active" id="tab-dashboard">
+
+            <!-- Control Bar -->
+            <div class="dash-control">
+                <div class="dash-control-left">
+                    <div class="dash-title">Theralia Board Dashboard</div>
+                    <div class="dash-meta">
+                        <span id="dashLastUpdated">Last updated: --</span>
+                    </div>
+                </div>
+                <div class="dash-control-right">
+                    <select class="cycle-select" id="cycleSelect">
+                        <option value="2026-c06">Cycle 06 &middot; Mar 17 &ndash; 30, 2026</option>
+                        <option value="2026-c05">Cycle 05 &middot; Mar 3 &ndash; 16, 2026</option>
+                        <option value="2026-c04">Cycle 04 &middot; Feb 17 &ndash; Mar 2, 2026</option>
+                        <option value="2026-c03">Cycle 03 &middot; Feb 3 &ndash; 16, 2026</option>
+                    </select>
+                    <span class="status-pill stable" id="overallStatus">Stable</span>
+                    <div class="mode-toggle" id="modeToggle">
+                        <button class="active" data-mode="view">View</button>
+                        <button data-mode="update">Update</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 1: Executive Summary -->
+            <div class="section-label">Executive Summary</div>
+            <div class="exec-card">
+                <div class="card-header">
+                    <span class="card-title">Board Cycle Overview</span>
+                    <span class="card-status on-track">On Track</span>
+                </div>
+
+                <div class="view-content">
+                    <ul class="exec-bullets">
+                        <li>Pre-clinical validation framework defined; first in-vitro assay panel selected for lead compound.</li>
+                        <li>CSO alignment on translational pathway for dermal inflammation model completed.</li>
+                        <li>Partnership discussions with CRO in early exploratory phase; NDA exchange planned for next cycle.</li>
+                        <li>IP landscape review initiated; freedom-to-operate analysis for core mechanism underway.</li>
+                    </ul>
+                    <div class="exec-kv">
+                        <div class="exec-kv-item">
+                            <div class="exec-kv-label">Key Highlight</div>
+                            <div class="exec-kv-value">First experimental protocol approved for lead compound screening.</div>
+                        </div>
+                        <div class="exec-kv-item">
+                            <div class="exec-kv-label">Key Risk</div>
+                            <div class="exec-kv-value">CRO capacity constraints may delay assay timeline by 2&ndash;3 weeks.</div>
+                        </div>
+                        <div class="exec-kv-item">
+                            <div class="exec-kv-label">Decision Needed</div>
+                            <div class="exec-kv-value">Approve budget allocation for external assay services in Q2.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="edit-controls">
+                    <div class="edit-label">Summary Bullets</div>
+                    <textarea rows="5" id="editExecSummary">Pre-clinical validation framework defined; first in-vitro assay panel selected for lead compound.
+CSO alignment on translational pathway for dermal inflammation model completed.
+Partnership discussions with CRO in early exploratory phase; NDA exchange planned for next cycle.
+IP landscape review initiated; freedom-to-operate analysis for core mechanism underway.</textarea>
+                    <div class="edit-row">
+                        <div style="flex:1">
+                            <div class="edit-label">Key Highlight</div>
+                            <textarea rows="2" id="editExecHighlight">First experimental protocol approved for lead compound screening.</textarea>
+                        </div>
+                        <div style="flex:1">
+                            <div class="edit-label">Key Risk</div>
+                            <textarea rows="2" id="editExecRisk">CRO capacity constraints may delay assay timeline by 2-3 weeks.</textarea>
+                        </div>
+                    </div>
+                    <div class="edit-label">Decision Needed</div>
+                    <textarea rows="2" id="editExecDecision">Approve budget allocation for external assay services in Q2.</textarea>
+                    <div class="edit-bar">
+                        <select id="editExecStatus">
+                            <option value="on-track" selected>On Track</option>
+                            <option value="watch">Watch</option>
+                            <option value="critical">Critical</option>
+                        </select>
+                        <button class="btn-upload">Attach file</button>
+                        <button class="btn-save" onclick="saveSection('exec')">Save</button>
+                    </div>
+                </div>
+
+                <div class="card-footer">
+                    <span>Updated by CSO &middot; Cycle 06</span>
+                    <span class="hint">Last modified: Mar 22, 2026</span>
+                </div>
+            </div>
+
+            <!-- Section 2: Leadership Inputs -->
+            <div class="section-label">Leadership Inputs</div>
+            <div class="grid-2" id="leadershipGrid">
+
+                <!-- CEO Update -->
+                <div class="card" data-position="CEO">
+                    <div class="card-header">
+                        <span class="card-title">CEO Update</span>
+                    </div>
+                    <div class="view-content">
+                        <div class="card-body">
+                            <p>Strategic direction confirmed for Q2. Focus remains on securing translational partnerships and preparing materials for potential seed extension conversations.</p>
+                            <span class="tag-highlight">Seed extension timeline on track</span>
+                        </div>
+                    </div>
+                    <div class="edit-controls">
+                        <textarea rows="4">Strategic direction confirmed for Q2. Focus remains on securing translational partnerships and preparing materials for potential seed extension conversations.</textarea>
+                        <div class="edit-label">Highlight or Concern</div>
+                        <input type="text" value="Seed extension timeline on track" style="width:100%">
+                        <div class="edit-bar">
+                            <button class="btn-save" onclick="saveSection('leader-ceo')">Save</button>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <span>Updated by CEO &middot; Cycle 06</span>
+                        <span class="hint">Mar 20, 2026</span>
+                    </div>
+                </div>
+
+                <!-- CSO Update -->
+                <div class="card" data-position="CSO">
+                    <div class="card-header">
+                        <span class="card-title">CSO Update</span>
+                    </div>
+                    <div class="view-content">
+                        <div class="card-body">
+                            <p>Assay panel selection complete. Translational pathway for dermal inflammation model locked. Preparing experimental protocol documentation for GLP-readiness checkpoint.</p>
+                            <span class="tag-highlight">Protocol documentation initiated</span>
+                        </div>
+                    </div>
+                    <div class="edit-controls">
+                        <textarea rows="4">Assay panel selection complete. Translational pathway for dermal inflammation model locked. Preparing experimental protocol documentation for GLP-readiness checkpoint.</textarea>
+                        <div class="edit-label">Highlight or Concern</div>
+                        <input type="text" value="Protocol documentation initiated" style="width:100%">
+                        <div class="edit-bar">
+                            <button class="btn-save" onclick="saveSection('leader-cso')">Save</button>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <span>Updated by CSO &middot; Cycle 06</span>
+                        <span class="hint">Mar 22, 2026</span>
+                    </div>
+                </div>
+
+                <!-- CTO Update -->
+                <div class="card" data-position="CTO">
+                    <div class="card-header">
+                        <span class="card-title">CTO Update</span>
+                    </div>
+                    <div class="view-content">
+                        <div class="card-body">
+                            <p>Internal data infrastructure scoping in progress. Evaluating traceability tooling for experimental workflows. No blockers currently.</p>
+                        </div>
+                    </div>
+                    <div class="edit-controls">
+                        <textarea rows="4">Internal data infrastructure scoping in progress. Evaluating traceability tooling for experimental workflows. No blockers currently.</textarea>
+                        <div class="edit-label">Highlight or Concern</div>
+                        <input type="text" value="" style="width:100%">
+                        <div class="edit-bar">
+                            <button class="btn-save" onclick="saveSection('leader-cto')">Save</button>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <span>Updated by CTO &middot; Cycle 06</span>
+                        <span class="hint">Mar 19, 2026</span>
+                    </div>
+                </div>
+
+                <!-- COO Update -->
+                <div class="card" data-position="COO">
+                    <div class="card-header">
+                        <span class="card-title">COO Update</span>
+                    </div>
+                    <div class="view-content">
+                        <div class="card-body">
+                            <p>Operational framework for CRO engagement prepared. Vendor evaluation for laboratory consumables supply chain started. Budget templates drafted for board review.</p>
+                            <span class="tag-concern">CRO vendor shortlist pending final review</span>
+                        </div>
+                    </div>
+                    <div class="edit-controls">
+                        <textarea rows="4">Operational framework for CRO engagement prepared. Vendor evaluation for laboratory consumables supply chain started. Budget templates drafted for board review.</textarea>
+                        <div class="edit-label">Highlight or Concern</div>
+                        <input type="text" value="CRO vendor shortlist pending final review" style="width:100%">
+                        <div class="edit-bar">
+                            <button class="btn-save" onclick="saveSection('leader-coo')">Save</button>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <span>Updated by COO &middot; Cycle 06</span>
+                        <span class="hint">Mar 18, 2026</span>
+                    </div>
+                </div>
+
+                <!-- Medical Advisor Update (full-width) -->
+                <div class="card" data-position="Advisor" style="grid-column: 1 / -1;">
+                    <div class="card-header">
+                        <span class="card-title">Medical Advisor Update</span>
+                    </div>
+                    <div class="view-content">
+                        <div class="card-body">
+                            <p>Clinical relevance review of target indication completed. Advisory input provided on patient population segmentation for future trial design considerations.</p>
+                        </div>
+                    </div>
+                    <div class="edit-controls">
+                        <textarea rows="3">Clinical relevance review of target indication completed. Advisory input provided on patient population segmentation for future trial design considerations.</textarea>
+                        <div class="edit-label">Highlight or Concern</div>
+                        <input type="text" value="" style="width:100%">
+                        <div class="edit-bar">
+                            <button class="btn-save" onclick="saveSection('leader-advisor')">Save</button>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <span>Updated by Medical Advisor &middot; Cycle 06</span>
+                        <span class="hint">Mar 17, 2026</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 3: Company Status Grid -->
+            <div class="section-label">Company Status</div>
+            <div class="grid-3" id="statusGrid">
+
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Projects Snapshot</span>
+                        <span class="card-status on-track">On Track</span>
+                    </div>
+                    <div class="view-content">
+                        <div class="card-body">
+                            <p>Lead compound screening project active. Two supporting workstreams defined for Q2 execution.</p>
+                        </div>
+                    </div>
+                    <div class="edit-controls">
+                        <textarea rows="3">Lead compound screening project active. Two supporting workstreams defined for Q2 execution.</textarea>
+                        <div class="edit-bar">
+                            <select><option>On Track</option><option>Planning</option><option>Review</option><option>Critical</option></select>
+                            <button class="btn-upload">Attach</button>
+                            <button class="btn-save" onclick="saveSection('status-projects')">Save</button>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <span>Cycle 06</span>
+                        <span class="hint">View details</span>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Product Development</span>
+                        <span class="card-status planning">Planning</span>
+                    </div>
+                    <div class="view-content">
+                        <div class="card-body">
+                            <p>Formulation strategy under evaluation. Target product profile draft expected by end of Cycle 07.</p>
+                        </div>
+                    </div>
+                    <div class="edit-controls">
+                        <textarea rows="3">Formulation strategy under evaluation. Target product profile draft expected by end of Cycle 07.</textarea>
+                        <div class="edit-bar">
+                            <select><option>On Track</option><option selected>Planning</option><option>Review</option><option>Critical</option></select>
+                            <button class="btn-upload">Attach</button>
+                            <button class="btn-save" onclick="saveSection('status-product')">Save</button>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <span>Cycle 06</span>
+                        <span class="hint">View details</span>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Data &amp; Validation</span>
+                        <span class="card-status active">Active</span>
+                    </div>
+                    <div class="view-content">
+                        <div class="card-body">
+                            <p>First in-vitro assay dataset collection initiated. Validation criteria defined for primary endpoint.</p>
+                        </div>
+                    </div>
+                    <div class="edit-controls">
+                        <textarea rows="3">First in-vitro assay dataset collection initiated. Validation criteria defined for primary endpoint.</textarea>
+                        <div class="edit-bar">
+                            <select><option>On Track</option><option>Planning</option><option selected>Active</option><option>Review</option></select>
+                            <button class="btn-upload">Attach</button>
+                            <button class="btn-save" onclick="saveSection('status-data')">Save</button>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <span>Cycle 06</span>
+                        <span class="hint">View details</span>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Collaborations</span>
+                        <span class="card-status planning">Planning</span>
+                    </div>
+                    <div class="view-content">
+                        <div class="card-body">
+                            <p>CRO partnership in early discussions. Academic collaboration on mechanism studies being formalized.</p>
+                        </div>
+                    </div>
+                    <div class="edit-controls">
+                        <textarea rows="3">CRO partnership in early discussions. Academic collaboration on mechanism studies being formalized.</textarea>
+                        <div class="edit-bar">
+                            <select><option>On Track</option><option selected>Planning</option><option>Review</option><option>Critical</option></select>
+                            <button class="btn-upload">Attach</button>
+                            <button class="btn-save" onclick="saveSection('status-collab')">Save</button>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <span>Cycle 06</span>
+                        <span class="hint">View details</span>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">IP Status</span>
+                        <span class="card-status review">Review</span>
+                    </div>
+                    <div class="view-content">
+                        <div class="card-body">
+                            <p>Freedom-to-operate analysis underway. Patent counsel engaged on core mechanism claims.</p>
+                        </div>
+                    </div>
+                    <div class="edit-controls">
+                        <textarea rows="3">Freedom-to-operate analysis underway. Patent counsel engaged on core mechanism claims.</textarea>
+                        <div class="edit-bar">
+                            <select><option>On Track</option><option>Planning</option><option selected>Review</option><option>Critical</option></select>
+                            <button class="btn-upload">Attach</button>
+                            <button class="btn-save" onclick="saveSection('status-ip')">Save</button>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <span>Cycle 06</span>
+                        <span class="hint">View details</span>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Investors Summary</span>
+                        <span class="card-status engaged">Engaged</span>
+                    </div>
+                    <div class="view-content">
+                        <div class="card-body">
+                            <p>Seed round materials being refined. Two investor conversations in exploratory phase.</p>
+                        </div>
+                    </div>
+                    <div class="edit-controls">
+                        <textarea rows="3">Seed round materials being refined. Two investor conversations in exploratory phase.</textarea>
+                        <div class="edit-bar">
+                            <select><option>On Track</option><option>Planning</option><option selected>Engaged</option><option>Review</option></select>
+                            <button class="btn-upload">Attach</button>
+                            <button class="btn-save" onclick="saveSection('status-investors')">Save</button>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <span>Cycle 06</span>
+                        <span class="hint">View details</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 4: Board Meeting -->
+            <div class="section-label">Board Meeting</div>
+            <div class="grid-2 board-section">
+
+                <!-- Agenda -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Agenda</span>
+                        <span style="font-size:11px;color:#4a4a55;">Mar 28, 2026</span>
+                    </div>
+                    <div class="view-content">
+                        <ol class="agenda-list">
+                            <li>Opening remarks and cycle review</li>
+                            <li>CSO update: translational pathway progress and assay timeline</li>
+                            <li>CRO partnership status and vendor decision</li>
+                            <li>IP landscape review: freedom-to-operate findings</li>
+                            <li>Q2 budget allocation: external assay services</li>
+                            <li>Seed extension preparation and investor outreach update</li>
+                        </ol>
+                    </div>
+                    <div class="edit-controls">
+                        <div class="edit-label">Meeting Date</div>
+                        <input type="date" value="2026-03-28">
+                        <div class="edit-label" style="margin-top:10px">Agenda Items (one per line)</div>
+                        <textarea rows="7">Opening remarks and cycle review
+CSO update: translational pathway progress and assay timeline
+CRO partnership status and vendor decision
+IP landscape review: freedom-to-operate findings
+Q2 budget allocation: external assay services
+Seed extension preparation and investor outreach update</textarea>
+                        <div class="edit-bar">
+                            <button class="btn-save" onclick="saveSection('agenda')">Save</button>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <span>Cycle 06 &middot; Board Meeting</span>
+                    </div>
+                </div>
+
+                <!-- Action Points -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">Action Points</span>
+                    </div>
+                    <div class="view-content">
+                        <table class="action-table">
+                            <thead>
+                                <tr>
+                                    <th>Action</th>
+                                    <th>Owner</th>
+                                    <th>Due</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>Finalize CRO vendor shortlist</td>
+                                    <td>COO</td>
+                                    <td>Mar 28</td>
+                                    <td class="status-progress">In Progress</td>
+                                </tr>
+                                <tr>
+                                    <td>Submit FTO analysis brief to board</td>
+                                    <td>CSO</td>
+                                    <td>Apr 2</td>
+                                    <td class="status-open">Open</td>
+                                </tr>
+                                <tr>
+                                    <td>Prepare Q2 budget proposal</td>
+                                    <td>COO</td>
+                                    <td>Mar 30</td>
+                                    <td class="status-progress">In Progress</td>
+                                </tr>
+                                <tr>
+                                    <td>Draft investor update for Cycle 06</td>
+                                    <td>CEO</td>
+                                    <td>Apr 1</td>
+                                    <td class="status-open">Open</td>
+                                </tr>
+                                <tr>
+                                    <td>Complete assay protocol documentation</td>
+                                    <td>CSO</td>
+                                    <td>Mar 26</td>
+                                    <td class="status-done">Done</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="edit-controls">
+                        <div class="edit-label">Action Items</div>
+                        <div class="edit-row">
+                            <input type="text" placeholder="Action" style="flex:3">
+                            <input type="text" placeholder="Owner" style="flex:1">
+                            <input type="date" style="flex:1">
+                            <select style="flex:1"><option>Open</option><option>In Progress</option><option>Done</option></select>
+                        </div>
+                        <div class="edit-row">
+                            <input type="text" value="Finalize CRO vendor shortlist" style="flex:3">
+                            <input type="text" value="COO" style="flex:1">
+                            <input type="date" value="2026-03-28" style="flex:1">
+                            <select style="flex:1"><option>Open</option><option selected>In Progress</option><option>Done</option></select>
+                        </div>
+                        <div class="edit-row">
+                            <input type="text" value="Submit FTO analysis brief to board" style="flex:3">
+                            <input type="text" value="CSO" style="flex:1">
+                            <input type="date" value="2026-04-02" style="flex:1">
+                            <select style="flex:1"><option selected>Open</option><option>In Progress</option><option>Done</option></select>
+                        </div>
+                        <div class="edit-row">
+                            <input type="text" value="Prepare Q2 budget proposal" style="flex:3">
+                            <input type="text" value="COO" style="flex:1">
+                            <input type="date" value="2026-03-30" style="flex:1">
+                            <select style="flex:1"><option>Open</option><option selected>In Progress</option><option>Done</option></select>
+                        </div>
+                        <div class="edit-row">
+                            <input type="text" value="Draft investor update for Cycle 06" style="flex:3">
+                            <input type="text" value="CEO" style="flex:1">
+                            <input type="date" value="2026-04-01" style="flex:1">
+                            <select style="flex:1"><option selected>Open</option><option>In Progress</option><option>Done</option></select>
+                        </div>
+                        <div class="edit-row">
+                            <input type="text" value="Complete assay protocol documentation" style="flex:3">
+                            <input type="text" value="CSO" style="flex:1">
+                            <input type="date" value="2026-03-26" style="flex:1">
+                            <select style="flex:1"><option>Open</option><option>In Progress</option><option selected>Done</option></select>
+                        </div>
+                        <div class="edit-bar">
+                            <button class="btn-save" onclick="saveSection('actions')">Save</button>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <span>5 action items &middot; 1 completed</span>
+                    </div>
+                </div>
             </div>
         </div>
-    </div>
+
+        <!-- ============================================== -->
+        <!-- TAB: COMPANY                                   -->
+        <!-- ============================================== -->
+        <div class="tab-content" id="tab-company">
+            <div class="empty-tab">
+                <div class="empty-tab-card">
+                    <div class="empty-tab-icon">
+                        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6"/></svg>
+                    </div>
+                    <div class="empty-tab-title">Company</div>
+                    <div class="empty-tab-desc">Organizational structure, team directory, company documents, meeting records, and institutional memory for Theralia.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============================================== -->
+        <!-- TAB: R&D                                       -->
+        <!-- ============================================== -->
+        <div class="tab-content" id="tab-rnd">
+            <div class="empty-tab">
+                <div class="empty-tab-card">
+                    <div class="empty-tab-icon">
+                        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M9 3v2m6-2v2M9 19v2m6-2v2M3 9h2m14 0h2M3 15h2m14 0h2M7 7h10v10H7z"/></svg>
+                    </div>
+                    <div class="empty-tab-title">R&D</div>
+                    <div class="empty-tab-desc">Scientific execution, active projects, experimental data, product development pipeline, and research milestones.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============================================== -->
+        <!-- TAB: GLP VISION                                -->
+        <!-- ============================================== -->
+        <div class="tab-content" id="tab-glp">
+            <div class="empty-tab">
+                <div class="empty-tab-card">
+                    <div class="empty-tab-icon">
+                        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                    </div>
+                    <div class="empty-tab-title">GLP Vision</div>
+                    <div class="empty-tab-desc">Scientific evidence traceability, regulatory-grade documentation, and the NAT-Lab borrowed evidence layer for Theralia programs.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============================================== -->
+        <!-- TAB: INVENTORY                                 -->
+        <!-- ============================================== -->
+        <div class="tab-content" id="tab-inventory">
+            <div class="empty-tab">
+                <div class="empty-tab-card">
+                    <div class="empty-tab-icon">
+                        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4M4 7l8 4M4 7v10l8 4m0-10v10"/></svg>
+                    </div>
+                    <div class="empty-tab-title">Inventory</div>
+                    <div class="empty-tab-desc">Materials tracking, laboratory assets, consumables management, and operational startup resources.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============================================== -->
+        <!-- TAB: TRAINING                                  -->
+        <!-- ============================================== -->
+        <div class="tab-content" id="tab-training">
+            <div class="empty-tab">
+                <div class="empty-tab-card">
+                    <div class="empty-tab-icon">
+                        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M12 14l9-5-9-5-9 5 9 5zm0 0v7m-9-12v7l9 5 9-5v-7"/></svg>
+                    </div>
+                    <div class="empty-tab-title">Training</div>
+                    <div class="empty-tab-desc">Team onboarding programs, internal learning modules, certification tracking, and capability development for Theralia staff.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============================================== -->
+        <!-- TAB: FINANCE                                   -->
+        <!-- ============================================== -->
+        <div class="tab-content" id="tab-finance">
+            <div class="empty-tab">
+                <div class="empty-tab-card">
+                    <div class="empty-tab-icon">
+                        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M2 20h20M5 20V10m4 10V6m4 14V8m4 12V4"/></svg>
+                    </div>
+                    <div class="empty-tab-title">Finance</div>
+                    <div class="empty-tab-desc">Financial overview, burn rate monitoring, funding signals, grant tracking, and strategic financial planning.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============================================== -->
+        <!-- TAB: INVESTORS                                 -->
+        <!-- ============================================== -->
+        <div class="tab-content" id="tab-investors">
+            <div class="empty-tab">
+                <div class="empty-tab-card">
+                    <div class="empty-tab-icon">
+                        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zm14 10v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+                    </div>
+                    <div class="empty-tab-title">Investors</div>
+                    <div class="empty-tab-desc">Investor relationship management, quarterly updates, data room preparation, and fundraising pipeline tracking.</div>
+                </div>
+            </div>
+        </div>
+
+    </div><!-- /.main -->
 
     <script>
-        // Internal authority state (not displayed, used for future gating)
+        /* ============================================== */
+        /* USER & AUTH                                    */
+        /* ============================================== */
         let _userAuthority = {};
 
         async function loadUser() {
@@ -160,14 +1237,12 @@
                 const user = data.user || data;
                 document.getElementById('userName').textContent = user.name || user.researcher_id || '';
 
-                // Build role display: "FOUNDER · CSO" if position exists
                 let roleText = (user.role || '').toUpperCase();
                 if (user.workspace_position) {
                     roleText += ' \u00B7 ' + user.workspace_position.toUpperCase();
                 }
                 document.getElementById('roleBadge').textContent = roleText;
 
-                // Store authority flags internally (never shown in UI)
                 if (user._authority) {
                     _userAuthority = user._authority;
                 }
@@ -176,7 +1251,6 @@
             }
         }
 
-        // Helper: check if current user has a specific authority flag
         function hasAuthority(flag) {
             return !!_userAuthority[flag];
         }
@@ -190,6 +1264,54 @@
             sessionStorage.clear();
             window.location.href = 'access-theralia.html';
         });
+
+        /* ============================================== */
+        /* TAB NAVIGATION                                 */
+        /* ============================================== */
+        document.getElementById('tabNav').addEventListener('click', (e) => {
+            const btn = e.target.closest('.tab-btn');
+            if (!btn) return;
+            const tab = btn.dataset.tab;
+
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
+            const target = document.getElementById('tab-' + tab);
+            if (target) target.classList.add('active');
+        });
+
+        /* ============================================== */
+        /* VIEW / UPDATE MODE TOGGLE                      */
+        /* ============================================== */
+        document.getElementById('modeToggle').addEventListener('click', (e) => {
+            const btn = e.target.closest('button[data-mode]');
+            if (!btn) return;
+            const mode = btn.dataset.mode;
+
+            document.querySelectorAll('#modeToggle button').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            if (mode === 'update') {
+                document.body.classList.add('update-mode');
+            } else {
+                document.body.classList.remove('update-mode');
+            }
+        });
+
+        /* ============================================== */
+        /* SAVE SECTION (placeholder, no backend yet)     */
+        /* ============================================== */
+        function saveSection(sectionId) {
+            const btn = event.target;
+            const orig = btn.textContent;
+            btn.textContent = 'Saved';
+            btn.style.color = '#34d399';
+            setTimeout(() => {
+                btn.textContent = orig;
+                btn.style.color = '';
+            }, 1500);
+        }
     </script>
 </body>
 </html>
