@@ -184,20 +184,7 @@
             content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor;
         }
 
-        /* ---- Segmented Toggle (board) ---- */
-        .segmented-toggle {
-            display: inline-flex; background: #eceff3;
-            border-radius: 999px; padding: 3px;
-        }
-        .segmented-toggle button {
-            border: none; background: transparent;
-            padding: 5px 14px; border-radius: 999px;
-            font-size: 12px; font-weight: 500; color: #7a7e8a;
-            cursor: pointer; transition: all 0.15s; font-family: inherit;
-        }
-        .segmented-toggle button.active {
-            background: #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,0.1); color: #1a1c22;
-        }
+        /* ---- Segmented Toggle (reserved for future board history) ---- */
 
         /* ---- Agenda List ---- */
         .agenda-list {
@@ -314,21 +301,9 @@
             font-family: inherit;
         }
 
-        /* ---- Board view panels ---- */
-        .board-panel { display: none; }
-        .board-panel.active { display: block; }
+        /* ---- Board inner grid ---- */
         .board-inner { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
         @media (max-width: 600px) { .board-inner { grid-template-columns: 1fr; } }
-        .board-history-list {
-            list-style: none; padding: 0; margin: 0;
-        }
-        .board-history-list li {
-            padding: 10px 0; border-bottom: 1px solid rgba(0,0,0,0.04);
-            font-size: 13px; color: #555a66;
-            display: flex; justify-content: space-between; align-items: center;
-        }
-        .board-history-list li:last-child { border-bottom: none; }
-        .board-history-date { font-size: 11px; color: #a0a4ae; }
 
         /* ---- Empty Tab States ---- */
         .empty-tab { padding: 48px 0; }
@@ -385,14 +360,11 @@
             <div class="dash-control">
                 <div class="dash-control-left">
                     <div class="dash-title">Theralia Board Dashboard</div>
-                    <div class="dash-meta">Last updated: Mar 22, 2026</div>
+                    <div class="dash-meta">Last updated: Mar 30, 2026</div>
                 </div>
                 <div class="dash-control-right">
                     <select class="cycle-select" id="cycleSelect">
-                        <option value="2026-w13">W13 &middot; Mar 24 &ndash; 30, 2026</option>
-                        <option value="2026-w12" selected>W12 &middot; Mar 17 &ndash; 23, 2026</option>
-                        <option value="2026-w11">W11 &middot; Mar 10 &ndash; 16, 2026</option>
-                        <option value="2026-w10">W10 &middot; Mar 3 &ndash; 9, 2026</option>
+                        <option value="2026-w14" selected>W14 &middot; Mar 30 &ndash; Apr 5, 2026</option>
                     </select>
                     <span class="status-pill stable" id="overallStatus">Stable</span>
                     <div class="mode-toggle" id="modeToggle">
@@ -414,21 +386,20 @@
                             <button class="btn-edit" onclick="toggleEdit('decisions')">Edit</button>
                         </div>
                         <div class="card-body">
-                            <div class="sub-label">Decisions</div>
                             <ul class="compact-list">
-                                <li>Approve Q2 budget allocation for external assay services.</li>
-                                <li>Confirm CRO vendor shortlist for lead compound screening.</li>
-                                <li>Decide on NDA timeline with prospective CRO partner.</li>
+                                <li>Approve Q2 budget allocation for external assay services</li>
+                                <li>Confirm CRO vendor shortlist for lead compound screening</li>
+                                <li>Decide on NDA timeline with prospective CRO partner</li>
                             </ul>
-                            <div class="sub-label">Milestones</div>
+                            <div style="height:10px"></div>
                             <ul class="compact-list">
-                                <li>First in-vitro assay panel selected for lead compound.</li>
-                                <li>Translational pathway for dermal inflammation model locked.</li>
-                                <li>Freedom-to-operate analysis initiated with patent counsel.</li>
+                                <li>First in-vitro assay panel selected for lead compound</li>
+                                <li>Translational pathway for dermal inflammation model locked</li>
+                                <li>Freedom-to-operate analysis initiated with patent counsel</li>
                             </ul>
                         </div>
                         <div class="card-footer">
-                            <span>Updated by CSO &middot; W12</span>
+                            <span>Updated by CSO &middot; W14</span>
                             <span>Mar 22, 2026</span>
                         </div>
                         <div class="section-edit" id="edit-decisions">
@@ -451,116 +422,66 @@ Freedom-to-operate analysis initiated with patent counsel.</textarea>
                     <div class="card" id="sec-board">
                         <div class="card-header">
                             <div>
-                                <span class="card-title">Board Meeting &mdash; W12 &middot; 2026</span>
-                                <div class="card-subtitle" style="margin-top:2px">Friday, March 20</div>
+                                <span class="card-title">Board Meeting &mdash; W14 &middot; 2026</span>
+                                <div class="card-subtitle" style="margin-top:2px">Friday, April 3</div>
                             </div>
-                            <div class="segmented-toggle" id="boardToggle">
-                                <button class="active" data-board="coming">Coming</button>
-                                <button data-board="last">Last</button>
-                                <button data-board="history">History</button>
-                            </div>
+                            <button class="btn-edit" onclick="toggleEdit('board')" id="boardEditBtn">Edit</button>
                         </div>
 
-                        <!-- Coming -->
-                        <div class="board-panel active" id="board-coming">
-                            <div class="board-inner">
-                                <div>
-                                    <div class="sub-label">Agenda</div>
-                                    <ol class="agenda-list">
-                                        <li>Opening remarks and cycle review</li>
-                                        <li>CSO: translational pathway and assay timeline</li>
-                                        <li>CRO partnership status and vendor decision</li>
-                                        <li>IP landscape: freedom-to-operate findings</li>
-                                        <li>Q2 budget allocation discussion</li>
-                                        <li>Investor outreach and seed extension update</li>
-                                    </ol>
-                                </div>
-                                <div>
-                                    <div class="sub-label">Action Points</div>
-                                    <table class="action-table">
-                                        <thead><tr><th>Action</th><th>Owner</th><th>Due</th><th></th></tr></thead>
-                                        <tbody>
-                                            <tr><td>Finalize CRO vendor shortlist</td><td>COO</td><td>Mar 28</td><td class="st-progress">In Progress</td></tr>
-                                            <tr><td>Submit FTO brief to board</td><td>CSO</td><td>Apr 2</td><td class="st-open">Open</td></tr>
-                                            <tr><td>Prepare Q2 budget proposal</td><td>COO</td><td>Mar 30</td><td class="st-progress">In Progress</td></tr>
-                                            <tr><td>Draft investor update</td><td>CEO</td><td>Apr 1</td><td class="st-open">Open</td></tr>
-                                            <tr><td>Complete assay protocol docs</td><td>CSO</td><td>Mar 26</td><td class="st-done">Done</td></tr>
-                                        </tbody>
-                                    </table>
-                                </div>
+                        <div class="board-inner">
+                            <div>
+                                <ol class="agenda-list">
+                                    <li>Opening remarks and cycle review</li>
+                                    <li>CSO: translational pathway and assay timeline</li>
+                                    <li>CRO partnership status and vendor decision</li>
+                                    <li>IP landscape: freedom-to-operate findings</li>
+                                    <li>Q2 budget allocation discussion</li>
+                                    <li>Investor outreach and seed extension update</li>
+                                </ol>
                             </div>
-                            <div class="section-edit" id="edit-board">
-                                <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-                                    <div>
-                                        <div class="edit-label">Meeting Date</div>
-                                        <input type="date" value="2026-03-20" style="margin-bottom:8px">
-                                        <div class="edit-label">Agenda (one per line)</div>
-                                        <textarea rows="7">Opening remarks and cycle review
+                            <div>
+                                <table class="action-table">
+                                    <thead><tr><th>Action</th><th>Owner</th><th>Due</th><th></th></tr></thead>
+                                    <tbody>
+                                        <tr><td>Finalize CRO vendor shortlist</td><td>COO</td><td>Apr 3</td><td class="st-progress">In Progress</td></tr>
+                                        <tr><td>Submit FTO brief to board</td><td>CSO</td><td>Apr 3</td><td class="st-open">Open</td></tr>
+                                        <tr><td>Prepare Q2 budget proposal</td><td>COO</td><td>Apr 2</td><td class="st-progress">In Progress</td></tr>
+                                        <tr><td>Draft investor update</td><td>CEO</td><td>Apr 3</td><td class="st-open">Open</td></tr>
+                                        <tr><td>Complete assay protocol docs</td><td>CSO</td><td>Apr 1</td><td class="st-open">Open</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="section-edit" id="edit-board">
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+                                <div>
+                                    <div class="edit-label">Meeting Date</div>
+                                    <input type="date" value="2026-04-03" style="margin-bottom:8px">
+                                    <div class="edit-label">Agenda (one per line)</div>
+                                    <textarea rows="7">Opening remarks and cycle review
 CSO: translational pathway and assay timeline
 CRO partnership status and vendor decision
 IP landscape: freedom-to-operate findings
 Q2 budget allocation discussion
 Investor outreach and seed extension update</textarea>
-                                    </div>
-                                    <div>
-                                        <div class="edit-label">Action Points</div>
-                                        <div class="edit-row"><input type="text" value="Finalize CRO vendor shortlist" style="flex:3"><input type="text" value="COO" style="flex:1"><input type="date" value="2026-03-28" style="flex:1"><select style="flex:1"><option>Open</option><option selected>In Progress</option><option>Done</option></select></div>
-                                        <div class="edit-row"><input type="text" value="Submit FTO brief to board" style="flex:3"><input type="text" value="CSO" style="flex:1"><input type="date" value="2026-04-02" style="flex:1"><select style="flex:1"><option selected>Open</option><option>In Progress</option><option>Done</option></select></div>
-                                        <div class="edit-row"><input type="text" value="Prepare Q2 budget proposal" style="flex:3"><input type="text" value="COO" style="flex:1"><input type="date" value="2026-03-30" style="flex:1"><select style="flex:1"><option>Open</option><option selected>In Progress</option><option>Done</option></select></div>
-                                        <div class="edit-row"><input type="text" value="Draft investor update" style="flex:3"><input type="text" value="CEO" style="flex:1"><input type="date" value="2026-04-01" style="flex:1"><select style="flex:1"><option selected>Open</option><option>In Progress</option><option>Done</option></select></div>
-                                        <div class="edit-row"><input type="text" value="Complete assay protocol docs" style="flex:3"><input type="text" value="CSO" style="flex:1"><input type="date" value="2026-03-26" style="flex:1"><select style="flex:1"><option>Open</option><option>In Progress</option><option selected>Done</option></select></div>
-                                    </div>
-                                </div>
-                                <div class="edit-bar">
-                                    <button class="btn-save" onclick="saveSection('board')">Save</button>
-                                    <button class="btn-cancel" onclick="toggleEdit('board')">Cancel</button>
-                                </div>
-                            </div>
-                            <div class="card-footer" style="border-top:none;padding-top:8px">
-                                <span>5 action items &middot; 1 completed</span>
-                                <button class="btn-edit" onclick="toggleEdit('board')" id="boardEditBtn">Edit</button>
-                            </div>
-                        </div>
-
-                        <!-- Last -->
-                        <div class="board-panel" id="board-last">
-                            <div class="board-inner">
-                                <div>
-                                    <div class="sub-label">Agenda</div>
-                                    <ol class="agenda-list">
-                                        <li>Cycle 05 recap and progress review</li>
-                                        <li>Assay panel evaluation criteria finalized</li>
-                                        <li>CRO landscape assessment update</li>
-                                        <li>IP counsel engagement confirmation</li>
-                                    </ol>
                                 </div>
                                 <div>
-                                    <div class="sub-label">Action Points</div>
-                                    <table class="action-table">
-                                        <thead><tr><th>Action</th><th>Owner</th><th>Due</th><th></th></tr></thead>
-                                        <tbody>
-                                            <tr><td>Select assay panel for lead compound</td><td>CSO</td><td>Mar 18</td><td class="st-done">Done</td></tr>
-                                            <tr><td>Engage patent counsel</td><td>CSO</td><td>Mar 16</td><td class="st-done">Done</td></tr>
-                                            <tr><td>Draft CRO engagement framework</td><td>COO</td><td>Mar 20</td><td class="st-done">Done</td></tr>
-                                        </tbody>
-                                    </table>
+                                    <div class="edit-label">Action Points</div>
+                                    <div class="edit-row"><input type="text" value="Finalize CRO vendor shortlist" style="flex:3"><input type="text" value="COO" style="flex:1"><input type="date" value="2026-04-03" style="flex:1"><select style="flex:1"><option>Open</option><option selected>In Progress</option><option>Done</option></select></div>
+                                    <div class="edit-row"><input type="text" value="Submit FTO brief to board" style="flex:3"><input type="text" value="CSO" style="flex:1"><input type="date" value="2026-04-03" style="flex:1"><select style="flex:1"><option selected>Open</option><option>In Progress</option><option>Done</option></select></div>
+                                    <div class="edit-row"><input type="text" value="Prepare Q2 budget proposal" style="flex:3"><input type="text" value="COO" style="flex:1"><input type="date" value="2026-04-02" style="flex:1"><select style="flex:1"><option>Open</option><option selected>In Progress</option><option>Done</option></select></div>
+                                    <div class="edit-row"><input type="text" value="Draft investor update" style="flex:3"><input type="text" value="CEO" style="flex:1"><input type="date" value="2026-04-03" style="flex:1"><select style="flex:1"><option selected>Open</option><option>In Progress</option><option>Done</option></select></div>
+                                    <div class="edit-row"><input type="text" value="Complete assay protocol docs" style="flex:3"><input type="text" value="CSO" style="flex:1"><input type="date" value="2026-04-01" style="flex:1"><select style="flex:1"><option selected>Open</option><option>In Progress</option><option>Done</option></select></div>
                                 </div>
                             </div>
-                            <div class="card-footer" style="border-top:none;padding-top:8px">
-                                <span>W11 &middot; Mar 13, 2026</span>
-                                <span style="color:#16a34a;font-weight:500">All actions completed</span>
+                            <div class="edit-bar">
+                                <button class="btn-save" onclick="saveSection('board')">Save</button>
+                                <button class="btn-cancel" onclick="toggleEdit('board')">Cancel</button>
                             </div>
                         </div>
-
-                        <!-- History -->
-                        <div class="board-panel" id="board-history">
-                            <ul class="board-history-list">
-                                <li><span>W12 &middot; Board Meeting</span><span class="board-history-date">Mar 20, 2026</span></li>
-                                <li><span>W11 &middot; Board Meeting</span><span class="board-history-date">Mar 13, 2026</span></li>
-                                <li><span>W10 &middot; Board Meeting</span><span class="board-history-date">Mar 6, 2026</span></li>
-                                <li><span>W09 &middot; Board Meeting</span><span class="board-history-date">Feb 27, 2026</span></li>
-                                <li><span>W08 &middot; Board Meeting</span><span class="board-history-date">Feb 20, 2026</span></li>
-                            </ul>
+                        <div class="card-footer">
+                            <span>First board meeting &middot; 5 action items</span>
+                            <span>W14 &middot; Apr 3, 2026</span>
                         </div>
                     </div>
                 </div>
@@ -597,7 +518,7 @@ Investor outreach and seed extension update</textarea>
                             </div>
                         </div>
                         <div class="card-footer">
-                            <span>W12 &middot; 5 updates</span>
+                            <span>W14 &middot; 5 updates</span>
                             <span>Mar 22, 2026</span>
                         </div>
                         <div class="section-edit" id="edit-leadership">
@@ -635,7 +556,7 @@ Investor outreach and seed extension update</textarea>
                             <div class="kv-row"><div class="kv-label">IP Status</div><div class="kv-value">Freedom-to-operate analysis underway; patent counsel engaged on core mechanism</div></div>
                         </div>
                         <div class="card-footer">
-                            <span>Updated by CSO &middot; W12</span>
+                            <span>Updated by CSO &middot; W14</span>
                             <span>Mar 22, 2026</span>
                         </div>
                         <div class="section-edit" id="edit-rnd">
@@ -673,7 +594,7 @@ Investor outreach and seed extension update</textarea>
                             <div class="kv-row"><div class="kv-label">Funding Signal</div><div class="kv-value">Seed extension timeline on track; no capital constraints for current cycle</div></div>
                         </div>
                         <div class="card-footer">
-                            <span>Updated by CEO &middot; W12</span>
+                            <span>Updated by CEO &middot; W14</span>
                             <span>Mar 20, 2026</span>
                         </div>
                         <div class="section-edit" id="edit-business">
@@ -913,28 +834,7 @@ Investor outreach and seed extension update</textarea>
             }, 1200);
         }
 
-        /* ============================================== */
-        /* BOARD MEETING TOGGLE                           */
-        /* ============================================== */
-        document.getElementById('boardToggle').addEventListener('click', (e) => {
-            const btn = e.target.closest('button[data-board]');
-            if (!btn) return;
-            const view = btn.dataset.board;
-            document.querySelectorAll('#boardToggle button').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            document.querySelectorAll('.board-panel').forEach(p => p.classList.remove('active'));
-            const target = document.getElementById('board-' + view);
-            if (target) target.classList.add('active');
-
-            // Only show board edit button for "Coming" panel in update mode
-            const boardEditBtn = document.getElementById('boardEditBtn');
-            if (boardEditBtn) {
-                boardEditBtn.style.display = (_isUpdateMode && view === 'coming') ? '' : 'none';
-            }
-            // Close board edit panel when switching views
-            const boardEdit = document.getElementById('edit-board');
-            if (boardEdit) boardEdit.classList.remove('open');
-        });
+        /* Board toggle removed — first meeting, no history yet */
     </script>
 </body>
 </html>
