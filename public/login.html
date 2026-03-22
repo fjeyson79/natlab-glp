@@ -202,6 +202,37 @@
             document.head.appendChild(style);
         }
 
+        // Skinotek theme override — matches access-skinotek.html styling
+        if (wsSlug === 'skinotek') {
+            document.title = 'Login: SKINOTEK Portal';
+            document.querySelector('.welcome').style.display = 'none';
+            document.querySelector('h1').textContent = '';
+            document.querySelector('.subtitle').textContent = '';
+            const logoHtml = '<div style="text-align:center;margin-bottom:24px;">'
+                + '<img src="assets/logos/skinotek_logo.png" alt="SKINOTEK" style="max-width:800px;width:100%;display:block;margin:0 auto 20px;" onerror="this.style.display=\'none\'">'
+                + '<hr style="height:3px;background:linear-gradient(90deg,transparent,#007C91,transparent);border:none;margin:0 0 24px;border-radius:2px;">'
+                + '<p style="color:#666;font-size:13px;">Enter your password to continue</p>'
+                + '</div>';
+            document.querySelector('.container').insertAdjacentHTML('afterbegin', logoHtml);
+            const style2 = document.createElement('style');
+            style2.textContent = `
+                body { background: linear-gradient(135deg, #005f6b 0%, #007C91 50%, #009ba8 100%) !important; }
+                .container { background: #ffffff !important; box-shadow: 0 16px 56px rgba(0,0,0,0.25) !important; border-radius: 14px !important; padding: 44px 40px !important; }
+                label { color: #333 !important; font-size: 14px !important; font-weight: 600 !important; }
+                input { background: #fafbfc !important; color: #333 !important; border: 2px solid #d4dde4 !important; border-radius: 8px !important; font-size: 15px !important; }
+                input:focus { border-color: #007C91 !important; box-shadow: 0 0 0 3px rgba(0,124,145,0.12) !important; background: #fff !important; }
+                input[readonly] { background: #f0f3f5 !important; color: #888 !important; }
+                button { background: #007C91 !important; color: #fff !important; border-radius: 8px !important; font-size: 14px !important; font-weight: 600 !important; letter-spacing: 0.3px; }
+                button:hover { background: #005f6b !important; box-shadow: 0 4px 14px rgba(0,124,145,0.3) !important; }
+                button:disabled { background: #b0c4cc !important; color: #fff !important; }
+                .message.error { background: #fef0f0 !important; color: #c00 !important; border: 1px solid #fcc !important; }
+                .message.success { background: #e6f7f9 !important; color: #007C91 !important; border: 1px solid #a8dde4 !important; }
+                .back-link { color: #007C91 !important; }
+                .back-link:hover { color: #005f6b !important; }
+            `;
+            document.head.appendChild(style2);
+        }
+
         const form = document.getElementById('loginForm');
         const messageDiv = document.getElementById('message');
         const submitBtn = document.getElementById('submitBtn');

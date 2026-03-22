@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SKINOTEK Portal</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: #f4f7f8;
+            color: #2a2a2e;
+            min-height: 100vh;
+        }
+
+        /* ---- Header ---- */
+        .header {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: #ffffff;
+            border-bottom: 1px solid #d4dde4;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 28px;
+            height: 56px;
+        }
+        .header-left {
+            display: flex;
+            align-items: center;
+        }
+        .header-left img {
+            height: 36px;
+            width: auto;
+        }
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            font-size: 13px;
+        }
+        .role-badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            background: #e6f7f9;
+            color: #007C91;
+        }
+        .user-name {
+            color: #555;
+            font-weight: 500;
+        }
+        .logout-btn {
+            background: transparent;
+            color: #888;
+            border: 1px solid #d4dde4;
+            padding: 5px 14px;
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .logout-btn:hover {
+            color: #333;
+            border-color: #007C91;
+        }
+
+        /* ---- Tab Nav ---- */
+        .tab-nav {
+            background: #ffffff;
+            border-bottom: 1px solid #d4dde4;
+            padding: 0 28px;
+            display: flex;
+            gap: 0;
+        }
+        .tab-btn {
+            background: none;
+            border: none;
+            color: #888;
+            padding: 12px 20px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+        }
+        .tab-btn:hover { color: #007C91; }
+        .tab-btn.active {
+            color: #007C91;
+            border-bottom-color: #007C91;
+        }
+
+        /* ---- Main Content ---- */
+        .main {
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 40px 28px;
+        }
+        .main h2 {
+            font-size: 22px;
+            font-weight: 600;
+            color: #2a2a2e;
+            margin-bottom: 24px;
+        }
+        .empty-state {
+            background: #ffffff;
+            border: 1px solid #d4dde4;
+            border-radius: 10px;
+            padding: 48px 32px;
+            text-align: center;
+            color: #888;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-left">
+            <img src="assets/logos/skinotek_logo.png" alt="SKINOTEK" onerror="this.style.display='none'">
+        </div>
+        <div class="header-right">
+            <span class="role-badge" id="roleBadge"></span>
+            <span class="user-name" id="userName">Loading...</span>
+            <button class="logout-btn" id="logoutBtn">Logout</button>
+        </div>
+    </div>
+
+    <div class="tab-nav">
+        <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+    </div>
+
+    <div class="main">
+        <div id="tab-dashboard">
+            <h2>Dashboard</h2>
+            <div class="empty-state">
+                SKINOTEK workspace is ready. Modules will appear here as they are activated.
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function loadUser() {
+            try {
+                const response = await fetch('/api/di/me', { credentials: 'include' });
+                if (response.status === 401) {
+                    window.location.href = 'access-skinotek.html';
+                    return;
+                }
+                const data = await response.json();
+                const user = data.user || data;
+                document.getElementById('userName').textContent = user.name || user.researcher_id || '';
+                document.getElementById('roleBadge').textContent = (user.role || '').toUpperCase();
+            } catch (err) {
+                window.location.href = 'access-skinotek.html';
+            }
+        }
+        loadUser();
+
+        document.getElementById('logoutBtn').addEventListener('click', async () => {
+            try {
+                await fetch('/api/di/logout', { method: 'POST', credentials: 'include' });
+            } catch (err) {}
+            sessionStorage.clear();
+            window.location.href = 'access-skinotek.html';
+        });
+    </script>
+</body>
+</html>
