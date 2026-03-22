@@ -9038,23 +9038,17 @@ function dicBuildPdfViewerSrc(fileUrl) {
                         <div class="form-row">
                             <div>
                                 <label>Role</label>
-                                <select id="${id}_role" onchange="ucCheckCustomRole('${id}')">
+                                <select id="${id}_role" onchange="ucCheckCustomRole('${id}'); ucUpdateRoleNote('${id}');">
                                     ${ucRoleOptions(ws.slug, d.role || '')}
                                 </select>
-                                <div class="custom-role-hint" id="${id}_customHint">Custom role: access is defined manually through clearance and module settings.</div>
-                            </div>
-                            <div>
-                                <label>Membership Class</label>
-                                <select id="${id}_class">
-                                    <option value="core" ${d.membership_class === 'core' || !d.membership_class ? 'selected' : ''}>Core</option>
-                                    <option value="collaborator" ${d.membership_class === 'collaborator' ? 'selected' : ''}>Collaborator</option>
-                                </select>
+                                <div class="custom-role-hint" id="${id}_customHint">Custom role/access: privileges are defined manually through clearance and module settings.</div>
                             </div>
                         </div>
                         <div class="form-row" style="margin-top:8px;">
                             <div>
                                 <label>Clearance Profile</label>
-                                <select id="${id}_clearance">${ucClearanceOptions(d.clearance_profile || 'standard')}</select>
+                                <select id="${id}_clearance" onchange="ucClearanceChanged('${id}')">${ucClearanceOptions(d.clearance_profile || 'standard')}</select>
+                                <div class="helper-text" id="${id}_clearanceHint" style="margin-top:4px;font-size:11px;color:#666;"></div>
                             </div>
                             <div>
                                 <label>Status</label>
@@ -9065,10 +9059,23 @@ function dicBuildPdfViewerSrc(fileUrl) {
                                 </select>
                             </div>
                         </div>
+                        <div id="${id}_roleNote" style="margin-top:6px;font-size:11px;color:#7c3aed;display:none;"></div>
+                        <div id="${id}_moduleSelect" style="margin-top:8px;display:none;border:1px solid #e2e8f0;border-radius:6px;padding:8px;">
+                            <label style="font-size:11px;font-weight:600;margin-bottom:4px;display:block;">Module Access Selection</label>
+                            ${ucModuleCheckboxes(id, d.module_access_json)}
+                        </div>
                         <div class="checkbox-row" style="margin-top:8px;">
                             <label><input type="checkbox" id="${id}_sci" ${d.scientific_access !== false ? 'checked' : ''}> Scientific</label>
                             <label><input type="checkbox" id="${id}_ops" ${d.operational_access !== false ? 'checked' : ''}> Operational</label>
                             <label><input type="checkbox" id="${id}_admin" ${d.administrative_access === true ? 'checked' : ''}> Administrative</label>
+                        </div>
+                        <div style="margin-top:8px;">
+                            <label>Membership Class</label>
+                            <select id="${id}_class">
+                                <option value="core" ${d.membership_class === 'core' || !d.membership_class ? 'selected' : ''}>Core</option>
+                                <option value="collaborator" ${d.membership_class === 'collaborator' ? 'selected' : ''}>Collaborator</option>
+                            </select>
+                            <div class="helper-text" style="margin-top:2px;font-size:11px;color:#666;">Collaborator: same as Core, except Oligo Explorer is disabled.</div>
                         </div>
                         <div style="margin-top:8px;">
                             <label>Notes</label>
@@ -9089,23 +9096,98 @@ function dicBuildPdfViewerSrc(fileUrl) {
             if (hint) hint.style.display = sel.value === 'custom' ? 'block' : 'none';
         }
 
+        // Phase 1.4: Module access keys for manual selection
+        const UC_MODULE_KEYS = [
+            { key: 'upload', label: 'Upload' },
+            { key: 'glp_vision', label: 'GLP Vision' },
+            { key: 'inventory', label: 'Inventory' },
+            { key: 'training', label: 'Training' },
+            { key: 'group_documents', label: 'Group Documents' },
+            { key: 'meetings', label: 'Meetings' },
+            { key: 'glp_status', label: 'GLP Status' },
+            { key: 'oligo_explorer', label: 'Oligo Explorer' }
+        ];
+
+        // Render module checkboxes for non_scientific / custom clearance
+        function ucModuleCheckboxes(id, moduleAccessJson) {
+            let parsed = {};
+            if (moduleAccessJson) {
+                try { parsed = typeof moduleAccessJson === 'string' ? JSON.parse(moduleAccessJson) : moduleAccessJson; } catch(e) {}
+            }
+            return UC_MODULE_KEYS.map(m =>
+                `<label style="display:inline-block;margin:2px 10px 2px 0;font-size:11px;">` +
+                `<input type="checkbox" id="${id}_mod_${m.key}" ${parsed[m.key] === true ? 'checked' : ''}> ${m.label}</label>`
+            ).join('');
+        }
+
+        // Collect module access selections into JSON object
+        function ucCollectModuleAccess(id) {
+            const obj = {};
+            UC_MODULE_KEYS.forEach(m => {
+                const el = document.getElementById(id + '_mod_' + m.key);
+                if (el) obj[m.key] = el.checked;
+            });
+            return obj;
+        }
+
+        // Clearance profile helper texts
+        const UC_CLEARANCE_HINTS = {
+            upload_only: 'Upload access only. No GLP Vision or researcher tabs.',
+            standard: 'Standard: full normal access according to role.',
+            scientific: 'Scientific: Upload + GLP Vision only.',
+            non_scientific: 'Non-Scientific: manual tab/module selection mode for operational or administrative access.',
+            custom: 'Custom: manual tab/module selection mode.'
+        };
+
+        // Update clearance hint text and show/hide module selection
+        function ucClearanceChanged(id) {
+            const cp = document.getElementById(id + '_clearance')?.value || 'standard';
+            const hintEl = document.getElementById(id + '_clearanceHint');
+            const moduleEl = document.getElementById(id + '_moduleSelect');
+            if (hintEl) hintEl.textContent = UC_CLEARANCE_HINTS[cp] || '';
+            if (moduleEl) moduleEl.style.display = (cp === 'non_scientific' || cp === 'custom') ? '' : 'none';
+        }
+
+        // Show role-based note (Supervision/PI Portal are role-based)
+        function ucUpdateRoleNote(id) {
+            const role = document.getElementById(id + '_role')?.value || '';
+            const noteEl = document.getElementById(id + '_roleNote');
+            if (!noteEl) return;
+            if (role === 'supervisor') {
+                noteEl.style.display = '';
+                noteEl.textContent = 'Supervision is role-based and remains active independently of clearance profile.';
+            } else if (role === 'pi') {
+                noteEl.style.display = '';
+                noteEl.textContent = 'PI Portal is role-based and remains active independently of clearance profile.';
+            } else {
+                noteEl.style.display = 'none';
+                noteEl.textContent = '';
+            }
+        }
+
         function ucCollectWsData(prefix) {
             const result = [];
             for (const ws of ucWorkspaces) {
                 const id = prefix + '_' + ws.slug;
                 const enabledEl = document.getElementById(id + '_enabled');
                 if (!enabledEl || !enabledEl.checked) continue;
-                result.push({
+                const cp = document.getElementById(id + '_clearance')?.value || 'standard';
+                const entry = {
                     workspace_slug: ws.slug,
                     role: document.getElementById(id + '_role')?.value || '',
                     membership_class: document.getElementById(id + '_class')?.value || 'core',
-                    clearance_profile: document.getElementById(id + '_clearance')?.value || 'standard',
+                    clearance_profile: cp,
                     status: document.getElementById(id + '_status')?.value || 'active',
                     scientific_access: document.getElementById(id + '_sci')?.checked !== false,
                     operational_access: document.getElementById(id + '_ops')?.checked !== false,
                     administrative_access: document.getElementById(id + '_admin')?.checked === true,
                     notes: document.getElementById(id + '_notes')?.value || ''
-                });
+                };
+                // Include module_access_json for non_scientific/custom
+                if (cp === 'non_scientific' || cp === 'custom') {
+                    entry.module_access_json = ucCollectModuleAccess(id);
+                }
+                result.push(entry);
             }
             return result;
         }
@@ -9114,11 +9196,24 @@ function dicBuildPdfViewerSrc(fileUrl) {
         function ucInitAddUserWorkspaces() {
             const container = document.getElementById('addUserWorkspaces');
             if (!container) return;
+            // Phase 1.4: Check affiliation for smart default clearance
+            const affEl = document.getElementById('newUserAffiliation');
+            const aff = affEl ? affEl.value : '';
+            const defaultClearance = aff === 'EXTERNAL' ? 'upload_only' : 'standard';
             container.innerHTML = ucWorkspaces.map(ws =>
-                ucRenderWsRow(ws, { _enabled: ws.slug === 'natlab', role: ws.slug === 'natlab' ? 'researcher' : '' }, 'addWs')
+                ucRenderWsRow(ws, {
+                    _enabled: ws.slug === 'natlab',
+                    role: ws.slug === 'natlab' ? 'researcher' : '',
+                    clearance_profile: ws.slug === 'natlab' ? defaultClearance : 'standard'
+                }, 'addWs')
             ).join('');
-            // Init custom hints
-            ucWorkspaces.forEach(ws => ucCheckCustomRole('addWs_' + ws.slug));
+            // Init custom hints, clearance hints, role notes
+            ucWorkspaces.forEach(ws => {
+                const id = 'addWs_' + ws.slug;
+                ucCheckCustomRole(id);
+                ucClearanceChanged(id);
+                ucUpdateRoleNote(id);
+            });
         }
 
         // ---- loadAllUsers (Phase 1.3 — with workspace badges & clearance button) ----
@@ -9238,8 +9333,13 @@ function dicBuildPdfViewerSrc(fileUrl) {
                     </div>
                 `;
 
-                // Init custom role hints
-                ucWorkspaces.forEach(ws => ucCheckCustomRole('ucWs_' + ws.slug));
+                // Init custom role hints, clearance hints, role notes, module selection visibility
+                ucWorkspaces.forEach(ws => {
+                    const id = 'ucWs_' + ws.slug;
+                    ucCheckCustomRole(id);
+                    ucClearanceChanged(id);
+                    ucUpdateRoleNote(id);
+                });
 
             } catch (err) {
                 body.innerHTML = '<div style="color:#dc3545;">Error loading clearance data. Please try again.</div>';
@@ -9283,7 +9383,12 @@ function dicBuildPdfViewerSrc(fileUrl) {
             }
         }
 
-        // ---- Add User form (Phase 1.3 — governance-aware) ----
+        // Phase 1.4: Re-render workspace defaults when affiliation changes during Add New User
+        document.getElementById('newUserAffiliation')?.addEventListener('change', () => {
+            ucInitAddUserWorkspaces();
+        });
+
+        // ---- Add User form (Phase 1.4 — governance-aware with smart defaults) ----
         document.getElementById('addUserForm').addEventListener('submit', async (e) => {
             e.preventDefault();
 

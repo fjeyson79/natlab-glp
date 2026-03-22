@@ -414,15 +414,46 @@ function requireSupervisor(req, res, next) {
     next();
 }
 
-// INTERNAL MIDDLEWARE - blocks external affiliations from inventory
-function requireInternal(req, res, next) {
+// INTERNAL MIDDLEWARE - Phase 1.4: checks effective access for inventory
+// External users with standard/scientific clearance now get inventory access.
+async function requireInternal(req, res, next) {
     if (!req.session.user) {
         return res.status(401).json({ error: 'Not authenticated' });
     }
-    if (req.session.user.affiliation === 'EXTERNAL') {
-        return res.status(403).json({ error: 'Inventory access is restricted to internal members.' });
+    const user = req.session.user;
+    // If not External, always allow (LiU/UNAV baseline)
+    if (user.affiliation !== 'EXTERNAL') {
+        return next();
     }
-    next();
+    // External: check if clearance_profile grants inventory access
+    try {
+        const hasWu = await checkWuTable();
+        const hasClearance = await checkWuClearanceCols();
+        const hasModuleAccess = await checkModuleAccessCol();
+        if (hasWu && hasClearance) {
+            const moduleCol = hasModuleAccess ? ', wu.module_access_json' : '';
+            const result = await pool.query(
+                `SELECT wu.clearance_profile, wu.membership_class ${moduleCol}
+                 FROM workspace_users wu
+                 JOIN workspaces w ON w.id = wu.workspace_id
+                 WHERE wu.user_id = $1 AND w.slug = 'natlab'`,
+                [user.researcher_id]
+            );
+            if (result.rows.length > 0) {
+                const access = computeEffectiveAccess({
+                    role: user.role,
+                    affiliation: user.affiliation,
+                    clearance_profile: result.rows[0].clearance_profile,
+                    membership_class: result.rows[0].membership_class,
+                    module_access_json: hasModuleAccess ? result.rows[0].module_access_json : null
+                });
+                if (access.inventory) return next();
+            }
+        }
+    } catch (err) {
+        console.error('requireInternal clearance check error:', err);
+    }
+    return res.status(403).json({ error: 'Inventory access is restricted to internal members.' });
 }
 
 // API ENDPOINTS
@@ -617,6 +648,120 @@ async function checkWsTable() {
         }
     }
     return wsTableExists;
+}
+
+// Helper function to check if module_access_json column exists (migration 042)
+let moduleAccessColExists = null;
+let moduleAccessColLastCheck = 0;
+
+async function checkModuleAccessCol() {
+    const now = Date.now();
+    if (moduleAccessColExists === null || moduleAccessColExists === false || (now - moduleAccessColLastCheck > ROLE_COLUMN_CHECK_INTERVAL)) {
+        try {
+            const result = await pool.query(`
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'workspace_users' AND column_name = 'module_access_json'
+            `);
+            moduleAccessColExists = result.rows.length > 0;
+            moduleAccessColLastCheck = now;
+        } catch (err) {
+            moduleAccessColExists = false;
+        }
+    }
+    return moduleAccessColExists;
+}
+
+// Phase 1.4: Compute effective access flags for a user in a workspace
+// Combines role, affiliation, clearance_profile, membership_class, and manual module selections.
+// Returns an object with boolean flags for each module/surface.
+function computeEffectiveAccess({ role, affiliation, clearance_profile, membership_class, module_access_json }) {
+    const r = (role || 'researcher').toLowerCase();
+    const cp = clearance_profile || 'standard';
+    const mc = membership_class || 'core';
+
+    // Start with all modules disabled
+    const access = {
+        upload: false,
+        glp_vision: false,
+        inventory: false,
+        training: false,
+        group_documents: false,
+        meetings: false,
+        glp_status: false,
+        supervision: false,
+        pi_portal: false,
+        oligo_explorer: false,
+        user_control: false,
+        backup: false,
+        modules: false
+    };
+
+    // Role-based privileges (always granted regardless of clearance)
+    if (r === 'supervisor') {
+        access.supervision = true;
+    }
+    if (r === 'pi') {
+        access.pi_portal = true;
+        access.user_control = true;
+        access.backup = true;
+        access.modules = true;
+    }
+
+    // Clearance-based module access
+    if (cp === 'upload_only') {
+        access.upload = true;
+        // upload_only: only upload access (plus role-based surfaces above)
+    } else if (cp === 'scientific') {
+        // scientific: Upload + GLP Vision only (plus role-based surfaces)
+        access.upload = true;
+        access.glp_vision = true;
+    } else if (cp === 'standard') {
+        // standard: full normal access according to role
+        access.upload = true;
+        access.glp_vision = true;
+        access.inventory = true;
+        access.training = true;
+        access.group_documents = true;
+        access.meetings = true;
+        access.glp_status = true;
+        access.oligo_explorer = true;
+    } else if (cp === 'non_scientific' || cp === 'custom') {
+        // Manual selection mode: use module_access_json if available
+        let manualAccess = {};
+        if (module_access_json) {
+            try {
+                manualAccess = typeof module_access_json === 'string'
+                    ? JSON.parse(module_access_json)
+                    : module_access_json;
+            } catch (e) { /* ignore parse errors, default to empty */ }
+        }
+        // Apply manual selections
+        access.upload = manualAccess.upload === true;
+        access.glp_vision = manualAccess.glp_vision === true;
+        access.inventory = manualAccess.inventory === true;
+        access.training = manualAccess.training === true;
+        access.group_documents = manualAccess.group_documents === true;
+        access.meetings = manualAccess.meetings === true;
+        access.glp_status = manualAccess.glp_status === true;
+        access.oligo_explorer = manualAccess.oligo_explorer === true;
+    }
+
+    // Membership class restriction: collaborator disables Oligo Explorer
+    if (mc === 'collaborator') {
+        access.oligo_explorer = false;
+    }
+
+    // Role-based surfaces are NEVER removed by clearance
+    // (re-assert after clearance logic to guarantee)
+    if (r === 'supervisor') access.supervision = true;
+    if (r === 'pi') {
+        access.pi_portal = true;
+        access.user_control = true;
+        access.backup = true;
+        access.modules = true;
+    }
+
+    return access;
 }
 
 // Helper function to check if vision columns exist on di_file_associations (migration 021)
@@ -1003,6 +1148,60 @@ app.get('/api/di/me', requireAuth, (req, res) => {
         role: req.session.user.role || 'researcher',
         institution_email: req.session.user.institution_email
     });
+});
+
+// GET /api/di/effective-access
+// Phase 1.4: Compute effective access for the current user in a workspace (default: natlab)
+app.get('/api/di/effective-access', requireAuth, async (req, res) => {
+    try {
+        const user = req.session.user;
+        const wsSlug = req.query.workspace || 'natlab';
+
+        const hasWu = await checkWuTable();
+        const hasClearance = await checkWuClearanceCols();
+        const hasModuleAccess = await checkModuleAccessCol();
+
+        let clearance_profile = 'standard';
+        let membership_class = 'core';
+        let module_access_json = null;
+
+        if (hasWu && hasClearance) {
+            const moduleCol = hasModuleAccess ? ', wu.module_access_json' : '';
+            const result = await pool.query(
+                `SELECT wu.clearance_profile, wu.membership_class ${moduleCol}
+                 FROM workspace_users wu
+                 JOIN workspaces w ON w.id = wu.workspace_id
+                 WHERE wu.user_id = $1 AND w.slug = $2`,
+                [user.researcher_id, wsSlug]
+            );
+            if (result.rows.length > 0) {
+                clearance_profile = result.rows[0].clearance_profile || 'standard';
+                membership_class = result.rows[0].membership_class || 'core';
+                module_access_json = hasModuleAccess ? result.rows[0].module_access_json : null;
+            }
+        }
+
+        const access = computeEffectiveAccess({
+            role: user.role,
+            affiliation: user.affiliation,
+            clearance_profile,
+            membership_class,
+            module_access_json
+        });
+
+        res.json({
+            success: true,
+            researcher_id: user.researcher_id,
+            role: user.role,
+            affiliation: user.affiliation,
+            clearance_profile,
+            membership_class,
+            access
+        });
+    } catch (err) {
+        console.error('Effective access error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
 });
 
 // =====================================================
@@ -2666,10 +2865,15 @@ app.post('/api/di/members', requirePI, async (req, res) => {
             );
         }
 
-        // Phase 1.3: Create workspace memberships if provided
+        // Phase 1.4: Create workspace memberships with smart defaults
         const { workspaces: wsList } = req.body;
         const hasWu = await checkWuTable();
         const hasClearance = await checkWuClearanceCols();
+        const hasModuleAccess = await checkModuleAccessCol();
+
+        // Phase 1.4: Smart default — External gets upload_only unless PI explicitly set clearance
+        const defaultClearance = affiliation === 'EXTERNAL' ? 'upload_only' : 'standard';
+
         if (hasWu && Array.isArray(wsList) && wsList.length > 0) {
             for (const ws of wsList) {
                 if (!ws.workspace_slug) continue;
@@ -2680,8 +2884,31 @@ app.post('/api/di/members', requirePI, async (req, res) => {
                 const wsId = wsRes.rows[0].id;
                 const wsRole = ws.role || (ws.workspace_slug === 'natlab' ? memberRole : 'admin');
                 const isActive = ws.status !== 'suspended' && ws.status !== 'removed';
+                const cpValue = ws.clearance_profile || defaultClearance;
+                const moduleJson = (hasModuleAccess && ws.module_access_json !== undefined)
+                    ? (typeof ws.module_access_json === 'string' ? ws.module_access_json : JSON.stringify(ws.module_access_json))
+                    : null;
 
-                if (hasClearance) {
+                if (hasClearance && hasModuleAccess) {
+                    await pool.query(
+                        `INSERT INTO workspace_users (workspace_id, user_id, role, is_active,
+                            membership_class, clearance_profile, scientific_access,
+                            operational_access, administrative_access, status, notes, module_access_json)
+                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                         ON CONFLICT (workspace_id, user_id) DO NOTHING`,
+                        [
+                            wsId, researcher_id, wsRole, isActive,
+                            ws.membership_class || 'core',
+                            cpValue,
+                            ws.scientific_access !== false,
+                            ws.operational_access !== false,
+                            ws.administrative_access === true,
+                            ws.status || 'active',
+                            ws.notes || null,
+                            moduleJson
+                        ]
+                    );
+                } else if (hasClearance) {
                     await pool.query(
                         `INSERT INTO workspace_users (workspace_id, user_id, role, is_active,
                             membership_class, clearance_profile, scientific_access,
@@ -2691,7 +2918,7 @@ app.post('/api/di/members', requirePI, async (req, res) => {
                         [
                             wsId, researcher_id, wsRole, isActive,
                             ws.membership_class || 'core',
-                            ws.clearance_profile || 'standard',
+                            cpValue,
                             ws.scientific_access !== false,
                             ws.operational_access !== false,
                             ws.administrative_access === true,
@@ -4471,10 +4698,12 @@ app.get('/api/di/user-clearance/:id', requirePI, async (req, res) => {
         let memberships = [];
         const hasWu = await checkWuTable();
         const hasClearance = await checkWuClearanceCols();
+        const hasModuleAccess = await checkModuleAccessCol();
         if (hasWu) {
+            const moduleCol = hasModuleAccess ? ', wu.module_access_json' : '';
             const clearanceCols = hasClearance
                 ? `, wu.membership_class, wu.clearance_profile, wu.scientific_access,
-                     wu.operational_access, wu.administrative_access, wu.status, wu.notes`
+                     wu.operational_access, wu.administrative_access, wu.status, wu.notes${moduleCol}`
                 : `, 'core' as membership_class, 'standard' as clearance_profile,
                      true as scientific_access, true as operational_access, false as administrative_access,
                      CASE WHEN wu.is_active THEN 'active' ELSE 'suspended' END as status, NULL as notes`;
@@ -4527,6 +4756,7 @@ app.put('/api/di/user-clearance/:id', requirePI, async (req, res) => {
             // Update workspace memberships if tables exist and data provided
             const hasWu = await checkWuTable();
             const hasClearance = await checkWuClearanceCols();
+            const hasModuleAccess = await checkModuleAccessCol();
             if (hasWu && Array.isArray(memberships)) {
                 for (const m of memberships) {
                     if (!m.workspace_slug) continue;
@@ -4545,7 +4775,42 @@ app.put('/api/di/user-clearance/:id', requirePI, async (req, res) => {
 
                     const isActive = m.status !== 'suspended' && m.status !== 'removed';
 
-                    if (hasClearance) {
+                    // Prepare module_access_json (only for non_scientific/custom)
+                    const moduleJson = (hasModuleAccess && m.module_access_json !== undefined)
+                        ? (typeof m.module_access_json === 'string' ? m.module_access_json : JSON.stringify(m.module_access_json))
+                        : null;
+
+                    if (hasClearance && hasModuleAccess) {
+                        await client.query(
+                            `INSERT INTO workspace_users (workspace_id, user_id, role, is_active,
+                                membership_class, clearance_profile, scientific_access,
+                                operational_access, administrative_access, status, notes, module_access_json)
+                             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                             ON CONFLICT (workspace_id, user_id) DO UPDATE SET
+                                role = EXCLUDED.role,
+                                is_active = EXCLUDED.is_active,
+                                membership_class = EXCLUDED.membership_class,
+                                clearance_profile = EXCLUDED.clearance_profile,
+                                scientific_access = EXCLUDED.scientific_access,
+                                operational_access = EXCLUDED.operational_access,
+                                administrative_access = EXCLUDED.administrative_access,
+                                status = EXCLUDED.status,
+                                notes = EXCLUDED.notes,
+                                module_access_json = EXCLUDED.module_access_json,
+                                updated_at = NOW()`,
+                            [
+                                wsId, id, role, isActive,
+                                m.membership_class || 'core',
+                                m.clearance_profile || 'standard',
+                                m.scientific_access !== false,
+                                m.operational_access !== false,
+                                m.administrative_access === true,
+                                m.status || 'active',
+                                m.notes || null,
+                                moduleJson
+                            ]
+                        );
+                    } else if (hasClearance) {
                         await client.query(
                             `INSERT INTO workspace_users (workspace_id, user_id, role, is_active,
                                 membership_class, clearance_profile, scientific_access,

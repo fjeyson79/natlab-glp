@@ -2474,7 +2474,7 @@
                 badge.textContent = user.affiliation;
                 badge.classList.add(user.affiliation);
 
-                // Check if user is a supervisor - show supervision tab
+                // Check if user is a supervisor - show supervision tab (role-based, always)
                 currentUserRole = (user.role || '').toLowerCase();
                 if (currentUserRole === 'supervisor') {
                     document.getElementById('roleBadge').classList.remove('hidden');
@@ -2488,9 +2488,38 @@
                     if (intdocsSel) intdocsSel.style.display = '';
                 }
 
-                // Show purchase & inventory section nav for internal users
-                if (user.affiliation !== 'EXTERNAL') {
-                    document.getElementById('sectionNav').style.display = 'flex';
+                // Phase 1.4: Use effective access to control section nav visibility
+                // Replaces hardcoded affiliation !== 'EXTERNAL' check
+                try {
+                    const eaResp = await fetch('/api/di/effective-access', { credentials: 'include' });
+                    if (eaResp.ok) {
+                        const eaData = await eaResp.json();
+                        const ea = eaData.access || {};
+                        // Show section nav if user has any non-upload access
+                        const hasNav = ea.inventory || ea.training || ea.glp_vision || ea.glp_status;
+                        if (hasNav) {
+                            document.getElementById('sectionNav').style.display = 'flex';
+                        }
+                        // Hide specific section buttons based on effective access
+                        const invBtn = document.querySelector('[data-section="inventory"]');
+                        if (invBtn && !ea.inventory) invBtn.style.display = 'none';
+                        const trainBtn = document.querySelector('[data-section="training"]');
+                        if (trainBtn && !ea.training) trainBtn.style.display = 'none';
+                        const glpVBtn = document.querySelector('[data-section="glpVision"]');
+                        if (glpVBtn && !ea.glp_vision) glpVBtn.style.display = 'none';
+                        const glpSBtn = document.getElementById('tabGLPStatus');
+                        if (glpSBtn && !ea.glp_status) glpSBtn.style.display = 'none';
+                    } else {
+                        // Fallback: legacy behavior for pre-migration setups
+                        if (user.affiliation !== 'EXTERNAL') {
+                            document.getElementById('sectionNav').style.display = 'flex';
+                        }
+                    }
+                } catch (eaErr) {
+                    // Fallback: legacy behavior
+                    if (user.affiliation !== 'EXTERNAL') {
+                        document.getElementById('sectionNav').style.display = 'flex';
+                    }
                 }
 
                 // Load files and group documents after user info
