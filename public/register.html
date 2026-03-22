@@ -181,6 +181,71 @@
         if (wsSlug === 'skinotek') document.getElementById('backLink').href = 'access-skinotek.html';
         else if (wsSlug === 'theralia') document.getElementById('backLink').href = 'access-theralia.html';
 
+        // Theralia theme override — matches access-theralia.html / login ws=theralia styling
+        if (wsSlug === 'theralia') {
+            document.title = 'Register: Theralia Portal';
+            document.querySelector('.welcome').style.display = 'none';
+            document.querySelector('h1').textContent = '';
+            document.querySelector('.subtitle').textContent = '';
+            const logoHtml = '<div style="text-align:center;margin-bottom:24px;">'
+                + '<img src="assets/logos/theralia_logo.png" alt="Theralia" style="max-width:240px;display:block;margin:0 auto 20px;" onerror="this.style.display=\'none\'">'
+                + '<hr style="height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.15),transparent);border:none;margin:0 0 24px;">'
+                + '<p style="color:#78787f;font-size:13px;">Create your account to continue</p>'
+                + '</div>';
+            document.querySelector('.container').insertAdjacentHTML('afterbegin', logoHtml);
+            const s = document.createElement('style');
+            s.textContent = `
+                body { background: linear-gradient(135deg, #1a1a1f 0%, #2a2a32 50%, #1e1e26 100%) !important; }
+                .container { background: #111114 !important; box-shadow: 0 16px 56px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.06) !important; border-radius: 14px !important; padding: 44px 40px !important; }
+                label { color: #c8c8cf !important; font-size: 14px !important; font-weight: 600 !important; }
+                .optional { color: #55555f !important; }
+                .password-hint { color: #55555f !important; }
+                input { background: #1a1a20 !important; color: #e8e8ef !important; border: 2px solid #333340 !important; border-radius: 8px !important; font-size: 15px !important; }
+                input:focus { border-color: #ffffff !important; box-shadow: 0 0 0 3px rgba(255,255,255,0.08) !important; background: #1e1e26 !important; }
+                input[readonly] { background: #151518 !important; color: #55555f !important; }
+                input::placeholder { color: #55555f !important; }
+                button { background: #ffffff !important; color: #111114 !important; border-radius: 8px !important; font-size: 14px !important; font-weight: 600 !important; letter-spacing: 0.3px; }
+                button:hover { background: #e0e0e8 !important; box-shadow: 0 4px 18px rgba(255,255,255,0.12) !important; }
+                button:disabled { background: #444450 !important; color: #777 !important; }
+                .message.error { background: #2a1515 !important; color: #ff6b6b !important; border: 1px solid #4a2020 !important; }
+                .message.success { background: #152a15 !important; color: #6bff6b !important; border: 1px solid #204a20 !important; }
+                .back-link { color: #78787f !important; }
+                .back-link:hover { color: #c8c8cf !important; }
+            `;
+            document.head.appendChild(s);
+        }
+
+        // Skinotek theme override — matches access-skinotek.html / login ws=skinotek styling
+        if (wsSlug === 'skinotek') {
+            document.title = 'Register: SKINOTEK Portal';
+            document.querySelector('.welcome').style.display = 'none';
+            document.querySelector('h1').textContent = '';
+            document.querySelector('.subtitle').textContent = '';
+            const logoHtml = '<div style="text-align:center;margin-bottom:24px;">'
+                + '<img src="assets/logos/skinotek_logo.png" alt="SKINOTEK" style="max-width:800px;width:100%;display:block;margin:0 auto 20px;" onerror="this.style.display=\'none\'">'
+                + '<hr style="height:3px;background:linear-gradient(90deg,transparent,#007C91,transparent);border:none;margin:0 0 24px;border-radius:2px;">'
+                + '<p style="color:#666;font-size:13px;">Create your account to continue</p>'
+                + '</div>';
+            document.querySelector('.container').insertAdjacentHTML('afterbegin', logoHtml);
+            const s = document.createElement('style');
+            s.textContent = `
+                body { background: linear-gradient(135deg, #005f6b 0%, #007C91 50%, #009ba8 100%) !important; }
+                .container { background: #ffffff !important; box-shadow: 0 16px 56px rgba(0,0,0,0.25) !important; border-radius: 14px !important; padding: 44px 40px !important; }
+                label { color: #333 !important; font-size: 14px !important; font-weight: 600 !important; }
+                input { background: #fafbfc !important; color: #333 !important; border: 2px solid #d4dde4 !important; border-radius: 8px !important; font-size: 15px !important; }
+                input:focus { border-color: #007C91 !important; box-shadow: 0 0 0 3px rgba(0,124,145,0.12) !important; background: #fff !important; }
+                input[readonly] { background: #f0f3f5 !important; color: #888 !important; }
+                button { background: #007C91 !important; color: #fff !important; border-radius: 8px !important; font-size: 14px !important; font-weight: 600 !important; letter-spacing: 0.3px; }
+                button:hover { background: #005f6b !important; box-shadow: 0 4px 14px rgba(0,124,145,0.3) !important; }
+                button:disabled { background: #b0c4cc !important; color: #fff !important; }
+                .message.error { background: #fef0f0 !important; color: #c00 !important; border: 1px solid #fcc !important; }
+                .message.success { background: #e6f7f9 !important; color: #007C91 !important; border: 1px solid #a8dde4 !important; }
+                .back-link { color: #007C91 !important; }
+                .back-link:hover { color: #005f6b !important; }
+            `;
+            document.head.appendChild(s);
+        }
+
         const form = document.getElementById('registerForm');
         const messageDiv = document.getElementById('message');
         const submitBtn = document.getElementById('submitBtn');
