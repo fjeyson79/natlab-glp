@@ -168,6 +168,40 @@
         if (wsSlug === 'skinotek') document.getElementById('backLink').href = 'access-skinotek.html';
         else if (wsSlug === 'theralia') document.getElementById('backLink').href = 'access-theralia.html';
 
+        // Theralia theme override — matches access-theralia.html styling
+        if (wsSlug === 'theralia') {
+            document.title = 'Login: Theralia Portal';
+            // Hide NAT-Lab identity elements
+            document.querySelector('.welcome').style.display = 'none';
+            document.querySelector('h1').textContent = '';
+            document.querySelector('.subtitle').textContent = '';
+            // Inject Theralia logo + dark theme
+            const logoHtml = '<div style="text-align:center;margin-bottom:24px;">'
+                + '<img src="assets/logos/theralia_logo.png" alt="Theralia" style="max-width:240px;display:block;margin:0 auto 20px;" onerror="this.style.display=\'none\'">'
+                + '<hr style="height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.15),transparent);border:none;margin:0 0 24px;">'
+                + '<p style="color:#78787f;font-size:13px;">Enter your password to continue</p>'
+                + '</div>';
+            document.querySelector('.container').insertAdjacentHTML('afterbegin', logoHtml);
+            // Apply dark theme CSS
+            const style = document.createElement('style');
+            style.textContent = `
+                body { background: linear-gradient(135deg, #1a1a1f 0%, #2a2a32 50%, #1e1e26 100%) !important; }
+                .container { background: #111114 !important; box-shadow: 0 16px 56px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.06) !important; border-radius: 14px !important; padding: 44px 40px !important; }
+                label { color: #c8c8cf !important; font-size: 14px !important; font-weight: 600 !important; }
+                input { background: #1a1a20 !important; color: #e8e8ef !important; border: 2px solid #333340 !important; border-radius: 8px !important; font-size: 15px !important; }
+                input:focus { border-color: #ffffff !important; box-shadow: 0 0 0 3px rgba(255,255,255,0.08) !important; background: #1e1e26 !important; }
+                input[readonly] { background: #151518 !important; color: #55555f !important; }
+                button { background: #ffffff !important; color: #111114 !important; border-radius: 8px !important; font-size: 14px !important; font-weight: 600 !important; letter-spacing: 0.3px; }
+                button:hover { background: #e0e0e8 !important; box-shadow: 0 4px 18px rgba(255,255,255,0.12) !important; }
+                button:disabled { background: #444450 !important; color: #777 !important; }
+                .message.error { background: #2a1515 !important; color: #ff6b6b !important; border: 1px solid #4a2020 !important; }
+                .message.success { background: #152a15 !important; color: #6bff6b !important; border: 1px solid #204a20 !important; }
+                .back-link { color: #78787f !important; }
+                .back-link:hover { color: #c8c8cf !important; }
+            `;
+            document.head.appendChild(style);
+        }
+
         const form = document.getElementById('loginForm');
         const messageDiv = document.getElementById('message');
         const submitBtn = document.getElementById('submitBtn');
