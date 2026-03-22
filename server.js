@@ -2834,8 +2834,33 @@ app.post('/api/di/members', requirePI, async (req, res) => {
             }
         }
 
-        const memberRole = role || 'researcher';
-        if (!['researcher', 'supervisor', 'pi', 'custom'].includes(memberRole)) {
+        // Workspace-aware role validation
+        const VALID_LAB_ROLES = ['researcher', 'supervisor', 'pi', 'custom'];
+        const VALID_COMPANY_ROLES = ['founder', 'admin', 'r_and_d', 'advisor', 'investor', 'custom'];
+
+        // Determine which role sets are valid based on assigned workspaces
+        const wsList_ = req.body.workspaces;
+        let allowedRoles;
+        if (Array.isArray(wsList_) && wsList_.length > 0) {
+            const hasLab = wsList_.some(w => w.workspace_slug === 'natlab');
+            const hasCompany = wsList_.some(w => w.workspace_slug && w.workspace_slug !== 'natlab');
+            if (hasLab && hasCompany) {
+                allowedRoles = [...new Set([...VALID_LAB_ROLES, ...VALID_COMPANY_ROLES])];
+            } else if (hasCompany) {
+                allowedRoles = VALID_COMPANY_ROLES;
+            } else {
+                allowedRoles = VALID_LAB_ROLES;
+            }
+        } else {
+            // No workspaces provided — legacy LAB-only behavior
+            allowedRoles = VALID_LAB_ROLES;
+        }
+
+        const memberRole = role || (allowedRoles.includes('researcher') ? 'researcher' : allowedRoles[0]);
+        if (!allowedRoles.includes(memberRole)) {
+            if (allowedRoles === VALID_COMPANY_ROLES) {
+                return res.status(400).json({ error: 'Role must be founder, admin, r_and_d, advisor, investor, or custom' });
+            }
             return res.status(400).json({ error: 'Role must be researcher, supervisor, pi, or custom' });
         }
 
