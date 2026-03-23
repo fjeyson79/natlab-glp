@@ -96,7 +96,7 @@
             content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor;
         }
         .mode-toggle {
-            display: flex; background: #eceef2; border-radius: 8px; overflow: hidden;
+            display: flex; background: #e8eaed; border-radius: 8px; overflow: hidden;
         }
         .mode-toggle button {
             background: none; border: none; color: #7a7e8a;
@@ -104,8 +104,8 @@
             cursor: pointer; transition: all 0.2s; font-family: inherit;
         }
         .mode-toggle button.active {
-            background: #ffffff; color: #1a1c22;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            background: #1a7a4e; color: #f0faf5;
+            box-shadow: 0 1px 4px rgba(26,122,78,0.18);
         }
 
         /* ---- Indicator Row ---- */
@@ -116,20 +116,21 @@
             margin-bottom: 18px;
         }
         .indicator-box {
-            background: #ffffff;
-            border: 1px solid rgba(0,0,0,0.06);
+            background: #edeef1;
+            border: 1px solid rgba(0,0,0,0.04);
             border-radius: 10px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+            box-shadow: 0 1px 4px rgba(0,0,0,0.03);
             padding: 16px 20px;
             display: flex;
             align-items: center;
             gap: 14px;
             cursor: pointer;
-            transition: border-color 0.15s, box-shadow 0.15s;
+            transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
         }
         .indicator-box:hover {
-            border-color: rgba(0,0,0,0.12);
-            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+            background: #e6e7eb;
+            border-color: rgba(0,0,0,0.08);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
         }
         .indicator-num {
             font-size: 28px;
@@ -607,7 +608,6 @@
                     <select class="cycle-select" id="cycleSelect">
                         <option value="2026-w14" selected>W14 &middot; Mar 30 &ndash; Apr 5, 2026</option>
                     </select>
-                    <span class="status-pill stable" id="overallStatus">Stable</span>
                     <div class="mode-toggle" id="modeToggle">
                         <button class="active" data-mode="view">View</button>
                         <button data-mode="update">Update</button>
