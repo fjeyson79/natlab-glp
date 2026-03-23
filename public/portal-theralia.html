@@ -506,6 +506,11 @@
         }
         .co-doc-btn:hover { color: #555a66; }
         .co-doc-btn.danger:hover { color: #dc2626; }
+        .co-doc-btn.open-btn {
+            background: #1a1c22; color: #ffffff; border-radius: 4px;
+            padding: 2px 8px; font-weight: 500;
+        }
+        .co-doc-btn.open-btn:hover { background: #2e3039; color: #ffffff; }
         .co-upload-btn {
             background: none; border: 1px dashed rgba(0,0,0,0.12);
             border-radius: 6px; padding: 5px 12px; font-size: 11px;
@@ -825,6 +830,10 @@
                         <div style="font-size:19px;font-weight:600;color:#1a1c22;letter-spacing:-0.2px">Theralia AB</div>
                         <div style="font-size:12px;color:#8b8f9a;margin-top:3px">Private limited company &middot; Biotech R&amp;D, diagnostics and therapy</div>
                     </div>
+                    <div class="mode-toggle" id="coModeToggle">
+                        <button class="active" data-mode="view">View</button>
+                        <button data-mode="update">Update</button>
+                    </div>
                 </div>
                 <div class="co-snap-grid">
                     <div class="co-snap-item"><span class="co-snap-label">Org No.</span><span class="co-snap-val">559305-1393</span></div>
@@ -1120,6 +1129,40 @@
         /* ============================================== */
         /* COMPANY TAB                                    */
         /* ============================================== */
+        let _coUpdateMode = false;
+
+        document.getElementById('coModeToggle').addEventListener('click', (e) => {
+            const btn = e.target.closest('button[data-mode]');
+            if (!btn) return;
+            const mode = btn.dataset.mode;
+            document.querySelectorAll('#coModeToggle button').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            _coUpdateMode = mode === 'update';
+
+            // Close any open edit/history panels when switching to View
+            if (!_coUpdateMode) {
+                document.querySelectorAll('.co-edit-area.open').forEach(el => el.classList.remove('open'));
+                document.querySelectorAll('.co-history-panel.open').forEach(el => el.classList.remove('open'));
+            }
+
+            coApplyMode();
+        });
+
+        function coApplyMode() {
+            // Section controls (Edit, Archive buttons)
+            document.querySelectorAll('.co-section-controls').forEach(el => {
+                el.style.display = _coUpdateMode ? '' : 'none';
+            });
+            // Upload buttons
+            document.querySelectorAll('.co-upload-btn').forEach(el => {
+                el.style.display = _coUpdateMode ? '' : 'none';
+            });
+            // Delete buttons on documents
+            document.querySelectorAll('.co-doc-btn.danger').forEach(el => {
+                el.style.display = _coUpdateMode ? '' : 'none';
+            });
+        }
+
         const CO_WS = 'theralia';
         const CO_SECTIONS = [
             {
@@ -1205,7 +1248,7 @@
             return '<span class="co-badge missing">Missing</span>';
         }
 
-        function coRenderSection(sec) {
+        function coRenderSection(sec, skipMode) {
             const st = coState[sec.key];
             const lines = st.statement?.content?.lines || sec.initial;
             const el = document.getElementById('co-sec-' + sec.key);
@@ -1230,12 +1273,14 @@
                         ${d.category ? '<span class="co-doc-tag">' + coEsc(d.category) + '</span>' : ''}
                         <span class="co-doc-tag">${new Date(d.uploaded_at).toLocaleDateString('sv-SE')}</span>
                         <div class="co-doc-actions">
-                            <button class="co-doc-btn" onclick="coOpenDoc('${d.id}')" title="Open">Open</button>
-                            <button class="co-doc-btn danger" onclick="coDeleteDoc('${sec.key}','${d.id}')" title="Remove">&times;</button>
+                            <button class="co-doc-btn open-btn" onclick="coOpenDoc('${d.id}')" title="Open">Open</button>
+                            <button class="co-doc-btn danger" onclick="coDeleteDoc('${sec.key}','${d.id}')" title="Remove" style="${_coUpdateMode ? '' : 'display:none'}">&times;</button>
                         </div>
                     </div>
                 `).join('');
             }
+
+            if (!skipMode) coApplyMode();
         }
 
         function coRenderAll() {
@@ -1273,7 +1318,8 @@
                     </div>
                 `).join('');
             }
-            CO_SECTIONS.forEach(sec => coRenderSection(sec));
+            CO_SECTIONS.forEach(sec => coRenderSection(sec, true));
+            coApplyMode();
         }
 
         async function coLoadSection(sec) {
