@@ -416,12 +416,14 @@
             font-family: inherit;
         }
 
-        /* ---- Private Notes Floating ---- */
+        /* ---- Private Notes (dashboard-anchored) ---- */
+        .private-notes-anchor {
+            position: relative;
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 18px;
+        }
         .private-notes-toggle {
-            position: fixed;
-            bottom: 24px;
-            right: 24px;
-            z-index: 200;
             background: #1a1c22;
             color: #ffffff;
             border: none;
@@ -437,10 +439,10 @@
         .private-notes-toggle:hover { background: #2a2d38; }
         .private-notes-panel {
             display: none;
-            position: fixed;
-            bottom: 70px;
-            right: 24px;
-            z-index: 200;
+            position: absolute;
+            bottom: 48px;
+            right: 0;
+            z-index: 50;
             width: 320px;
             background: #ffffff;
             border: 1px solid rgba(0,0,0,0.08);
@@ -937,7 +939,6 @@
                         <span class="card-title">Agenda &amp; Actions</span>
                         <div class="card-subtitle" style="margin-top:2px">Friday, April 3, 2026</div>
                     </div>
-                    <button class="btn-edit" onclick="toggleEdit('board')" id="boardEditBtn">Edit</button>
                 </div>
 
                 <div class="board-inner">
@@ -945,22 +946,35 @@
                     <div>
                         <div class="section-label">Agenda</div>
                         <div class="card-subtitle" style="margin-bottom:10px">Prepared by CEO</div>
-                        <ul class="compact-list" id="agendaList">
-                        </ul>
-                        <div class="add-row" onclick="promptAddItem('agenda')">
+                        <ul class="compact-list" id="bmAgendaList"></ul>
+                        <div class="add-row" onclick="bmAddInline('agenda')">
                             <span class="add-row-icon">+</span>
                             <span class="add-row-text">Add agenda item</span>
                         </div>
+                        <div class="sub-inline-edit" id="bmEdit-agenda">
+                            <input type="text" placeholder="New agenda item" id="bmInput-agenda">
+                            <div class="sub-inline-bar">
+                                <button class="sub-inline-save" onclick="bmSaveInline('agenda')">Save</button>
+                                <button class="sub-inline-cancel" onclick="bmCancelInline('agenda')">Cancel</button>
+                            </div>
+                        </div>
+                        <div class="bm-restricted" id="bmRestrict-agenda" style="display:none;font-size:11px;color:#b0b4be;font-style:italic;margin-top:4px">This is a CEO exclusive area.</div>
                     </div>
                     <!-- Suggested Topics -->
                     <div>
                         <div class="section-label">Suggested Topics</div>
                         <div class="card-subtitle" style="margin-bottom:10px">Submitted by founders</div>
-                        <ul class="topic-list" id="topicList">
-                        </ul>
-                        <div class="add-row" onclick="promptAddItem('topic')">
+                        <ul class="topic-list" id="bmTopicList"></ul>
+                        <div class="add-row" onclick="bmAddInline('topic')">
                             <span class="add-row-icon">+</span>
                             <span class="add-row-text">Add founder topic</span>
+                        </div>
+                        <div class="sub-inline-edit" id="bmEdit-topic">
+                            <input type="text" placeholder="Suggest a topic" id="bmInput-topic">
+                            <div class="sub-inline-bar">
+                                <button class="sub-inline-save" onclick="bmSaveInline('topic')">Save</button>
+                                <button class="sub-inline-cancel" onclick="bmCancelInline('topic')">Cancel</button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -968,34 +982,19 @@
                 <!-- Action Points -->
                 <div style="margin-top:18px; padding-top:16px; border-top:1px solid rgba(0,0,0,0.05)">
                     <div class="section-label">Action Points</div>
-                    <div class="action-stack" id="actionStack">
-                    </div>
-                    <div class="add-row" onclick="promptAddItem('action')" style="margin-top:4px">
+                    <div class="action-stack" id="bmActionList"></div>
+                    <div class="add-row" onclick="bmAddInline('action')" style="margin-top:4px">
                         <span class="add-row-icon">+</span>
                         <span class="add-row-text">Add action point</span>
                     </div>
-                </div>
-
-                <div class="section-edit" id="edit-board">
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-                        <div>
-                            <div class="edit-label">Meeting Date</div>
-                            <input type="date" value="2026-04-03" style="margin-bottom:8px">
-                            <div class="edit-label">Agenda (one per line)</div>
-                            <textarea rows="5" id="editAgenda"></textarea>
-                            <div class="edit-label" style="margin-top:8px">Suggested Topics (one per line)</div>
-                            <textarea rows="4" id="editTopics"></textarea>
-                        </div>
-                        <div>
-                            <div class="edit-label">Action Points</div>
-                            <div id="editActionRows"></div>
-                            <button class="btn-upload" onclick="addEditActionRow()" style="margin-top:6px">+ Add row</button>
+                    <div class="sub-inline-edit" id="bmEdit-action">
+                        <input type="text" placeholder="Action point" id="bmInput-action">
+                        <div class="sub-inline-bar">
+                            <button class="sub-inline-save" onclick="bmSaveInline('action')">Save</button>
+                            <button class="sub-inline-cancel" onclick="bmCancelInline('action')">Cancel</button>
                         </div>
                     </div>
-                    <div class="edit-bar">
-                        <button class="btn-save" onclick="saveSection('board')">Save</button>
-                        <button class="btn-cancel" onclick="toggleEdit('board')">Cancel</button>
-                    </div>
+                    <div class="bm-restricted" id="bmRestrict-action" style="display:none;font-size:11px;color:#b0b4be;font-style:italic;margin-top:4px">This is a CEO exclusive area.</div>
                 </div>
 
                 <div class="card-footer">
@@ -1127,6 +1126,18 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Private Notes (dashboard-anchored) -->
+            <div class="private-notes-anchor">
+                <button class="private-notes-toggle" id="pnToggle">Private Notes</button>
+                <div class="private-notes-panel" id="pnPanel">
+                    <div class="pn-title" id="pnTitle">Notes of Board Meeting &mdash; W14 &middot; 2026</div>
+                    <div class="pn-subtitle">Your eyes only</div>
+                    <textarea class="pn-textarea" id="pnTextarea" placeholder="Type your private notes for this board meeting..."></textarea>
+                    <div class="pn-saved" id="pnSaved"></div>
+                </div>
+            </div>
+
         </div>
 
         <!-- ============================================== -->
@@ -1305,20 +1316,12 @@
 
     </div><!-- /.main -->
 
-    <!-- Private Notes Toggle -->
-    <button class="private-notes-toggle" id="pnToggle">Private Notes</button>
-    <div class="private-notes-panel" id="pnPanel">
-        <div class="pn-title" id="pnTitle">Notes of Board Meeting &mdash; W14 &middot; 2026</div>
-        <div class="pn-subtitle">Your eyes only</div>
-        <textarea class="pn-textarea" id="pnTextarea" placeholder="Type your private notes for this board meeting..."></textarea>
-        <div class="pn-saved" id="pnSaved"></div>
-    </div>
-
     <script>
         /* ============================================== */
         /* USER & AUTH                                    */
         /* ============================================== */
         let _userAuthority = {};
+        let _userPosition = '';
 
         async function loadUser() {
             try {
@@ -1331,6 +1334,7 @@
                 const user = data.user || data;
                 document.getElementById('userName').textContent = user.name || user.researcher_id || '';
 
+                _userPosition = (user.workspace_position || '').toLowerCase();
                 let roleText = (user.role || '').toUpperCase();
                 if (user.workspace_position) {
                     roleText += ' \u00B7 ' + user.workspace_position.toUpperCase();
@@ -1478,21 +1482,87 @@
             document.getElementById('subEdit-' + key).classList.remove('open');
         }
 
-        // Legacy stub kept for any remaining references
-        function promptAddItem(type) {
-            if (!_isUpdateMode) return;
-        }
+        // Legacy stub
+        function promptAddItem(type) { if (!_isUpdateMode) return; }
 
         /* ============================================== */
-        /* EDIT ACTION ROW HELPER                         */
+        /* BOARD MEETING INLINE EDITING                   */
         /* ============================================== */
-        function addEditActionRow() {
-            const container = document.getElementById('editActionRows');
-            const row = document.createElement('div');
-            row.className = 'edit-row';
-            row.innerHTML = '<input type="text" placeholder="Action" style="flex:3"><input type="text" placeholder="Owner" style="flex:1"><input type="date" style="flex:1"><select style="flex:1"><option selected>Open</option><option>In Progress</option><option>Done</option></select>';
-            container.appendChild(row);
+        const BM_STORAGE_PREFIX = 'theralia_bm_';
+        const BM_CEO_SECTIONS = ['agenda', 'action'];
+
+        function bmIsCeoOrMaster() {
+            return _userPosition === 'ceo' || hasAuthority('is_workspace_master');
         }
+
+        function bmGetKey(section) {
+            const cycle = document.getElementById('cycleSelect')?.value || '2026-w14';
+            return BM_STORAGE_PREFIX + cycle + '_' + section;
+        }
+
+        function bmGetItems(section) {
+            try { return JSON.parse(localStorage.getItem(bmGetKey(section))) || []; }
+            catch { return []; }
+        }
+
+        function bmRenderList(section) {
+            const items = bmGetItems(section);
+            if (section === 'agenda') {
+                const el = document.getElementById('bmAgendaList');
+                el.innerHTML = items.map(t => '<li>' + dashSubEsc(t) + '</li>').join('');
+            } else if (section === 'topic') {
+                const el = document.getElementById('bmTopicList');
+                el.innerHTML = items.map(t => '<li>' + dashSubEsc(t) + '</li>').join('');
+            } else if (section === 'action') {
+                const el = document.getElementById('bmActionList');
+                el.innerHTML = items.map(t =>
+                    '<div class="action-item"><div class="action-text">' + dashSubEsc(t) + '</div></div>'
+                ).join('');
+            }
+        }
+
+        function dashSubEsc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+        function bmAddInline(section) {
+            if (!_isUpdateMode) return;
+            // CEO-only check for agenda and action
+            if (BM_CEO_SECTIONS.includes(section) && !bmIsCeoOrMaster()) {
+                const restrict = document.getElementById('bmRestrict-' + section);
+                if (restrict) { restrict.style.display = ''; setTimeout(() => { restrict.style.display = 'none'; }, 3000); }
+                return;
+            }
+            // Close any other open board meeting inline editor
+            document.querySelectorAll('#sec-board .sub-inline-edit.open').forEach(el => el.classList.remove('open'));
+            const editor = document.getElementById('bmEdit-' + section);
+            const input = document.getElementById('bmInput-' + section);
+            input.value = '';
+            editor.classList.add('open');
+            input.focus();
+        }
+
+        function bmSaveInline(section) {
+            const input = document.getElementById('bmInput-' + section);
+            const val = input.value.trim();
+            if (!val) return;
+            const items = bmGetItems(section);
+            items.push(val);
+            localStorage.setItem(bmGetKey(section), JSON.stringify(items));
+            bmRenderList(section);
+            document.getElementById('bmEdit-' + section).classList.remove('open');
+        }
+
+        function bmCancelInline(section) {
+            document.getElementById('bmEdit-' + section).classList.remove('open');
+        }
+
+        // Load all board meeting lists on page load
+        function bmLoadAll() {
+            ['agenda', 'topic', 'action'].forEach(s => bmRenderList(s));
+        }
+        bmLoadAll();
+
+        // Reload when cycle changes
+        document.getElementById('cycleSelect').addEventListener('change', () => { bmLoadAll(); });
 
         /* ============================================== */
         /* PRIVATE NOTES (per board meeting cycle)        */
