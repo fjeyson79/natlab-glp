@@ -18319,8 +18319,15 @@ app.patch('/api/rd/grants/:id', requireAuth, async (req, res) => {
 app.get('/api/rd/projects/:projectId/documents', requireAuth, async (req, res) => {
     try {
         if (!(await checkRdTables())) return res.json({ documents: [] });
+        // Join with di_submissions to get GLP status + review feedback via matching r2_key
         const r = await pool.query(
-            `SELECT * FROM rd_documents WHERE project_id=$1 AND workspace_id=$2 ORDER BY document_type, created_at DESC`,
+            `SELECT d.*, ds.status as glp_status, ds.revision_comments as glp_revision_note,
+                    ds.discard_reason as glp_discard_reason, ds.discard_note as glp_discard_note,
+                    ds.signed_at as glp_approved_at, ds.discarded_at as glp_discarded_at, ds.updated_at as glp_updated_at
+             FROM rd_documents d
+             LEFT JOIN di_submissions ds ON ds.r2_object_key = d.r2_key AND ds.workspace_id = d.workspace_id
+             WHERE d.project_id=$1 AND d.workspace_id=$2
+             ORDER BY d.created_at DESC`,
             [req.params.projectId, req.workspace_id]);
         res.json({ documents: r.rows });
     } catch (err) { console.error('[RD] docs error:', err.message); res.status(500).json({ error: 'Failed' }); }
@@ -18333,16 +18340,49 @@ app.post('/api/rd/projects/:projectId/documents', requireAuth, rdDocUpload.singl
         const docType = req.body.document_type;
         if (!['SOP','DATA','PRES','REPORT','DOCS'].includes(docType)) return res.status(400).json({ error: 'Invalid document_type' });
         const title = req.body.title || req.file.originalname;
-        const userId = req.session.user?.name || req.session.user?.researcher_id || 'unknown';
+        const userId = req.session.user?.researcher_id || req.session.user?.name || 'unknown';
+        const userName = req.session.user?.name || userId;
+        const userAff = req.session.user?.affiliation || 'THERALIA';
         const ts = Date.now();
         const safeName = req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
         const r2Key = `rd/${req.workspace_slug}/${req.params.projectId}/${docType}/${ts}_${safeName}`;
         await uploadToR2(req.file.buffer, r2Key, req.file.mimetype);
-        const r = await pool.query(
-            `INSERT INTO rd_documents (workspace_id, project_id, document_type, title, filename, file_type, r2_key, file_size, uploaded_by)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-            [req.workspace_id, req.params.projectId, docType, title, req.file.originalname, req.file.mimetype, r2Key, req.file.size, userId]);
-        res.json({ ok: true, document: r.rows[0] });
+
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            // 1. Insert rd_documents row
+            const r = await client.query(
+                `INSERT INTO rd_documents (workspace_id, project_id, document_type, title, filename, file_type, r2_key, file_size, uploaded_by)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+                [req.workspace_id, req.params.projectId, docType, title, req.file.originalname, req.file.mimetype, r2Key, req.file.size, userName]);
+
+            // 2. Also register in GLP/DI workflow (if rd_project_id column exists)
+            try {
+                await client.query(
+                    `INSERT INTO di_submissions (researcher_id, affiliation, file_type, original_filename, r2_object_key, workspace_id, rd_project_id)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                    [userId, userAff, docType, req.file.originalname, r2Key, req.workspace_id, req.params.projectId]);
+            } catch (glpErr) {
+                // If rd_project_id column doesn't exist yet, insert without it
+                if (glpErr.message && glpErr.message.includes('rd_project_id')) {
+                    await client.query(
+                        `INSERT INTO di_submissions (researcher_id, affiliation, file_type, original_filename, r2_object_key, workspace_id)
+                         VALUES ($1, $2, $3, $4, $5, $6)`,
+                        [userId, userAff, docType, req.file.originalname, r2Key, req.workspace_id]);
+                } else {
+                    throw glpErr;
+                }
+            }
+
+            await client.query('COMMIT');
+            res.json({ ok: true, document: r.rows[0] });
+        } catch (e) {
+            await client.query('ROLLBACK');
+            throw e;
+        } finally {
+            client.release();
+        }
     } catch (err) { console.error('[RD] upload doc error:', err.message); res.status(500).json({ error: 'Failed' }); }
 });
 
@@ -18372,6 +18412,161 @@ app.delete('/api/rd/documents/:id', requireAuth, async (req, res) => {
 
 // =====================================================
 // END R&D WORKSPACE TAB
+// =====================================================
+
+// =====================================================
+// THERALIA GLP VISION
+// =====================================================
+
+// Check if rd_project_id column exists on di_submissions
+let _rdProjectIdColChecked = null;
+async function hasRdProjectIdCol() {
+    if (_rdProjectIdColChecked !== null) return _rdProjectIdColChecked;
+    try {
+        const r = await pool.query(`SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='di_submissions' AND column_name='rd_project_id') AS ok`);
+        _rdProjectIdColChecked = r.rows[0]?.ok === true;
+    } catch { _rdProjectIdColChecked = false; }
+    return _rdProjectIdColChecked;
+}
+
+// GET /api/rd/glp/files — List GLP submissions for Theralia workspace
+// Supports: researcher_id, rd_project_id, status filters
+app.get('/api/rd/glp/files', requireAuth, async (req, res) => {
+    try {
+        const ws = req.workspace_id;
+        const hasProjectCol = await hasRdProjectIdCol();
+        const projectColSelect = hasProjectCol ? ', s.rd_project_id' : ", NULL as rd_project_id";
+        const projectJoin = hasProjectCol && (await checkRdTables()) ? ' LEFT JOIN rd_projects rp ON s.rd_project_id = rp.id' : '';
+        const projectNameCol = hasProjectCol && (await checkRdTables()) ? ', rp.title as project_title' : ", NULL as project_title";
+
+        let q = `SELECT s.submission_id, s.researcher_id, s.original_filename, s.file_type,
+                        s.status, s.created_at, s.signed_at, s.r2_object_key,
+                        s.revision_comments, s.approval_comment, s.discard_reason, s.discard_note,
+                        a.name as researcher_name, a.affiliation
+                        ${projectColSelect}${projectNameCol}
+                 FROM di_submissions s
+                 LEFT JOIN di_allowlist a ON s.researcher_id = a.researcher_id
+                 ${projectJoin}
+                 WHERE s.workspace_id = $1`;
+        const params = [ws];
+        let idx = 2;
+
+        // Optional researcher filter
+        if (req.query.researcher_id) {
+            q += ` AND s.researcher_id = $${idx}`; params.push(req.query.researcher_id); idx++;
+        }
+        // Optional project filter
+        if (req.query.rd_project_id && hasProjectCol) {
+            q += ` AND s.rd_project_id = $${idx}`; params.push(req.query.rd_project_id); idx++;
+        }
+        // Optional status filter
+        if (req.query.status) {
+            q += ` AND s.status = $${idx}`; params.push(req.query.status); idx++;
+        }
+        // Exclude archived/discarded unless explicitly requested
+        if (!req.query.status) {
+            q += ` AND s.status NOT IN ('ARCHIVED')`;
+        }
+
+        q += ` ORDER BY s.created_at DESC`;
+        const r = await pool.query(q, params);
+        res.json({ files: r.rows });
+    } catch (err) {
+        console.error('[RD-GLP] files error:', err.message);
+        res.status(500).json({ error: 'Failed to load GLP files' });
+    }
+});
+
+// GET /api/rd/glp/researchers — List researchers with submissions in this workspace
+app.get('/api/rd/glp/researchers', requireAuth, async (req, res) => {
+    try {
+        const ws = req.workspace_id;
+        const r = await pool.query(
+            `SELECT DISTINCT s.researcher_id, a.name as researcher_name, COUNT(*)::int as file_count
+             FROM di_submissions s LEFT JOIN di_allowlist a ON s.researcher_id = a.researcher_id
+             WHERE s.workspace_id = $1 AND s.status NOT IN ('ARCHIVED')
+             GROUP BY s.researcher_id, a.name ORDER BY a.name`,
+            [ws]);
+        res.json({ researchers: r.rows });
+    } catch (err) {
+        console.error('[RD-GLP] researchers error:', err.message);
+        res.status(500).json({ error: 'Failed' });
+    }
+});
+
+// GET /api/rd/glp/projects — List R&D projects with GLP file counts
+app.get('/api/rd/glp/projects', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkRdTables()) || !(await hasRdProjectIdCol())) return res.json({ projects: [] });
+        const ws = req.workspace_id;
+        const r = await pool.query(
+            `SELECT rp.id, rp.title, COUNT(s.submission_id)::int as file_count
+             FROM rd_projects rp
+             LEFT JOIN di_submissions s ON s.rd_project_id = rp.id AND s.status NOT IN ('ARCHIVED')
+             WHERE rp.workspace_id = $1
+             GROUP BY rp.id, rp.title ORDER BY rp.title`,
+            [ws]);
+        res.json({ projects: r.rows });
+    } catch (err) {
+        console.error('[RD-GLP] projects error:', err.message);
+        res.status(500).json({ error: 'Failed' });
+    }
+});
+
+// POST /api/rd/glp/approve/:id — Master Founder / CSO approve
+app.post('/api/rd/glp/approve/:id', requireAuth, async (req, res) => {
+    try {
+        if (!req.session.user?._authority?.is_workspace_master) return res.status(403).json({ error: 'Master authority required' });
+        // Delegate to performApproval
+        const comment = req.body.approval_comment || null;
+        await performApproval(req.params.id, comment);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[RD-GLP] approve error:', err.message);
+        res.status(500).json({ error: err.message || 'Failed' });
+    }
+});
+
+// POST /api/rd/glp/revise/:id — Master Founder / CSO revise
+app.post('/api/rd/glp/revise/:id', requireAuth, async (req, res) => {
+    try {
+        if (!req.session.user?._authority?.is_workspace_master) return res.status(403).json({ error: 'Master authority required' });
+        const comments = req.body.comments;
+        if (!comments) return res.status(400).json({ error: 'Comments required' });
+        await performRevision(req.params.id, comments);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[RD-GLP] revise error:', err.message);
+        res.status(500).json({ error: err.message || 'Failed' });
+    }
+});
+
+// POST /api/rd/glp/discard/:id — Master Founder / CSO discard
+app.post('/api/rd/glp/discard/:id', requireAuth, async (req, res) => {
+    try {
+        if (!req.session.user?._authority?.is_workspace_master) return res.status(403).json({ error: 'Master authority required' });
+        const { reason, note } = req.body || {};
+        const validReasons = ['Mistaken upload', 'Wrong category', 'Duplicate', 'Not admissible for GLP records', 'Other'];
+        if (!reason || !validReasons.includes(reason)) return res.status(400).json({ error: 'Valid discard reason required' });
+
+        const result = await pool.query('SELECT submission_id, status FROM di_submissions WHERE submission_id = $1 AND workspace_id = $2', [req.params.id, req.workspace_id]);
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+        if (result.rows[0].status === 'DISCARDED') return res.status(409).json({ error: 'Already discarded' });
+        if (result.rows[0].status === 'APPROVED') return res.status(409).json({ error: 'Cannot discard approved submission' });
+
+        const piId = req.session.user?.researcher_id || 'unknown';
+        await pool.query(
+            `UPDATE di_submissions SET status='DISCARDED', discarded_by=$1, discarded_at=NOW(), discard_reason=$2, discard_note=$3 WHERE submission_id=$4`,
+            [piId, reason, note || null, req.params.id]);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[RD-GLP] discard error:', err.message);
+        res.status(500).json({ error: err.message || 'Failed' });
+    }
+});
+
+// =====================================================
+// END THERALIA GLP VISION
 // =====================================================
 
 app.listen(PORT, "0.0.0.0", async () => {
