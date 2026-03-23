@@ -815,6 +815,111 @@
         }
         .rd-doc-upload-btn:hover { color: #555a66; border-color: rgba(0,0,0,0.2); }
 
+        /* ---- R&D Project Document Workspace ---- */
+        .rd-doc-workspace {
+            display: grid; grid-template-columns: 2fr 3fr; gap: 18px;
+            margin-top: 18px; align-items: start;
+        }
+        @media (max-width: 700px) { .rd-doc-workspace { grid-template-columns: 1fr; } }
+        .rd-upload-panel {
+            background: #f5f6f8; border: 1px solid rgba(0,0,0,0.06);
+            border-radius: 10px; padding: 18px;
+        }
+        .rd-upload-panel-title {
+            font-size: 13px; font-weight: 600; color: #1a1c22; margin-bottom: 14px;
+        }
+        .rd-upload-field { margin-bottom: 12px; }
+        .rd-upload-field label {
+            display: block; font-size: 10px; font-weight: 600; text-transform: uppercase;
+            letter-spacing: 0.5px; color: #9a9ea8; margin-bottom: 4px;
+        }
+        .rd-upload-field select {
+            width: 100%; background: #ffffff; border: 1px solid rgba(0,0,0,0.08);
+            border-radius: 6px; color: #2a2d35; font-family: inherit;
+            font-size: 12px; padding: 7px 10px; cursor: pointer;
+        }
+        .rd-upload-field select:focus { outline: none; border-color: rgba(0,0,0,0.16); }
+        .rd-dropzone {
+            border: 2px dashed rgba(0,0,0,0.1); border-radius: 8px;
+            padding: 20px 14px; text-align: center; cursor: pointer;
+            transition: border-color 0.2s, background 0.2s; background: #ffffff;
+        }
+        .rd-dropzone:hover, .rd-dropzone.dragover {
+            border-color: #1a7a4e; background: rgba(26,122,78,0.03);
+        }
+        .rd-dropzone-text { font-size: 12px; color: #9a9ea8; line-height: 1.5; }
+        .rd-dropzone-file { font-size: 12px; color: #1a1c22; font-weight: 500; margin-top: 6px; }
+        .rd-upload-submit {
+            width: 100%; background: #1a1c22; color: #ffffff; border: none;
+            border-radius: 6px; padding: 8px 16px; font-size: 12px;
+            font-weight: 600; cursor: pointer; font-family: inherit;
+            transition: background 0.15s; margin-top: 4px;
+        }
+        .rd-upload-submit:hover { background: #2e3039; }
+        .rd-upload-submit:disabled { opacity: 0.5; cursor: default; }
+        .rd-upload-hint {
+            font-size: 10px; color: #b0b4be; margin-top: 8px; text-align: center;
+        }
+        .rd-upload-msg {
+            font-size: 11px; margin-top: 6px; text-align: center; min-height: 16px;
+        }
+
+        .rd-files-panel {
+            background: #ffffff; border: 1px solid rgba(0,0,0,0.06);
+            border-radius: 10px; padding: 18px;
+        }
+        .rd-files-header {
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 12px; gap: 10px;
+        }
+        .rd-files-title { font-size: 13px; font-weight: 600; color: #1a1c22; }
+        .rd-files-count { font-size: 11px; color: #b0b4be; }
+        .rd-files-search {
+            width: 100%; background: #f9fafb; border: 1px solid rgba(0,0,0,0.06);
+            border-radius: 6px; color: #2a2d35; font-family: inherit;
+            font-size: 12px; padding: 6px 10px; margin-bottom: 10px;
+        }
+        .rd-files-search:focus { outline: none; border-color: rgba(0,0,0,0.14); }
+        .rd-files-filters { display: flex; gap: 5px; margin-bottom: 12px; flex-wrap: wrap; }
+        .rd-files-chip {
+            background: #edeef1; border: none; border-radius: 5px;
+            padding: 3px 10px; font-size: 10px; font-weight: 600;
+            color: #7a7e8a; cursor: pointer; font-family: inherit;
+            transition: all 0.15s; text-transform: uppercase; letter-spacing: 0.3px;
+        }
+        .rd-files-chip.active { background: #1a7a4e; color: #f0faf5; }
+        .rd-files-chip:hover:not(.active) { background: #e2e4e8; }
+        .rd-file-row {
+            display: flex; align-items: center; gap: 8px;
+            padding: 8px 0; border-bottom: 1px solid rgba(0,0,0,0.04);
+            font-size: 12px;
+        }
+        .rd-file-row:last-child { border-bottom: none; }
+        .rd-file-row-name {
+            flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+            white-space: nowrap; color: #2a2d35; text-decoration: none; font-weight: 500;
+        }
+        .rd-file-row-name:hover { color: #1a7a4e; }
+        .rd-file-row-date { font-size: 10px; color: #b0b4be; flex-shrink: 0; }
+        .rd-file-row-actions { display: flex; gap: 4px; flex-shrink: 0; }
+        .rd-file-action {
+            background: none; border: none; font-size: 10px; color: #b0b4be;
+            cursor: pointer; font-family: inherit; padding: 2px 4px;
+            transition: color 0.15s; border-radius: 3px;
+        }
+        .rd-file-action:hover { color: #555a66; }
+        .rd-file-action.primary { background: #1a1c22; color: #fff; padding: 2px 7px; }
+        .rd-file-action.primary:hover { background: #2e3039; }
+        .rd-file-action.danger:hover { color: #dc2626; }
+        .rd-files-summary {
+            display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px;
+        }
+        .rd-files-summary-item {
+            font-size: 10px; color: #9a9ea8; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.3px;
+        }
+        .rd-files-summary-num { color: #1a1c22; font-weight: 700; }
+
         /* R&D form modal */
         .rd-modal-overlay {
             display: none; position: fixed; inset: 0; z-index: 300;
@@ -2366,7 +2471,15 @@
         }
 
         // ---- PROJECT DETAIL ----
+        let _rdDetailProjectId = null;
+        let _rdDetailDocs = [];
+        let _rdFilesFilter = 'all';
+        let _rdFilesSearch = '';
+
         async function rdShowProjectDetail(id) {
+            _rdDetailProjectId = id;
+            _rdFilesFilter = 'all';
+            _rdFilesSearch = '';
             const main = document.getElementById('rdMain');
             main.innerHTML = '<div style="padding:24px;color:#b0b4be">Loading...</div>';
             try {
@@ -2375,12 +2488,7 @@
                     rdJson('/api/rd/projects/' + id + '/documents')
                 ]);
                 const p = projRes.project;
-                const docs = docsRes.documents || [];
-                const docsByType = {};
-                RD_DOC_CATS.forEach(t => { docsByType[t] = docs.filter(d => d.document_type === t); });
-
-                // Recent activity: 3 most recent docs
-                const recentDocs = docs.slice(0, 3);
+                _rdDetailDocs = docsRes.documents || [];
 
                 main.innerHTML = `
                     <div class="rd-detail-header">
@@ -2408,37 +2516,185 @@
                         <div class="rd-info-item"><div class="rd-info-label">Target Date</div><div class="rd-info-val">${rdDate(p.target_date)}</div></div>
                     </div>
 
-                    ${recentDocs.length > 0 ? '<div class="rd-section-label">Recent Activity</div>' + recentDocs.map(d =>
-                        '<div style="font-size:12px;color:#555a66;padding:4px 0;display:flex;gap:10px;align-items:center">' +
-                        '<span class="rd-badge" style="background:rgba(0,0,0,0.04);color:#9a9ea8">' + d.document_type + '</span>' +
-                        '<a href="/api/rd/documents/' + d.id + '/download" target="_blank" style="color:#2a2d35;text-decoration:none;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + rdEsc(d.filename) + '">' + rdEsc(d.title || d.filename) + '</a>' +
-                        '<span style="font-size:11px;color:#b0b4be;flex-shrink:0">' + rdDate(d.created_at) + '</span></div>'
-                    ).join('') : ''}
-
                     <div class="rd-section-label" style="margin-top:18px">Project Documents</div>
-                    <div style="font-size:10px;color:#b0b4be;margin-bottom:12px">PDF only &middot; max 20 MB per file</div>
-                    <div class="rd-doc-categories">
-                        ${RD_DOC_CATS.map(t => {
-                            const list = docsByType[t];
-                            const lastDate = list.length > 0 ? rdDate(list[0].created_at) : null;
-                            return `<div class="rd-doc-tile">
-                                <div class="rd-doc-tile-head"><span>${t}</span><span class="rd-doc-tile-count">${list.length} document${list.length!==1?'s':''}</span></div>
-                                ${lastDate ? '<div style="font-size:9px;color:#b0b4be;margin-bottom:6px">Last update: ' + lastDate + '</div>' : ''}
-                                ${list.length === 0 ? '<div style="font-size:10px;color:#c8cbd2;font-style:italic;margin-bottom:4px">No documents uploaded yet</div>' :
-                                  list.map(d => `<div class="rd-doc-file">
-                                    <a class="rd-doc-file-name" href="/api/rd/documents/${d.id}/download" target="_blank" title="${rdEsc(d.filename)}" style="color:#555a66;text-decoration:none" onmouseover="this.style.color='#1a1c22'" onmouseout="this.style.color='#555a66'">${rdEsc(d.filename)}</a>
-                                    <div class="rd-doc-file-actions">
-                                        <button class="rd-doc-file-btn open-btn" onclick="event.stopPropagation();window.open('/api/rd/documents/${d.id}/download','_blank')">Open</button>
-                                        <button class="rd-doc-file-btn danger" onclick="event.stopPropagation();rdDeleteDoc('${d.id}','${p.id}')">&times;</button>
-                                    </div>
-                                  </div>`).join('')}
-                                <button class="rd-doc-upload-btn" onclick="rdUploadDoc('${p.id}','${t}')">Upload PDF</button>
-                            </div>`;
-                        }).join('')}
+                    <div class="rd-doc-workspace">
+                        <!-- Upload Panel -->
+                        <div class="rd-upload-panel">
+                            <div class="rd-upload-panel-title">Upload Document</div>
+                            <div class="rd-upload-field">
+                                <label>Document Type</label>
+                                <select id="rdUpType">
+                                    ${RD_DOC_CATS.map(t => '<option value="' + t + '">' + t + '</option>').join('')}
+                                </select>
+                            </div>
+                            <div class="rd-upload-field">
+                                <label>File</label>
+                                <div class="rd-dropzone" id="rdDropzone">
+                                    <div class="rd-dropzone-text">Click to select PDF or drag and drop</div>
+                                    <div class="rd-dropzone-file" id="rdDropFile"></div>
+                                    <input type="file" id="rdFileInput" accept=".pdf" style="display:none">
+                                </div>
+                            </div>
+                            <button class="rd-upload-submit" id="rdUpBtn" disabled onclick="rdDoUpload()">Upload</button>
+                            <div class="rd-upload-hint">PDF only &middot; max 20 MB per file</div>
+                            <div class="rd-upload-msg" id="rdUpMsg"></div>
+                        </div>
+
+                        <!-- Files Panel -->
+                        <div class="rd-files-panel">
+                            <div class="rd-files-header">
+                                <span class="rd-files-title">Project Files</span>
+                                <span class="rd-files-count" id="rdFilesCount"></span>
+                            </div>
+                            <div class="rd-files-summary" id="rdFilesSummary"></div>
+                            <input class="rd-files-search" id="rdFilesSearchInput" type="text" placeholder="Search files...">
+                            <div class="rd-files-filters" id="rdFilesFilters"></div>
+                            <div id="rdFilesList"></div>
+                        </div>
                     </div>`;
+
+                // Wire up upload interactions
+                rdInitUploadPanel(p.id);
+                rdRenderFilesList();
             } catch {
                 main.innerHTML = '<div class="rd-empty"><div class="rd-empty-title">Failed to load project</div></div>';
             }
+        }
+
+        function rdInitUploadPanel(projectId) {
+            const dropzone = document.getElementById('rdDropzone');
+            const fileInput = document.getElementById('rdFileInput');
+            const dropFile = document.getElementById('rdDropFile');
+            const upBtn = document.getElementById('rdUpBtn');
+            let selectedFile = null;
+
+            dropzone.addEventListener('click', () => fileInput.click());
+            dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('dragover'); });
+            dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+            dropzone.addEventListener('drop', (e) => {
+                e.preventDefault(); dropzone.classList.remove('dragover');
+                if (e.dataTransfer.files.length > 0) pickFile(e.dataTransfer.files[0]);
+            });
+            fileInput.addEventListener('change', () => { if (fileInput.files[0]) pickFile(fileInput.files[0]); });
+
+            function pickFile(file) {
+                if (!file.name.toLowerCase().endsWith('.pdf')) { rdUpMsg('Only PDF files are accepted.', true); return; }
+                if (file.size > 20 * 1024 * 1024) { rdUpMsg('File exceeds 20 MB limit.', true); return; }
+                selectedFile = file;
+                dropFile.textContent = file.name;
+                upBtn.disabled = false;
+                rdUpMsg('');
+            }
+
+            // Expose for the upload button
+            window.rdDoUpload = async function() {
+                if (!selectedFile) return;
+                upBtn.disabled = true;
+                upBtn.textContent = 'Uploading...';
+                const docType = document.getElementById('rdUpType').value;
+                const fd = new FormData();
+                fd.append('file', selectedFile);
+                fd.append('document_type', docType);
+                fd.append('title', selectedFile.name);
+                try {
+                    const res = await rdFetch('/api/rd/projects/' + projectId + '/documents', { method: 'POST', body: fd });
+                    const data = await res.json();
+                    if (data.ok) {
+                        rdUpMsg('Uploaded successfully', false);
+                        selectedFile = null;
+                        dropFile.textContent = '';
+                        fileInput.value = '';
+                        // Reload docs
+                        const docsRes = await rdJson('/api/rd/projects/' + projectId + '/documents');
+                        _rdDetailDocs = docsRes.documents || [];
+                        rdRenderFilesList();
+                        await rdLoadAll();
+                        rdRenderNav();
+                    } else {
+                        rdUpMsg(data.error || 'Upload failed.', true);
+                    }
+                } catch { rdUpMsg('Upload failed.', true); }
+                upBtn.textContent = 'Upload';
+                upBtn.disabled = !selectedFile;
+            };
+
+            // Search
+            document.getElementById('rdFilesSearchInput').addEventListener('input', (e) => {
+                _rdFilesSearch = e.target.value.toLowerCase();
+                rdRenderFilesList();
+            });
+        }
+
+        function rdUpMsg(text, isError) {
+            const el = document.getElementById('rdUpMsg');
+            if (!el) return;
+            el.textContent = text;
+            el.style.color = isError ? '#dc2626' : '#1a7a4e';
+            if (text && !isError) setTimeout(() => { if (el.textContent === text) el.textContent = ''; }, 2500);
+        }
+
+        function rdRenderFilesList() {
+            const countEl = document.getElementById('rdFilesCount');
+            const summaryEl = document.getElementById('rdFilesSummary');
+            const filtersEl = document.getElementById('rdFilesFilters');
+            const listEl = document.getElementById('rdFilesList');
+            if (!listEl) return;
+
+            const docs = _rdDetailDocs;
+
+            // Summary
+            const counts = {};
+            RD_DOC_CATS.forEach(t => { counts[t] = docs.filter(d => d.document_type === t).length; });
+            countEl.textContent = docs.length + ' document' + (docs.length !== 1 ? 's' : '');
+            summaryEl.innerHTML = RD_DOC_CATS.map(t =>
+                '<span class="rd-files-summary-item"><span class="rd-files-summary-num">' + counts[t] + '</span> ' + t + '</span>'
+            ).join('');
+
+            // Filters
+            filtersEl.innerHTML = ['all', ...RD_DOC_CATS].map(f =>
+                '<button class="rd-files-chip ' + (_rdFilesFilter === f ? 'active' : '') + '" onclick="rdSetFileFilter(\'' + f + '\')">' + (f === 'all' ? 'All' : f) + '</button>'
+            ).join('');
+
+            // Filter + search
+            let filtered = docs;
+            if (_rdFilesFilter !== 'all') filtered = filtered.filter(d => d.document_type === _rdFilesFilter);
+            if (_rdFilesSearch) filtered = filtered.filter(d => (d.filename || '').toLowerCase().includes(_rdFilesSearch) || (d.title || '').toLowerCase().includes(_rdFilesSearch));
+
+            if (filtered.length === 0) {
+                listEl.innerHTML = '<div class="rd-empty" style="padding:24px 0"><div class="rd-empty-title" style="font-size:13px">No project files' + (_rdFilesFilter !== 'all' || _rdFilesSearch ? ' matching filter' : ' uploaded yet') + '</div><div class="rd-empty-desc">Upload the first PDF document for this project</div></div>';
+            } else {
+                listEl.innerHTML = filtered.map(d =>
+                    `<div class="rd-file-row">
+                        <span class="rd-badge" style="background:rgba(0,0,0,0.04);color:#9a9ea8;flex-shrink:0">${d.document_type}</span>
+                        <a class="rd-file-row-name" href="/api/rd/documents/${d.id}/download" target="_blank" title="${rdEsc(d.filename)}">${rdEsc(d.title || d.filename)}</a>
+                        <span class="rd-file-row-date">${rdDate(d.created_at)}</span>
+                        <div class="rd-file-row-actions">
+                            <button class="rd-file-action primary" onclick="event.stopPropagation();window.open('/api/rd/documents/${d.id}/download','_blank')">View</button>
+                            <a class="rd-file-action" href="/api/rd/documents/${d.id}/download" download title="Download" style="text-decoration:none">DL</a>
+                            <button class="rd-file-action danger" onclick="event.stopPropagation();rdDeleteDocWs('${d.id}')">&times;</button>
+                        </div>
+                    </div>`
+                ).join('');
+            }
+        }
+
+        function rdSetFileFilter(f) {
+            _rdFilesFilter = f;
+            rdRenderFilesList();
+        }
+
+        async function rdDeleteDocWs(docId) {
+            if (!confirm('Remove this document?')) return;
+            try {
+                const res = await rdFetch('/api/rd/documents/' + docId, { method: 'DELETE' });
+                const data = await res.json();
+                if (data.ok) {
+                    _rdDetailDocs = _rdDetailDocs.filter(d => d.id !== docId);
+                    rdRenderFilesList();
+                    await rdLoadAll();
+                    rdRenderNav();
+                }
+            } catch {}
         }
 
         // ---- PARTNERS ----
