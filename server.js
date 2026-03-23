@@ -18083,6 +18083,297 @@ app.post('/api/company/sections', requireAuth, async (req, res) => {
 // END COMPANY TAB
 // =====================================================
 
+// =====================================================
+// R&D WORKSPACE TAB
+// =====================================================
+
+let _rdTablesChecked = null;
+async function checkRdTables() {
+    if (_rdTablesChecked !== null) return _rdTablesChecked;
+    try {
+        const r = await pool.query(`SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name = 'rd_projects') AS ok`);
+        _rdTablesChecked = r.rows[0]?.ok === true;
+    } catch { _rdTablesChecked = false; }
+    return _rdTablesChecked;
+}
+
+const rdDocUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 20 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+        const name = (file.originalname || '').toLowerCase();
+        if (name.endsWith('.pdf')) return cb(null, true);
+        cb(new Error('Only PDF files are accepted'), false);
+    }
+});
+
+// ---- Overview counts ----
+app.get('/api/rd/overview', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkRdTables())) return res.json({ projects: 0, co_development: 0, collaborations: 0, partners: 0, grants: 0, upcoming: 0, programs: 0 });
+        const ws = req.workspace_id;
+        const [proj, coDev, collab, partners, grants, upcoming, programs] = await Promise.all([
+            pool.query(`SELECT COUNT(*)::int AS c FROM rd_projects WHERE workspace_id=$1 AND status NOT IN ('archived')`, [ws]),
+            pool.query(`SELECT COUNT(*)::int AS c FROM rd_projects WHERE workspace_id=$1 AND project_type='co_development' AND status NOT IN ('archived')`, [ws]),
+            pool.query(`SELECT COUNT(*)::int AS c FROM rd_projects WHERE workspace_id=$1 AND project_type='collaboration' AND status NOT IN ('archived')`, [ws]),
+            pool.query(`SELECT COUNT(*)::int AS c FROM rd_partners WHERE workspace_id=$1 AND status='active'`, [ws]),
+            pool.query(`SELECT COUNT(*)::int AS c FROM rd_grants WHERE workspace_id=$1 AND status NOT IN ('rejected','completed')`, [ws]),
+            pool.query(`SELECT COUNT(*)::int AS c FROM rd_projects WHERE workspace_id=$1 AND upcoming_deliverable IS NOT NULL AND upcoming_deliverable != '' AND status NOT IN ('archived','completed')`, [ws]),
+            pool.query(`SELECT COUNT(*)::int AS c FROM rd_programs WHERE workspace_id=$1 AND status NOT IN ('archived')`, [ws])
+        ]);
+        res.json({
+            projects: proj.rows[0].c, co_development: coDev.rows[0].c, collaborations: collab.rows[0].c,
+            partners: partners.rows[0].c, grants: grants.rows[0].c, upcoming: upcoming.rows[0].c, programs: programs.rows[0].c
+        });
+    } catch (err) { console.error('[RD] overview error:', err.message); res.status(500).json({ error: 'Failed' }); }
+});
+
+// ---- Programs CRUD ----
+app.get('/api/rd/programs', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkRdTables())) return res.json({ programs: [] });
+        const r = await pool.query(
+            `SELECT p.*, (SELECT COUNT(*)::int FROM rd_projects WHERE program_id=p.id) AS project_count,
+                    (SELECT COUNT(*)::int FROM rd_grants WHERE program_id=p.id) AS grant_count
+             FROM rd_programs p WHERE p.workspace_id=$1 ORDER BY p.created_at`, [req.workspace_id]);
+        res.json({ programs: r.rows });
+    } catch (err) { console.error('[RD] programs error:', err.message); res.status(500).json({ error: 'Failed' }); }
+});
+
+app.post('/api/rd/programs', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkRdTables())) return res.status(503).json({ error: 'Not ready' });
+        const { program_name, description, status, strategic_goal, upcoming_deliverable } = req.body;
+        if (!program_name) return res.status(400).json({ error: 'Program name required' });
+        const r = await pool.query(
+            `INSERT INTO rd_programs (workspace_id, program_name, description, status, strategic_goal, upcoming_deliverable)
+             VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+            [req.workspace_id, program_name, description||null, status||'active', strategic_goal||null, upcoming_deliverable||null]);
+        res.json({ ok: true, program: r.rows[0] });
+    } catch (err) { console.error('[RD] create program error:', err.message); res.status(500).json({ error: 'Failed' }); }
+});
+
+app.patch('/api/rd/programs/:id', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkRdTables())) return res.status(503).json({ error: 'Not ready' });
+        const { program_name, description, status, strategic_goal, upcoming_deliverable } = req.body;
+        const r = await pool.query(
+            `UPDATE rd_programs SET program_name=COALESCE($1,program_name), description=COALESCE($2,description),
+             status=COALESCE($3,status), strategic_goal=COALESCE($4,strategic_goal),
+             upcoming_deliverable=COALESCE($5,upcoming_deliverable), updated_at=now()
+             WHERE id=$6 AND workspace_id=$7 RETURNING *`,
+            [program_name, description, status, strategic_goal, upcoming_deliverable, req.params.id, req.workspace_id]);
+        if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+        res.json({ ok: true, program: r.rows[0] });
+    } catch (err) { console.error('[RD] update program error:', err.message); res.status(500).json({ error: 'Failed' }); }
+});
+
+// ---- Projects CRUD ----
+app.get('/api/rd/projects', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkRdTables())) return res.json({ projects: [] });
+        const typeFilter = req.query.type;
+        let q = `SELECT p.*, pg.program_name, (SELECT MAX(created_at) FROM rd_documents d WHERE d.project_id=p.id) AS last_activity FROM rd_projects p LEFT JOIN rd_programs pg ON p.program_id=pg.id WHERE p.workspace_id=$1`;
+        const params = [req.workspace_id];
+        if (typeFilter && ['internal','co_development','collaboration'].includes(typeFilter)) {
+            q += ` AND p.project_type=$2`; params.push(typeFilter);
+        }
+        q += ` ORDER BY p.created_at DESC`;
+        const r = await pool.query(q, params);
+        res.json({ projects: r.rows });
+    } catch (err) { console.error('[RD] projects error:', err.message); res.status(500).json({ error: 'Failed' }); }
+});
+
+app.get('/api/rd/projects/:id', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkRdTables())) return res.status(404).json({ error: 'Not found' });
+        const r = await pool.query(
+            `SELECT p.*, pg.program_name FROM rd_projects p LEFT JOIN rd_programs pg ON p.program_id=pg.id
+             WHERE p.id=$1 AND p.workspace_id=$2`, [req.params.id, req.workspace_id]);
+        if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+        res.json({ project: r.rows[0] });
+    } catch (err) { console.error('[RD] project detail error:', err.message); res.status(500).json({ error: 'Failed' }); }
+});
+
+app.post('/api/rd/projects', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkRdTables())) return res.status(503).json({ error: 'Not ready' });
+        const b = req.body;
+        if (!b.title) return res.status(400).json({ error: 'Title required' });
+        const r = await pool.query(
+            `INSERT INTO rd_projects (workspace_id, program_id, title, project_type, description, theralia_contact,
+             external_partner_name, status, expected_result, upcoming_deliverable, start_date, target_date, next_action)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+            [req.workspace_id, b.program_id||null, b.title, b.project_type||'internal', b.description||null,
+             b.theralia_contact||null, b.external_partner_name||null, b.status||'active',
+             b.expected_result||null, b.upcoming_deliverable||null, b.start_date||null, b.target_date||null, b.next_action||null]);
+        res.json({ ok: true, project: r.rows[0] });
+    } catch (err) { console.error('[RD] create project error:', err.message); res.status(500).json({ error: 'Failed' }); }
+});
+
+app.patch('/api/rd/projects/:id', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkRdTables())) return res.status(503).json({ error: 'Not ready' });
+        const b = req.body;
+        const r = await pool.query(
+            `UPDATE rd_projects SET title=COALESCE($1,title), program_id=$2, project_type=COALESCE($3,project_type),
+             description=COALESCE($4,description), theralia_contact=COALESCE($5,theralia_contact),
+             external_partner_name=$6, status=COALESCE($7,status),
+             expected_result=COALESCE($8,expected_result), upcoming_deliverable=$9,
+             start_date=$10, target_date=$11, next_action=$12, updated_at=now()
+             WHERE id=$13 AND workspace_id=$14 RETURNING *`,
+            [b.title, b.program_id!==undefined?b.program_id:null, b.project_type, b.description, b.theralia_contact,
+             b.external_partner_name!==undefined?b.external_partner_name:null, b.status,
+             b.expected_result, b.upcoming_deliverable!==undefined?b.upcoming_deliverable:null,
+             b.start_date||null, b.target_date||null, b.next_action!==undefined?b.next_action:null, req.params.id, req.workspace_id]);
+        if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+        res.json({ ok: true, project: r.rows[0] });
+    } catch (err) { console.error('[RD] update project error:', err.message); res.status(500).json({ error: 'Failed' }); }
+});
+
+// ---- Partners CRUD ----
+app.get('/api/rd/partners', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkRdTables())) return res.json({ partners: [] });
+        const r = await pool.query(
+            `SELECT pt.*, (SELECT COUNT(*)::int FROM rd_projects WHERE external_partner_name=pt.organization_name AND workspace_id=$1) AS project_count
+             FROM rd_partners pt WHERE pt.workspace_id=$1 ORDER BY pt.created_at`, [req.workspace_id]);
+        res.json({ partners: r.rows });
+    } catch (err) { console.error('[RD] partners error:', err.message); res.status(500).json({ error: 'Failed' }); }
+});
+
+app.post('/api/rd/partners', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkRdTables())) return res.status(503).json({ error: 'Not ready' });
+        const b = req.body;
+        if (!b.organization_name) return res.status(400).json({ error: 'Organization name required' });
+        const r = await pool.query(
+            `INSERT INTO rd_partners (workspace_id, organization_name, contact_person, email, phone, collaboration_description, status, role_description)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+            [req.workspace_id, b.organization_name, b.contact_person||null, b.email||null, b.phone||null, b.collaboration_description||null, b.status||'active', b.role_description||null]);
+        res.json({ ok: true, partner: r.rows[0] });
+    } catch (err) { console.error('[RD] create partner error:', err.message); res.status(500).json({ error: 'Failed' }); }
+});
+
+app.patch('/api/rd/partners/:id', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkRdTables())) return res.status(503).json({ error: 'Not ready' });
+        const b = req.body;
+        const r = await pool.query(
+            `UPDATE rd_partners SET organization_name=COALESCE($1,organization_name), contact_person=COALESCE($2,contact_person),
+             email=COALESCE($3,email), phone=$4, collaboration_description=COALESCE($5,collaboration_description),
+             status=COALESCE($6,status), role_description=$7, updated_at=now()
+             WHERE id=$8 AND workspace_id=$9 RETURNING *`,
+            [b.organization_name, b.contact_person, b.email, b.phone!==undefined?b.phone:null,
+             b.collaboration_description, b.status, b.role_description!==undefined?b.role_description:null, req.params.id, req.workspace_id]);
+        if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+        res.json({ ok: true, partner: r.rows[0] });
+    } catch (err) { console.error('[RD] update partner error:', err.message); res.status(500).json({ error: 'Failed' }); }
+});
+
+// ---- Grants CRUD ----
+app.get('/api/rd/grants', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkRdTables())) return res.json({ grants: [] });
+        const r = await pool.query(
+            `SELECT g.*, pg.program_name, pr.title AS project_title
+             FROM rd_grants g LEFT JOIN rd_programs pg ON g.program_id=pg.id LEFT JOIN rd_projects pr ON g.linked_project_id=pr.id
+             WHERE g.workspace_id=$1 ORDER BY g.created_at DESC`, [req.workspace_id]);
+        res.json({ grants: r.rows });
+    } catch (err) { console.error('[RD] grants error:', err.message); res.status(500).json({ error: 'Failed' }); }
+});
+
+app.post('/api/rd/grants', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkRdTables())) return res.status(503).json({ error: 'Not ready' });
+        const b = req.body;
+        if (!b.grant_name) return res.status(400).json({ error: 'Grant name required' });
+        const r = await pool.query(
+            `INSERT INTO rd_grants (workspace_id, program_id, linked_project_id, grant_name, funding_body, status, amount, timeline_notes, upcoming_deliverable)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+            [req.workspace_id, b.program_id||null, b.linked_project_id||null, b.grant_name, b.funding_body||null,
+             b.status||'active', b.amount||null, b.timeline_notes||null, b.upcoming_deliverable||null]);
+        res.json({ ok: true, grant: r.rows[0] });
+    } catch (err) { console.error('[RD] create grant error:', err.message); res.status(500).json({ error: 'Failed' }); }
+});
+
+app.patch('/api/rd/grants/:id', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkRdTables())) return res.status(503).json({ error: 'Not ready' });
+        const b = req.body;
+        const r = await pool.query(
+            `UPDATE rd_grants SET grant_name=COALESCE($1,grant_name), program_id=$2, linked_project_id=$3,
+             funding_body=COALESCE($4,funding_body), status=COALESCE($5,status), amount=$6,
+             timeline_notes=COALESCE($7,timeline_notes), upcoming_deliverable=$8, updated_at=now()
+             WHERE id=$9 AND workspace_id=$10 RETURNING *`,
+            [b.grant_name, b.program_id!==undefined?b.program_id:null, b.linked_project_id!==undefined?b.linked_project_id:null,
+             b.funding_body, b.status, b.amount!==undefined?b.amount:null,
+             b.timeline_notes, b.upcoming_deliverable!==undefined?b.upcoming_deliverable:null,
+             req.params.id, req.workspace_id]);
+        if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+        res.json({ ok: true, grant: r.rows[0] });
+    } catch (err) { console.error('[RD] update grant error:', err.message); res.status(500).json({ error: 'Failed' }); }
+});
+
+// ---- Project Documents ----
+app.get('/api/rd/projects/:projectId/documents', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkRdTables())) return res.json({ documents: [] });
+        const r = await pool.query(
+            `SELECT * FROM rd_documents WHERE project_id=$1 AND workspace_id=$2 ORDER BY document_type, created_at DESC`,
+            [req.params.projectId, req.workspace_id]);
+        res.json({ documents: r.rows });
+    } catch (err) { console.error('[RD] docs error:', err.message); res.status(500).json({ error: 'Failed' }); }
+});
+
+app.post('/api/rd/projects/:projectId/documents', requireAuth, rdDocUpload.single('file'), async (req, res) => {
+    try {
+        if (!(await checkRdTables())) return res.status(503).json({ error: 'Not ready' });
+        if (!req.file) return res.status(400).json({ error: 'No file' });
+        const docType = req.body.document_type;
+        if (!['SOP','DATA','PRES','REPORT','DOCS'].includes(docType)) return res.status(400).json({ error: 'Invalid document_type' });
+        const title = req.body.title || req.file.originalname;
+        const userId = req.session.user?.name || req.session.user?.researcher_id || 'unknown';
+        const ts = Date.now();
+        const safeName = req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const r2Key = `rd/${req.workspace_slug}/${req.params.projectId}/${docType}/${ts}_${safeName}`;
+        await uploadToR2(req.file.buffer, r2Key, req.file.mimetype);
+        const r = await pool.query(
+            `INSERT INTO rd_documents (workspace_id, project_id, document_type, title, filename, file_type, r2_key, file_size, uploaded_by)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+            [req.workspace_id, req.params.projectId, docType, title, req.file.originalname, req.file.mimetype, r2Key, req.file.size, userId]);
+        res.json({ ok: true, document: r.rows[0] });
+    } catch (err) { console.error('[RD] upload doc error:', err.message); res.status(500).json({ error: 'Failed' }); }
+});
+
+app.get('/api/rd/documents/:id/download', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkRdTables())) return res.status(404).json({ error: 'Not found' });
+        const doc = await pool.query(`SELECT r2_key, filename, file_type FROM rd_documents WHERE id=$1`, [req.params.id]);
+        if (doc.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+        const { r2_key, filename, file_type } = doc.rows[0];
+        const obj = await downloadFromR2(r2_key);
+        res.setHeader('Content-Type', file_type || 'application/octet-stream');
+        res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+        obj.Body.pipe(res);
+    } catch (err) { console.error('[RD] download error:', err.message); res.status(500).json({ error: 'Failed' }); }
+});
+
+app.delete('/api/rd/documents/:id', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkRdTables())) return res.status(404).json({ error: 'Not found' });
+        const doc = await pool.query(`SELECT r2_key FROM rd_documents WHERE id=$1 AND workspace_id=$2`, [req.params.id, req.workspace_id]);
+        if (doc.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+        await deleteFromR2(doc.rows[0].r2_key);
+        await pool.query(`DELETE FROM rd_documents WHERE id=$1`, [req.params.id]);
+        res.json({ ok: true });
+    } catch (err) { console.error('[RD] delete doc error:', err.message); res.status(500).json({ error: 'Failed' }); }
+});
+
+// =====================================================
+// END R&D WORKSPACE TAB
+// =====================================================
+
 app.listen(PORT, "0.0.0.0", async () => {
     console.log("[STARTUP] Server listening on port " + PORT);
     // Safety check: warn if any di_submissions row has no r2_object_key

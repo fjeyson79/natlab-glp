@@ -591,6 +591,226 @@
         .co-modal-field input:focus { outline: none; border-color: rgba(0,0,0,0.16); }
         .co-modal-bar { display: flex; align-items: center; gap: 8px; margin-top: 16px; }
 
+        /* ---- R&D Workspace ---- */
+        .rd-overview {
+            display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px;
+            margin: 24px 0 18px;
+        }
+        @media (max-width: 900px) { .rd-overview { grid-template-columns: repeat(3, 1fr); } }
+        @media (max-width: 500px) { .rd-overview { grid-template-columns: repeat(2, 1fr); } }
+        .rd-metric {
+            background: #edeef1; border: 1px solid rgba(0,0,0,0.04);
+            border-radius: 10px; padding: 14px 16px;
+            display: flex; align-items: center; gap: 12px;
+        }
+        .rd-metric-num { font-size: 24px; font-weight: 700; color: #1a1c22; line-height: 1; }
+        .rd-metric-label { font-size: 11px; font-weight: 600; color: #9a9ea8; text-transform: uppercase; letter-spacing: 0.3px; }
+
+        .rd-workspace {
+            display: grid; grid-template-columns: 240px 1fr; gap: 0;
+            min-height: 500px; border: 1px solid rgba(0,0,0,0.06);
+            border-radius: 12px; overflow: hidden; background: #ffffff;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.04);
+        }
+        @media (max-width: 700px) { .rd-workspace { grid-template-columns: 1fr; } }
+
+        .rd-sidebar {
+            background: #f5f6f8; border-right: 1px solid rgba(0,0,0,0.06);
+            padding: 16px 0;
+        }
+        .rd-nav-item {
+            display: flex; align-items: center; gap: 10px;
+            padding: 10px 20px; font-size: 13px; font-weight: 500;
+            color: #7a7e8a; cursor: pointer; transition: all 0.15s;
+            border-left: 3px solid transparent;
+        }
+        .rd-nav-item:hover { color: #2a2d35; background: rgba(0,0,0,0.02); }
+        .rd-nav-item.active {
+            color: #1a7a4e; background: rgba(26,122,78,0.05);
+            border-left-color: #1a7a4e; font-weight: 600;
+        }
+        .rd-nav-count {
+            margin-left: auto; font-size: 11px; font-weight: 600;
+            color: #b0b4be; background: rgba(0,0,0,0.04);
+            border-radius: 10px; padding: 1px 8px; min-width: 22px; text-align: center;
+        }
+        .rd-nav-item.active .rd-nav-count { color: #1a7a4e; background: rgba(26,122,78,0.08); }
+
+        .rd-main { padding: 20px 24px; overflow-y: auto; }
+        .rd-main-header {
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 16px;
+        }
+        .rd-main-title { font-size: 16px; font-weight: 600; color: #1a1c22; }
+
+        .rd-filter-bar { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+        .rd-filter-btn {
+            background: #edeef1; border: none; border-radius: 6px;
+            padding: 4px 12px; font-size: 11px; font-weight: 500;
+            color: #7a7e8a; cursor: pointer; font-family: inherit; transition: all 0.15s;
+        }
+        .rd-filter-btn.active { background: #1a7a4e; color: #f0faf5; }
+        .rd-filter-btn:hover:not(.active) { background: #e2e4e8; }
+
+        .rd-card {
+            background: #ffffff; border: 1px solid rgba(0,0,0,0.06);
+            border-radius: 10px; padding: 14px 16px; margin-bottom: 10px;
+            cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s;
+            border-left: 3px solid transparent;
+        }
+        .rd-card:hover { border-color: rgba(0,0,0,0.12); box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
+        .rd-card.type-internal { border-left-color: #c8cbd2; }
+        .rd-card.type-co_development { border-left-color: #7c3aed; }
+        .rd-card.type-collaboration { border-left-color: #ca8a04; }
+        .rd-card-title { font-size: 14px; font-weight: 600; color: #1a1c22; margin-bottom: 4px; }
+        .rd-card-sub { font-size: 11px; color: #b0b4be; margin-bottom: 4px; }
+        .rd-card-meta { font-size: 12px; color: #9a9ea8; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+
+        .rd-deliverables-panel {
+            background: #ffffff; border: 1px solid rgba(0,0,0,0.06);
+            border-radius: 10px; box-shadow: 0 4px 16px rgba(0,0,0,0.04);
+            padding: 16px 20px; margin-top: 12px; display: none;
+        }
+        .rd-deliverables-panel.open { display: block; }
+        .rd-del-item {
+            display: flex; align-items: baseline; gap: 10px;
+            padding: 6px 0; border-bottom: 1px solid rgba(0,0,0,0.03);
+            font-size: 12px;
+        }
+        .rd-del-item:last-child { border-bottom: none; }
+        .rd-del-source { font-size: 10px; font-weight: 600; color: #9a9ea8; text-transform: uppercase; letter-spacing: 0.3px; flex-shrink: 0; width: 70px; }
+        .rd-del-text { color: #2a2d35; flex: 1; }
+        .rd-del-date { font-size: 11px; color: #b0b4be; flex-shrink: 0; }
+
+        .rd-metric { transition: border-color 0.15s, box-shadow 0.15s, background 0.15s; }
+        .rd-metric:hover { background: #e8e9ec; border-color: rgba(0,0,0,0.06); }
+        .rd-metric.clickable { cursor: pointer; }
+        .rd-metric.clickable:hover { border-color: rgba(0,0,0,0.1); box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+
+        .rd-urgency { display: inline-block; font-size: 9px; font-weight: 700; padding: 1px 6px; border-radius: 8px; text-transform: uppercase; letter-spacing: 0.2px; }
+        .rd-urgency.overdue { background: rgba(220,38,38,0.08); color: #dc2626; }
+        .rd-urgency.soon { background: rgba(202,138,4,0.08); color: #ca8a04; }
+        .rd-urgency.later { background: rgba(0,0,0,0.04); color: #9a9ea8; }
+
+        .rd-section-label {
+            font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;
+            color: #9a9ea8; margin: 18px 0 8px; padding-bottom: 4px; border-bottom: 1px solid rgba(0,0,0,0.04);
+        }
+        .rd-section-label:first-child { margin-top: 0; }
+
+        .rd-program-tag {
+            display: inline-block; font-size: 9px; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.4px; color: #9a9ea8; background: rgba(0,0,0,0.04);
+            padding: 2px 7px; border-radius: 4px; margin-right: 6px;
+        }
+
+        .rd-badge {
+            display: inline-block; padding: 2px 8px; border-radius: 10px;
+            font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px;
+        }
+        .rd-badge.internal { background: rgba(37,99,235,0.08); color: #2563eb; }
+        .rd-badge.co_development { background: rgba(124,58,237,0.08); color: #7c3aed; }
+        .rd-badge.collaboration { background: rgba(202,138,4,0.08); color: #ca8a04; }
+        .rd-badge.active { background: rgba(22,163,74,0.08); color: #16a34a; }
+        .rd-badge.planning { background: rgba(37,99,235,0.08); color: #2563eb; }
+        .rd-badge.paused { background: rgba(202,138,4,0.08); color: #ca8a04; }
+        .rd-badge.completed { background: rgba(0,0,0,0.05); color: #7a7e8a; }
+        .rd-badge.prospective { background: rgba(124,58,237,0.08); color: #7c3aed; }
+        .rd-badge.applied { background: rgba(37,99,235,0.08); color: #2563eb; }
+        .rd-badge.rejected { background: rgba(220,38,38,0.08); color: #dc2626; }
+        .rd-badge.inactive { background: rgba(0,0,0,0.05); color: #9a9ea8; }
+
+        .rd-empty {
+            text-align: center; padding: 48px 20px; color: #b0b4be;
+        }
+        .rd-empty-title { font-size: 15px; font-weight: 600; color: #9a9ea8; margin-bottom: 6px; }
+        .rd-empty-desc { font-size: 12px; color: #b0b4be; }
+
+        .rd-detail-header {
+            display: flex; align-items: center; gap: 10px; margin-bottom: 18px; flex-wrap: wrap;
+        }
+        .rd-detail-title { font-size: 18px; font-weight: 600; color: #1a1c22; }
+        .rd-back-btn {
+            background: none; border: 1px solid rgba(0,0,0,0.08); border-radius: 6px;
+            padding: 4px 12px; font-size: 11px; color: #9a9ea8; cursor: pointer;
+            font-family: inherit; transition: all 0.15s; margin-right: 8px;
+        }
+        .rd-back-btn:hover { color: #555a66; border-color: rgba(0,0,0,0.15); }
+
+        .rd-info-grid {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 10px 20px; margin-bottom: 18px;
+        }
+        @media (max-width: 600px) { .rd-info-grid { grid-template-columns: 1fr; } }
+        .rd-info-item {}
+        .rd-info-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #9a9ea8; margin-bottom: 2px; }
+        .rd-info-val { font-size: 13px; color: #2a2d35; line-height: 1.5; }
+
+        .rd-doc-categories { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-top: 18px; }
+        @media (max-width: 800px) { .rd-doc-categories { grid-template-columns: repeat(3, 1fr); } }
+        @media (max-width: 500px) { .rd-doc-categories { grid-template-columns: repeat(2, 1fr); } }
+        .rd-doc-tile {
+            background: #f9fafb; border: 1px solid rgba(0,0,0,0.06);
+            border-radius: 8px; padding: 12px; min-height: 90px;
+        }
+        .rd-doc-tile-head {
+            font-size: 10px; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.6px; color: #9a9ea8; margin-bottom: 8px;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .rd-doc-tile-count { font-size: 10px; font-weight: 600; color: #b0b4be; }
+        .rd-doc-file {
+            font-size: 11px; color: #555a66; padding: 3px 0;
+            display: flex; align-items: center; justify-content: space-between;
+            border-bottom: 1px solid rgba(0,0,0,0.03);
+        }
+        .rd-doc-file:last-child { border-bottom: none; }
+        .rd-doc-file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .rd-doc-file-actions { display: flex; gap: 4px; flex-shrink: 0; margin-left: 4px; }
+        .rd-doc-file-btn {
+            background: none; border: none; font-size: 10px; color: #b0b4be;
+            cursor: pointer; font-family: inherit; padding: 1px 3px; transition: color 0.15s;
+        }
+        .rd-doc-file-btn:hover { color: #555a66; }
+        .rd-doc-file-btn.open-btn { background: #1a1c22; color: #fff; border-radius: 3px; padding: 1px 6px; }
+        .rd-doc-file-btn.open-btn:hover { background: #2e3039; }
+        .rd-doc-file-btn.danger:hover { color: #dc2626; }
+        .rd-doc-upload-btn {
+            background: none; border: 1px dashed rgba(0,0,0,0.12);
+            border-radius: 5px; padding: 4px 8px; font-size: 10px;
+            color: #b0b4be; cursor: pointer; font-family: inherit;
+            width: 100%; text-align: center; margin-top: 6px; transition: all 0.15s;
+        }
+        .rd-doc-upload-btn:hover { color: #555a66; border-color: rgba(0,0,0,0.2); }
+
+        /* R&D form modal */
+        .rd-modal-overlay {
+            display: none; position: fixed; inset: 0; z-index: 300;
+            background: rgba(0,0,0,0.25); align-items: center; justify-content: center;
+        }
+        .rd-modal-overlay.open { display: flex; }
+        .rd-modal {
+            background: #ffffff; border-radius: 12px; padding: 24px 28px;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.15); width: 520px; max-width: 92vw;
+            max-height: 85vh; overflow-y: auto;
+        }
+        .rd-modal-title { font-size: 15px; font-weight: 600; color: #1a1c22; margin-bottom: 16px; }
+        .rd-modal-field { margin-bottom: 10px; }
+        .rd-modal-field label {
+            display: block; font-size: 10px; font-weight: 600; text-transform: uppercase;
+            letter-spacing: 0.5px; color: #9a9ea8; margin-bottom: 3px;
+        }
+        .rd-modal-field input, .rd-modal-field select, .rd-modal-field textarea {
+            width: 100%; background: #f9fafb; border: 1px solid rgba(0,0,0,0.08);
+            border-radius: 6px; color: #2a2d35; font-family: inherit;
+            font-size: 13px; padding: 7px 10px;
+        }
+        .rd-modal-field textarea { resize: vertical; min-height: 60px; line-height: 1.5; }
+        .rd-modal-field input:focus, .rd-modal-field select:focus, .rd-modal-field textarea:focus {
+            outline: none; border-color: rgba(0,0,0,0.16);
+        }
+        .rd-modal-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .rd-modal-bar { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+
         /* ---- Empty Tab States ---- */
         .empty-tab { padding: 48px 0; }
         .empty-tab-card {
@@ -908,15 +1128,37 @@
         <!-- TAB: R&D                                       -->
         <!-- ============================================== -->
         <div class="tab-content" id="tab-rnd">
-            <div class="empty-tab">
-                <div class="empty-tab-card">
-                    <div class="empty-tab-icon">
-                        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M9 3v2m6-2v2M9 19v2m6-2v2M3 9h2m14 0h2M3 15h2m14 0h2M7 7h10v10H7z"/></svg>
-                    </div>
-                    <div class="empty-tab-title">R&D</div>
-                    <div class="empty-tab-desc">Scientific execution, active projects, experimental data, product development pipeline, and research milestones.</div>
-                </div>
+
+            <!-- Overview Metrics -->
+            <div class="rd-overview" id="rdOverview">
+                <div class="rd-metric"><span class="rd-metric-num" id="rdM-projects">0</span><span class="rd-metric-label">Active Projects</span></div>
+                <div class="rd-metric"><span class="rd-metric-num" id="rdM-codev">0</span><span class="rd-metric-label">Co-Development</span></div>
+                <div class="rd-metric"><span class="rd-metric-num" id="rdM-collab">0</span><span class="rd-metric-label">Collaborations</span></div>
+                <div class="rd-metric"><span class="rd-metric-num" id="rdM-partners">0</span><span class="rd-metric-label">Partners</span></div>
+                <div class="rd-metric"><span class="rd-metric-num" id="rdM-grants">0</span><span class="rd-metric-label">Grants</span></div>
+                <div class="rd-metric clickable" onclick="rdToggleDeliverables()" title="Click to expand"><span class="rd-metric-num" id="rdM-upcoming">0</span><span class="rd-metric-label">Upcoming Deliverables</span></div>
             </div>
+
+            <!-- Deliverables Panel -->
+            <div class="rd-deliverables-panel" id="rdDelPanel"></div>
+
+            <!-- Two-panel workspace -->
+            <div class="rd-workspace">
+                <div class="rd-sidebar">
+                    <div class="rd-nav-item active" data-rd-nav="projects">Projects <span class="rd-nav-count" id="rdN-projects">0</span></div>
+                    <div class="rd-nav-item" data-rd-nav="codev">Co-Development <span class="rd-nav-count" id="rdN-codev">0</span></div>
+                    <div class="rd-nav-item" data-rd-nav="partners">Partners <span class="rd-nav-count" id="rdN-partners">0</span></div>
+                    <div class="rd-nav-item" data-rd-nav="grants">Grants <span class="rd-nav-count" id="rdN-grants">0</span></div>
+                    <div class="rd-nav-item" data-rd-nav="programs">Programs <span class="rd-nav-count" id="rdN-programs">0</span></div>
+                </div>
+                <div class="rd-main" id="rdMain"></div>
+            </div>
+
+            <!-- R&D Form Modal -->
+            <div class="rd-modal-overlay" id="rdModal">
+                <div class="rd-modal" id="rdModalContent"></div>
+            </div>
+
         </div>
 
         <!-- ============================================== -->
@@ -1699,6 +1941,654 @@
                 }
             }
         }
+        /* ============================================== */
+        /* R&D WORKSPACE TAB                              */
+        /* ============================================== */
+        const RD_WS = 'theralia';
+        const RD_DOC_CATS = ['SOP','DATA','PRES','REPORT','DOCS'];
+        let rdSection = 'projects';
+        let rdProjectFilter = 'all';
+        let rdProgramFilter = '';
+        let rdCache = { projects: [], programs: [], partners: [], grants: [] };
+        let rdInitDone = false;
+
+        // Helpers
+        function rdEsc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+        function rdBadge(val, cls) { return val ? `<span class="rd-badge ${cls || val}">${rdEsc(val.replace('_',' '))}</span>` : ''; }
+        function rdDate(d) { return d ? new Date(d).toLocaleDateString('sv-SE') : '\u2014'; }
+        function rdFetch(url, opts) { return fetch(url + (url.includes('?') ? '&' : '?') + 'ws=' + RD_WS, { credentials: 'include', ...opts }); }
+        function rdJson(url) { return rdFetch(url).then(r => r.json()); }
+
+        function rdLinkedProjectNames(partnerName) {
+            return rdCache.projects
+                .filter(p => p.external_partner_name === partnerName && p.status !== 'archived')
+                .map(p => rdEsc(p.title));
+        }
+
+        // --- Init ---
+        document.getElementById('tabNav').addEventListener('click', (e) => {
+            const btn = e.target.closest('.tab-btn');
+            if (btn && btn.dataset.tab === 'rnd' && !rdInitDone) {
+                rdInitDone = true;
+                rdInit();
+            }
+        });
+
+        async function rdInit() {
+            await rdLoadAll();
+            rdRenderNav();
+            rdRenderSection();
+        }
+
+        async function rdLoadAll() {
+            try {
+                const [ov, proj, prog, part, grant] = await Promise.all([
+                    rdJson('/api/rd/overview'),
+                    rdJson('/api/rd/projects'),
+                    rdJson('/api/rd/programs'),
+                    rdJson('/api/rd/partners'),
+                    rdJson('/api/rd/grants')
+                ]);
+                rdCache.projects = proj.projects || [];
+                rdCache.programs = prog.programs || [];
+                rdCache.partners = part.partners || [];
+                rdCache.grants = grant.grants || [];
+                document.getElementById('rdM-projects').textContent = ov.projects || 0;
+                document.getElementById('rdM-codev').textContent = ov.co_development || 0;
+                document.getElementById('rdM-collab').textContent = ov.collaborations || 0;
+                document.getElementById('rdM-partners').textContent = ov.partners || 0;
+                document.getElementById('rdM-grants').textContent = ov.grants || 0;
+                document.getElementById('rdM-upcoming').textContent = ov.upcoming || 0;
+            } catch {}
+        }
+
+        function rdRenderNav() {
+            const active = rdCache.projects.filter(p => p.status !== 'archived');
+            const codev = active.filter(p => p.project_type === 'co_development');
+            document.getElementById('rdN-projects').textContent = active.length;
+            document.getElementById('rdN-codev').textContent = codev.length;
+            document.getElementById('rdN-partners').textContent = rdCache.partners.length;
+            document.getElementById('rdN-grants').textContent = rdCache.grants.length;
+            document.getElementById('rdN-programs').textContent = rdCache.programs.length;
+        }
+
+        // Sidebar clicks
+        document.querySelector('.rd-sidebar').addEventListener('click', (e) => {
+            const item = e.target.closest('.rd-nav-item');
+            if (!item) return;
+            rdSection = item.dataset.rdNav;
+            document.querySelectorAll('.rd-nav-item').forEach(n => n.classList.remove('active'));
+            item.classList.add('active');
+            rdRenderSection();
+        });
+
+        function rdRenderSection() {
+            const main = document.getElementById('rdMain');
+            switch (rdSection) {
+                case 'projects': rdRenderProjects(main); break;
+                case 'codev': rdRenderCoDev(main); break;
+                case 'partners': rdRenderPartners(main); break;
+                case 'grants': rdRenderGrants(main); break;
+                case 'programs': rdRenderPrograms(main); break;
+                default: rdRenderProjects(main);
+            }
+        }
+
+        // ---- Deliverables Panel ----
+        function rdUrgency(dateStr) {
+            if (!dateStr) return { cls: 'later', label: '' };
+            const now = new Date(); now.setHours(0,0,0,0);
+            const d = new Date(dateStr); d.setHours(0,0,0,0);
+            const diff = (d - now) / (1000*60*60*24);
+            if (diff < 0) return { cls: 'overdue', label: 'Overdue' };
+            if (diff <= 7) return { cls: 'soon', label: 'Due soon' };
+            return { cls: 'later', label: '' };
+        }
+
+        function rdToggleDeliverables() {
+            const panel = document.getElementById('rdDelPanel');
+            if (panel.classList.contains('open')) { panel.classList.remove('open'); return; }
+            const items = [];
+            rdCache.projects.filter(p => p.upcoming_deliverable && p.status !== 'archived' && p.status !== 'completed').forEach(p => {
+                items.push({ source: 'Project', name: p.title, text: p.upcoming_deliverable, date: p.target_date });
+            });
+            rdCache.programs.filter(p => p.upcoming_deliverable && p.status !== 'archived').forEach(p => {
+                items.push({ source: 'Program', name: p.program_name, text: p.upcoming_deliverable, date: null });
+            });
+            rdCache.grants.filter(g => g.upcoming_deliverable && g.status !== 'completed' && g.status !== 'rejected').forEach(g => {
+                items.push({ source: 'Grant', name: g.grant_name, text: g.upcoming_deliverable, date: null });
+            });
+            // Sort: overdue first, then soonest, then undated
+            items.sort((a, b) => {
+                if (!a.date && !b.date) return 0;
+                if (!a.date) return 1;
+                if (!b.date) return -1;
+                return new Date(a.date) - new Date(b.date);
+            });
+            if (items.length === 0) {
+                panel.innerHTML = '<div style="font-size:12px;color:#b0b4be;font-style:italic">No upcoming deliverables recorded</div>';
+            } else {
+                const renderGroup = (label, groupItems) => {
+                    if (groupItems.length === 0) return '';
+                    return '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#9a9ea8;margin:12px 0 6px">' + label + '</div>' +
+                        groupItems.map(i => {
+                            const u = rdUrgency(i.date);
+                            return `<div class="rd-del-item">
+                                <span class="rd-del-text"><strong>${rdEsc(i.name)}</strong> &mdash; ${rdEsc(i.text)}</span>
+                                ${u.label ? '<span class="rd-urgency ' + u.cls + '">' + u.label + '</span>' : ''}
+                                ${i.date ? '<span class="rd-del-date">' + rdDate(i.date) + '</span>' : ''}
+                            </div>`;
+                        }).join('');
+                };
+                const programs = items.filter(i => i.source === 'Program');
+                const projects = items.filter(i => i.source === 'Project');
+                const grants = items.filter(i => i.source === 'Grant');
+                panel.innerHTML = '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#9a9ea8;margin-bottom:6px">Upcoming Deliverables</div>' +
+                    renderGroup('Programs', programs) + renderGroup('Projects', projects) + renderGroup('Grants', grants);
+            }
+            panel.classList.add('open');
+        }
+
+        // ---- Project Card HTML ----
+        function rdProjectCard(p) {
+            const progLabel = p.program_name ? '<span class="rd-card-sub">' + rdEsc(p.program_name) + '</span>' : '';
+            return `<div class="rd-card type-${p.project_type}" onclick="rdShowProjectDetail('${p.id}')">
+                <div class="rd-card-title">${rdEsc(p.title)}</div>
+                ${progLabel}
+                <div class="rd-card-meta">
+                    ${rdBadge(p.project_type)} ${rdBadge(p.status)}
+                    ${p.theralia_contact ? '<span>' + rdEsc(p.theralia_contact) + '</span>' : ''}
+                    ${p.external_partner_name ? '<span>' + rdEsc(p.external_partner_name) + '</span>' : ''}
+                    ${p.upcoming_deliverable ? '<span style="color:#ca8a04">Deliverable pending</span>' : ''}
+                </div>
+                ${p.next_action ? '<div style="font-size:11px;color:#1a7a4e;margin-top:4px">Next: ' + rdEsc(p.next_action) + '</div>' : ''}
+                ${p.last_activity ? '<div style="font-size:10px;color:#b0b4be;margin-top:2px">Last activity: ' + rdDate(p.last_activity) + '</div>' : ''}
+            </div>`;
+        }
+
+        // ---- PROJECTS ----
+        function rdRenderProjects(el) {
+            let items = rdCache.projects.filter(p => p.status !== 'archived');
+            if (rdProjectFilter !== 'all') items = items.filter(p => p.project_type === rdProjectFilter);
+            if (rdProgramFilter) items = items.filter(p => p.program_id === rdProgramFilter);
+
+            const progFilterHtml = rdCache.programs.length > 0
+                ? `<span style="margin-left:8px;font-size:11px;color:#b0b4be">&middot;</span>
+                   <button class="rd-filter-btn ${!rdProgramFilter?'active':''}" onclick="rdProgramFilter='';rdRenderSection()">All Programs</button>
+                   ${rdCache.programs.map(pg => `<button class="rd-filter-btn ${rdProgramFilter===pg.id?'active':''}" onclick="rdProgramFilter='${pg.id}';rdRenderSection()">${rdEsc(pg.program_name)}</button>`).join('')}`
+                : '';
+
+            el.innerHTML = `
+                <div class="rd-main-header">
+                    <span class="rd-main-title">Projects</span>
+                    <button class="di-edit-btn" onclick="rdShowProjectForm()">Add Project</button>
+                </div>
+                <div class="rd-filter-bar">
+                    ${['all','internal','co_development','collaboration'].map(f =>
+                        `<button class="rd-filter-btn ${rdProjectFilter===f?'active':''}" onclick="rdProjectFilter='${f}';rdRenderSection()">${f==='all'?'All':f==='co_development'?'Co-Development':f==='collaboration'?'Collaborations':'Internal'}</button>`
+                    ).join('')}
+                    ${progFilterHtml}
+                </div>
+                ${items.length === 0
+                    ? '<div class="rd-empty"><div class="rd-empty-title">No R&D projects yet</div><div class="rd-empty-desc">Create your first project to track development, collaborators, and deliverables</div></div>'
+                    : items.map(p => rdProjectCard(p)).join('')
+                }`;
+        }
+
+        // ---- CO-DEV ----
+        function rdRenderCoDev(el) {
+            const items = rdCache.projects.filter(p => p.project_type === 'co_development' && p.status !== 'archived');
+            el.innerHTML = `
+                <div class="rd-main-header">
+                    <span class="rd-main-title">Co-Development</span>
+                    <button class="di-edit-btn" onclick="rdShowProjectForm('co_development')">Add Co-Development</button>
+                </div>
+                <div style="font-size:12px;color:#9a9ea8;margin-bottom:16px;line-height:1.5">Projects involving external partners and shared development responsibility.</div>
+                ${items.length === 0
+                    ? '<div class="rd-empty"><div class="rd-empty-title">No co-development projects yet</div><div class="rd-empty-desc">Add a co-development project to track shared work with external partners</div></div>'
+                    : items.map(p => rdProjectCard(p)).join('')
+                }`;
+        }
+
+        // ---- PROJECT DETAIL ----
+        async function rdShowProjectDetail(id) {
+            const main = document.getElementById('rdMain');
+            main.innerHTML = '<div style="padding:24px;color:#b0b4be">Loading...</div>';
+            try {
+                const [projRes, docsRes] = await Promise.all([
+                    rdJson('/api/rd/projects/' + id),
+                    rdJson('/api/rd/projects/' + id + '/documents')
+                ]);
+                const p = projRes.project;
+                const docs = docsRes.documents || [];
+                const docsByType = {};
+                RD_DOC_CATS.forEach(t => { docsByType[t] = docs.filter(d => d.document_type === t); });
+
+                // Recent activity: 3 most recent docs
+                const recentDocs = docs.slice(0, 3);
+
+                main.innerHTML = `
+                    <div class="rd-detail-header">
+                        <button class="rd-back-btn" onclick="rdRenderSection()">&larr; Back</button>
+                        <span class="rd-detail-title">${rdEsc(p.title)}</span>
+                        ${rdBadge(p.project_type)} ${rdBadge(p.status)}
+                        <button class="di-edit-btn" style="margin-left:auto" onclick="rdShowProjectForm(null,'${p.id}')">Edit</button>
+                    </div>
+
+                    ${p.description ? '<div class="rd-section-label">Overview</div><div style="font-size:13px;color:#555a66;line-height:1.6;margin-bottom:14px">' + rdEsc(p.description) + '</div>' : ''}
+
+                    <div class="rd-section-label">Outcome</div>
+                    <div class="rd-info-grid">
+                        <div class="rd-info-item"><div class="rd-info-label">Expected Result</div><div class="rd-info-val">${rdEsc(p.expected_result) || '\u2014'}</div></div>
+                        <div class="rd-info-item"><div class="rd-info-label">Upcoming Deliverable</div><div class="rd-info-val">${rdEsc(p.upcoming_deliverable) || '\u2014'}</div></div>
+                        <div class="rd-info-item" style="grid-column:1/-1"><div class="rd-info-label">Next Action</div><div class="rd-info-val" style="${p.next_action ? 'color:#1a7a4e' : 'color:#b0b4be;font-style:italic;font-size:12px'}">${p.next_action ? rdEsc(p.next_action) : 'No next action defined'}</div></div>
+                    </div>
+
+                    <div class="rd-section-label">Key Information</div>
+                    <div class="rd-info-grid">
+                        <div class="rd-info-item"><div class="rd-info-label">Program</div><div class="rd-info-val">${rdEsc(p.program_name) || '\u2014'}</div></div>
+                        <div class="rd-info-item"><div class="rd-info-label">Theralia Contact</div><div class="rd-info-val">${rdEsc(p.theralia_contact) || '\u2014'}</div></div>
+                        <div class="rd-info-item"><div class="rd-info-label">External Partner</div><div class="rd-info-val">${rdEsc(p.external_partner_name) || '\u2014'}</div></div>
+                        <div class="rd-info-item"><div class="rd-info-label">Start Date</div><div class="rd-info-val">${rdDate(p.start_date)}</div></div>
+                        <div class="rd-info-item"><div class="rd-info-label">Target Date</div><div class="rd-info-val">${rdDate(p.target_date)}</div></div>
+                    </div>
+
+                    ${recentDocs.length > 0 ? '<div class="rd-section-label">Recent Activity</div>' + recentDocs.map(d =>
+                        '<div style="font-size:12px;color:#555a66;padding:4px 0;display:flex;gap:10px;align-items:center">' +
+                        '<span class="rd-badge" style="background:rgba(0,0,0,0.04);color:#9a9ea8">' + d.document_type + '</span>' +
+                        '<a href="/api/rd/documents/' + d.id + '/download" target="_blank" style="color:#2a2d35;text-decoration:none;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + rdEsc(d.filename) + '">' + rdEsc(d.title || d.filename) + '</a>' +
+                        '<span style="font-size:11px;color:#b0b4be;flex-shrink:0">' + rdDate(d.created_at) + '</span></div>'
+                    ).join('') : ''}
+
+                    <div class="rd-section-label" style="margin-top:18px">Project Documents</div>
+                    <div style="font-size:10px;color:#b0b4be;margin-bottom:12px">PDF only &middot; max 20 MB per file</div>
+                    <div class="rd-doc-categories">
+                        ${RD_DOC_CATS.map(t => {
+                            const list = docsByType[t];
+                            const lastDate = list.length > 0 ? rdDate(list[0].created_at) : null;
+                            return `<div class="rd-doc-tile">
+                                <div class="rd-doc-tile-head"><span>${t}</span><span class="rd-doc-tile-count">${list.length} document${list.length!==1?'s':''}</span></div>
+                                ${lastDate ? '<div style="font-size:9px;color:#b0b4be;margin-bottom:6px">Last update: ' + lastDate + '</div>' : ''}
+                                ${list.length === 0 ? '<div style="font-size:10px;color:#c8cbd2;font-style:italic;margin-bottom:4px">No documents uploaded yet</div>' :
+                                  list.map(d => `<div class="rd-doc-file">
+                                    <a class="rd-doc-file-name" href="/api/rd/documents/${d.id}/download" target="_blank" title="${rdEsc(d.filename)}" style="color:#555a66;text-decoration:none" onmouseover="this.style.color='#1a1c22'" onmouseout="this.style.color='#555a66'">${rdEsc(d.filename)}</a>
+                                    <div class="rd-doc-file-actions">
+                                        <button class="rd-doc-file-btn open-btn" onclick="event.stopPropagation();window.open('/api/rd/documents/${d.id}/download','_blank')">Open</button>
+                                        <button class="rd-doc-file-btn danger" onclick="event.stopPropagation();rdDeleteDoc('${d.id}','${p.id}')">&times;</button>
+                                    </div>
+                                  </div>`).join('')}
+                                <button class="rd-doc-upload-btn" onclick="rdUploadDoc('${p.id}','${t}')">Upload PDF</button>
+                            </div>`;
+                        }).join('')}
+                    </div>`;
+            } catch {
+                main.innerHTML = '<div class="rd-empty"><div class="rd-empty-title">Failed to load project</div></div>';
+            }
+        }
+
+        // ---- PARTNERS ----
+        function rdRenderPartners(el) {
+            el.innerHTML = `
+                <div class="rd-main-header">
+                    <span class="rd-main-title">Partners</span>
+                    <button class="di-edit-btn" onclick="rdShowPartnerForm()">Add Partner</button>
+                </div>
+                ${rdCache.partners.length === 0
+                    ? '<div class="rd-empty"><div class="rd-empty-title">No partners registered yet</div><div class="rd-empty-desc">Add an external partner to structure collaboration activity</div></div>'
+                    : rdCache.partners.map(p => {
+                        const projNames = rdLinkedProjectNames(p.organization_name);
+                        return `<div class="rd-card" onclick="rdShowPartnerForm('${p.id}')">
+                            <div class="rd-card-title">${rdEsc(p.organization_name)}</div>
+                            ${p.role_description ? '<div class="rd-card-sub">' + rdEsc(p.role_description) + '</div>' : ''}
+                            <div class="rd-card-meta">
+                                ${rdBadge(p.status)}
+                                ${p.contact_person ? '<span>' + rdEsc(p.contact_person) + '</span>' : ''}
+                                ${p.email ? '<span>' + rdEsc(p.email) + '</span>' : ''}
+                                ${p.phone ? '<span>' + rdEsc(p.phone) + '</span>' : ''}
+                            </div>
+                            ${p.collaboration_description ? '<div style="font-size:12px;color:#8b8f9a;margin-top:4px">' + rdEsc(p.collaboration_description) + '</div>' : ''}
+                            ${projNames.length > 0 ? '<div style="font-size:11px;color:#1a7a4e;margin-top:4px">Linked: ' + projNames.join(', ') + '</div>' : ''}
+                        </div>`;
+                    }).join('')
+                }`;
+        }
+
+        // ---- GRANTS ----
+        function rdRenderGrants(el) {
+            el.innerHTML = `
+                <div class="rd-main-header">
+                    <span class="rd-main-title">Grants</span>
+                    <button class="di-edit-btn" onclick="rdShowGrantForm()">Add Grant</button>
+                </div>
+                ${rdCache.grants.length === 0
+                    ? '<div class="rd-empty"><div class="rd-empty-title">No grants added yet</div><div class="rd-empty-desc">Register funding opportunities and awarded grants here</div></div>'
+                    : rdCache.grants.map(g => {
+                        const supports = [g.program_name, g.project_title].filter(Boolean).join(', ');
+                        return `<div class="rd-card" onclick="rdShowGrantForm('${g.id}')">
+                            <div class="rd-card-title">${rdEsc(g.grant_name)}</div>
+                            ${g.funding_body ? '<div class="rd-card-sub">' + rdEsc(g.funding_body) + '</div>' : ''}
+                            <div class="rd-card-meta">
+                                ${rdBadge(g.status)}
+                                ${g.amount ? '<span>' + Number(g.amount).toLocaleString('sv-SE') + ' SEK</span>' : ''}
+                            </div>
+                            ${supports ? '<div style="font-size:11px;color:#1a7a4e;margin-top:4px">Supports: ' + rdEsc(supports) + '</div>' : ''}
+                            ${g.timeline_notes ? '<div style="font-size:12px;color:#8b8f9a;margin-top:3px">' + rdEsc(g.timeline_notes) + '</div>' : ''}
+                            ${g.upcoming_deliverable ? '<div style="font-size:12px;color:#ca8a04;margin-top:2px">Upcoming: ' + rdEsc(g.upcoming_deliverable) + '</div>' : ''}
+                        </div>`;
+                    }).join('')
+                }`;
+        }
+
+        // ---- PROGRAMS ----
+        function rdRenderPrograms(el) {
+            el.innerHTML = `
+                <div class="rd-main-header">
+                    <span class="rd-main-title">Programs</span>
+                    <button class="di-edit-btn" onclick="rdShowProgramForm()">Add Program</button>
+                </div>
+                ${rdCache.programs.length === 0
+                    ? '<div class="rd-empty"><div class="rd-empty-title">No programs created yet</div><div class="rd-empty-desc">Start with a strategic program such as TOUCAN-MRSA to group projects into pipelines</div></div>'
+                    : rdCache.programs.map(p => rdProgramCard(p)).join('')
+                }`;
+        }
+
+        function rdProgramCard(p) {
+            const linkedProjects = rdCache.projects.filter(pr => pr.program_id === p.id && pr.status !== 'archived');
+            const linkedGrants = rdCache.grants.filter(g => g.program_id === p.id);
+            const activeCount = linkedProjects.filter(pr => pr.status === 'active').length;
+            return `<div class="rd-card" onclick="rdShowProgramDetail('${p.id}')">
+                <div class="rd-card-title"><span class="rd-program-tag">Program</span>${rdEsc(p.program_name)}</div>
+                <div class="rd-card-meta">
+                    ${rdBadge(p.status)}
+                    <span>Active: ${activeCount} / Total: ${linkedProjects.length}</span>
+                    <span>${linkedGrants.length} grant${linkedGrants.length!==1?'s':''}</span>
+                </div>
+                ${p.description ? '<div style="font-size:12px;color:#555a66;margin-top:4px">' + rdEsc(p.description) + '</div>' : ''}
+                ${p.strategic_goal ? '<div style="font-size:12px;color:#8b8f9a;margin-top:3px"><strong style="color:#9a9ea8">Goal:</strong> ' + rdEsc(p.strategic_goal) + '</div>' : ''}
+                ${p.upcoming_deliverable ? '<div style="font-size:12px;color:#ca8a04;margin-top:2px">Upcoming: ' + rdEsc(p.upcoming_deliverable) + '</div>' : ''}
+            </div>`;
+        }
+
+        function rdShowProgramDetail(id) {
+            const p = rdCache.programs.find(x => x.id === id);
+            if (!p) return;
+            const linkedProjects = rdCache.projects.filter(pr => pr.program_id === p.id && pr.status !== 'archived');
+            const linkedGrants = rdCache.grants.filter(g => g.program_id === p.id);
+            const main = document.getElementById('rdMain');
+            main.innerHTML = `
+                <div class="rd-detail-header">
+                    <button class="rd-back-btn" onclick="rdRenderSection()">&larr; Back</button>
+                    <span class="rd-program-tag">Program</span>
+                    <span class="rd-detail-title">${rdEsc(p.program_name)}</span>
+                    ${rdBadge(p.status)}
+                    <button class="di-edit-btn" style="margin-left:auto" onclick="rdShowProgramForm('${p.id}')">Edit</button>
+                </div>
+                ${p.description ? '<div style="font-size:13px;color:#555a66;line-height:1.6;margin-bottom:14px">' + rdEsc(p.description) + '</div>' : ''}
+                <div class="rd-info-grid">
+                    <div class="rd-info-item"><div class="rd-info-label">Strategic Goal</div><div class="rd-info-val">${rdEsc(p.strategic_goal) || '\u2014'}</div></div>
+                    <div class="rd-info-item"><div class="rd-info-label">Upcoming Deliverable</div><div class="rd-info-val">${rdEsc(p.upcoming_deliverable) || '\u2014'}</div></div>
+                </div>
+                <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#9a9ea8;margin:18px 0 10px">Linked Projects (${linkedProjects.length})</div>
+                ${linkedProjects.length === 0
+                    ? '<div style="font-size:12px;color:#b0b4be;font-style:italic">No projects linked to this program</div>'
+                    : linkedProjects.map(pr => rdProjectCard(pr)).join('')}
+                <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#9a9ea8;margin:18px 0 10px">Linked Grants (${linkedGrants.length})</div>
+                ${linkedGrants.length === 0
+                    ? '<div style="font-size:12px;color:#b0b4be;font-style:italic">No grants linked to this program</div>'
+                    : linkedGrants.map(g => `<div class="rd-card" onclick="rdShowGrantForm('${g.id}')">
+                        <div class="rd-card-title">${rdEsc(g.grant_name)}</div>
+                        <div class="rd-card-meta">${rdBadge(g.status)} ${g.funding_body ? '<span>' + rdEsc(g.funding_body) + '</span>' : ''} ${g.amount ? '<span>' + Number(g.amount).toLocaleString('sv-SE') + ' SEK</span>' : ''}</div>
+                    </div>`).join('')}
+            `;
+        }
+
+        // ---- MODAL HELPERS ----
+        function rdOpenModal(html) {
+            document.getElementById('rdModalContent').innerHTML = html;
+            document.getElementById('rdModal').classList.add('open');
+        }
+        function rdCloseModal() {
+            document.getElementById('rdModal').classList.remove('open');
+        }
+        document.getElementById('rdModal').addEventListener('click', (e) => {
+            if (e.target === e.currentTarget) rdCloseModal();
+        });
+
+        function rdProgramOptions(selectedId) {
+            return '<option value="">None</option>' +
+                rdCache.programs.map(p => `<option value="${p.id}" ${p.id===selectedId?'selected':''}>${rdEsc(p.program_name)}</option>`).join('');
+        }
+        function rdProjectOptions(selectedId) {
+            return '<option value="">None</option>' +
+                rdCache.projects.map(p => `<option value="${p.id}" ${p.id===selectedId?'selected':''}>${rdEsc(p.title)}</option>`).join('');
+        }
+
+        // ---- PROJECT FORM ----
+        function rdShowProjectForm(preType, editId) {
+            const p = editId ? rdCache.projects.find(x => x.id === editId) : null;
+            rdOpenModal(`
+                <div class="rd-modal-title">${p ? 'Edit Project' : 'Add Project'}</div>
+                <div class="rd-modal-field"><label>Title</label><input id="rdF-title" value="${rdEsc(p?.title||'')}"></div>
+                <div class="rd-modal-row">
+                    <div class="rd-modal-field"><label>Type</label><select id="rdF-type">
+                        ${['internal','co_development','collaboration'].map(t => `<option value="${t}" ${(p?.project_type||preType||'internal')===t?'selected':''}>${t==='co_development'?'Co-Development':t==='collaboration'?'Collaboration':'Internal'}</option>`).join('')}
+                    </select></div>
+                    <div class="rd-modal-field"><label>Status</label><select id="rdF-status">
+                        ${['planning','active','paused','completed','archived'].map(s => `<option value="${s}" ${(p?.status||'active')===s?'selected':''}>${s}</option>`).join('')}
+                    </select></div>
+                </div>
+                <div class="rd-modal-field"><label>Program</label><select id="rdF-program">${rdProgramOptions(p?.program_id)}</select></div>
+                <div class="rd-modal-field"><label>Description</label><textarea id="rdF-desc">${rdEsc(p?.description||'')}</textarea></div>
+                <div class="rd-modal-row">
+                    <div class="rd-modal-field"><label>Theralia Contact</label><input id="rdF-contact" value="${rdEsc(p?.theralia_contact||'')}"></div>
+                    <div class="rd-modal-field"><label>External Partner</label><input id="rdF-partner" value="${rdEsc(p?.external_partner_name||'')}"></div>
+                </div>
+                <div class="rd-modal-field"><label>Expected Result</label><input id="rdF-result" value="${rdEsc(p?.expected_result||'')}"></div>
+                <div class="rd-modal-field"><label>Upcoming Deliverable</label><input id="rdF-deliverable" value="${rdEsc(p?.upcoming_deliverable||'')}"></div>
+                <div class="rd-modal-field"><label>Next Action</label><input id="rdF-nextaction" placeholder="What is the immediate next step?" value="${rdEsc(p?.next_action||'')}"></div>
+                <div class="rd-modal-row">
+                    <div class="rd-modal-field"><label>Start Date</label><input type="date" id="rdF-start" value="${p?.start_date?p.start_date.substring(0,10):''}"></div>
+                    <div class="rd-modal-field"><label>Target Date</label><input type="date" id="rdF-target" value="${p?.target_date?p.target_date.substring(0,10):''}"></div>
+                </div>
+                <div class="rd-modal-bar">
+                    <button class="btn-save" onclick="rdSaveProject('${editId||''}')">Save</button>
+                    <button class="btn-cancel" onclick="rdCloseModal()">Cancel</button>
+                </div>
+            `);
+        }
+
+        async function rdSaveProject(editId) {
+            const body = {
+                title: document.getElementById('rdF-title').value.trim(),
+                project_type: document.getElementById('rdF-type').value,
+                status: document.getElementById('rdF-status').value,
+                program_id: document.getElementById('rdF-program').value || null,
+                description: document.getElementById('rdF-desc').value.trim(),
+                theralia_contact: document.getElementById('rdF-contact').value.trim(),
+                external_partner_name: document.getElementById('rdF-partner').value.trim() || null,
+                expected_result: document.getElementById('rdF-result').value.trim(),
+                upcoming_deliverable: document.getElementById('rdF-deliverable').value.trim() || null,
+                next_action: document.getElementById('rdF-nextaction').value.trim() || null,
+                start_date: document.getElementById('rdF-start').value || null,
+                target_date: document.getElementById('rdF-target').value || null
+            };
+            if (!body.title) { alert('Title is required.'); return; }
+            try {
+                const url = editId ? '/api/rd/projects/' + editId : '/api/rd/projects';
+                const res = await rdFetch(url, { method: editId ? 'PATCH' : 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+                const data = await res.json();
+                if (data.ok || data.project) { rdCloseModal(); await rdLoadAll(); rdRenderNav(); rdRenderSection(); }
+                else alert(data.error || 'Failed');
+            } catch { alert('Failed to save project.'); }
+        }
+
+        // ---- PARTNER FORM ----
+        function rdShowPartnerForm(editId) {
+            const p = editId ? rdCache.partners.find(x => x.id === editId) : null;
+            rdOpenModal(`
+                <div class="rd-modal-title">${p ? 'Edit Partner' : 'Add Partner'}</div>
+                <div class="rd-modal-field"><label>Organization Name</label><input id="rdF-org" value="${rdEsc(p?.organization_name||'')}"></div>
+                <div class="rd-modal-row">
+                    <div class="rd-modal-field"><label>Contact Person</label><input id="rdF-cp" value="${rdEsc(p?.contact_person||'')}"></div>
+                    <div class="rd-modal-field"><label>Status</label><select id="rdF-pstatus">
+                        ${['active','inactive','prospective'].map(s => `<option value="${s}" ${(p?.status||'active')===s?'selected':''}>${s}</option>`).join('')}
+                    </select></div>
+                </div>
+                <div class="rd-modal-row">
+                    <div class="rd-modal-field"><label>Email</label><input id="rdF-email" value="${rdEsc(p?.email||'')}"></div>
+                    <div class="rd-modal-field"><label>Phone</label><input id="rdF-phone" value="${rdEsc(p?.phone||'')}"></div>
+                </div>
+                <div class="rd-modal-field"><label>Role / Type</label><input id="rdF-role" placeholder="e.g. CRO, Academic collaborator" value="${rdEsc(p?.role_description||'')}"></div>
+                <div class="rd-modal-field"><label>Collaboration Description</label><textarea id="rdF-cdesc">${rdEsc(p?.collaboration_description||'')}</textarea></div>
+                <div class="rd-modal-bar">
+                    <button class="btn-save" onclick="rdSavePartner('${editId||''}')">Save</button>
+                    <button class="btn-cancel" onclick="rdCloseModal()">Cancel</button>
+                </div>
+            `);
+        }
+
+        async function rdSavePartner(editId) {
+            const body = {
+                organization_name: document.getElementById('rdF-org').value.trim(),
+                contact_person: document.getElementById('rdF-cp').value.trim(),
+                status: document.getElementById('rdF-pstatus').value,
+                email: document.getElementById('rdF-email').value.trim(),
+                phone: document.getElementById('rdF-phone').value.trim() || null,
+                role_description: document.getElementById('rdF-role').value.trim() || null,
+                collaboration_description: document.getElementById('rdF-cdesc').value.trim()
+            };
+            if (!body.organization_name) { alert('Organization name is required.'); return; }
+            try {
+                const url = editId ? '/api/rd/partners/' + editId : '/api/rd/partners';
+                const res = await rdFetch(url, { method: editId ? 'PATCH' : 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+                const data = await res.json();
+                if (data.ok || data.partner) { rdCloseModal(); await rdLoadAll(); rdRenderNav(); rdRenderSection(); }
+                else alert(data.error || 'Failed');
+            } catch { alert('Failed to save partner.'); }
+        }
+
+        // ---- GRANT FORM ----
+        function rdShowGrantForm(editId) {
+            const g = editId ? rdCache.grants.find(x => x.id === editId) : null;
+            rdOpenModal(`
+                <div class="rd-modal-title">${g ? 'Edit Grant' : 'Add Grant'}</div>
+                <div class="rd-modal-field"><label>Grant Name</label><input id="rdF-gname" value="${rdEsc(g?.grant_name||'')}"></div>
+                <div class="rd-modal-row">
+                    <div class="rd-modal-field"><label>Funding Body</label><input id="rdF-funder" value="${rdEsc(g?.funding_body||'')}"></div>
+                    <div class="rd-modal-field"><label>Status</label><select id="rdF-gstatus">
+                        ${['prospective','applied','active','completed','rejected'].map(s => `<option value="${s}" ${(g?.status||'active')===s?'selected':''}>${s}</option>`).join('')}
+                    </select></div>
+                </div>
+                <div class="rd-modal-row">
+                    <div class="rd-modal-field"><label>Program</label><select id="rdF-gprog">${rdProgramOptions(g?.program_id)}</select></div>
+                    <div class="rd-modal-field"><label>Linked Project</label><select id="rdF-gproj">${rdProjectOptions(g?.linked_project_id)}</select></div>
+                </div>
+                <div class="rd-modal-row">
+                    <div class="rd-modal-field"><label>Amount</label><input type="number" id="rdF-amount" value="${g?.amount||''}"></div>
+                    <div class="rd-modal-field"><label>Upcoming Deliverable</label><input id="rdF-gdel" value="${rdEsc(g?.upcoming_deliverable||'')}"></div>
+                </div>
+                <div class="rd-modal-field"><label>Timeline Notes</label><textarea id="rdF-gtl">${rdEsc(g?.timeline_notes||'')}</textarea></div>
+                <div class="rd-modal-bar">
+                    <button class="btn-save" onclick="rdSaveGrant('${editId||''}')">Save</button>
+                    <button class="btn-cancel" onclick="rdCloseModal()">Cancel</button>
+                </div>
+            `);
+        }
+
+        async function rdSaveGrant(editId) {
+            const body = {
+                grant_name: document.getElementById('rdF-gname').value.trim(),
+                funding_body: document.getElementById('rdF-funder').value.trim(),
+                status: document.getElementById('rdF-gstatus').value,
+                program_id: document.getElementById('rdF-gprog').value || null,
+                linked_project_id: document.getElementById('rdF-gproj').value || null,
+                amount: document.getElementById('rdF-amount').value || null,
+                upcoming_deliverable: document.getElementById('rdF-gdel').value.trim() || null,
+                timeline_notes: document.getElementById('rdF-gtl').value.trim()
+            };
+            if (!body.grant_name) { alert('Grant name is required.'); return; }
+            try {
+                const url = editId ? '/api/rd/grants/' + editId : '/api/rd/grants';
+                const res = await rdFetch(url, { method: editId ? 'PATCH' : 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+                const data = await res.json();
+                if (data.ok || data.grant) { rdCloseModal(); await rdLoadAll(); rdRenderNav(); rdRenderSection(); }
+                else alert(data.error || 'Failed');
+            } catch { alert('Failed to save grant.'); }
+        }
+
+        // ---- PROGRAM FORM ----
+        function rdShowProgramForm(editId) {
+            const p = editId ? rdCache.programs.find(x => x.id === editId) : null;
+            rdOpenModal(`
+                <div class="rd-modal-title">${p ? 'Edit Program' : 'Add Program'}</div>
+                <div class="rd-modal-field"><label>Program Name</label><input id="rdF-pname" value="${rdEsc(p?.program_name||'')}"></div>
+                <div class="rd-modal-field"><label>Description</label><textarea id="rdF-pdesc">${rdEsc(p?.description||'')}</textarea></div>
+                <div class="rd-modal-row">
+                    <div class="rd-modal-field"><label>Status</label><select id="rdF-prstatus">
+                        ${['active','paused','completed','archived'].map(s => `<option value="${s}" ${(p?.status||'active')===s?'selected':''}>${s}</option>`).join('')}
+                    </select></div>
+                    <div class="rd-modal-field"><label>Upcoming Deliverable</label><input id="rdF-prdel" value="${rdEsc(p?.upcoming_deliverable||'')}"></div>
+                </div>
+                <div class="rd-modal-field"><label>Strategic Goal</label><textarea id="rdF-prgoal">${rdEsc(p?.strategic_goal||'')}</textarea></div>
+                <div class="rd-modal-bar">
+                    <button class="btn-save" onclick="rdSaveProgram('${editId||''}')">Save</button>
+                    <button class="btn-cancel" onclick="rdCloseModal()">Cancel</button>
+                </div>
+            `);
+        }
+
+        async function rdSaveProgram(editId) {
+            const body = {
+                program_name: document.getElementById('rdF-pname').value.trim(),
+                description: document.getElementById('rdF-pdesc').value.trim(),
+                status: document.getElementById('rdF-prstatus').value,
+                upcoming_deliverable: document.getElementById('rdF-prdel').value.trim() || null,
+                strategic_goal: document.getElementById('rdF-prgoal').value.trim()
+            };
+            if (!body.program_name) { alert('Program name is required.'); return; }
+            try {
+                const url = editId ? '/api/rd/programs/' + editId : '/api/rd/programs';
+                const res = await rdFetch(url, { method: editId ? 'PATCH' : 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+                const data = await res.json();
+                if (data.ok || data.program) { rdCloseModal(); await rdLoadAll(); rdRenderNav(); rdRenderSection(); }
+                else alert(data.error || 'Failed');
+            } catch { alert('Failed to save program.'); }
+        }
+
+        // ---- DOCUMENT UPLOAD & DELETE ----
+        function rdUploadDoc(projectId, docType) {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.pdf';
+            input.onchange = async () => {
+                if (!input.files[0]) return;
+                const file = input.files[0];
+                if (!file.name.toLowerCase().endsWith('.pdf')) { alert('Only PDF files are accepted.'); return; }
+                if (file.size > 20 * 1024 * 1024) { alert('File exceeds 20 MB limit.'); return; }
+                const title = prompt('Document title (optional):', file.name) || file.name;
+                const fd = new FormData();
+                fd.append('file', file);
+                fd.append('document_type', docType);
+                fd.append('title', title);
+                try {
+                    const res = await rdFetch('/api/rd/projects/' + projectId + '/documents', { method: 'POST', body: fd });
+                    const data = await res.json();
+                    if (data.ok) rdShowProjectDetail(projectId);
+                    else alert(data.error || 'Upload failed.');
+                } catch { alert('Upload failed.'); }
+            };
+            input.click();
+        }
+
+        async function rdDeleteDoc(docId, projectId) {
+            if (!confirm('Remove this document?')) return;
+            try {
+                const res = await rdFetch('/api/rd/documents/' + docId, { method: 'DELETE' });
+                const data = await res.json();
+                if (data.ok) rdShowProjectDetail(projectId);
+            } catch {}
+        }
+
     </script>
 </body>
 </html>
