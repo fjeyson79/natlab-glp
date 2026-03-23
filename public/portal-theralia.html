@@ -286,22 +286,53 @@
             .bottom-panels { grid-template-columns: 1fr; }
         }
 
-        /* ---- Placeholder Add Rows ---- */
+        /* ---- Subsection Add Rows ---- */
         .add-row {
             display: flex; align-items: center; gap: 6px;
-            padding: 6px 0; cursor: pointer; opacity: 0;
-            transition: opacity 0.15s;
+            padding: 5px 0; cursor: pointer; opacity: 0;
+            transition: opacity 0.15s, border-color 0.15s;
         }
         .card:hover .add-row,
         .add-row:focus-within { opacity: 1; }
+        .add-row:hover .add-row-icon {
+            border-color: #1a7a4e; color: #1a7a4e;
+        }
+        .add-row:hover .add-row-text { color: #1a7a4e; }
         .add-row-icon {
             width: 18px; height: 18px; border-radius: 50%;
-            border: 1px dashed rgba(0,0,0,0.15); display: flex;
+            border: 1.5px solid rgba(0,0,0,0.15); display: flex;
             align-items: center; justify-content: center;
             font-size: 12px; color: #b0b4be; line-height: 1;
+            transition: border-color 0.15s, color 0.15s;
         }
         .add-row-text {
             font-size: 12px; color: #b0b4be; font-style: italic;
+            transition: color 0.15s;
+        }
+
+        /* ---- Inline Subsection Editor ---- */
+        .sub-inline-edit {
+            display: none; margin-top: 4px; margin-bottom: 6px;
+        }
+        .sub-inline-edit.open { display: block; }
+        .sub-inline-edit input {
+            width: 100%; background: #f9fafb; border: 1px solid rgba(0,0,0,0.1);
+            border-radius: 6px; color: #2a2d35; font-family: inherit;
+            font-size: 12px; padding: 6px 10px;
+        }
+        .sub-inline-edit input:focus { outline: none; border-color: #1a7a4e; }
+        .sub-inline-bar {
+            display: flex; gap: 6px; margin-top: 5px;
+        }
+        .sub-inline-save {
+            background: #1a1c22; color: #fff; border: none; border-radius: 5px;
+            padding: 3px 12px; font-size: 10px; font-weight: 600;
+            cursor: pointer; font-family: inherit; transition: background 0.15s;
+        }
+        .sub-inline-save:hover { background: #2e3039; }
+        .sub-inline-cancel {
+            background: none; color: #9a9ea8; border: none;
+            padding: 3px 8px; font-size: 10px; cursor: pointer; font-family: inherit;
         }
 
         /* ---- KV Rows ---- */
@@ -980,40 +1011,58 @@
                 <div class="card" id="sec-rnd">
                     <div class="card-header">
                         <span class="card-title">R&D Focus</span>
-                        <button class="btn-edit" onclick="toggleEdit('rnd')">Edit</button>
                     </div>
                     <div class="card-body">
-                        <div class="kv-row">
-                            <div class="kv-label">Milestone</div>
-                            <div class="kv-value" style="color:#b0b4be; font-style:italic">&mdash;</div>
+                        <div class="dash-sub" data-sub-key="rnd-milestone">
+                            <div class="kv-row">
+                                <div class="kv-label">Milestone</div>
+                                <div class="kv-value dash-sub-val" id="subVal-rnd-milestone" style="color:#b0b4be; font-style:italic">&mdash;</div>
+                            </div>
+                            <div class="add-row" onclick="dashSubOpen('rnd-milestone')">
+                                <span class="add-row-icon">+</span>
+                                <span class="add-row-text">Add milestone</span>
+                            </div>
+                            <div class="sub-inline-edit" id="subEdit-rnd-milestone">
+                                <input type="text" placeholder="Enter milestone" id="subInput-rnd-milestone">
+                                <div class="sub-inline-bar">
+                                    <button class="sub-inline-save" onclick="dashSubSave('rnd-milestone')">Save</button>
+                                    <button class="sub-inline-cancel" onclick="dashSubCancel('rnd-milestone')">Cancel</button>
+                                </div>
+                            </div>
                         </div>
-                        <div class="add-row" onclick="promptAddItem('rnd-milestone')">
-                            <span class="add-row-icon">+</span>
-                            <span class="add-row-text">Add milestone</span>
+                        <div class="dash-sub" data-sub-key="rnd-validation">
+                            <div class="kv-row">
+                                <div class="kv-label">Validation</div>
+                                <div class="kv-value dash-sub-val" id="subVal-rnd-validation" style="color:#b0b4be; font-style:italic">&mdash;</div>
+                            </div>
+                            <div class="add-row" onclick="dashSubOpen('rnd-validation')">
+                                <span class="add-row-icon">+</span>
+                                <span class="add-row-text">Add validation update</span>
+                            </div>
+                            <div class="sub-inline-edit" id="subEdit-rnd-validation">
+                                <input type="text" placeholder="Enter validation update" id="subInput-rnd-validation">
+                                <div class="sub-inline-bar">
+                                    <button class="sub-inline-save" onclick="dashSubSave('rnd-validation')">Save</button>
+                                    <button class="sub-inline-cancel" onclick="dashSubCancel('rnd-validation')">Cancel</button>
+                                </div>
+                            </div>
                         </div>
-                        <div class="kv-row">
-                            <div class="kv-label">Validation</div>
-                            <div class="kv-value" style="color:#b0b4be; font-style:italic">&mdash;</div>
-                        </div>
-                        <div class="add-row" onclick="promptAddItem('rnd-validation')">
-                            <span class="add-row-icon">+</span>
-                            <span class="add-row-text">Add validation update</span>
-                        </div>
-                        <div class="kv-row">
-                            <div class="kv-label">IP</div>
-                            <div class="kv-value" style="color:#b0b4be; font-style:italic">&mdash;</div>
-                        </div>
-                        <div class="add-row" onclick="promptAddItem('rnd-ip')">
-                            <span class="add-row-icon">+</span>
-                            <span class="add-row-text">Add IP status</span>
-                        </div>
-                    </div>
-                    <div class="section-edit" id="edit-rnd">
-                        <div class="edit-label">Milestones / Validation / IP (one per line)</div>
-                        <textarea rows="4" id="editRnd"></textarea>
-                        <div class="edit-bar">
-                            <button class="btn-save" onclick="saveSection('rnd')">Save</button>
-                            <button class="btn-cancel" onclick="toggleEdit('rnd')">Cancel</button>
+                        <div class="dash-sub" data-sub-key="rnd-ip">
+                            <div class="kv-row">
+                                <div class="kv-label">IP</div>
+                                <div class="kv-value dash-sub-val" id="subVal-rnd-ip" style="color:#b0b4be; font-style:italic">&mdash;</div>
+                            </div>
+                            <div class="add-row" onclick="dashSubOpen('rnd-ip')">
+                                <span class="add-row-icon">+</span>
+                                <span class="add-row-text">Add IP status</span>
+                            </div>
+                            <div class="sub-inline-edit" id="subEdit-rnd-ip">
+                                <input type="text" placeholder="Enter IP status" id="subInput-rnd-ip">
+                                <div class="sub-inline-bar">
+                                    <button class="sub-inline-save" onclick="dashSubSave('rnd-ip')">Save</button>
+                                    <button class="sub-inline-cancel" onclick="dashSubCancel('rnd-ip')">Cancel</button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1022,40 +1071,58 @@
                 <div class="card" id="sec-business">
                     <div class="card-header">
                         <span class="card-title">Business &amp; Investors</span>
-                        <button class="btn-edit" onclick="toggleEdit('business')">Edit</button>
                     </div>
                     <div class="card-body">
-                        <div class="kv-row">
-                            <div class="kv-label">Collaboration</div>
-                            <div class="kv-value" style="color:#b0b4be; font-style:italic">&mdash;</div>
+                        <div class="dash-sub" data-sub-key="biz-collab">
+                            <div class="kv-row">
+                                <div class="kv-label">Collaboration</div>
+                                <div class="kv-value dash-sub-val" id="subVal-biz-collab" style="color:#b0b4be; font-style:italic">&mdash;</div>
+                            </div>
+                            <div class="add-row" onclick="dashSubOpen('biz-collab')">
+                                <span class="add-row-icon">+</span>
+                                <span class="add-row-text">Add collaboration update</span>
+                            </div>
+                            <div class="sub-inline-edit" id="subEdit-biz-collab">
+                                <input type="text" placeholder="Enter collaboration update" id="subInput-biz-collab">
+                                <div class="sub-inline-bar">
+                                    <button class="sub-inline-save" onclick="dashSubSave('biz-collab')">Save</button>
+                                    <button class="sub-inline-cancel" onclick="dashSubCancel('biz-collab')">Cancel</button>
+                                </div>
+                            </div>
                         </div>
-                        <div class="add-row" onclick="promptAddItem('biz-collab')">
-                            <span class="add-row-icon">+</span>
-                            <span class="add-row-text">Add collaboration update</span>
+                        <div class="dash-sub" data-sub-key="biz-investor">
+                            <div class="kv-row">
+                                <div class="kv-label">Investors</div>
+                                <div class="kv-value dash-sub-val" id="subVal-biz-investor" style="color:#b0b4be; font-style:italic">&mdash;</div>
+                            </div>
+                            <div class="add-row" onclick="dashSubOpen('biz-investor')">
+                                <span class="add-row-icon">+</span>
+                                <span class="add-row-text">Add investor update</span>
+                            </div>
+                            <div class="sub-inline-edit" id="subEdit-biz-investor">
+                                <input type="text" placeholder="Enter investor update" id="subInput-biz-investor">
+                                <div class="sub-inline-bar">
+                                    <button class="sub-inline-save" onclick="dashSubSave('biz-investor')">Save</button>
+                                    <button class="sub-inline-cancel" onclick="dashSubCancel('biz-investor')">Cancel</button>
+                                </div>
+                            </div>
                         </div>
-                        <div class="kv-row">
-                            <div class="kv-label">Investors</div>
-                            <div class="kv-value" style="color:#b0b4be; font-style:italic">&mdash;</div>
-                        </div>
-                        <div class="add-row" onclick="promptAddItem('biz-investor')">
-                            <span class="add-row-icon">+</span>
-                            <span class="add-row-text">Add investor update</span>
-                        </div>
-                        <div class="kv-row">
-                            <div class="kv-label">Funding</div>
-                            <div class="kv-value" style="color:#b0b4be; font-style:italic">&mdash;</div>
-                        </div>
-                        <div class="add-row" onclick="promptAddItem('biz-funding')">
-                            <span class="add-row-icon">+</span>
-                            <span class="add-row-text">Add funding signal</span>
-                        </div>
-                    </div>
-                    <div class="section-edit" id="edit-business">
-                        <div class="edit-label">Collaborations / Investors / Funding (one per line)</div>
-                        <textarea rows="4" id="editBiz"></textarea>
-                        <div class="edit-bar">
-                            <button class="btn-save" onclick="saveSection('business')">Save</button>
-                            <button class="btn-cancel" onclick="toggleEdit('business')">Cancel</button>
+                        <div class="dash-sub" data-sub-key="biz-funding">
+                            <div class="kv-row">
+                                <div class="kv-label">Funding</div>
+                                <div class="kv-value dash-sub-val" id="subVal-biz-funding" style="color:#b0b4be; font-style:italic">&mdash;</div>
+                            </div>
+                            <div class="add-row" onclick="dashSubOpen('biz-funding')">
+                                <span class="add-row-icon">+</span>
+                                <span class="add-row-text">Add funding signal</span>
+                            </div>
+                            <div class="sub-inline-edit" id="subEdit-biz-funding">
+                                <input type="text" placeholder="Enter funding signal" id="subInput-biz-funding">
+                                <div class="sub-inline-bar">
+                                    <button class="sub-inline-save" onclick="dashSubSave('biz-funding')">Save</button>
+                                    <button class="sub-inline-cancel" onclick="dashSubCancel('biz-funding')">Cancel</button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1241,9 +1308,9 @@
     <!-- Private Notes Toggle -->
     <button class="private-notes-toggle" id="pnToggle">Private Notes</button>
     <div class="private-notes-panel" id="pnPanel">
-        <div class="pn-title">Private Notes</div>
-        <div class="pn-subtitle">Your eyes only &middot; W14</div>
-        <textarea class="pn-textarea" id="pnTextarea" placeholder="Type your private notes here..."></textarea>
+        <div class="pn-title" id="pnTitle">Notes of Board Meeting &mdash; W14 &middot; 2026</div>
+        <div class="pn-subtitle">Your eyes only</div>
+        <textarea class="pn-textarea" id="pnTextarea" placeholder="Type your private notes for this board meeting..."></textarea>
         <div class="pn-saved" id="pnSaved"></div>
     </div>
 
@@ -1362,11 +1429,58 @@
         }
 
         /* ============================================== */
-        /* ADD ITEM PLACEHOLDER                           */
+        /* INLINE SUBSECTION EDITING                      */
         /* ============================================== */
+        const DASH_SUB_STORAGE_PREFIX = 'theralia_dash_sub_';
+
+        // Load saved subsection values on page load
+        document.querySelectorAll('.dash-sub-val').forEach(el => {
+            const key = el.id.replace('subVal-', '');
+            const saved = localStorage.getItem(DASH_SUB_STORAGE_PREFIX + key);
+            if (saved) {
+                el.textContent = saved;
+                el.style.color = '#555a66';
+                el.style.fontStyle = 'normal';
+            }
+        });
+
+        function dashSubOpen(key) {
+            if (!_isUpdateMode) return;
+            // Close any other open inline editor
+            document.querySelectorAll('.sub-inline-edit.open').forEach(el => el.classList.remove('open'));
+            const editor = document.getElementById('subEdit-' + key);
+            const input = document.getElementById('subInput-' + key);
+            const current = localStorage.getItem(DASH_SUB_STORAGE_PREFIX + key) || '';
+            input.value = current;
+            editor.classList.add('open');
+            input.focus();
+        }
+
+        function dashSubSave(key) {
+            const input = document.getElementById('subInput-' + key);
+            const val = input.value.trim();
+            const display = document.getElementById('subVal-' + key);
+            if (val) {
+                localStorage.setItem(DASH_SUB_STORAGE_PREFIX + key, val);
+                display.textContent = val;
+                display.style.color = '#555a66';
+                display.style.fontStyle = 'normal';
+            } else {
+                localStorage.removeItem(DASH_SUB_STORAGE_PREFIX + key);
+                display.innerHTML = '&mdash;';
+                display.style.color = '#b0b4be';
+                display.style.fontStyle = 'italic';
+            }
+            document.getElementById('subEdit-' + key).classList.remove('open');
+        }
+
+        function dashSubCancel(key) {
+            document.getElementById('subEdit-' + key).classList.remove('open');
+        }
+
+        // Legacy stub kept for any remaining references
         function promptAddItem(type) {
             if (!_isUpdateMode) return;
-            // Placeholder: in future, open inline input for specific type
         }
 
         /* ============================================== */
@@ -1381,30 +1495,53 @@
         }
 
         /* ============================================== */
-        /* PRIVATE NOTES                                  */
+        /* PRIVATE NOTES (per board meeting cycle)        */
         /* ============================================== */
-        const PN_KEY = 'theralia_private_notes_W14';
+        function pnGetKey() {
+            const sel = document.getElementById('cycleSelect');
+            const cycle = sel ? sel.value : '2026-w14';
+            return 'theralia_private_notes_' + cycle;
+        }
+
+        function pnGetLabel() {
+            const sel = document.getElementById('cycleSelect');
+            if (!sel || !sel.selectedOptions[0]) return 'W14 \u00b7 2026';
+            return sel.selectedOptions[0].textContent.trim();
+        }
+
         const pnToggle = document.getElementById('pnToggle');
         const pnPanel = document.getElementById('pnPanel');
         const pnTextarea = document.getElementById('pnTextarea');
         const pnSaved = document.getElementById('pnSaved');
+        const pnTitle = document.getElementById('pnTitle');
         let pnTimer = null;
 
-        // Load saved notes
-        const savedNotes = localStorage.getItem(PN_KEY);
-        if (savedNotes) pnTextarea.value = savedNotes;
+        function pnLoad() {
+            const key = pnGetKey();
+            pnTextarea.value = localStorage.getItem(key) || '';
+            pnTitle.textContent = 'Notes of Board Meeting \u2014 ' + pnGetLabel();
+        }
+
+        // Load on page start
+        pnLoad();
 
         pnToggle.addEventListener('click', () => {
+            pnLoad(); // refresh in case cycle changed
             pnPanel.classList.toggle('open');
         });
 
         pnTextarea.addEventListener('input', () => {
             clearTimeout(pnTimer);
             pnTimer = setTimeout(() => {
-                localStorage.setItem(PN_KEY, pnTextarea.value);
+                localStorage.setItem(pnGetKey(), pnTextarea.value);
                 pnSaved.textContent = 'Saved';
                 setTimeout(() => { pnSaved.textContent = ''; }, 1500);
             }, 600);
+        });
+
+        // Reload notes when cycle changes
+        document.getElementById('cycleSelect').addEventListener('change', () => {
+            pnLoad();
         });
 
         // Close panel on outside click
