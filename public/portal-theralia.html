@@ -318,14 +318,25 @@
         }
         .kv-value { color: #555a66; }
 
-        /* ---- Per-Section Edit Button ---- */
-        .btn-edit {
-            background: none; border: none;
-            border-radius: 4px; padding: 2px 8px; font-size: 10px;
-            color: #b0b4be; cursor: pointer; transition: all 0.15s;
-            font-family: inherit; font-weight: 500; letter-spacing: 0.2px;
+        /* ---- Reusable Edit Button (di-edit-btn) ---- */
+        .di-edit-btn {
+            background: #1a1c22; color: #ffffff; border: none;
+            border-radius: 6px; padding: 4px 10px; font-size: 11px;
+            font-weight: 500; cursor: pointer; font-family: inherit;
+            letter-spacing: 0.15px; transition: background 0.15s;
         }
-        .btn-edit:hover { color: #7a7e8a; background: rgba(0,0,0,0.03); }
+        .di-edit-btn:hover { background: #2e3039; }
+        .di-edit-btn:focus-visible { outline: 2px solid rgba(26,28,34,0.35); outline-offset: 2px; }
+
+        /* ---- Per-Section Edit Button (legacy alias) ---- */
+        .btn-edit {
+            background: #1a1c22; color: #ffffff; border: none;
+            border-radius: 6px; padding: 4px 10px; font-size: 11px;
+            font-weight: 500; cursor: pointer; font-family: inherit;
+            letter-spacing: 0.15px; transition: background 0.15s;
+        }
+        .btn-edit:hover { background: #2e3039; }
+        .btn-edit:focus-visible { outline: 2px solid rgba(26,28,34,0.35); outline-offset: 2px; }
 
         /* ---- Section Edit Panels ---- */
         .section-edit { display: none; margin-top: 14px; padding-top: 14px; border-top: 1px solid rgba(0,0,0,0.06); }
@@ -540,12 +551,16 @@
         .co-hist-restore:hover { color: #555a66; border-color: rgba(0,0,0,0.15); }
 
         .co-btn-edit {
-            background: none; border: none; border-radius: 4px;
-            padding: 2px 8px; font-size: 10px; color: #b0b4be;
+            background: none; border: 1px solid rgba(0,0,0,0.08); border-radius: 6px;
+            padding: 3px 10px; font-size: 11px; color: #9a9ea8;
             cursor: pointer; font-family: inherit; font-weight: 500;
             transition: all 0.15s;
         }
-        .co-btn-edit:hover { color: #7a7e8a; background: rgba(0,0,0,0.03); }
+        .co-btn-edit:hover { color: #555a66; border-color: rgba(0,0,0,0.15); }
+        .co-btn-edit.primary {
+            background: #1a1c22; color: #ffffff; border-color: #1a1c22;
+        }
+        .co-btn-edit.primary:hover { background: #2e3039; border-color: #2e3039; }
 
         /* ---- Empty Tab States ---- */
         .empty-tab { padding: 48px 0; }
@@ -823,8 +838,8 @@
                     <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#9a9ea8;margin-bottom:8px">Ownership Summary</div>
                     <div style="font-size:12px;color:#555a66;line-height:1.7">
                         <span style="font-weight:600;color:#1a1c22">Founder:</span> Frank J. Hernandez &nbsp;&middot;&nbsp;
-                        <span style="font-weight:600;color:#1a1c22">Round 1:</span> Baris Ata Borsa, Luiza I. Hernandez &nbsp;&middot;&nbsp;
-                        <span style="font-weight:600;color:#1a1c22">Round 2:</span> Markus Zeitlinger, K&aring;re Engkilde
+                        <span style="font-weight:600;color:#1a1c22">Round 1 Co-founders:</span> Baris Ata Borsa, Luiza I. Hernandez &nbsp;&middot;&nbsp;
+                        <span style="font-weight:600;color:#1a1c22">Round 2 Co-founders:</span> Markus Zeitlinger, K&aring;re Engkilde
                     </div>
                 </div>
             </div>
@@ -1235,7 +1250,7 @@
                             </div>
                             <div class="co-section-controls">
                                 <button class="co-btn-edit" onclick="coToggleHistory('${sec.key}')">Archive</button>
-                                <button class="co-btn-edit" onclick="coStartEdit('${sec.key}')">Edit</button>
+                                <button class="co-btn-edit primary" onclick="coStartEdit('${sec.key}')">Edit</button>
                             </div>
                         </div>
                         <div class="co-body">
