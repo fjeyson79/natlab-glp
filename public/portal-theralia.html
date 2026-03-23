@@ -420,6 +420,132 @@
             text-align: right; min-height: 14px;
         }
 
+        /* ---- Company Tab ---- */
+        .co-header {
+            background: #ffffff; border: 1px solid rgba(0,0,0,0.06);
+            border-radius: 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.04);
+            padding: 22px 24px;
+        }
+        .co-snap-grid {
+            display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px;
+            margin-top: 16px; padding-top: 14px;
+            border-top: 1px solid rgba(0,0,0,0.05);
+        }
+        @media (max-width: 800px) { .co-snap-grid { grid-template-columns: repeat(3, 1fr); } }
+        .co-snap-item { display: flex; flex-direction: column; gap: 2px; }
+        .co-snap-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #9a9ea8; }
+        .co-snap-val { font-size: 13px; font-weight: 500; color: #1a1c22; }
+
+        .co-section {
+            background: #ffffff; border: 1px solid rgba(0,0,0,0.06);
+            border-radius: 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.04);
+            padding: 20px 24px; margin-top: 16px;
+        }
+        .co-section-head {
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 14px;
+        }
+        .co-section-title { font-size: 14px; font-weight: 600; color: #1a1c22; }
+        .co-section-controls { display: flex; align-items: center; gap: 8px; }
+        .co-badge {
+            display: inline-block; padding: 2px 8px; border-radius: 10px;
+            font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px;
+        }
+        .co-badge.current { background: rgba(22,163,74,0.08); color: #16a34a; }
+        .co-badge.verified { background: rgba(22,163,74,0.08); color: #16a34a; }
+        .co-badge.partial { background: rgba(202,138,4,0.08); color: #ca8a04; }
+        .co-badge.missing { background: rgba(220,38,38,0.08); color: #dc2626; }
+        .co-badge.archived { background: rgba(0,0,0,0.05); color: #9a9ea8; }
+
+        .co-body {
+            display: grid; grid-template-columns: 3fr 2fr; gap: 24px;
+            align-items: start;
+        }
+        @media (max-width: 800px) { .co-body { grid-template-columns: 1fr; } }
+
+        .co-stmt { font-size: 13px; color: #555a66; line-height: 1.65; }
+        .co-stmt ul { list-style: none; padding: 0; margin: 0; }
+        .co-stmt ul li {
+            position: relative; padding-left: 14px; margin-bottom: 5px;
+        }
+        .co-stmt ul li::before {
+            content: ''; position: absolute; left: 0; top: 7px;
+            width: 5px; height: 5px; border-radius: 50%; background: #c8cbd2;
+        }
+
+        .co-docs { border-left: 1px solid rgba(0,0,0,0.05); padding-left: 20px; }
+        .co-docs-title {
+            font-size: 10px; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 1px; color: #9a9ea8; margin-bottom: 10px;
+        }
+        .co-doc-item {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 7px 0; border-bottom: 1px solid rgba(0,0,0,0.03);
+            font-size: 12px;
+        }
+        .co-doc-item:last-child { border-bottom: none; }
+        .co-doc-name { color: #2a2d35; font-weight: 500; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .co-doc-tag { font-size: 10px; color: #9a9ea8; margin-left: 8px; flex-shrink: 0; }
+        .co-doc-actions { display: flex; gap: 6px; margin-left: 8px; flex-shrink: 0; }
+        .co-doc-btn {
+            background: none; border: none; color: #b0b4be; cursor: pointer;
+            font-size: 11px; padding: 2px 4px; font-family: inherit;
+            transition: color 0.15s;
+        }
+        .co-doc-btn:hover { color: #555a66; }
+        .co-doc-btn.danger:hover { color: #dc2626; }
+        .co-upload-btn {
+            background: none; border: 1px dashed rgba(0,0,0,0.12);
+            border-radius: 6px; padding: 5px 12px; font-size: 11px;
+            color: #9a9ea8; cursor: pointer; font-family: inherit;
+            margin-top: 8px; width: 100%; text-align: center;
+            transition: all 0.15s;
+        }
+        .co-upload-btn:hover { color: #555a66; border-color: rgba(0,0,0,0.2); }
+
+        .co-edit-area {
+            display: none; margin-top: 14px; padding-top: 14px;
+            border-top: 1px solid rgba(0,0,0,0.06);
+        }
+        .co-edit-area.open { display: block; }
+        .co-edit-area textarea {
+            width: 100%; background: #f9fafb; border: 1px solid rgba(0,0,0,0.08);
+            border-radius: 8px; color: #2a2d35; font-family: inherit;
+            font-size: 13px; line-height: 1.6; padding: 10px 12px;
+            resize: vertical; min-height: 100px; margin-bottom: 8px;
+        }
+        .co-edit-area textarea:focus { outline: none; border-color: rgba(0,0,0,0.16); }
+
+        .co-history-panel {
+            display: none; margin-top: 14px; padding-top: 14px;
+            border-top: 1px solid rgba(0,0,0,0.06);
+        }
+        .co-history-panel.open { display: block; }
+        .co-hist-item {
+            background: #f9fafb; border: 1px solid rgba(0,0,0,0.05);
+            border-radius: 8px; padding: 12px 14px; margin-bottom: 8px;
+        }
+        .co-hist-meta {
+            font-size: 10px; color: #9a9ea8; margin-bottom: 6px;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .co-hist-preview { font-size: 12px; color: #555a66; line-height: 1.5; max-height: 60px; overflow: hidden; }
+        .co-hist-restore {
+            background: none; border: 1px solid rgba(0,0,0,0.08);
+            border-radius: 5px; padding: 2px 10px; font-size: 10px;
+            color: #9a9ea8; cursor: pointer; font-family: inherit;
+            transition: all 0.15s;
+        }
+        .co-hist-restore:hover { color: #555a66; border-color: rgba(0,0,0,0.15); }
+
+        .co-btn-edit {
+            background: none; border: none; border-radius: 4px;
+            padding: 2px 8px; font-size: 10px; color: #b0b4be;
+            cursor: pointer; font-family: inherit; font-weight: 500;
+            transition: all 0.15s;
+        }
+        .co-btn-edit:hover { color: #7a7e8a; background: rgba(0,0,0,0.03); }
+
         /* ---- Empty Tab States ---- */
         .empty-tab { padding: 48px 0; }
         .empty-tab-card {
@@ -676,15 +802,36 @@
         <!-- TAB: COMPANY                                   -->
         <!-- ============================================== -->
         <div class="tab-content" id="tab-company">
-            <div class="empty-tab">
-                <div class="empty-tab-card">
-                    <div class="empty-tab-icon">
-                        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6"/></svg>
+
+            <!-- Company Header -->
+            <div class="co-header" style="margin-top:24px">
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:16px">
+                    <div>
+                        <div style="font-size:19px;font-weight:600;color:#1a1c22;letter-spacing:-0.2px">Theralia AB</div>
+                        <div style="font-size:12px;color:#8b8f9a;margin-top:3px">Private limited company &middot; Biotech R&amp;D, diagnostics and therapy</div>
                     </div>
-                    <div class="empty-tab-title">Company</div>
-                    <div class="empty-tab-desc">Organizational structure, team directory, company documents, meeting records, and institutional memory for Theralia.</div>
+                </div>
+                <div class="co-snap-grid">
+                    <div class="co-snap-item"><span class="co-snap-label">Org No.</span><span class="co-snap-val">559305-1393</span></div>
+                    <div class="co-snap-item"><span class="co-snap-label">Location</span><span class="co-snap-val">Link&ouml;ping, Sweden</span></div>
+                    <div class="co-snap-item"><span class="co-snap-label">Founded</span><span class="co-snap-val">2021-01-20</span></div>
+                    <div class="co-snap-item"><span class="co-snap-label">Registered</span><span class="co-snap-val">2021-03-03</span></div>
+                    <div class="co-snap-item"><span class="co-snap-label">Legal Form</span><span class="co-snap-val">Private AB</span></div>
+                    <div class="co-snap-item"><span class="co-snap-label">Total Shares</span><span class="co-snap-val">671</span></div>
+                </div>
+                <div style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(0,0,0,0.05)">
+                    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#9a9ea8;margin-bottom:8px">Ownership Summary</div>
+                    <div style="font-size:12px;color:#555a66;line-height:1.7">
+                        <span style="font-weight:600;color:#1a1c22">Founder:</span> Frank J. Hernandez &nbsp;&middot;&nbsp;
+                        <span style="font-weight:600;color:#1a1c22">Round 1:</span> Baris Ata Borsa, Luiza I. Hernandez &nbsp;&middot;&nbsp;
+                        <span style="font-weight:600;color:#1a1c22">Round 2:</span> Markus Zeitlinger, K&aring;re Engkilde
+                    </div>
                 </div>
             </div>
+
+            <!-- Section Cards -->
+            <div id="coSections"></div>
+
         </div>
 
         <!-- ============================================== -->
@@ -954,6 +1101,364 @@
                 pnPanel.classList.remove('open');
             }
         });
+
+        /* ============================================== */
+        /* COMPANY TAB                                    */
+        /* ============================================== */
+        const CO_WS = 'theralia';
+        const CO_SECTIONS = [
+            {
+                key: 'ownership',
+                title: 'Ownership & Shareholder Structure',
+                initial: [
+                    'Founder: Frank J. Hernandez',
+                    'Round 1 co-founders: Baris Ata Borsa, Luiza I. Hernandez',
+                    'Round 2 shareholders: Markus Zeitlinger, K\u00e5re Engkilde',
+                    'Ownership evolved from founder-only to a 671-share structure',
+                    'Cap table evolution and shareholder entry rounds documented here'
+                ]
+            },
+            {
+                key: 'sha',
+                title: 'Shareholder Agreement',
+                initial: [
+                    'Shareholder Agreement signed September 2024',
+                    'Defines governance structure',
+                    'Defines roles: CEO, COO, CTO, CSO',
+                    'Decision-making rules established',
+                    'Share transfer restrictions in place',
+                    'Confidentiality obligations included'
+                ]
+            },
+            {
+                key: 'ip',
+                title: 'Intellectual Property',
+                initial: [
+                    'Core patent: PCT/EP2021/081891',
+                    'Publication: WO/2022/101512',
+                    'IP originates under Swedish professor privilege',
+                    'SHA includes transfer clause to Theralia AB',
+                    'Company expected to bear patent-related costs'
+                ]
+            },
+            {
+                key: 'annual_reports',
+                title: 'Annual Reports',
+                initial: [
+                    '2021: company formation, no activity',
+                    '2022: first operational costs',
+                    '2023: patent and development phase begins',
+                    '2024: capital increase and growth'
+                ]
+            },
+            {
+                key: 'personnel',
+                title: 'Personnel & Roles',
+                initial: [
+                    'CEO: K\u00e5re Engkilde',
+                    'COO: Luiza I. Hernandez',
+                    'CTO: Baris Ata Borsa',
+                    'CSO: Frank J. Hernandez',
+                    'Medical advisor: Markus Zeitlinger'
+                ]
+            }
+        ];
+
+        // State per section
+        const coState = {};
+        CO_SECTIONS.forEach(s => {
+            coState[s.key] = { statement: null, documents: [], history: [], editing: false, historyOpen: false };
+        });
+
+        function coLinesToHtml(lines) {
+            if (!lines || !lines.length) return '<span style="color:#b0b4be;font-style:italic">No statement</span>';
+            return '<ul>' + lines.map(l => '<li>' + coEsc(l) + '</li>').join('') + '</ul>';
+        }
+
+        function coEsc(s) {
+            const d = document.createElement('div');
+            d.textContent = s;
+            return d.innerHTML;
+        }
+
+        function coEvidenceBadge(sectionKey) {
+            const st = coState[sectionKey];
+            const hasStmt = st.statement && st.statement.content && st.statement.content.lines && st.statement.content.lines.length > 0;
+            const hasDocs = st.documents.length > 0;
+            if (hasStmt && hasDocs) return '<span class="co-badge verified">Verified</span>';
+            if (hasStmt) return '<span class="co-badge partial">Partial</span>';
+            return '<span class="co-badge missing">Missing</span>';
+        }
+
+        function coRenderSection(sec) {
+            const st = coState[sec.key];
+            const lines = st.statement?.content?.lines || sec.initial;
+            const el = document.getElementById('co-sec-' + sec.key);
+            if (!el) return;
+
+            // Statement
+            const stmtEl = el.querySelector('.co-stmt');
+            stmtEl.innerHTML = coLinesToHtml(lines);
+
+            // Badges
+            const badgeArea = el.querySelector('.co-badge-area');
+            badgeArea.innerHTML = '<span class="co-badge current">Current</span> ' + coEvidenceBadge(sec.key);
+
+            // Documents
+            const docsEl = el.querySelector('.co-docs-list');
+            if (st.documents.length === 0) {
+                docsEl.innerHTML = '<div style="font-size:12px;color:#b0b4be;font-style:italic">No documents</div>';
+            } else {
+                docsEl.innerHTML = st.documents.map(d => `
+                    <div class="co-doc-item">
+                        <span class="co-doc-name" title="${coEsc(d.filename)}">${coEsc(d.filename)}</span>
+                        ${d.category ? '<span class="co-doc-tag">' + coEsc(d.category) + '</span>' : ''}
+                        <span class="co-doc-tag">${new Date(d.uploaded_at).toLocaleDateString('sv-SE')}</span>
+                        <div class="co-doc-actions">
+                            <button class="co-doc-btn" onclick="coOpenDoc('${d.id}')" title="Open">Open</button>
+                            <button class="co-doc-btn danger" onclick="coDeleteDoc('${sec.key}','${d.id}')" title="Remove">&times;</button>
+                        </div>
+                    </div>
+                `).join('');
+            }
+        }
+
+        function coRenderAll() {
+            const container = document.getElementById('coSections');
+            if (container.children.length === 0) {
+                container.innerHTML = CO_SECTIONS.map(sec => `
+                    <div class="co-section" id="co-sec-${sec.key}">
+                        <div class="co-section-head">
+                            <div style="display:flex;align-items:center;gap:10px">
+                                <span class="co-section-title">${sec.title}</span>
+                                <span class="co-badge-area"></span>
+                            </div>
+                            <div class="co-section-controls">
+                                <button class="co-btn-edit" onclick="coToggleHistory('${sec.key}')">Archive</button>
+                                <button class="co-btn-edit" onclick="coStartEdit('${sec.key}')">Edit</button>
+                            </div>
+                        </div>
+                        <div class="co-body">
+                            <div class="co-stmt"></div>
+                            <div class="co-docs">
+                                <div class="co-docs-title">Supporting Documents</div>
+                                <div class="co-docs-list"></div>
+                                <button class="co-upload-btn" onclick="coUploadDoc('${sec.key}')">Upload PDF</button>
+                            </div>
+                        </div>
+                        <div class="co-edit-area" id="co-edit-${sec.key}">
+                            <div class="edit-label">Statement (one item per line)</div>
+                            <textarea id="co-textarea-${sec.key}"></textarea>
+                            <div class="edit-bar">
+                                <button class="btn-save" onclick="coSave('${sec.key}')">Save</button>
+                                <button class="btn-cancel" onclick="coCancelEdit('${sec.key}')">Cancel</button>
+                            </div>
+                        </div>
+                        <div class="co-history-panel" id="co-hist-${sec.key}"></div>
+                    </div>
+                `).join('');
+            }
+            CO_SECTIONS.forEach(sec => coRenderSection(sec));
+        }
+
+        async function coLoadSection(sec) {
+            try {
+                const [stmtRes, docsRes] = await Promise.all([
+                    fetch(`/api/company/statements/${sec.key}?ws=${CO_WS}`, { credentials: 'include' }).then(r => r.json()),
+                    fetch(`/api/company/documents/${sec.key}?ws=${CO_WS}`, { credentials: 'include' }).then(r => r.json())
+                ]);
+                coState[sec.key].statement = stmtRes.statement;
+                coState[sec.key].documents = docsRes.documents || [];
+            } catch (err) {
+                // Use initial data on failure
+            }
+        }
+
+        async function coInit() {
+            await Promise.all(CO_SECTIONS.map(sec => coLoadSection(sec)));
+            coRenderAll();
+            // Seed initial data if backend is empty (first-ever load)
+            coSeedIfEmpty();
+        }
+
+        function coStartEdit(key) {
+            const sec = CO_SECTIONS.find(s => s.key === key);
+            const st = coState[key];
+            const lines = st.statement?.content?.lines || sec.initial;
+            document.getElementById('co-textarea-' + key).value = lines.join('\n');
+            document.getElementById('co-edit-' + key).classList.add('open');
+            // Close history if open
+            document.getElementById('co-hist-' + key).classList.remove('open');
+        }
+
+        function coCancelEdit(key) {
+            document.getElementById('co-edit-' + key).classList.remove('open');
+        }
+
+        async function coSave(key) {
+            const textarea = document.getElementById('co-textarea-' + key);
+            const lines = textarea.value.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+            if (lines.length === 0) return;
+
+            const btn = event.target;
+            btn.textContent = 'Saving...';
+            btn.disabled = true;
+
+            try {
+                const res = await fetch(`/api/company/statements/${key}?ws=${CO_WS}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ content: { lines } })
+                });
+                const data = await res.json();
+                if (data.ok) {
+                    // Reload section
+                    await coLoadSection(CO_SECTIONS.find(s => s.key === key));
+                    coRenderSection(CO_SECTIONS.find(s => s.key === key));
+                    document.getElementById('co-edit-' + key).classList.remove('open');
+                    btn.textContent = 'Saved';
+                    setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 1200);
+                } else {
+                    btn.textContent = 'Error';
+                    setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 1500);
+                }
+            } catch (err) {
+                btn.textContent = 'Save';
+                btn.disabled = false;
+            }
+        }
+
+        async function coToggleHistory(key) {
+            const panel = document.getElementById('co-hist-' + key);
+            if (panel.classList.contains('open')) {
+                panel.classList.remove('open');
+                return;
+            }
+            // Close edit if open
+            document.getElementById('co-edit-' + key).classList.remove('open');
+
+            panel.innerHTML = '<div style="font-size:12px;color:#b0b4be">Loading...</div>';
+            panel.classList.add('open');
+
+            try {
+                const res = await fetch(`/api/company/statements/${key}/history?ws=${CO_WS}`, { credentials: 'include' });
+                const data = await res.json();
+                coState[key].history = data.history || [];
+
+                if (coState[key].history.length === 0) {
+                    panel.innerHTML = '<div style="font-size:12px;color:#b0b4be;font-style:italic">No archived versions</div>';
+                    return;
+                }
+
+                panel.innerHTML = '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#9a9ea8;margin-bottom:10px">Archive</div>' +
+                    coState[key].history.map(h => {
+                        const lines = h.content?.lines || [];
+                        const preview = lines.slice(0, 3).map(l => coEsc(l)).join('<br>');
+                        const date = new Date(h.saved_at).toLocaleString('sv-SE');
+                        return `<div class="co-hist-item">
+                            <div class="co-hist-meta">
+                                <span><span class="co-badge archived">Archived</span> &nbsp;${date} &middot; ${coEsc(h.saved_by || '')}</span>
+                                <button class="co-hist-restore" onclick="coRestore('${key}','${h.id}')">Restore as Current</button>
+                            </div>
+                            <div class="co-hist-preview">${preview}${lines.length > 3 ? '<br>...' : ''}</div>
+                        </div>`;
+                    }).join('');
+            } catch (err) {
+                panel.innerHTML = '<div style="font-size:12px;color:#dc2626">Failed to load history</div>';
+            }
+        }
+
+        async function coRestore(key, id) {
+            if (!confirm('Restore this archived version as Current?')) return;
+            try {
+                const res = await fetch(`/api/company/statements/${key}/restore/${id}?ws=${CO_WS}`, {
+                    method: 'POST',
+                    credentials: 'include'
+                });
+                const data = await res.json();
+                if (data.ok) {
+                    await coLoadSection(CO_SECTIONS.find(s => s.key === key));
+                    coRenderSection(CO_SECTIONS.find(s => s.key === key));
+                    // Refresh history panel
+                    document.getElementById('co-hist-' + key).classList.remove('open');
+                    coToggleHistory(key);
+                }
+            } catch (err) {}
+        }
+
+        function coUploadDoc(sectionKey) {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.pdf';
+            input.onchange = async () => {
+                if (!input.files[0]) return;
+                const file = input.files[0];
+                const category = prompt('Category/tag (optional):', '') || '';
+                const fd = new FormData();
+                fd.append('file', file);
+                fd.append('category', category);
+
+                try {
+                    const res = await fetch(`/api/company/documents/${sectionKey}/upload?ws=${CO_WS}`, {
+                        method: 'POST',
+                        credentials: 'include',
+                        body: fd
+                    });
+                    const data = await res.json();
+                    if (data.ok) {
+                        await coLoadSection(CO_SECTIONS.find(s => s.key === sectionKey));
+                        coRenderSection(CO_SECTIONS.find(s => s.key === sectionKey));
+                    }
+                } catch (err) {}
+            };
+            input.click();
+        }
+
+        function coOpenDoc(docId) {
+            window.open(`/api/company/documents/${docId}/download`, '_blank');
+        }
+
+        async function coDeleteDoc(sectionKey, docId) {
+            if (!confirm('Remove this document?')) return;
+            try {
+                const res = await fetch(`/api/company/documents/${docId}`, {
+                    method: 'DELETE',
+                    credentials: 'include'
+                });
+                const data = await res.json();
+                if (data.ok) {
+                    await coLoadSection(CO_SECTIONS.find(s => s.key === sectionKey));
+                    coRenderSection(CO_SECTIONS.find(s => s.key === sectionKey));
+                }
+            } catch (err) {}
+        }
+
+        // Initialize on first tab switch to Company, or immediately if active
+        let coInitDone = false;
+        document.getElementById('tabNav').addEventListener('click', (e) => {
+            const btn = e.target.closest('.tab-btn');
+            if (btn && btn.dataset.tab === 'company' && !coInitDone) {
+                coInitDone = true;
+                coInit();
+            }
+        });
+
+        // Seed initial statements if backend has none (first load)
+        async function coSeedIfEmpty() {
+            for (const sec of CO_SECTIONS) {
+                if (!coState[sec.key].statement) {
+                    try {
+                        await fetch(`/api/company/statements/${sec.key}?ws=${CO_WS}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            credentials: 'include',
+                            body: JSON.stringify({ content: { lines: sec.initial } })
+                        });
+                    } catch {}
+                }
+            }
+        }
     </script>
 </body>
 </html>

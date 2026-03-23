@@ -17782,6 +17782,243 @@ const MODULE_BLUEPRINTS = [
 // END MODULE STUDIO
 // =====================================================
 
+// =====================================================
+// COMPANY TAB — Statement Versioning + Documents
+// =====================================================
+
+let _companyTablesChecked = null;
+async function checkCompanyTables() {
+    if (_companyTablesChecked !== null) return _companyTablesChecked;
+    try {
+        const r = await pool.query(
+            `SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name = 'company_statements') AS ok`
+        );
+        _companyTablesChecked = r.rows[0]?.ok === true;
+    } catch { _companyTablesChecked = false; }
+    return _companyTablesChecked;
+}
+
+// Multer for company docs (PDF only, 20MB)
+const companyDocUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 20 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+        const name = (file.originalname || '').toLowerCase();
+        if (name.endsWith('.pdf')) return cb(null, true);
+        cb(new Error('Only PDF files are accepted'), false);
+    }
+});
+
+// GET current statement for a section
+app.get('/api/company/statements/:sectionKey', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkCompanyTables())) return res.json({ statement: null });
+        const ws = req.query.ws || 'theralia';
+        const { sectionKey } = req.params;
+        const r = await pool.query(
+            `SELECT id, content, status, saved_by, saved_at FROM company_statements
+             WHERE workspace_slug = $1 AND section_key = $2 AND status = 'current' LIMIT 1`,
+            [ws, sectionKey]
+        );
+        res.json({ statement: r.rows[0] || null });
+    } catch (err) {
+        console.error('[COMPANY] GET statement error:', err.message);
+        res.status(500).json({ error: 'Failed to load statement' });
+    }
+});
+
+// GET archived versions for a section
+app.get('/api/company/statements/:sectionKey/history', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkCompanyTables())) return res.json({ history: [] });
+        const ws = req.query.ws || 'theralia';
+        const { sectionKey } = req.params;
+        const r = await pool.query(
+            `SELECT id, content, status, saved_by, saved_at FROM company_statements
+             WHERE workspace_slug = $1 AND section_key = $2 AND status = 'archived'
+             ORDER BY saved_at DESC`,
+            [ws, sectionKey]
+        );
+        res.json({ history: r.rows });
+    } catch (err) {
+        console.error('[COMPANY] GET history error:', err.message);
+        res.status(500).json({ error: 'Failed to load history' });
+    }
+});
+
+// POST save new statement (archives existing current)
+app.post('/api/company/statements/:sectionKey', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkCompanyTables())) return res.status(503).json({ error: 'Company tables not ready' });
+        const ws = req.query.ws || 'theralia';
+        const { sectionKey } = req.params;
+        const { content } = req.body;
+        if (!content) return res.status(400).json({ error: 'Content required' });
+        const userId = req.session.user?.name || req.session.user?.researcher_id || 'unknown';
+
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            // Archive existing current
+            await client.query(
+                `UPDATE company_statements SET status = 'archived'
+                 WHERE workspace_slug = $1 AND section_key = $2 AND status = 'current'`,
+                [ws, sectionKey]
+            );
+            // Insert new current
+            const r = await client.query(
+                `INSERT INTO company_statements (workspace_slug, section_key, content, status, saved_by)
+                 VALUES ($1, $2, $3, 'current', $4) RETURNING id, saved_at`,
+                [ws, sectionKey, JSON.stringify(content), userId]
+            );
+            await client.query('COMMIT');
+            res.json({ ok: true, id: r.rows[0].id, saved_at: r.rows[0].saved_at });
+        } catch (e) {
+            await client.query('ROLLBACK');
+            throw e;
+        } finally {
+            client.release();
+        }
+    } catch (err) {
+        console.error('[COMPANY] POST statement error:', err.message);
+        res.status(500).json({ error: 'Failed to save statement' });
+    }
+});
+
+// POST restore an archived version as current
+app.post('/api/company/statements/:sectionKey/restore/:id', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkCompanyTables())) return res.status(503).json({ error: 'Company tables not ready' });
+        const ws = req.query.ws || 'theralia';
+        const { sectionKey, id } = req.params;
+        const userId = req.session.user?.name || req.session.user?.researcher_id || 'unknown';
+
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            // Get archived content
+            const arch = await client.query(
+                `SELECT content FROM company_statements WHERE id = $1 AND workspace_slug = $2 AND section_key = $3 AND status = 'archived'`,
+                [id, ws, sectionKey]
+            );
+            if (arch.rows.length === 0) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ error: 'Archived version not found' });
+            }
+            // Archive existing current
+            await client.query(
+                `UPDATE company_statements SET status = 'archived'
+                 WHERE workspace_slug = $1 AND section_key = $2 AND status = 'current'`,
+                [ws, sectionKey]
+            );
+            // Insert restored content as new current
+            const r = await client.query(
+                `INSERT INTO company_statements (workspace_slug, section_key, content, status, saved_by)
+                 VALUES ($1, $2, $3, 'current', $4) RETURNING id, saved_at`,
+                [ws, sectionKey, JSON.stringify(arch.rows[0].content), userId]
+            );
+            await client.query('COMMIT');
+            res.json({ ok: true, id: r.rows[0].id, saved_at: r.rows[0].saved_at });
+        } catch (e) {
+            await client.query('ROLLBACK');
+            throw e;
+        } finally {
+            client.release();
+        }
+    } catch (err) {
+        console.error('[COMPANY] RESTORE error:', err.message);
+        res.status(500).json({ error: 'Failed to restore version' });
+    }
+});
+
+// GET documents for a section
+app.get('/api/company/documents/:sectionKey', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkCompanyTables())) return res.json({ documents: [] });
+        const ws = req.query.ws || 'theralia';
+        const { sectionKey } = req.params;
+        const r = await pool.query(
+            `SELECT id, filename, category, content_type, file_size, uploaded_by, uploaded_at
+             FROM company_documents WHERE workspace_slug = $1 AND section_key = $2
+             ORDER BY uploaded_at DESC`,
+            [ws, sectionKey]
+        );
+        res.json({ documents: r.rows });
+    } catch (err) {
+        console.error('[COMPANY] GET docs error:', err.message);
+        res.status(500).json({ error: 'Failed to load documents' });
+    }
+});
+
+// POST upload document
+app.post('/api/company/documents/:sectionKey/upload', requireAuth, companyDocUpload.single('file'), async (req, res) => {
+    try {
+        if (!(await checkCompanyTables())) return res.status(503).json({ error: 'Company tables not ready' });
+        if (!req.file) return res.status(400).json({ error: 'No file provided' });
+        const ws = req.query.ws || 'theralia';
+        const { sectionKey } = req.params;
+        const category = req.body.category || '';
+        const userId = req.session.user?.name || req.session.user?.researcher_id || 'unknown';
+        const ts = Date.now();
+        const safeName = req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const r2Key = `company/${ws}/${sectionKey}/${ts}_${safeName}`;
+
+        await uploadToR2(req.file.buffer, r2Key, req.file.mimetype || 'application/pdf');
+
+        const r = await pool.query(
+            `INSERT INTO company_documents (workspace_slug, section_key, filename, category, r2_key, content_type, file_size, uploaded_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, uploaded_at`,
+            [ws, sectionKey, req.file.originalname, category, r2Key, req.file.mimetype, req.file.size, userId]
+        );
+        res.json({ ok: true, id: r.rows[0].id, uploaded_at: r.rows[0].uploaded_at });
+    } catch (err) {
+        console.error('[COMPANY] UPLOAD doc error:', err.message);
+        res.status(500).json({ error: 'Failed to upload document' });
+    }
+});
+
+// GET download document
+app.get('/api/company/documents/:id/download', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkCompanyTables())) return res.status(503).json({ error: 'Not available' });
+        const doc = await pool.query(
+            `SELECT r2_key, filename, content_type FROM company_documents WHERE id = $1`,
+            [req.params.id]
+        );
+        if (doc.rows.length === 0) return res.status(404).json({ error: 'Document not found' });
+        const { r2_key, filename, content_type } = doc.rows[0];
+        const obj = await downloadFromR2(r2_key);
+        res.setHeader('Content-Type', content_type || 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+        obj.Body.pipe(res);
+    } catch (err) {
+        console.error('[COMPANY] DOWNLOAD doc error:', err.message);
+        res.status(500).json({ error: 'Failed to download document' });
+    }
+});
+
+// DELETE document
+app.delete('/api/company/documents/:id', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkCompanyTables())) return res.status(503).json({ error: 'Not available' });
+        const doc = await pool.query(
+            `SELECT r2_key FROM company_documents WHERE id = $1`,
+            [req.params.id]
+        );
+        if (doc.rows.length === 0) return res.status(404).json({ error: 'Document not found' });
+        await deleteFromR2(doc.rows[0].r2_key);
+        await pool.query(`DELETE FROM company_documents WHERE id = $1`, [req.params.id]);
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('[COMPANY] DELETE doc error:', err.message);
+        res.status(500).json({ error: 'Failed to delete document' });
+    }
+});
+
+// =====================================================
+// END COMPANY TAB
+// =====================================================
+
 app.listen(PORT, "0.0.0.0", async () => {
     console.log("[STARTUP] Server listening on port " + PORT);
     // Safety check: warn if any di_submissions row has no r2_object_key
