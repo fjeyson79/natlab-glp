@@ -59,9 +59,9 @@
 
         /* ---- Light Content Surface ---- */
         .main {
-            max-width: 1120px;
+            max-width: 1440px;
             margin: 0 auto;
-            padding: 0 24px 60px;
+            padding: 0 20px 60px;
         }
         .tab-content { display: none; }
         .tab-content.active { display: block; }
@@ -108,18 +108,45 @@
             box-shadow: 0 1px 3px rgba(0,0,0,0.08);
         }
 
-        /* ---- Dashboard Grid ---- */
-        .dashboard-grid {
+        /* ---- Indicator Row ---- */
+        .indicator-row {
             display: grid;
-            grid-template-columns: 1.2fr 1fr;
-            gap: 18px;
-            align-items: start;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 14px;
+            margin-bottom: 18px;
         }
-        @media (max-width: 840px) {
-            .dashboard-grid { grid-template-columns: 1fr; }
+        .indicator-box {
+            background: #ffffff;
+            border: 1px solid rgba(0,0,0,0.06);
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+            padding: 16px 20px;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            cursor: pointer;
+            transition: border-color 0.15s, box-shadow 0.15s;
         }
-        .left-col { display: flex; flex-direction: column; gap: 18px; }
-        .right-col { display: flex; flex-direction: column; gap: 18px; }
+        .indicator-box:hover {
+            border-color: rgba(0,0,0,0.12);
+            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+        }
+        .indicator-num {
+            font-size: 28px;
+            font-weight: 700;
+            color: #1a1c22;
+            line-height: 1;
+        }
+        .indicator-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #9a9ea8;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+        }
+        @media (max-width: 700px) {
+            .indicator-row { grid-template-columns: repeat(2, 1fr); }
+        }
 
         /* ---- Cards (light) ---- */
         .card {
@@ -184,8 +211,6 @@
             content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor;
         }
 
-        /* ---- Segmented Toggle (reserved for future board history) ---- */
-
         /* ---- Agenda List ---- */
         .agenda-list {
             list-style: none; padding: 0; margin: 0; counter-reset: agenda;
@@ -218,20 +243,67 @@
         .action-table .st-progress { color: #2563eb; font-weight: 500; }
         .action-table .st-open { color: #9a9ea8; }
 
-        /* ---- Leadership Mini Cards ---- */
-        .leader-stack { display: flex; flex-direction: column; gap: 0; }
-        .leader-item {
-            padding: 12px 0; border-bottom: 1px solid rgba(0,0,0,0.04);
-        }
-        .leader-item:last-child { border-bottom: none; padding-bottom: 0; }
-        .leader-item:first-child { padding-top: 0; }
-        .leader-role {
-            font-size: 11px; font-weight: 700; color: #1a1c22;
-            text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 3px;
-        }
-        .leader-text { font-size: 13px; color: #555a66; line-height: 1.55; }
+        /* ---- Board Inner Grid ---- */
+        .board-inner { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+        @media (max-width: 700px) { .board-inner { grid-template-columns: 1fr; } }
 
-        /* ---- KV Rows (R&D, Business) ---- */
+        /* ---- Board Topics (subtle distinction from agenda) ---- */
+        .topic-list {
+            list-style: none; padding: 0; margin: 0;
+        }
+        .topic-list li {
+            position: relative; padding: 6px 10px 6px 14px; margin-bottom: 5px;
+            font-size: 13px; color: #555a66; line-height: 1.5;
+            background: #f8f9fb; border-radius: 6px;
+            border-left: 2px solid #d0d3da;
+        }
+
+        /* ---- Action Items (stacked rows) ---- */
+        .action-stack { display: flex; flex-direction: column; gap: 0; }
+        .action-item {
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(0,0,0,0.04);
+        }
+        .action-item:last-child { border-bottom: none; }
+        .action-text { font-size: 13px; color: #2a2d35; line-height: 1.4; }
+        .action-meta {
+            font-size: 11px; color: #9a9ea8; margin-top: 2px;
+            display: flex; gap: 10px; align-items: center;
+        }
+        .action-meta .st-open { color: #b0b4be; }
+        .action-meta .st-progress { color: #2563eb; font-weight: 500; }
+        .action-meta .st-done { color: #16a34a; font-weight: 500; }
+
+        /* ---- Bottom Two Panels ---- */
+        .bottom-panels {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 18px;
+            margin-top: 18px;
+        }
+        @media (max-width: 700px) {
+            .bottom-panels { grid-template-columns: 1fr; }
+        }
+
+        /* ---- Placeholder Add Rows ---- */
+        .add-row {
+            display: flex; align-items: center; gap: 6px;
+            padding: 6px 0; cursor: pointer; opacity: 0;
+            transition: opacity 0.15s;
+        }
+        .card:hover .add-row,
+        .add-row:focus-within { opacity: 1; }
+        .add-row-icon {
+            width: 18px; height: 18px; border-radius: 50%;
+            border: 1px dashed rgba(0,0,0,0.15); display: flex;
+            align-items: center; justify-content: center;
+            font-size: 12px; color: #b0b4be; line-height: 1;
+        }
+        .add-row-text {
+            font-size: 12px; color: #b0b4be; font-style: italic;
+        }
+
+        /* ---- KV Rows ---- */
         .kv-row {
             display: flex; gap: 6px; margin-bottom: 8px;
             font-size: 13px; line-height: 1.5;
@@ -247,12 +319,12 @@
 
         /* ---- Per-Section Edit Button ---- */
         .btn-edit {
-            background: none; border: 1px solid rgba(0,0,0,0.08);
-            border-radius: 6px; padding: 3px 10px; font-size: 11px;
-            color: #9a9ea8; cursor: pointer; transition: all 0.15s;
-            font-family: inherit; font-weight: 500;
+            background: none; border: none;
+            border-radius: 4px; padding: 2px 8px; font-size: 10px;
+            color: #b0b4be; cursor: pointer; transition: all 0.15s;
+            font-family: inherit; font-weight: 500; letter-spacing: 0.2px;
         }
-        .btn-edit:hover { color: #555a66; border-color: rgba(0,0,0,0.15); }
+        .btn-edit:hover { color: #7a7e8a; background: rgba(0,0,0,0.03); }
 
         /* ---- Section Edit Panels ---- */
         .section-edit { display: none; margin-top: 14px; padding-top: 14px; border-top: 1px solid rgba(0,0,0,0.06); }
@@ -301,9 +373,52 @@
             font-family: inherit;
         }
 
-        /* ---- Board inner grid ---- */
-        .board-inner { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-        @media (max-width: 600px) { .board-inner { grid-template-columns: 1fr; } }
+        /* ---- Private Notes Floating ---- */
+        .private-notes-toggle {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 200;
+            background: #1a1c22;
+            color: #ffffff;
+            border: none;
+            border-radius: 10px;
+            padding: 10px 18px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+            font-family: inherit;
+            transition: all 0.15s;
+        }
+        .private-notes-toggle:hover { background: #2a2d38; }
+        .private-notes-panel {
+            display: none;
+            position: fixed;
+            bottom: 70px;
+            right: 24px;
+            z-index: 200;
+            width: 320px;
+            background: #ffffff;
+            border: 1px solid rgba(0,0,0,0.08);
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+            padding: 18px;
+        }
+        .private-notes-panel.open { display: block; }
+        .pn-title { font-size: 14px; font-weight: 600; color: #1a1c22; margin-bottom: 2px; }
+        .pn-subtitle { font-size: 11px; color: #b0b4be; margin-bottom: 12px; }
+        .pn-textarea {
+            width: 100%; background: #f9fafb; border: 1px solid rgba(0,0,0,0.08);
+            border-radius: 8px; color: #2a2d35; font-family: inherit;
+            font-size: 13px; line-height: 1.6; padding: 10px 12px;
+            resize: vertical; min-height: 120px;
+        }
+        .pn-textarea:focus { outline: none; border-color: rgba(0,0,0,0.16); }
+        .pn-saved {
+            font-size: 10px; color: #b0b4be; margin-top: 6px;
+            text-align: right; min-height: 14px;
+        }
 
         /* ---- Empty Tab States ---- */
         .empty-tab { padding: 48px 0; }
@@ -359,8 +474,8 @@
             <!-- Control Bar -->
             <div class="dash-control">
                 <div class="dash-control-left">
-                    <div class="dash-title">Theralia Board Dashboard</div>
-                    <div class="dash-meta">Last updated: Mar 30, 2026</div>
+                    <div class="dash-title">Board Meeting &mdash; W14 &middot; 2026</div>
+                    <div class="dash-meta">April 3, 2026</div>
                 </div>
                 <div class="dash-control-right">
                     <select class="cycle-select" id="cycleSelect">
@@ -374,242 +489,183 @@
                 </div>
             </div>
 
-            <div class="dashboard-grid">
+            <!-- Indicator Row -->
+            <div class="indicator-row">
+                <div class="indicator-box">
+                    <span class="indicator-num">0</span>
+                    <span class="indicator-label">Projects</span>
+                </div>
+                <div class="indicator-box">
+                    <span class="indicator-num">0</span>
+                    <span class="indicator-label">Co-Develop</span>
+                </div>
+                <div class="indicator-box">
+                    <span class="indicator-num">0</span>
+                    <span class="indicator-label">Grants</span>
+                </div>
+                <div class="indicator-box">
+                    <span class="indicator-num">0</span>
+                    <span class="indicator-label">Investors</span>
+                </div>
+            </div>
 
-                <!-- ======== LEFT COLUMN ======== -->
-                <div class="left-col">
+            <!-- ======== MAIN PANEL: Board Meeting ======== -->
+            <div class="card" id="sec-board">
+                <div class="card-header">
+                    <div>
+                        <span class="card-title">Agenda &amp; Actions</span>
+                        <div class="card-subtitle" style="margin-top:2px">Friday, April 3, 2026</div>
+                    </div>
+                    <button class="btn-edit" onclick="toggleEdit('board')" id="boardEditBtn">Edit</button>
+                </div>
 
-                    <!-- 1. Key Decisions & Milestones -->
-                    <div class="card" id="sec-decisions">
-                        <div class="card-header">
-                            <span class="card-title">Key Decisions &amp; Milestones</span>
-                            <button class="btn-edit" onclick="toggleEdit('decisions')">Edit</button>
-                        </div>
-                        <div class="card-body">
-                            <ul class="compact-list">
-                                <li>Approve Q2 budget allocation for external assay services</li>
-                                <li>Confirm CRO vendor shortlist for lead compound screening</li>
-                                <li>Decide on NDA timeline with prospective CRO partner</li>
-                            </ul>
-                            <div style="height:10px"></div>
-                            <ul class="compact-list">
-                                <li>First in-vitro assay panel selected for lead compound</li>
-                                <li>Translational pathway for dermal inflammation model locked</li>
-                                <li>Freedom-to-operate analysis initiated with patent counsel</li>
-                            </ul>
-                        </div>
-                        <div class="card-footer">
-                            <span>Updated by CSO &middot; W14</span>
-                            <span>Mar 22, 2026</span>
-                        </div>
-                        <div class="section-edit" id="edit-decisions">
-                            <div class="edit-label">Decisions (one per line)</div>
-                            <textarea rows="4">Approve Q2 budget allocation for external assay services.
-Confirm CRO vendor shortlist for lead compound screening.
-Decide on NDA timeline with prospective CRO partner.</textarea>
-                            <div class="edit-label">Milestones (one per line)</div>
-                            <textarea rows="4">First in-vitro assay panel selected for lead compound.
-Translational pathway for dermal inflammation model locked.
-Freedom-to-operate analysis initiated with patent counsel.</textarea>
-                            <div class="edit-bar">
-                                <button class="btn-save" onclick="saveSection('decisions')">Save</button>
-                                <button class="btn-cancel" onclick="toggleEdit('decisions')">Cancel</button>
-                            </div>
+                <div class="board-inner">
+                    <!-- Agenda -->
+                    <div>
+                        <div class="section-label">Agenda</div>
+                        <div class="card-subtitle" style="margin-bottom:10px">Prepared by CEO</div>
+                        <ul class="compact-list" id="agendaList">
+                        </ul>
+                        <div class="add-row" onclick="promptAddItem('agenda')">
+                            <span class="add-row-icon">+</span>
+                            <span class="add-row-text">Add agenda item</span>
                         </div>
                     </div>
-
-                    <!-- 2. Board Meeting -->
-                    <div class="card" id="sec-board">
-                        <div class="card-header">
-                            <div>
-                                <span class="card-title">Board Meeting &mdash; W14 &middot; 2026</span>
-                                <div class="card-subtitle" style="margin-top:2px">Friday, April 3</div>
-                            </div>
-                            <button class="btn-edit" onclick="toggleEdit('board')" id="boardEditBtn">Edit</button>
-                        </div>
-
-                        <div class="board-inner">
-                            <div>
-                                <ol class="agenda-list">
-                                    <li>Opening remarks and cycle review</li>
-                                    <li>CSO: translational pathway and assay timeline</li>
-                                    <li>CRO partnership status and vendor decision</li>
-                                    <li>IP landscape: freedom-to-operate findings</li>
-                                    <li>Q2 budget allocation discussion</li>
-                                    <li>Investor outreach and seed extension update</li>
-                                </ol>
-                            </div>
-                            <div>
-                                <table class="action-table">
-                                    <thead><tr><th>Action</th><th>Owner</th><th>Due</th><th></th></tr></thead>
-                                    <tbody>
-                                        <tr><td>Finalize CRO vendor shortlist</td><td>COO</td><td>Apr 3</td><td class="st-progress">In Progress</td></tr>
-                                        <tr><td>Submit FTO brief to board</td><td>CSO</td><td>Apr 3</td><td class="st-open">Open</td></tr>
-                                        <tr><td>Prepare Q2 budget proposal</td><td>COO</td><td>Apr 2</td><td class="st-progress">In Progress</td></tr>
-                                        <tr><td>Draft investor update</td><td>CEO</td><td>Apr 3</td><td class="st-open">Open</td></tr>
-                                        <tr><td>Complete assay protocol docs</td><td>CSO</td><td>Apr 1</td><td class="st-open">Open</td></tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                        <div class="section-edit" id="edit-board">
-                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-                                <div>
-                                    <div class="edit-label">Meeting Date</div>
-                                    <input type="date" value="2026-04-03" style="margin-bottom:8px">
-                                    <div class="edit-label">Agenda (one per line)</div>
-                                    <textarea rows="7">Opening remarks and cycle review
-CSO: translational pathway and assay timeline
-CRO partnership status and vendor decision
-IP landscape: freedom-to-operate findings
-Q2 budget allocation discussion
-Investor outreach and seed extension update</textarea>
-                                </div>
-                                <div>
-                                    <div class="edit-label">Action Points</div>
-                                    <div class="edit-row"><input type="text" value="Finalize CRO vendor shortlist" style="flex:3"><input type="text" value="COO" style="flex:1"><input type="date" value="2026-04-03" style="flex:1"><select style="flex:1"><option>Open</option><option selected>In Progress</option><option>Done</option></select></div>
-                                    <div class="edit-row"><input type="text" value="Submit FTO brief to board" style="flex:3"><input type="text" value="CSO" style="flex:1"><input type="date" value="2026-04-03" style="flex:1"><select style="flex:1"><option selected>Open</option><option>In Progress</option><option>Done</option></select></div>
-                                    <div class="edit-row"><input type="text" value="Prepare Q2 budget proposal" style="flex:3"><input type="text" value="COO" style="flex:1"><input type="date" value="2026-04-02" style="flex:1"><select style="flex:1"><option>Open</option><option selected>In Progress</option><option>Done</option></select></div>
-                                    <div class="edit-row"><input type="text" value="Draft investor update" style="flex:3"><input type="text" value="CEO" style="flex:1"><input type="date" value="2026-04-03" style="flex:1"><select style="flex:1"><option selected>Open</option><option>In Progress</option><option>Done</option></select></div>
-                                    <div class="edit-row"><input type="text" value="Complete assay protocol docs" style="flex:3"><input type="text" value="CSO" style="flex:1"><input type="date" value="2026-04-01" style="flex:1"><select style="flex:1"><option selected>Open</option><option>In Progress</option><option>Done</option></select></div>
-                                </div>
-                            </div>
-                            <div class="edit-bar">
-                                <button class="btn-save" onclick="saveSection('board')">Save</button>
-                                <button class="btn-cancel" onclick="toggleEdit('board')">Cancel</button>
-                            </div>
-                        </div>
-                        <div class="card-footer">
-                            <span>First board meeting &middot; 5 action items</span>
-                            <span>W14 &middot; Apr 3, 2026</span>
+                    <!-- Suggested Topics -->
+                    <div>
+                        <div class="section-label">Suggested Topics</div>
+                        <div class="card-subtitle" style="margin-bottom:10px">Submitted by founders</div>
+                        <ul class="topic-list" id="topicList">
+                        </ul>
+                        <div class="add-row" onclick="promptAddItem('topic')">
+                            <span class="add-row-icon">+</span>
+                            <span class="add-row-text">Add founder topic</span>
                         </div>
                     </div>
                 </div>
 
-                <!-- ======== RIGHT COLUMN ======== -->
-                <div class="right-col">
+                <!-- Action Points -->
+                <div style="margin-top:18px; padding-top:16px; border-top:1px solid rgba(0,0,0,0.05)">
+                    <div class="section-label">Action Points</div>
+                    <div class="action-stack" id="actionStack">
+                    </div>
+                    <div class="add-row" onclick="promptAddItem('action')" style="margin-top:4px">
+                        <span class="add-row-icon">+</span>
+                        <span class="add-row-text">Add action point</span>
+                    </div>
+                </div>
 
-                    <!-- 3. Leadership Updates -->
-                    <div class="card" id="sec-leadership">
-                        <div class="card-header">
-                            <span class="card-title">Leadership Updates</span>
-                            <button class="btn-edit" onclick="toggleEdit('leadership')">Edit</button>
+                <div class="section-edit" id="edit-board">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+                        <div>
+                            <div class="edit-label">Meeting Date</div>
+                            <input type="date" value="2026-04-03" style="margin-bottom:8px">
+                            <div class="edit-label">Agenda (one per line)</div>
+                            <textarea rows="5" id="editAgenda"></textarea>
+                            <div class="edit-label" style="margin-top:8px">Suggested Topics (one per line)</div>
+                            <textarea rows="4" id="editTopics"></textarea>
                         </div>
-                        <div class="leader-stack">
-                            <div class="leader-item">
-                                <div class="leader-role">CEO</div>
-                                <div class="leader-text">Strategic direction confirmed for Q2. Preparing seed extension materials and partnership conversations.</div>
-                            </div>
-                            <div class="leader-item">
-                                <div class="leader-role">CSO</div>
-                                <div class="leader-text">Assay panel locked. Translational pathway for dermal inflammation model confirmed. Protocol documentation underway.</div>
-                            </div>
-                            <div class="leader-item">
-                                <div class="leader-role">CTO</div>
-                                <div class="leader-text">Data infrastructure scoping in progress. Evaluating traceability tooling for experimental workflows.</div>
-                            </div>
-                            <div class="leader-item">
-                                <div class="leader-role">COO</div>
-                                <div class="leader-text">CRO engagement framework prepared. Vendor evaluation for consumables supply chain started.</div>
-                            </div>
-                            <div class="leader-item">
-                                <div class="leader-role">Medical Advisor</div>
-                                <div class="leader-text">Clinical relevance review completed. Advisory input on patient population segmentation provided.</div>
-                            </div>
-                        </div>
-                        <div class="card-footer">
-                            <span>W14 &middot; 5 updates</span>
-                            <span>Mar 22, 2026</span>
-                        </div>
-                        <div class="section-edit" id="edit-leadership">
-                            <div class="edit-label">CEO</div>
-                            <textarea rows="2">Strategic direction confirmed for Q2. Preparing seed extension materials and partnership conversations.</textarea>
-                            <div class="edit-label">CSO</div>
-                            <textarea rows="2">Assay panel locked. Translational pathway for dermal inflammation model confirmed. Protocol documentation underway.</textarea>
-                            <div class="edit-label">CTO</div>
-                            <textarea rows="2">Data infrastructure scoping in progress. Evaluating traceability tooling for experimental workflows.</textarea>
-                            <div class="edit-label">COO</div>
-                            <textarea rows="2">CRO engagement framework prepared. Vendor evaluation for consumables supply chain started.</textarea>
-                            <div class="edit-label">Medical Advisor</div>
-                            <textarea rows="2">Clinical relevance review completed. Advisory input on patient population segmentation provided.</textarea>
-                            <div class="edit-bar">
-                                <button class="btn-save" onclick="saveSection('leadership')">Save</button>
-                                <button class="btn-cancel" onclick="toggleEdit('leadership')">Cancel</button>
-                            </div>
+                        <div>
+                            <div class="edit-label">Action Points</div>
+                            <div id="editActionRows"></div>
+                            <button class="btn-upload" onclick="addEditActionRow()" style="margin-top:6px">+ Add row</button>
                         </div>
                     </div>
+                    <div class="edit-bar">
+                        <button class="btn-save" onclick="saveSection('board')">Save</button>
+                        <button class="btn-cancel" onclick="toggleEdit('board')">Cancel</button>
+                    </div>
+                </div>
 
-                    <!-- 4. R&D Updates -->
-                    <div class="card" id="sec-rnd">
-                        <div class="card-header">
-                            <span class="card-title">R&D Updates</span>
-                            <div style="display:flex;align-items:center;gap:8px">
-                                <span class="card-status active">Active</span>
-                                <button class="btn-edit" onclick="toggleEdit('rnd')">Edit</button>
-                            </div>
+                <div class="card-footer">
+                    <span>W14 &middot; Apr 3, 2026</span>
+                    <span></span>
+                </div>
+            </div>
+
+            <!-- ======== BOTTOM PANELS ======== -->
+            <div class="bottom-panels">
+
+                <!-- R&D Focus -->
+                <div class="card" id="sec-rnd">
+                    <div class="card-header">
+                        <span class="card-title">R&D Focus</span>
+                        <button class="btn-edit" onclick="toggleEdit('rnd')">Edit</button>
+                    </div>
+                    <div class="card-body">
+                        <div class="kv-row">
+                            <div class="kv-label">Milestone</div>
+                            <div class="kv-value" style="color:#b0b4be; font-style:italic">&mdash;</div>
                         </div>
-                        <div class="card-body">
-                            <div class="kv-row"><div class="kv-label">Stage</div><div class="kv-value">Pre-clinical &mdash; lead compound screening</div></div>
-                            <div class="kv-row"><div class="kv-label">Validation</div><div class="kv-value">First in-vitro assay dataset collection initiated; primary endpoint criteria defined</div></div>
-                            <div class="kv-row"><div class="kv-label">Milestone</div><div class="kv-value">Experimental protocol approved for lead compound screening</div></div>
-                            <div class="kv-row"><div class="kv-label">Next Step</div><div class="kv-value">Begin assay execution with selected CRO; target product profile draft by W15</div></div>
-                            <div class="kv-row"><div class="kv-label">IP Status</div><div class="kv-value">Freedom-to-operate analysis underway; patent counsel engaged on core mechanism</div></div>
+                        <div class="add-row" onclick="promptAddItem('rnd-milestone')">
+                            <span class="add-row-icon">+</span>
+                            <span class="add-row-text">Add milestone</span>
                         </div>
-                        <div class="card-footer">
-                            <span>Updated by CSO &middot; W14</span>
-                            <span>Mar 22, 2026</span>
+                        <div class="kv-row">
+                            <div class="kv-label">Validation</div>
+                            <div class="kv-value" style="color:#b0b4be; font-style:italic">&mdash;</div>
                         </div>
-                        <div class="section-edit" id="edit-rnd">
-                            <div class="edit-label">Development Stage</div>
-                            <textarea rows="1">Pre-clinical — lead compound screening</textarea>
-                            <div class="edit-label">Key Validation / Data</div>
-                            <textarea rows="2">First in-vitro assay dataset collection initiated; primary endpoint criteria defined</textarea>
-                            <div class="edit-label">Milestone</div>
-                            <textarea rows="1">Experimental protocol approved for lead compound screening</textarea>
-                            <div class="edit-label">Next Step</div>
-                            <textarea rows="1">Begin assay execution with selected CRO; target product profile draft by W15</textarea>
-                            <div class="edit-label">IP Status</div>
-                            <textarea rows="1">Freedom-to-operate analysis underway; patent counsel engaged on core mechanism</textarea>
-                            <div class="edit-bar">
-                                <select><option selected>Active</option><option>On Track</option><option>Planning</option><option>Review</option></select>
-                                <button class="btn-upload">Attach</button>
-                                <button class="btn-save" onclick="saveSection('rnd')">Save</button>
-                                <button class="btn-cancel" onclick="toggleEdit('rnd')">Cancel</button>
-                            </div>
+                        <div class="add-row" onclick="promptAddItem('rnd-validation')">
+                            <span class="add-row-icon">+</span>
+                            <span class="add-row-text">Add validation update</span>
+                        </div>
+                        <div class="kv-row">
+                            <div class="kv-label">IP</div>
+                            <div class="kv-value" style="color:#b0b4be; font-style:italic">&mdash;</div>
+                        </div>
+                        <div class="add-row" onclick="promptAddItem('rnd-ip')">
+                            <span class="add-row-icon">+</span>
+                            <span class="add-row-text">Add IP status</span>
                         </div>
                     </div>
+                    <div class="section-edit" id="edit-rnd">
+                        <div class="edit-label">Milestones / Validation / IP (one per line)</div>
+                        <textarea rows="4" id="editRnd"></textarea>
+                        <div class="edit-bar">
+                            <button class="btn-save" onclick="saveSection('rnd')">Save</button>
+                            <button class="btn-cancel" onclick="toggleEdit('rnd')">Cancel</button>
+                        </div>
+                    </div>
+                </div>
 
-                    <!-- 5. Business & Investors -->
-                    <div class="card" id="sec-business">
-                        <div class="card-header">
-                            <span class="card-title">Business &amp; Investors</span>
-                            <div style="display:flex;align-items:center;gap:8px">
-                                <span class="card-status engaged">Engaged</span>
-                                <button class="btn-edit" onclick="toggleEdit('business')">Edit</button>
-                            </div>
+                <!-- Business & Investors -->
+                <div class="card" id="sec-business">
+                    <div class="card-header">
+                        <span class="card-title">Business &amp; Investors</span>
+                        <button class="btn-edit" onclick="toggleEdit('business')">Edit</button>
+                    </div>
+                    <div class="card-body">
+                        <div class="kv-row">
+                            <div class="kv-label">Collaboration</div>
+                            <div class="kv-value" style="color:#b0b4be; font-style:italic">&mdash;</div>
                         </div>
-                        <div class="card-body">
-                            <div class="kv-row"><div class="kv-label">Collaborations</div><div class="kv-value">CRO partnership in early discussions; academic collaboration on mechanism studies being formalized</div></div>
-                            <div class="kv-row"><div class="kv-label">Investors</div><div class="kv-value">Two exploratory conversations active; seed round materials being refined</div></div>
-                            <div class="kv-row"><div class="kv-label">Funding Signal</div><div class="kv-value">Seed extension timeline on track; no capital constraints for current cycle</div></div>
+                        <div class="add-row" onclick="promptAddItem('biz-collab')">
+                            <span class="add-row-icon">+</span>
+                            <span class="add-row-text">Add collaboration update</span>
                         </div>
-                        <div class="card-footer">
-                            <span>Updated by CEO &middot; W14</span>
-                            <span>Mar 20, 2026</span>
+                        <div class="kv-row">
+                            <div class="kv-label">Investors</div>
+                            <div class="kv-value" style="color:#b0b4be; font-style:italic">&mdash;</div>
                         </div>
-                        <div class="section-edit" id="edit-business">
-                            <div class="edit-label">Collaborations</div>
-                            <textarea rows="2">CRO partnership in early discussions; academic collaboration on mechanism studies being formalized</textarea>
-                            <div class="edit-label">Investor Conversations</div>
-                            <textarea rows="2">Two exploratory conversations active; seed round materials being refined</textarea>
-                            <div class="edit-label">Funding Signal</div>
-                            <textarea rows="1">Seed extension timeline on track; no capital constraints for current cycle</textarea>
-                            <div class="edit-bar">
-                                <select><option>On Track</option><option selected>Engaged</option><option>Review</option><option>Critical</option></select>
-                                <button class="btn-upload">Attach</button>
-                                <button class="btn-save" onclick="saveSection('business')">Save</button>
-                                <button class="btn-cancel" onclick="toggleEdit('business')">Cancel</button>
-                            </div>
+                        <div class="add-row" onclick="promptAddItem('biz-investor')">
+                            <span class="add-row-icon">+</span>
+                            <span class="add-row-text">Add investor update</span>
+                        </div>
+                        <div class="kv-row">
+                            <div class="kv-label">Funding</div>
+                            <div class="kv-value" style="color:#b0b4be; font-style:italic">&mdash;</div>
+                        </div>
+                        <div class="add-row" onclick="promptAddItem('biz-funding')">
+                            <span class="add-row-icon">+</span>
+                            <span class="add-row-text">Add funding signal</span>
+                        </div>
+                    </div>
+                    <div class="section-edit" id="edit-business">
+                        <div class="edit-label">Collaborations / Investors / Funding (one per line)</div>
+                        <textarea rows="4" id="editBiz"></textarea>
+                        <div class="edit-bar">
+                            <button class="btn-save" onclick="saveSection('business')">Save</button>
+                            <button class="btn-cancel" onclick="toggleEdit('business')">Cancel</button>
                         </div>
                     </div>
                 </div>
@@ -723,6 +779,15 @@ Investor outreach and seed extension update</textarea>
 
     </div><!-- /.main -->
 
+    <!-- Private Notes Toggle -->
+    <button class="private-notes-toggle" id="pnToggle">Private Notes</button>
+    <div class="private-notes-panel" id="pnPanel">
+        <div class="pn-title">Private Notes</div>
+        <div class="pn-subtitle">Your eyes only &middot; W14</div>
+        <textarea class="pn-textarea" id="pnTextarea" placeholder="Type your private notes here..."></textarea>
+        <div class="pn-saved" id="pnSaved"></div>
+    </div>
+
     <script>
         /* ============================================== */
         /* USER & AUTH                                    */
@@ -795,19 +860,23 @@ Investor outreach and seed extension update</textarea>
             btn.classList.add('active');
             _isUpdateMode = mode === 'update';
 
-            // Close all open edit panels when switching to View
             if (!_isUpdateMode) {
                 document.querySelectorAll('.section-edit.open').forEach(el => el.classList.remove('open'));
             }
 
-            // Show/hide all edit buttons based on mode
             document.querySelectorAll('.btn-edit').forEach(b => {
                 b.style.display = _isUpdateMode ? '' : 'none';
             });
+
+            document.querySelectorAll('.add-row').forEach(r => {
+                r.style.pointerEvents = _isUpdateMode ? '' : 'none';
+                r.style.opacity = _isUpdateMode ? '' : '0';
+            });
         });
 
-        // Hide edit buttons initially (View mode default)
+        // Hide edit buttons and add-rows initially (View mode default)
         document.querySelectorAll('.btn-edit').forEach(b => { b.style.display = 'none'; });
+        document.querySelectorAll('.add-row').forEach(r => { r.style.pointerEvents = 'none'; r.style.opacity = '0'; });
 
         /* ============================================== */
         /* PER-SECTION EDIT TOGGLE                        */
@@ -828,13 +897,63 @@ Investor outreach and seed extension update</textarea>
             setTimeout(() => {
                 btn.textContent = orig;
                 btn.style.opacity = '';
-                // Close the edit panel after save
                 const panel = document.getElementById('edit-' + sectionId);
                 if (panel) panel.classList.remove('open');
             }, 1200);
         }
 
-        /* Board toggle removed — first meeting, no history yet */
+        /* ============================================== */
+        /* ADD ITEM PLACEHOLDER                           */
+        /* ============================================== */
+        function promptAddItem(type) {
+            if (!_isUpdateMode) return;
+            // Placeholder: in future, open inline input for specific type
+        }
+
+        /* ============================================== */
+        /* EDIT ACTION ROW HELPER                         */
+        /* ============================================== */
+        function addEditActionRow() {
+            const container = document.getElementById('editActionRows');
+            const row = document.createElement('div');
+            row.className = 'edit-row';
+            row.innerHTML = '<input type="text" placeholder="Action" style="flex:3"><input type="text" placeholder="Owner" style="flex:1"><input type="date" style="flex:1"><select style="flex:1"><option selected>Open</option><option>In Progress</option><option>Done</option></select>';
+            container.appendChild(row);
+        }
+
+        /* ============================================== */
+        /* PRIVATE NOTES                                  */
+        /* ============================================== */
+        const PN_KEY = 'theralia_private_notes_W14';
+        const pnToggle = document.getElementById('pnToggle');
+        const pnPanel = document.getElementById('pnPanel');
+        const pnTextarea = document.getElementById('pnTextarea');
+        const pnSaved = document.getElementById('pnSaved');
+        let pnTimer = null;
+
+        // Load saved notes
+        const savedNotes = localStorage.getItem(PN_KEY);
+        if (savedNotes) pnTextarea.value = savedNotes;
+
+        pnToggle.addEventListener('click', () => {
+            pnPanel.classList.toggle('open');
+        });
+
+        pnTextarea.addEventListener('input', () => {
+            clearTimeout(pnTimer);
+            pnTimer = setTimeout(() => {
+                localStorage.setItem(PN_KEY, pnTextarea.value);
+                pnSaved.textContent = 'Saved';
+                setTimeout(() => { pnSaved.textContent = ''; }, 1500);
+            }, 600);
+        });
+
+        // Close panel on outside click
+        document.addEventListener('click', (e) => {
+            if (!pnPanel.contains(e.target) && e.target !== pnToggle) {
+                pnPanel.classList.remove('open');
+            }
+        });
     </script>
 </body>
 </html>
