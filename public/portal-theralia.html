@@ -2096,6 +2096,14 @@
         function rdFetch(url, opts) { return fetch(url + (url.includes('?') ? '&' : '?') + 'ws=' + RD_WS, { credentials: 'include', ...opts }); }
         function rdJson(url) { return rdFetch(url).then(r => r.json()); }
 
+        function rdStaleness(dateStr) {
+            if (!dateStr) return '';
+            const days = Math.floor((Date.now() - new Date(dateStr).getTime()) / (1000*60*60*24));
+            if (days > 60) return ' <span style="color:#9a9ea8;font-weight:500"> · Inactive</span>';
+            if (days > 30) return ' <span style="color:#b5a76c;font-weight:500"> · No recent activity</span>';
+            return '';
+        }
+
         function rdLinkedProjectNames(partnerName) {
             return rdCache.projects
                 .filter(p => p.external_partner_name === partnerName && p.status !== 'archived')
@@ -2239,7 +2247,7 @@
                     ${p.upcoming_deliverable ? '<span style="color:#ca8a04">Deliverable pending</span>' : ''}
                 </div>
                 ${p.next_action ? '<div style="font-size:11px;color:#1a7a4e;margin-top:4px">Next: ' + rdEsc(p.next_action) + '</div>' : ''}
-                ${p.last_activity ? '<div style="font-size:10px;color:#b0b4be;margin-top:2px">Last activity: ' + rdDate(p.last_activity) + '</div>' : ''}
+                ${p.last_activity ? '<div style="font-size:10px;color:#b0b4be;margin-top:2px">Last activity: ' + rdDate(p.last_activity) + rdStaleness(p.last_activity) + '</div>' : ''}
             </div>`;
         }
 
