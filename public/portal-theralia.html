@@ -567,6 +567,30 @@
         }
         .co-btn-edit.primary:hover { background: #2e3039; border-color: #2e3039; }
 
+        /* ---- Add Panel Modal ---- */
+        .co-modal-overlay {
+            display: none; position: fixed; inset: 0; z-index: 300;
+            background: rgba(0,0,0,0.25); align-items: center; justify-content: center;
+        }
+        .co-modal-overlay.open { display: flex; }
+        .co-modal {
+            background: #ffffff; border-radius: 12px; padding: 24px 28px;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.15); width: 400px; max-width: 90vw;
+        }
+        .co-modal-title { font-size: 15px; font-weight: 600; color: #1a1c22; margin-bottom: 16px; }
+        .co-modal-field { margin-bottom: 12px; }
+        .co-modal-field label {
+            display: block; font-size: 10px; font-weight: 600; text-transform: uppercase;
+            letter-spacing: 0.6px; color: #9a9ea8; margin-bottom: 4px;
+        }
+        .co-modal-field input {
+            width: 100%; background: #f9fafb; border: 1px solid rgba(0,0,0,0.08);
+            border-radius: 6px; color: #2a2d35; font-family: inherit;
+            font-size: 13px; padding: 8px 10px;
+        }
+        .co-modal-field input:focus { outline: none; border-color: rgba(0,0,0,0.16); }
+        .co-modal-bar { display: flex; align-items: center; gap: 8px; margin-top: 16px; }
+
         /* ---- Empty Tab States ---- */
         .empty-tab { padding: 48px 0; }
         .empty-tab-card {
@@ -830,9 +854,12 @@
                         <div style="font-size:19px;font-weight:600;color:#1a1c22;letter-spacing:-0.2px">Theralia AB</div>
                         <div style="font-size:12px;color:#8b8f9a;margin-top:3px">Private limited company &middot; Biotech R&amp;D, diagnostics and therapy</div>
                     </div>
-                    <div class="mode-toggle" id="coModeToggle">
-                        <button class="active" data-mode="view">View</button>
-                        <button data-mode="update">Update</button>
+                    <div style="display:flex;align-items:center;gap:10px">
+                        <button class="di-edit-btn co-add-panel-btn" id="coAddPanelBtn" onclick="coShowAddPanel()" style="display:none">Add New Panel</button>
+                        <div class="mode-toggle" id="coModeToggle">
+                            <button class="active" data-mode="view">View</button>
+                            <button data-mode="update">Update</button>
+                        </div>
                     </div>
                 </div>
                 <div class="co-snap-grid">
@@ -855,6 +882,25 @@
 
             <!-- Section Cards -->
             <div id="coSections"></div>
+
+            <!-- Add Panel Modal -->
+            <div class="co-modal-overlay" id="coAddModal">
+                <div class="co-modal">
+                    <div class="co-modal-title">Add New Panel</div>
+                    <div class="co-modal-field">
+                        <label>Section Title</label>
+                        <input type="text" id="coNewTitle" placeholder="e.g. Board Resolutions">
+                    </div>
+                    <div class="co-modal-field">
+                        <label>Section Key (auto-generated)</label>
+                        <input type="text" id="coNewKey" placeholder="board_resolutions" style="color:#9a9ea8">
+                    </div>
+                    <div class="co-modal-bar">
+                        <button class="btn-save" id="coNewSaveBtn" onclick="coCreatePanel()">Create</button>
+                        <button class="btn-cancel" onclick="coHideAddPanel()">Cancel</button>
+                    </div>
+                </div>
+            </div>
 
         </div>
 
@@ -1153,14 +1199,17 @@
             document.querySelectorAll('.co-section-controls').forEach(el => {
                 el.style.display = _coUpdateMode ? '' : 'none';
             });
-            // Upload buttons
-            document.querySelectorAll('.co-upload-btn').forEach(el => {
+            // Upload areas (button + hint)
+            document.querySelectorAll('.co-upload-area').forEach(el => {
                 el.style.display = _coUpdateMode ? '' : 'none';
             });
             // Delete buttons on documents
             document.querySelectorAll('.co-doc-btn.danger').forEach(el => {
                 el.style.display = _coUpdateMode ? '' : 'none';
             });
+            // Add New Panel button
+            const addBtn = document.getElementById('coAddPanelBtn');
+            if (addBtn) addBtn.style.display = _coUpdateMode ? '' : 'none';
         }
 
         const CO_WS = 'theralia';
@@ -1219,6 +1268,14 @@
                     'CSO: Frank J. Hernandez',
                     'Medical advisor: Markus Zeitlinger'
                 ]
+            },
+            {
+                key: 'contracts_agreements',
+                title: 'Contracts & Agreements',
+                initial: [
+                    'Section for contracts, agreements, CDAs, NDAs, collaboration agreements, and related legal paperwork',
+                    'Use this area to document active and historical legal agreements relevant to Theralia AB'
+                ]
             }
         ];
 
@@ -1250,7 +1307,7 @@
 
         function coRenderSection(sec, skipMode) {
             const st = coState[sec.key];
-            const lines = st.statement?.content?.lines || sec.initial;
+            const lines = st.statement?.content?.lines || (sec.initial && sec.initial.length ? sec.initial : null);
             const el = document.getElementById('co-sec-' + sec.key);
             if (!el) return;
 
@@ -1283,41 +1340,54 @@
             if (!skipMode) coApplyMode();
         }
 
+        function coSectionHtml(sec) {
+            return `
+                <div class="co-section" id="co-sec-${sec.key}">
+                    <div class="co-section-head">
+                        <div style="display:flex;align-items:center;gap:10px">
+                            <span class="co-section-title">${sec.title}</span>
+                            <span class="co-badge-area"></span>
+                        </div>
+                        <div class="co-section-controls">
+                            <button class="co-btn-edit" onclick="coToggleHistory('${sec.key}')">Archive</button>
+                            <button class="co-btn-edit primary" onclick="coStartEdit('${sec.key}')">Edit</button>
+                        </div>
+                    </div>
+                    <div class="co-body">
+                        <div class="co-stmt"></div>
+                        <div class="co-docs">
+                            <div class="co-docs-title">Supporting Documents</div>
+                            <div class="co-docs-list"></div>
+                            <div class="co-upload-area">
+                                <button class="co-upload-btn" onclick="coUploadDoc('${sec.key}')">Upload PDF</button>
+                                <div style="font-size:10px;color:#b0b4be;margin-top:4px;text-align:center">Only PDF files up to 20 MB</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="co-edit-area" id="co-edit-${sec.key}">
+                        <div class="edit-label">Statement (one item per line)</div>
+                        <textarea id="co-textarea-${sec.key}"></textarea>
+                        <div class="edit-bar">
+                            <button class="btn-save" onclick="coSave('${sec.key}')">Save</button>
+                            <button class="btn-cancel" onclick="coCancelEdit('${sec.key}')">Cancel</button>
+                        </div>
+                    </div>
+                    <div class="co-history-panel" id="co-hist-${sec.key}"></div>
+                </div>`;
+        }
+
         function coRenderAll() {
             const container = document.getElementById('coSections');
-            if (container.children.length === 0) {
-                container.innerHTML = CO_SECTIONS.map(sec => `
-                    <div class="co-section" id="co-sec-${sec.key}">
-                        <div class="co-section-head">
-                            <div style="display:flex;align-items:center;gap:10px">
-                                <span class="co-section-title">${sec.title}</span>
-                                <span class="co-badge-area"></span>
-                            </div>
-                            <div class="co-section-controls">
-                                <button class="co-btn-edit" onclick="coToggleHistory('${sec.key}')">Archive</button>
-                                <button class="co-btn-edit primary" onclick="coStartEdit('${sec.key}')">Edit</button>
-                            </div>
-                        </div>
-                        <div class="co-body">
-                            <div class="co-stmt"></div>
-                            <div class="co-docs">
-                                <div class="co-docs-title">Supporting Documents</div>
-                                <div class="co-docs-list"></div>
-                                <button class="co-upload-btn" onclick="coUploadDoc('${sec.key}')">Upload PDF</button>
-                            </div>
-                        </div>
-                        <div class="co-edit-area" id="co-edit-${sec.key}">
-                            <div class="edit-label">Statement (one item per line)</div>
-                            <textarea id="co-textarea-${sec.key}"></textarea>
-                            <div class="edit-bar">
-                                <button class="btn-save" onclick="coSave('${sec.key}')">Save</button>
-                                <button class="btn-cancel" onclick="coCancelEdit('${sec.key}')">Cancel</button>
-                            </div>
-                        </div>
-                        <div class="co-history-panel" id="co-hist-${sec.key}"></div>
-                    </div>
-                `).join('');
+            // Rebuild if section count changed
+            if (container.children.length !== CO_SECTIONS.length) {
+                container.innerHTML = CO_SECTIONS.map(sec => coSectionHtml(sec)).join('');
             }
+            // Ensure any missing section DOM nodes are appended
+            CO_SECTIONS.forEach(sec => {
+                if (!document.getElementById('co-sec-' + sec.key)) {
+                    container.insertAdjacentHTML('beforeend', coSectionHtml(sec));
+                }
+            });
             CO_SECTIONS.forEach(sec => coRenderSection(sec, true));
             coApplyMode();
         }
@@ -1335,7 +1405,98 @@
             }
         }
 
+        // --- Custom section support ---
+
+        async function coLoadCustomSections() {
+            try {
+                const res = await fetch(`/api/company/sections?ws=${CO_WS}`, { credentials: 'include' });
+                const data = await res.json();
+                if (data.sections && data.sections.length > 0) {
+                    for (const def of data.sections) {
+                        // Skip if already in CO_SECTIONS
+                        if (CO_SECTIONS.find(s => s.key === def.section_key)) continue;
+                        const sec = { key: def.section_key, title: def.title, initial: [], isCustom: true };
+                        CO_SECTIONS.push(sec);
+                        coState[sec.key] = { statement: null, documents: [], history: [], editing: false, historyOpen: false };
+                    }
+                }
+            } catch {}
+        }
+
+        function coSlugify(title) {
+            return title.toLowerCase()
+                .replace(/[^a-z0-9\s_]/g, '')
+                .replace(/\s+/g, '_')
+                .replace(/_+/g, '_')
+                .replace(/^_|_$/g, '')
+                .substring(0, 50);
+        }
+
+        function coShowAddPanel() {
+            document.getElementById('coNewTitle').value = '';
+            document.getElementById('coNewKey').value = '';
+            document.getElementById('coAddModal').classList.add('open');
+            document.getElementById('coNewTitle').focus();
+        }
+
+        function coHideAddPanel() {
+            document.getElementById('coAddModal').classList.remove('open');
+        }
+
+        // Auto-generate key from title
+        document.getElementById('coNewTitle').addEventListener('input', (e) => {
+            document.getElementById('coNewKey').value = coSlugify(e.target.value);
+        });
+
+        // Close modal on overlay click
+        document.getElementById('coAddModal').addEventListener('click', (e) => {
+            if (e.target === e.currentTarget) coHideAddPanel();
+        });
+
+        async function coCreatePanel() {
+            const title = document.getElementById('coNewTitle').value.trim();
+            const key = document.getElementById('coNewKey').value.trim();
+            if (!title) { alert('Title is required.'); return; }
+            if (!key || !/^[a-z0-9_]+$/.test(key)) { alert('Invalid section key. Use lowercase letters, numbers, and underscores.'); return; }
+            if (CO_SECTIONS.find(s => s.key === key)) { alert('A section with this key already exists.'); return; }
+
+            const btn = document.getElementById('coNewSaveBtn');
+            btn.textContent = 'Creating...';
+            btn.disabled = true;
+
+            try {
+                const res = await fetch(`/api/company/sections?ws=${CO_WS}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ title, section_key: key })
+                });
+                const data = await res.json();
+                if (data.ok) {
+                    // Add to local state
+                    const sec = { key, title, initial: [], isCustom: true };
+                    CO_SECTIONS.push(sec);
+                    coState[sec.key] = { statement: null, documents: [], history: [], editing: false, historyOpen: false };
+
+                    // Re-render: clear container to force full rebuild
+                    document.getElementById('coSections').innerHTML = '';
+                    coRenderAll();
+
+                    coHideAddPanel();
+                } else {
+                    alert(data.error || 'Failed to create panel.');
+                }
+            } catch {
+                alert('Failed to create panel.');
+            } finally {
+                btn.textContent = 'Create';
+                btn.disabled = false;
+            }
+        }
+
         async function coInit() {
+            // Load custom sections first, then all data
+            await coLoadCustomSections();
             await Promise.all(CO_SECTIONS.map(sec => coLoadSection(sec)));
             coRenderAll();
             // Seed initial data if backend is empty (first-ever load)
@@ -1345,7 +1506,7 @@
         function coStartEdit(key) {
             const sec = CO_SECTIONS.find(s => s.key === key);
             const st = coState[key];
-            const lines = st.statement?.content?.lines || sec.initial;
+            const lines = st.statement?.content?.lines || (sec && sec.initial) || [];
             document.getElementById('co-textarea-' + key).value = lines.join('\n');
             document.getElementById('co-edit-' + key).classList.add('open');
             // Close history if open
@@ -1448,6 +1609,8 @@
             } catch (err) {}
         }
 
+        const CO_MAX_FILE_SIZE = 20 * 1024 * 1024; // 20 MB
+
         function coUploadDoc(sectionKey) {
             const input = document.createElement('input');
             input.type = 'file';
@@ -1455,6 +1618,18 @@
             input.onchange = async () => {
                 if (!input.files[0]) return;
                 const file = input.files[0];
+
+                // Validate PDF
+                const name = file.name.toLowerCase();
+                if (!name.endsWith('.pdf')) {
+                    alert('Only PDF files are allowed.');
+                    return;
+                }
+                if (file.size > CO_MAX_FILE_SIZE) {
+                    alert('File exceeds 20 MB limit. Please choose a smaller file.');
+                    return;
+                }
+
                 const category = prompt('Category/tag (optional):', '') || '';
                 const fd = new FormData();
                 fd.append('file', file);
@@ -1470,8 +1645,12 @@
                     if (data.ok) {
                         await coLoadSection(CO_SECTIONS.find(s => s.key === sectionKey));
                         coRenderSection(CO_SECTIONS.find(s => s.key === sectionKey));
+                    } else {
+                        alert(data.error || 'Upload failed.');
                     }
-                } catch (err) {}
+                } catch (err) {
+                    alert('Upload failed. Please try again.');
+                }
             };
             input.click();
         }

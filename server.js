@@ -18015,6 +18015,70 @@ app.delete('/api/company/documents/:id', requireAuth, async (req, res) => {
     }
 });
 
+// ---- Custom Company Section Definitions ----
+
+let _companySectionDefsChecked = null;
+async function checkCompanySectionDefs() {
+    if (_companySectionDefsChecked !== null) return _companySectionDefsChecked;
+    try {
+        const r = await pool.query(
+            `SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name = 'company_section_defs') AS ok`
+        );
+        _companySectionDefsChecked = r.rows[0]?.ok === true;
+    } catch { _companySectionDefsChecked = false; }
+    return _companySectionDefsChecked;
+}
+
+// GET custom sections
+app.get('/api/company/sections', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkCompanySectionDefs())) return res.json({ sections: [] });
+        const ws = req.query.ws || 'theralia';
+        const r = await pool.query(
+            `SELECT id, section_key, title, sort_order, is_custom, created_by, created_at
+             FROM company_section_defs WHERE workspace_slug = $1 ORDER BY sort_order, created_at`,
+            [ws]
+        );
+        res.json({ sections: r.rows });
+    } catch (err) {
+        console.error('[COMPANY] GET sections error:', err.message);
+        res.status(500).json({ error: 'Failed to load sections' });
+    }
+});
+
+// POST create custom section
+app.post('/api/company/sections', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkCompanySectionDefs())) return res.status(503).json({ error: 'Section definitions table not ready' });
+        const ws = req.query.ws || 'theralia';
+        const { title, section_key } = req.body;
+        if (!title || !section_key) return res.status(400).json({ error: 'Title and section_key required' });
+        // Validate key format
+        if (!/^[a-z0-9_]+$/.test(section_key)) return res.status(400).json({ error: 'Key must be lowercase alphanumeric with underscores' });
+        const userId = req.session.user?.name || req.session.user?.researcher_id || 'unknown';
+
+        // Get next sort_order
+        const maxOrd = await pool.query(
+            `SELECT COALESCE(MAX(sort_order), 100) + 10 AS next_order FROM company_section_defs WHERE workspace_slug = $1`,
+            [ws]
+        );
+        const sortOrder = maxOrd.rows[0].next_order;
+
+        const r = await pool.query(
+            `INSERT INTO company_section_defs (workspace_slug, section_key, title, sort_order, is_custom, created_by)
+             VALUES ($1, $2, $3, $4, TRUE, $5)
+             ON CONFLICT (workspace_slug, section_key) DO NOTHING
+             RETURNING id, section_key, title, sort_order`,
+            [ws, section_key, title, sortOrder, userId]
+        );
+        if (r.rows.length === 0) return res.status(409).json({ error: 'Section key already exists' });
+        res.json({ ok: true, section: r.rows[0] });
+    } catch (err) {
+        console.error('[COMPANY] POST section error:', err.message);
+        res.status(500).json({ error: 'Failed to create section' });
+    }
+});
+
 // =====================================================
 // END COMPANY TAB
 // =====================================================
