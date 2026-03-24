@@ -3090,22 +3090,22 @@
             const listEl = document.getElementById('rdFilesList');
             if (!listEl) return;
 
-            const docs = _rdDetailDocs;
+            // Exclude discarded files from R&D project-facing view
+            const docs = _rdDetailDocs.filter(d => d.glp_status !== 'DISCARDED');
 
-            // GLP Status Strip
+            // GLP Status Strip (computed from active docs only)
             const glpStrip = document.getElementById('rdGlpStrip');
             if (glpStrip) {
-                const gc = { PENDING: 0, APPROVED: 0, REVISION_NEEDED: 0, DISCARDED: 0 };
+                const gc = { PENDING: 0, APPROVED: 0, REVISION_NEEDED: 0 };
                 docs.forEach(d => { if (d.glp_status && gc[d.glp_status] !== undefined) gc[d.glp_status]++; });
                 const pid = _rdDetailProjectId;
                 glpStrip.innerHTML = '<span class="rd-glp-strip-label">GLP Status</span>' +
                     '<span class="rd-glp-strip-item pending" onclick="rdOpenInGlpStatus(\'' + pid + '\',\'PENDING\')"><span class="num">' + gc.PENDING + '</span> Pending</span>' +
                     '<span class="rd-glp-strip-item approved" onclick="rdOpenInGlpStatus(\'' + pid + '\',\'APPROVED\')"><span class="num">' + gc.APPROVED + '</span> Approved</span>' +
-                    '<span class="rd-glp-strip-item revision" onclick="rdOpenInGlpStatus(\'' + pid + '\',\'REVISION_NEEDED\')"><span class="num">' + gc.REVISION_NEEDED + '</span> Revision</span>' +
-                    '<span class="rd-glp-strip-item discarded" onclick="rdOpenInGlpStatus(\'' + pid + '\',\'DISCARDED\')"><span class="num">' + gc.DISCARDED + '</span> Discarded</span>';
+                    '<span class="rd-glp-strip-item revision" onclick="rdOpenInGlpStatus(\'' + pid + '\',\'REVISION_NEEDED\')"><span class="num">' + gc.REVISION_NEEDED + '</span> Revision</span>';
             }
 
-            // Summary
+            // Summary (from active docs only)
             const counts = {};
             RD_DOC_CATS.forEach(t => { counts[t] = docs.filter(d => d.document_type === t).length; });
             countEl.textContent = docs.length + ' document' + (docs.length !== 1 ? 's' : '');
@@ -3130,10 +3130,8 @@
                     let feedback = '';
                     if (d.glp_status === 'REVISION_NEEDED' && d.glp_revision_note) {
                         feedback = '<div class="rd-file-feedback" style="color:#2563eb">Revision: ' + rdEsc(d.glp_revision_note) + '</div>';
-                    } else if (d.glp_status === 'DISCARDED' && d.glp_discard_reason) {
-                        feedback = '<div class="rd-file-feedback" style="color:#dc2626">Discarded: ' + rdEsc(d.glp_discard_reason) + (d.glp_discard_note ? ' \u2014 ' + rdEsc(d.glp_discard_note) : '') + '</div>';
                     }
-                    const reviewDate = d.glp_approved_at || d.glp_discarded_at || d.glp_updated_at;
+                    const reviewDate = d.glp_approved_at || d.glp_updated_at;
                     const reviewLine = (d.glp_status && d.glp_status !== 'PENDING' && reviewDate)
                         ? '<span style="font-size:9px;color:#b0b4be;margin-left:4px">Reviewed ' + rdDate(reviewDate) + '</span>' : '';
 
@@ -3146,7 +3144,6 @@
                             <span class="rd-file-row-date">${rdDate(d.created_at)}</span>
                             <div class="rd-file-row-actions">
                                 <button class="rd-file-action primary" onclick="event.stopPropagation();window.open('/api/rd/documents/${d.id}/download','_blank')">View</button>
-                                <button class="rd-file-action danger" onclick="event.stopPropagation();rdDeleteDocWs('${d.id}')">&times;</button>
                             </div>
                         </div>
                         ${feedback}
@@ -3906,7 +3903,7 @@
                                     <div class="glp-result-sub">${f.researcher_name ? rdEsc(f.researcher_name) + ' · ' : ''}${rdDate(f.created_at)}</div>
                                     <div class="glp-result-meta">
                                         <span class="glp-result-badge ${glpBadgeClass(f.status)}">${(f.status || '').replace('_',' ')}</span>
-                                        ${f.status === 'APPROVED' ? '<span class="glp-toucan-badge">🦜 Verified</span>' : ''}
+                                        ${f.status === 'APPROVED' ? '<span class="glp-toucan-badge">🦜</span>' : ''}
                                         ${f.project_title ? '<span class="glp-project-chip">' + rdEsc(f.project_title) + '</span>' : ''}
                                     </div>
                                 </div>
@@ -3993,7 +3990,7 @@
                     <div class="glp-viewer-title">${rdEsc(f.original_filename)}</div>
                     <div class="glp-viewer-meta">
                         <span class="glp-status-badge ${f.status}">${f.status.replace('_',' ')}</span>
-                        ${f.status === 'APPROVED' ? '<span class="glp-toucan-badge">🦜 Verified</span>' : ''}
+                        ${f.status === 'APPROVED' ? '<span class="glp-toucan-badge">🦜</span>' : ''}
                         <span>${rdEsc(f.file_type)}</span>
                         <span>${rdDate(f.created_at)}</span>
                         ${f.researcher_name ? '<span>By: ' + rdEsc(f.researcher_name) + '</span>' : ''}
@@ -4027,12 +4024,12 @@
             toolbar.innerHTML = `
                 <span class="glp-viewer-fname" title="${rdEsc(f.original_filename)}">${rdEsc(f.original_filename)}</span>
                 <span class="glp-status-badge ${f.status}" style="margin-left:4px">${(f.status || '').replace('_',' ')}</span>
-                ${f.status === 'APPROVED' ? '<span class="glp-toucan-badge" style="margin-left:2px">🦜 Verified</span>' : ''}
                 ${canReview ? `
                     <button class="glp-toolbar-btn approve" onclick="glpOpenApproveModal('${f.submission_id}')">Approve</button>
                     <button class="glp-toolbar-btn revise" onclick="glpOpenReviseModal('${f.submission_id}')">Revise</button>
                     <button class="glp-toolbar-btn discard" onclick="glpOpenDiscardModal('${f.submission_id}')">Discard</button>
                 ` : ''}
+                ${f.status === 'APPROVED' ? '<span class="glp-toolbar-icon" title="Toucan Seal" style="font-size:18px;cursor:default">🦜</span>' : ''}
                 ${previewUrl ? `
                     <button class="glp-toolbar-icon" onclick="glpPresentation()" title="Presentation Mode" aria-label="Presentation Mode"><span class="glp-emoji-icon" aria-hidden="true">🎬</span></button>
                     <a class="glp-toolbar-icon" href="/api/di/download/${f.submission_id}" target="_blank" title="Download" aria-label="Download"><svg viewBox="0 0 20 20" fill="none"><path d="M10 3v10M10 13l-3.5-3.5M10 13l3.5-3.5M4 16h12" stroke="#111827" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
