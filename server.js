@@ -18340,60 +18340,29 @@ app.patch('/api/rd/grants/:id', requireAuth, async (req, res) => {
 app.get('/api/rd/projects/:projectId/documents', requireAuth, async (req, res) => {
     try {
         if (!(await checkRdTables())) return res.json({ documents: [] });
-        // First get rd_documents for this project
+
+        // Join di_submissions using original_filename + workspace_id as stable keys.
+        // Also try rd_project_id if available, but fall back to filename-only match
+        // since rd_project_id may be NULL on older submissions.
         const r = await pool.query(
             `SELECT d.id, d.workspace_id, d.project_id, d.document_type, d.title, d.filename,
-                    d.file_type, d.r2_key, d.file_size, d.uploaded_by, d.created_at
+                    d.file_type, d.r2_key, d.file_size, d.uploaded_by, d.created_at,
+                    ds.status AS glp_status,
+                    ds.revision_comments AS glp_revision_note,
+                    ds.discard_reason AS glp_discard_reason,
+                    ds.discard_note AS glp_discard_note,
+                    ds.signed_at AS glp_approved_at,
+                    ds.discarded_at AS glp_discarded_at,
+                    ds.updated_at AS glp_updated_at
              FROM rd_documents d
-             WHERE d.project_id=$1 AND d.workspace_id=$2
+             LEFT JOIN di_submissions ds
+                ON ds.original_filename = d.filename
+               AND ds.workspace_id = d.workspace_id
+               AND (ds.rd_project_id = d.project_id OR ds.rd_project_id IS NULL)
+             WHERE d.project_id = $1 AND d.workspace_id = $2
              ORDER BY d.created_at DESC`,
             [req.params.projectId, req.workspace_id]);
-
-        // Enrich with GLP status from di_submissions
-        // Note: r2_object_key changes after approval (performApproval renames the file),
-        // so we match by rd_project_id + original_filename as the stable join key.
-        let docs = r.rows;
-        if (docs.length > 0) {
-            try {
-                const hasProjectCol = await hasRdProjectIdCol();
-                let glpRows = [];
-                if (hasProjectCol) {
-                    const glpRes = await pool.query(
-                        `SELECT original_filename, rd_project_id, status, revision_comments, discard_reason, discard_note,
-                                signed_at, discarded_at, updated_at, pi_dragon_seal, r2_object_key
-                         FROM di_submissions
-                         WHERE rd_project_id = $1 AND workspace_id = $2`,
-                        [req.params.projectId, req.workspace_id]);
-                    glpRows = glpRes.rows;
-                }
-                // Build lookup by filename (stable across approval rename)
-                const glpByName = {};
-                const glpByKey = {};
-                glpRows.forEach(g => {
-                    glpByName[g.original_filename] = g;
-                    if (g.r2_object_key) glpByKey[g.r2_object_key] = g;
-                });
-                docs = docs.map(d => {
-                    // Try r2_key match first (works for PENDING), then filename match (works after approval)
-                    const g = glpByKey[d.r2_key] || glpByName[d.filename] || null;
-                    return {
-                        ...d,
-                        glp_status: g ? g.status : null,
-                        glp_revision_note: g ? g.revision_comments : null,
-                        glp_discard_reason: g ? g.discard_reason : null,
-                        glp_discard_note: g ? g.discard_note : null,
-                        glp_approved_at: g ? g.signed_at : null,
-                        glp_discarded_at: g ? g.discarded_at : null,
-                        glp_updated_at: g ? g.updated_at : null,
-                        glp_seal: g ? (g.pi_dragon_seal || false) : false
-                    };
-                });
-            } catch (glpErr) {
-                // GLP enrichment failed — still return base documents
-                console.error('[RD] GLP enrichment error:', glpErr.message);
-            }
-        }
-        res.json({ documents: docs });
+        res.json({ documents: r.rows });
     } catch (err) { console.error('[RD] docs error:', err.message); res.status(500).json({ error: 'Failed to load documents' }); }
 });
 
