@@ -18500,7 +18500,7 @@ app.get('/api/rd/glp/files', requireAuth, async (req, res) => {
                  FROM di_submissions s
                  LEFT JOIN di_allowlist a ON s.researcher_id = a.researcher_id
                  ${projectJoin}
-                 WHERE s.workspace_id = $1`;
+                 WHERE s.workspace_id = $1 AND s.workspace_id IS NOT NULL`;
         const params = [ws];
         let idx = 2;
 
@@ -18516,7 +18516,7 @@ app.get('/api/rd/glp/files', requireAuth, async (req, res) => {
         if (req.query.status) {
             q += ` AND s.status = $${idx}`; params.push(req.query.status); idx++;
         }
-        // Exclude archived/discarded unless explicitly requested
+        // Exclude archived unless explicitly requested
         if (!req.query.status) {
             q += ` AND s.status NOT IN ('ARCHIVED')`;
         }
@@ -18540,7 +18540,7 @@ app.get('/api/rd/glp/researchers', requireAuth, async (req, res) => {
              FROM di_submissions s
              LEFT JOIN di_allowlist a ON s.researcher_id = a.researcher_id
              INNER JOIN workspace_users wu ON wu.user_id = s.researcher_id AND wu.workspace_id = $1 AND wu.is_active = TRUE
-             WHERE s.workspace_id = $1 AND s.status NOT IN ('ARCHIVED')
+             WHERE s.workspace_id = $1 AND s.workspace_id IS NOT NULL AND s.status NOT IN ('ARCHIVED')
              GROUP BY s.researcher_id, a.name ORDER BY a.name`,
             [ws]);
         res.json({ researchers: r.rows });
@@ -18551,7 +18551,7 @@ app.get('/api/rd/glp/researchers', requireAuth, async (req, res) => {
             const r = await pool.query(
                 `SELECT DISTINCT s.researcher_id, a.name as researcher_name, COUNT(*)::int as file_count
                  FROM di_submissions s LEFT JOIN di_allowlist a ON s.researcher_id = a.researcher_id
-                 WHERE s.workspace_id = $1 AND s.status NOT IN ('ARCHIVED')
+                 WHERE s.workspace_id = $1 AND s.workspace_id IS NOT NULL AND s.status NOT IN ('ARCHIVED')
                  GROUP BY s.researcher_id, a.name ORDER BY a.name`,
                 [ws]);
             res.json({ researchers: r.rows });
@@ -18570,7 +18570,7 @@ app.get('/api/rd/glp/projects', requireAuth, async (req, res) => {
         const r = await pool.query(
             `SELECT rp.id, rp.title, COUNT(s.submission_id)::int as file_count
              FROM rd_projects rp
-             LEFT JOIN di_submissions s ON s.rd_project_id = rp.id AND s.status NOT IN ('ARCHIVED')
+             LEFT JOIN di_submissions s ON s.rd_project_id = rp.id AND s.workspace_id = $1 AND s.status NOT IN ('ARCHIVED')
              WHERE rp.workspace_id = $1
              GROUP BY rp.id, rp.title ORDER BY rp.title`,
             [ws]);
