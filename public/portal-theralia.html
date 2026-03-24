@@ -863,6 +863,29 @@
         .rd-upload-msg {
             font-size: 11px; margin-top: 6px; text-align: center; min-height: 16px;
         }
+        .rd-revision-banner {
+            background: rgba(37,99,235,0.06); border: 1px solid rgba(37,99,235,0.15);
+            border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; font-size: 12px; color: #2563eb;
+        }
+        .rd-revision-banner-title { font-weight: 600; margin-bottom: 4px; }
+        .rd-revision-item {
+            display: flex; align-items: center; gap: 6px; padding: 4px 0; font-size: 11px; color: #3b5998;
+        }
+        .rd-revision-item button {
+            background: #2563eb; color: #fff; border: none; border-radius: 5px;
+            padding: 3px 10px; font-size: 10px; font-weight: 600; cursor: pointer;
+            font-family: inherit; margin-left: auto;
+        }
+        .rd-revision-item button:hover { background: #1d4ed8; }
+        .rd-amendment-field {
+            margin-top: 8px;
+        }
+        .rd-amendment-field textarea {
+            width: 100%; padding: 6px 8px; border: 1px solid rgba(0,0,0,0.1); border-radius: 6px;
+            font-size: 11px; font-family: inherit; resize: vertical; min-height: 40px;
+            box-sizing: border-box; outline: none;
+        }
+        .rd-amendment-field textarea:focus { border-color: #2563eb; }
 
         .rd-files-panel {
             background: #ffffff; border: 1px solid rgba(0,0,0,0.06);
@@ -1140,6 +1163,10 @@
         .glp-result-badge.approved { background: rgba(22,163,74,0.1); color: #16a34a; }
         .glp-result-badge.revision { background: rgba(37,99,235,0.1); color: #2563eb; }
         .glp-result-badge.discarded { background: rgba(220,38,38,0.1); color: #dc2626; }
+        .glp-historical-badge {
+            font-size: 8px; font-weight: 500; padding: 1px 5px; border-radius: 3px;
+            background: rgba(0,0,0,0.04); color: #9a9ea8; letter-spacing: 0.2px;
+        }
         .glp-project-chip {
             font-size: 9px; font-weight: 600; padding: 1px 5px; border-radius: 4px;
             background: rgba(26,122,78,0.07); color: #1a7a4e;
@@ -2963,6 +2990,7 @@
                     <div class="rd-doc-workspace">
                         <!-- Upload Panel -->
                         <div class="rd-upload-panel">
+                            <div id="rdRevisionBanner"></div>
                             <div class="rd-upload-panel-title">Upload Document</div>
                             <div class="rd-upload-field">
                                 <label>Document Type</label>
@@ -2978,6 +3006,11 @@
                                     <input type="file" id="rdFileInput" accept=".pdf" style="display:none">
                                 </div>
                             </div>
+                            <div class="rd-amendment-field" id="rdAmendmentField" style="display:none">
+                                <label style="font-size:10px;font-weight:600;color:#2563eb;margin-bottom:4px;display:block">Amendment Note</label>
+                                <textarea id="rdAmendmentNote" placeholder="Describe what was changed or corrected..."></textarea>
+                            </div>
+                            <input type="hidden" id="rdRevisionOf" value="">
                             <button class="rd-upload-submit" id="rdUpBtn" disabled onclick="rdDoUpload()">Upload</button>
                             <div class="rd-upload-hint">PDF only &middot; max 20 MB per file</div>
                             <div class="rd-upload-msg" id="rdUpMsg"></div>
@@ -3029,45 +3062,58 @@
                 rdUpMsg('');
             }
 
+            // Load revision items for this project
+            rdLoadRevisionBanner(projectId);
+
             // Expose for the upload button
             window.rdDoUpload = async function() {
                 if (!selectedFile) return;
                 upBtn.disabled = true;
                 upBtn.textContent = 'Uploading...';
                 const docType = document.getElementById('rdUpType').value;
+                const revisionOf = document.getElementById('rdRevisionOf').value || '';
+                const amendmentNote = document.getElementById('rdAmendmentNote')?.value || '';
                 const fd = new FormData();
                 fd.append('file', selectedFile);
                 fd.append('document_type', docType);
                 fd.append('title', selectedFile.name);
+                if (revisionOf) fd.append('revision_of_submission_id', revisionOf);
+                if (amendmentNote) fd.append('amendment_note', amendmentNote);
                 try {
                     const res = await rdFetch('/api/rd/projects/' + projectId + '/documents', { method: 'POST', body: fd });
                     const data = await res.json();
                     if (data.ok) {
-                        rdUpMsg('Uploaded successfully', false);
+                        rdUpMsg(revisionOf ? 'Revision submitted' : 'Uploaded successfully', false);
                         selectedFile = null;
                         dropFile.textContent = '';
                         fileInput.value = '';
+                        // Clear revision context
+                        document.getElementById('rdRevisionOf').value = '';
+                        const amField = document.getElementById('rdAmendmentField');
+                        if (amField) amField.style.display = 'none';
+                        const amNote = document.getElementById('rdAmendmentNote');
+                        if (amNote) amNote.value = '';
+                        upBtn.textContent = 'Upload';
                         // Reset filters so new file is visible
                         _rdFilesFilter = 'all';
                         _rdFilesSearch = '';
                         const searchInput = document.getElementById('rdFilesSearchInput');
                         if (searchInput) searchInput.value = '';
-                        // Reload docs — try re-fetch, fall back to inserting returned doc
+                        // Reload docs
                         try {
                             const docsRes = await rdJson('/api/rd/projects/' + projectId + '/documents');
                             if (docsRes.documents && docsRes.documents.length > 0) {
                                 _rdDetailDocs = docsRes.documents;
                             } else if (data.document) {
-                                // Backend returned the inserted doc — add it to current list
                                 _rdDetailDocs = [{ ...data.document, glp_status: 'PENDING' }, ..._rdDetailDocs];
                             }
                         } catch {
-                            // Re-fetch failed — use the document from upload response
                             if (data.document) {
                                 _rdDetailDocs = [{ ...data.document, glp_status: 'PENDING' }, ..._rdDetailDocs];
                             }
                         }
                         rdRenderFilesList();
+                        rdLoadRevisionBanner(projectId);
                         try { await rdLoadAll(); rdRenderNav(); } catch {}
                     } else {
                         rdUpMsg(data.error || 'Upload failed.', true);
@@ -3082,6 +3128,55 @@
                 _rdFilesSearch = e.target.value.toLowerCase();
                 rdRenderFilesList();
             });
+        }
+
+        // Load and render revision banner
+        async function rdLoadRevisionBanner(projectId) {
+            const banner = document.getElementById('rdRevisionBanner');
+            if (!banner) return;
+            try {
+                const data = await rdJson('/api/rd/glp/my-revision-items');
+                const items = (data.items || []).filter(i => i.rd_project_id === projectId);
+                if (items.length === 0) {
+                    banner.innerHTML = '';
+                    return;
+                }
+                banner.innerHTML = `
+                    <div class="rd-revision-banner">
+                        <div class="rd-revision-banner-title">You have ${items.length} file${items.length > 1 ? 's' : ''} under revision</div>
+                        ${items.map(i => `
+                            <div class="rd-revision-item">
+                                <span>${rdEsc(i.original_filename)}</span>
+                                <span style="color:#7a7e8a;font-size:10px">${rdEsc(i.file_type)}</span>
+                                <button onclick="rdStartRevision('${i.submission_id}','${rdEsc(i.file_type)}')">Submit revision</button>
+                            </div>
+                            ${i.revision_comments ? '<div style="font-size:10px;color:#6b7280;padding:0 0 4px;margin-top:-2px">Note: ' + rdEsc(i.revision_comments) + '</div>' : ''}
+                        `).join('')}
+                    </div>`;
+            } catch {
+                banner.innerHTML = '';
+            }
+        }
+
+        // Pre-fill upload form for revision submission
+        function rdStartRevision(submissionId, fileType) {
+            document.getElementById('rdRevisionOf').value = submissionId;
+            // Set document type to match original
+            const typeSelect = document.getElementById('rdUpType');
+            if (typeSelect) {
+                for (let i = 0; i < typeSelect.options.length; i++) {
+                    if (typeSelect.options[i].value === fileType) { typeSelect.selectedIndex = i; break; }
+                }
+            }
+            // Show amendment note field
+            const amField = document.getElementById('rdAmendmentField');
+            if (amField) amField.style.display = 'block';
+            // Update button text
+            const upBtn = document.getElementById('rdUpBtn');
+            if (upBtn) upBtn.textContent = 'Submit Revision';
+            // Scroll to upload panel
+            document.getElementById('rdDropzone')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            rdUpMsg('Select the revised PDF file to upload', false);
         }
 
         function rdUpMsg(text, isError) {
@@ -3099,15 +3194,15 @@
             const listEl = document.getElementById('rdFilesList');
             if (!listEl) return;
 
-            // Normalize glp_status: null/undefined → PENDING (newly uploaded files default to PENDING in GLP)
-            const docs = _rdDetailDocs
+            // Normalize glp_status: null/undefined → PENDING
+            const allDocs = _rdDetailDocs
                 .map(d => ({ ...d, glp_status: d.glp_status || 'PENDING' }));
 
-            // GLP Status Strip (mirrors GLP Vision — all states)
+            // GLP Status Strip — counts ALL statuses (mirrors GLP Vision)
             const glpStrip = document.getElementById('rdGlpStrip');
             if (glpStrip) {
                 const gc = { PENDING: 0, APPROVED: 0, REVISION_NEEDED: 0, DISCARDED: 0 };
-                docs.forEach(d => { if (gc[d.glp_status] !== undefined) gc[d.glp_status]++; });
+                allDocs.forEach(d => { if (gc[d.glp_status] !== undefined) gc[d.glp_status]++; });
                 const pid = _rdDetailProjectId;
                 glpStrip.innerHTML = '<span class="rd-glp-strip-label">GLP Status</span>' +
                     '<span class="rd-glp-strip-item pending" onclick="rdOpenInGlpStatus(\'' + pid + '\',\'PENDING\')"><span class="num">' + gc.PENDING + '</span> Pending</span>' +
@@ -3116,7 +3211,10 @@
                     '<span class="rd-glp-strip-item discarded" onclick="rdOpenInGlpStatus(\'' + pid + '\',\'DISCARDED\')"><span class="num">' + gc.DISCARDED + '</span> Discarded</span>';
             }
 
-            // Summary (from active docs only)
+            // R&D Project Files — show only PENDING + APPROVED (active files)
+            const docs = allDocs.filter(d => d.glp_status === 'PENDING' || d.glp_status === 'APPROVED');
+
+            // Summary counts from visible active docs
             const counts = {};
             RD_DOC_CATS.forEach(t => { counts[t] = docs.filter(d => d.document_type === t).length; });
             countEl.textContent = docs.length + ' document' + (docs.length !== 1 ? 's' : '');
@@ -3129,7 +3227,7 @@
                 '<button class="rd-files-chip ' + (_rdFilesFilter === f ? 'active' : '') + '" onclick="rdSetFileFilter(\'' + f + '\')">' + (f === 'all' ? 'All' : f) + '</button>'
             ).join('');
 
-            // Filter + search
+            // Filter + search (applied to active docs only)
             let filtered = docs;
             if (_rdFilesFilter !== 'all') filtered = filtered.filter(d => d.document_type === _rdFilesFilter);
             if (_rdFilesSearch) filtered = filtered.filter(d => (d.filename || '').toLowerCase().includes(_rdFilesSearch) || (d.title || '').toLowerCase().includes(_rdFilesSearch));
@@ -3138,15 +3236,9 @@
                 listEl.innerHTML = '<div class="rd-empty" style="padding:24px 0"><div class="rd-empty-title" style="font-size:13px">No project files' + (_rdFilesFilter !== 'all' || _rdFilesSearch ? ' matching filter' : ' uploaded yet') + '</div><div class="rd-empty-desc">Upload the first PDF document for this project</div></div>';
             } else {
                 listEl.innerHTML = filtered.map(d => {
-                    let feedback = '';
-                    if (d.glp_status === 'REVISION_NEEDED' && d.glp_revision_note) {
-                        feedback = '<div class="rd-file-feedback" style="color:#2563eb">Revision: ' + rdEsc(d.glp_revision_note) + '</div>';
-                    } else if (d.glp_status === 'DISCARDED' && d.glp_discard_reason) {
-                        feedback = '<div class="rd-file-feedback" style="color:#dc2626">Discarded: ' + rdEsc(d.glp_discard_reason) + (d.glp_discard_note ? ' \u2014 ' + rdEsc(d.glp_discard_note) : '') + '</div>';
-                    }
-                    const reviewDate = d.glp_approved_at || d.glp_updated_at;
-                    const reviewLine = (d.glp_status && d.glp_status !== 'PENDING' && reviewDate)
-                        ? '<span style="font-size:9px;color:#b0b4be;margin-left:4px">Reviewed ' + rdDate(reviewDate) + '</span>' : '';
+                    const reviewDate = d.glp_approved_at;
+                    const reviewLine = (d.glp_status === 'APPROVED' && reviewDate)
+                        ? '<span style="font-size:9px;color:#b0b4be;margin-left:4px">Approved ' + rdDate(reviewDate) + '</span>' : '';
 
                     return `<div style="margin-bottom:2px">
                         <div class="rd-file-row">
@@ -3159,7 +3251,6 @@
                                 <button class="rd-file-action primary" onclick="event.stopPropagation();window.open('/api/rd/documents/${d.id}/download','_blank')">View</button>
                             </div>
                         </div>
-                        ${feedback}
                     </div>`;
                 }).join('');
             }
@@ -3916,6 +4007,7 @@
                                     <div class="glp-result-sub">${f.researcher_name ? rdEsc(f.researcher_name) + ' · ' : ''}${rdDate(f.created_at)}</div>
                                     <div class="glp-result-meta">
                                         <span class="glp-result-badge ${glpBadgeClass(f.status)}">${(f.status || '').replace('_',' ')}</span>
+                                        ${(f.status === 'REVISION_NEEDED' || f.status === 'DISCARDED') ? '<span class="glp-historical-badge">Historical only</span>' : ''}
                                         ${f.pi_dragon_seal ? '<span class="glp-toucan-badge">🦜</span>' : ''}
                                         ${f.project_title ? '<span class="glp-project-chip">' + rdEsc(f.project_title) + '</span>' : ''}
                                     </div>
@@ -4003,6 +4095,7 @@
                     <div class="glp-viewer-title">${rdEsc(f.original_filename)}</div>
                     <div class="glp-viewer-meta">
                         <span class="glp-status-badge ${f.status}">${f.status.replace('_',' ')}</span>
+                        ${(f.status === 'REVISION_NEEDED' || f.status === 'DISCARDED') ? '<span class="glp-historical-badge">Historical only</span>' : ''}
                         ${f.pi_dragon_seal ? '<span class="glp-toucan-badge">🦜</span>' : ''}
                         <span>${rdEsc(f.file_type)}</span>
                         <span>${rdDate(f.created_at)}</span>
@@ -4037,6 +4130,7 @@
             toolbar.innerHTML = `
                 <span class="glp-viewer-fname" title="${rdEsc(f.original_filename)}">${rdEsc(f.original_filename)}</span>
                 <span class="glp-status-badge ${f.status}" style="margin-left:4px">${(f.status || '').replace('_',' ')}</span>
+                ${(f.status === 'REVISION_NEEDED' || f.status === 'DISCARDED') ? '<span class="glp-historical-badge" style="margin-left:2px">Historical only</span>' : ''}
                 ${canReview ? `
                     <button class="glp-toolbar-btn approve" onclick="glpOpenApproveModal('${f.submission_id}')">Approve</button>
                     <button class="glp-toolbar-btn revise" onclick="glpOpenReviseModal('${f.submission_id}')">Revise</button>

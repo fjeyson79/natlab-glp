@@ -2593,7 +2593,7 @@ async function performRevision(submissionId, comments) {
     }
 
     await pool.query(
-        `UPDATE di_submissions SET status='REVISION_NEEDED', revision_comments=$1 WHERE submission_id=$2`,
+        `UPDATE di_submissions SET status='REVISION_NEEDED', r2_object_key=NULL, revision_comments=$1 WHERE submission_id=$2`,
         [comments || '', submissionId]
     );
 
@@ -18121,6 +18121,17 @@ async function ensureDiSubmissionsConstraints() {
     return _diConstraintsWidened;
 }
 
+// Check if revision linkage columns exist (migration 051)
+let _revisionColsChecked = null;
+async function hasRevisionCols() {
+    if (_revisionColsChecked !== null) return _revisionColsChecked;
+    try {
+        const r = await pool.query(`SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='di_submissions' AND column_name='revision_of_submission_id') AS ok`);
+        _revisionColsChecked = r.rows[0]?.ok === true;
+    } catch { _revisionColsChecked = false; }
+    return _revisionColsChecked;
+}
+
 const rdDocUpload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: 20 * 1024 * 1024 },
@@ -18429,16 +18440,36 @@ app.post('/api/rd/projects/:projectId/documents', requireAuth, rdDocUpload.singl
 
             // 2. Also register in GLP/DI workflow
             const hasProjectCol = await hasRdProjectIdCol();
-            if (hasProjectCol) {
-                await client.query(
-                    `INSERT INTO di_submissions (researcher_id, affiliation, file_type, original_filename, r2_object_key, workspace_id, rd_project_id)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-                    [userId, userAff, docType, req.file.originalname, r2Key, req.workspace_id, req.params.projectId]);
-            } else {
-                await client.query(
-                    `INSERT INTO di_submissions (researcher_id, affiliation, file_type, original_filename, r2_object_key, workspace_id)
-                     VALUES ($1, $2, $3, $4, $5, $6)`,
-                    [userId, userAff, docType, req.file.originalname, r2Key, req.workspace_id]);
+            const revisionOf = req.body.revision_of_submission_id || null;
+            const amendmentNote = req.body.amendment_note || null;
+            // Build dynamic column list based on available schema
+            const cols = ['researcher_id', 'affiliation', 'file_type', 'original_filename', 'r2_object_key', 'workspace_id'];
+            const vals = [userId, userAff, docType, req.file.originalname, r2Key, req.workspace_id];
+            if (hasProjectCol) { cols.push('rd_project_id'); vals.push(req.params.projectId); }
+            const hasRevCols = await hasRevisionCols();
+            if (revisionOf && hasRevCols) { cols.push('revision_of_submission_id'); vals.push(revisionOf); }
+            if (amendmentNote && hasRevCols) { cols.push('amendment_note'); vals.push(amendmentNote); }
+            // Track ignored revisions: user uploads new file while having open REVISION_NEEDED items
+            if (!revisionOf && hasRevCols) {
+                try {
+                    const openRevs = await client.query(
+                        `SELECT 1 FROM di_submissions WHERE researcher_id=$1 AND workspace_id=$2 AND status='REVISION_NEEDED' LIMIT 1`,
+                        [userId, req.workspace_id]);
+                    if (openRevs.rows.length > 0) { cols.push('is_revision_ignored'); vals.push(true); }
+                } catch {}
+            }
+            const placeholders = vals.map((_, i) => '$' + (i + 1)).join(', ');
+            await client.query(
+                `INSERT INTO di_submissions (${cols.join(', ')}) VALUES (${placeholders})`,
+                vals);
+
+            // If this is a revision resubmission, close any open revision request
+            if (revisionOf && (await checkRevisionRequestsTable())) {
+                try {
+                    await client.query(
+                        `UPDATE di_revision_requests SET status='closed', closed_at=NOW() WHERE file_id=$1 AND status='open'`,
+                        [revisionOf]);
+                } catch {}
             }
 
             await client.query('COMMIT');
@@ -18649,14 +18680,20 @@ app.post('/api/rd/glp/discard/:id', requireAuth, async (req, res) => {
         const validReasons = ['Mistaken upload', 'Wrong category', 'Duplicate', 'Not admissible for GLP records', 'Other'];
         if (!reason || !validReasons.includes(reason)) return res.status(400).json({ error: 'Valid discard reason required' });
 
-        const result = await pool.query('SELECT submission_id, status FROM di_submissions WHERE submission_id = $1 AND workspace_id = $2', [req.params.id, req.workspace_id]);
+        const result = await pool.query('SELECT submission_id, status, r2_object_key FROM di_submissions WHERE submission_id = $1 AND workspace_id = $2', [req.params.id, req.workspace_id]);
         if (result.rows.length === 0) return res.status(404).json({ error: 'Not found' });
         if (result.rows[0].status === 'DISCARDED') return res.status(409).json({ error: 'Already discarded' });
         if (result.rows[0].status === 'APPROVED') return res.status(409).json({ error: 'Cannot discard approved submission' });
 
+        // Delete R2 file (keep metadata for audit trail)
+        const r2Key = result.rows[0].r2_object_key;
+        if (r2Key) {
+            try { await deleteFromR2(r2Key); } catch (e) { console.warn('[DISCARD] R2 delete warning:', e.message); }
+        }
+
         const piId = req.session.user?.researcher_id || 'unknown';
         await pool.query(
-            `UPDATE di_submissions SET status='DISCARDED', discarded_by=$1, discarded_at=NOW(), discard_reason=$2, discard_note=$3 WHERE submission_id=$4`,
+            `UPDATE di_submissions SET status='DISCARDED', r2_object_key=NULL, discarded_by=$1, discarded_at=NOW(), discard_reason=$2, discard_note=$3 WHERE submission_id=$4`,
             [piId, reason, note || null, req.params.id]);
         res.json({ success: true });
     } catch (err) {
@@ -18679,6 +18716,36 @@ app.post('/api/rd/glp/seal/:id', requireAuth, async (req, res) => {
     } catch (err) {
         console.error('[RD-GLP] seal toggle error:', err.message);
         res.status(500).json({ error: 'Failed to toggle seal' });
+    }
+});
+
+// GET /api/rd/glp/my-revision-items — Files under revision for the current researcher
+app.get('/api/rd/glp/my-revision-items', requireAuth, async (req, res) => {
+    try {
+        const userId = req.session.user?.researcher_id;
+        if (!userId) return res.json({ items: [] });
+        const r = await pool.query(
+            `SELECT submission_id, original_filename, file_type, revision_comments,
+                    created_at, rd_project_id
+             FROM di_submissions
+             WHERE researcher_id = $1 AND workspace_id = $2 AND status = 'REVISION_NEEDED'
+             ORDER BY created_at DESC`,
+            [userId, req.workspace_id]);
+        // Enrich with project title if possible
+        let items = r.rows;
+        if (items.length > 0 && (await checkRdTables())) {
+            const projectIds = [...new Set(items.map(i => i.rd_project_id).filter(Boolean))];
+            if (projectIds.length > 0) {
+                const pRes = await pool.query(`SELECT id, title FROM rd_projects WHERE id = ANY($1)`, [projectIds]);
+                const pMap = {};
+                pRes.rows.forEach(p => { pMap[p.id] = p.title; });
+                items = items.map(i => ({ ...i, project_title: pMap[i.rd_project_id] || null }));
+            }
+        }
+        res.json({ items });
+    } catch (err) {
+        console.error('[RD-GLP] my-revision-items error:', err.message);
+        res.status(500).json({ error: 'Failed' });
     }
 });
 
