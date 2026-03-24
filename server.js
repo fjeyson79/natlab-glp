@@ -3661,7 +3661,10 @@ app.get('/api/di/pending-approvals', requirePI, async (req, res) => {
              FROM di_submissions s
              LEFT JOIN di_allowlist a ON s.researcher_id = a.researcher_id
              WHERE s.status = 'PENDING'
-             ORDER BY s.created_at DESC`
+               AND s.workspace_id = $1
+               AND s.workspace_id IS NOT NULL
+             ORDER BY s.created_at DESC`,
+            [req.workspace_id]
         );
 
         res.json({
