@@ -1007,6 +1007,251 @@
         .glp-status-badge.REVISION_NEEDED { background: rgba(37,99,235,0.08); color: #2563eb; }
         .glp-status-badge.DISCARDED { background: rgba(220,38,38,0.08); color: #dc2626; }
 
+        /* ---- Master Founder / CSO PI-like GLP Vision ---- */
+        .glp-workspace.master-view {
+            grid-template-columns: 220px 380px 1fr;
+            height: calc(100vh - 200px); min-height: 560px;
+        }
+        @media (max-width: 1100px) { .glp-workspace.master-view { grid-template-columns: 200px 320px 1fr; } }
+        @media (max-width: 900px) { .glp-workspace.master-view { grid-template-columns: 200px 1fr; } }
+        @media (max-width: 600px) { .glp-workspace.master-view { grid-template-columns: 1fr; } }
+
+        .glp-workspace.master-view .glp-sidebar { padding: 0; }
+        .glp-workspace.master-view .glp-sidebar-section {
+            padding: 14px 16px 8px; margin-bottom: 0;
+            border-bottom: 1px solid rgba(0,0,0,0.04);
+        }
+        .glp-workspace.master-view .glp-sidebar-section:last-child { border-bottom: none; }
+        .glp-workspace.master-view .glp-sidebar-label { font-size: 10px; letter-spacing: 1.6px; margin-bottom: 8px; }
+        .glp-sidebar-item.researcher-row {
+            display: flex; align-items: center; gap: 10px; padding: 7px 10px;
+        }
+        .glp-researcher-avatar {
+            width: 28px; height: 28px; border-radius: 50%; background: #1a7a4e;
+            color: #fff; display: flex; align-items: center; justify-content: center;
+            font-size: 10px; font-weight: 700; flex-shrink: 0;
+        }
+        .glp-researcher-name {
+            font-size: 12px; color: #7a7e8a; white-space: nowrap;
+            overflow: hidden; text-overflow: ellipsis; flex: 1;
+        }
+        .glp-sidebar-item.researcher-row.active .glp-researcher-name { color: #1a7a4e; font-weight: 600; }
+
+        .glp-workspace.master-view .glp-finder {
+            display: flex; flex-direction: column; overflow: hidden; padding: 0; background: #fafbfc;
+        }
+        .glp-vision-bar {
+            display: flex; gap: 4px; padding: 8px 14px; border-bottom: 1px solid rgba(0,0,0,0.06);
+        }
+        .glp-vision-btn {
+            padding: 4px 12px; border-radius: 7px; font-size: 10px; font-weight: 600;
+            cursor: pointer; border: 1px solid rgba(0,0,0,0.08); background: #fff;
+            color: #7a7e8a; transition: all 0.15s; font-family: inherit;
+        }
+        .glp-vision-btn.active { background: #1a7a4e; color: #fff; border-color: #1a7a4e; }
+        .glp-vision-btn:hover:not(.active) { border-color: #9a9ea8; }
+        .glp-search-area { padding: 10px 14px 0; }
+        .glp-search-input {
+            width: 100%; padding: 7px 10px; border: 1.5px solid rgba(0,0,0,0.1);
+            border-radius: 7px; font-size: 12px; background: #fff; outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s; box-sizing: border-box; font-family: inherit;
+        }
+        .glp-search-input:focus { border-color: #1a7a4e; box-shadow: 0 0 0 3px rgba(26,122,78,0.08); }
+        .glp-scope-pills { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px 0 0; }
+        .glp-scope-pill {
+            padding: 3px 10px; border-radius: 12px; font-size: 10px; font-weight: 600;
+            cursor: pointer; border: 1.5px solid rgba(0,0,0,0.08); background: #fff;
+            color: #7a7e8a; transition: all 0.15s;
+        }
+        .glp-scope-pill.active { background: #1a7a4e; color: #fff; border-color: #1a7a4e; }
+        .glp-scope-pill:hover:not(.active) { border-color: #9a9ea8; }
+        .glp-filter-row {
+            display: flex; flex-wrap: wrap; gap: 4px; padding: 7px 14px;
+            border-bottom: 1px solid rgba(0,0,0,0.04); align-items: center;
+        }
+        .glp-chip {
+            padding: 2px 9px; border-radius: 12px; font-size: 10px; cursor: pointer;
+            border: 1px solid rgba(0,0,0,0.06); background: #fff; color: #7a7e8a;
+            transition: all 0.15s; font-family: inherit;
+        }
+        .glp-chip:hover { border-color: #9a9ea8; }
+        .glp-chip.active { background: rgba(26,122,78,0.07); border-color: #1a7a4e; color: #1a7a4e; font-weight: 600; }
+        .glp-category-select {
+            padding: 2px 24px 2px 8px; border-radius: 6px; font-size: 10px; font-weight: 600;
+            border: 1px solid rgba(0,0,0,0.08); background: #fff; color: #7a7e8a;
+            cursor: pointer; font-family: inherit; outline: none; transition: all 0.15s;
+            appearance: none; -webkit-appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%239a9da6'/%3E%3C/svg%3E");
+            background-repeat: no-repeat; background-position: right 7px center;
+        }
+        .glp-category-select:focus { border-color: #1a7a4e; box-shadow: 0 0 0 2px rgba(26,122,78,0.08); }
+        .glp-category-select.has-value { border-color: #1a7a4e; color: #1a7a4e; font-weight: 600; }
+        .glp-toucan-badge {
+            display: inline-flex; align-items: center; gap: 2px;
+            padding: 1px 5px; border-radius: 4px; font-size: 8px; font-weight: 500;
+            background: rgba(26,122,78,0.06); color: #1a7a4e; letter-spacing: 0.2px;
+        }
+        .glp-quick-metrics {
+            display: none; gap: 6px; padding: 7px 14px; border-bottom: 1px solid rgba(0,0,0,0.04);
+        }
+        .glp-metric-box {
+            flex: 1; background: #fff; border: 1px solid rgba(0,0,0,0.06);
+            border-radius: 8px; padding: 5px 4px; text-align: center;
+        }
+        .glp-metric-value { font-size: 16px; font-weight: 700; color: #1a7a4e; }
+        .glp-metric-label {
+            font-size: 9px; font-weight: 600; letter-spacing: 0.8px;
+            text-transform: uppercase; color: #9a9ea8;
+        }
+        .glp-results { flex: 1; overflow-y: auto; padding: 6px 10px; }
+        .glp-result-item {
+            display: flex; align-items: flex-start; gap: 8px; padding: 7px 10px;
+            border-radius: 8px; cursor: pointer; transition: background 0.15s, box-shadow 0.15s;
+            border: 1px solid transparent;
+        }
+        .glp-result-item:hover { background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.04); border-color: rgba(0,0,0,0.06); }
+        .glp-result-item.active { background: #fff; border-color: #1a7a4e; box-shadow: 0 2px 8px rgba(26,122,78,0.08); }
+        .glp-result-icon {
+            width: 28px; height: 28px; border-radius: 7px; display: flex;
+            align-items: center; justify-content: center; font-size: 9px;
+            font-weight: 700; flex-shrink: 0; color: #fff; text-transform: uppercase;
+        }
+        .glp-result-icon.data { background: #1a7a4e; }
+        .glp-result-icon.sop { background: #6366f1; }
+        .glp-result-icon.pres, .glp-result-icon.presentation { background: #0891b2; }
+        .glp-result-icon.report { background: #ca8a04; }
+        .glp-result-icon.docs { background: #7a7e8a; }
+        .glp-result-icon.inventory { background: #9333ea; }
+        .glp-result-body { flex: 1; min-width: 0; }
+        .glp-result-title {
+            font-size: 12px; font-weight: 600; color: #1a1c22;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .glp-result-sub {
+            font-size: 10px; color: #9a9ea8; margin-top: 1px;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .glp-result-meta { display: flex; align-items: center; gap: 5px; margin-top: 2px; flex-wrap: wrap; }
+        .glp-result-badge {
+            font-size: 9px; font-weight: 600; padding: 1px 6px; border-radius: 4px;
+            text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .glp-result-badge.pending { background: rgba(202,138,4,0.1); color: #ca8a04; }
+        .glp-result-badge.approved { background: rgba(22,163,74,0.1); color: #16a34a; }
+        .glp-result-badge.revision { background: rgba(37,99,235,0.1); color: #2563eb; }
+        .glp-result-badge.discarded { background: rgba(220,38,38,0.1); color: #dc2626; }
+        .glp-project-chip {
+            font-size: 9px; font-weight: 600; padding: 1px 5px; border-radius: 4px;
+            background: rgba(26,122,78,0.07); color: #1a7a4e;
+        }
+
+        .glp-workspace.master-view .glp-viewer {
+            position: relative; display: flex; flex-direction: column; overflow: hidden; padding: 0;
+        }
+        .glp-viewer-toolbar {
+            display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+            border-bottom: 1px solid rgba(0,0,0,0.06); background: #fafbfc;
+            min-height: 48px; flex-wrap: wrap;
+        }
+        .glp-viewer-fname {
+            font-size: 13px; font-weight: 600; color: #1a1c22; flex: 1;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .glp-toolbar-btn {
+            padding: 5px 12px; border-radius: 6px; font-size: 11px; font-weight: 600;
+            cursor: pointer; border: 1px solid rgba(0,0,0,0.08); background: #fff;
+            color: #2a2d35; transition: all 0.15s; font-family: inherit;
+        }
+        .glp-toolbar-btn:hover { background: #f5f6f8; }
+        .glp-toolbar-btn.approve { background: #1a7a4e; color: #fff; border-color: #1a7a4e; }
+        .glp-toolbar-btn.approve:hover { background: #15633f; }
+        .glp-toolbar-btn.revise { background: #ca8a04; color: #fff; border-color: #ca8a04; }
+        .glp-toolbar-btn.revise:hover { background: #a87103; }
+        .glp-toolbar-btn.discard { background: none; border-color: rgba(220,38,38,0.3); color: #dc2626; }
+        .glp-toolbar-btn.discard:hover { background: rgba(220,38,38,0.05); }
+        .glp-toolbar-btn.download { background: #1a1c22; color: #fff; border-color: #1a1c22; }
+        .glp-toolbar-btn.download:hover { background: #2e3039; }
+        .glp-viewer-pdf-frame {
+            flex: 1; min-height: 0; width: 100%; border: none; background: #f5f6f8;
+        }
+        .glp-intel-panel {
+            border-top: 1px solid rgba(0,0,0,0.06); background: #fafbfc; padding: 0; flex-shrink: 0;
+        }
+        .glp-intel-strip {
+            display: flex; align-items: center; gap: 8px; padding: 6px 16px;
+            height: 36px; box-sizing: border-box; border-bottom: 1px solid rgba(0,0,0,0.03);
+        }
+        .glp-intel-strip:last-child { border-bottom: none; }
+        .glp-intel-strip-label {
+            font-size: 10px; font-weight: 700; letter-spacing: 1px;
+            text-transform: uppercase; color: #9a9ea8; white-space: nowrap; flex-shrink: 0;
+        }
+        .glp-intel-chips {
+            display: flex; align-items: center; gap: 5px; flex: 1; min-width: 0; overflow: hidden;
+        }
+        .glp-intel-chip {
+            display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px;
+            border-radius: 4px; font-size: 11px; color: #2a2d35; background: #fff;
+            border: 1px solid rgba(0,0,0,0.06); white-space: nowrap; max-width: 220px;
+            overflow: hidden; text-overflow: ellipsis; cursor: default;
+        }
+        .glp-intel-empty { font-size: 10px; color: #b0b4be; font-style: italic; }
+
+        .glp-modal-overlay {
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+            z-index: 1000; align-items: center; justify-content: center;
+        }
+        .glp-modal-overlay.active { display: flex; }
+        .glp-modal {
+            background: #fff; border-radius: 14px; width: 480px; max-height: 80vh;
+            display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+        }
+        .glp-modal-header {
+            padding: 16px 20px; border-bottom: 1px solid rgba(0,0,0,0.06);
+            font-size: 15px; font-weight: 700; color: #1a1c22;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .glp-modal-close {
+            background: none; border: none; font-size: 20px; color: #9a9ea8;
+            cursor: pointer; padding: 0; line-height: 1;
+        }
+        .glp-modal-close:hover { color: #2a2d35; }
+        .glp-modal-body { padding: 16px 20px; overflow-y: auto; flex: 1; }
+        .glp-modal-footer {
+            padding: 12px 20px; border-top: 1px solid rgba(0,0,0,0.06);
+            display: flex; justify-content: flex-end; gap: 8px;
+        }
+        .glp-modal-btn {
+            padding: 7px 16px; border-radius: 8px; font-size: 12px; font-weight: 600;
+            cursor: pointer; border: 1px solid rgba(0,0,0,0.08); background: #fff;
+            color: #2a2d35; font-family: inherit; transition: all 0.15s;
+        }
+        .glp-modal-btn:hover { background: #f5f6f8; }
+        .glp-modal-btn.primary { background: #1a7a4e; color: #fff; border-color: #1a7a4e; }
+        .glp-modal-btn.primary:hover { background: #15633f; }
+        .glp-modal-btn.danger { background: #dc2626; color: #fff; border-color: #dc2626; }
+        .glp-modal-btn.danger:hover { background: #b91c1c; }
+        .glp-modal-textarea {
+            width: 100%; min-height: 80px; padding: 10px; border: 1.5px solid rgba(0,0,0,0.1);
+            border-radius: 8px; font-size: 13px; font-family: inherit; resize: vertical;
+            box-sizing: border-box; outline: none;
+        }
+        .glp-modal-textarea:focus { border-color: #1a7a4e; box-shadow: 0 0 0 3px rgba(26,122,78,0.08); }
+        .glp-modal-select {
+            width: 100%; padding: 8px 10px; border: 1.5px solid rgba(0,0,0,0.1);
+            border-radius: 8px; font-size: 13px; font-family: inherit; outline: none;
+            margin-bottom: 10px; box-sizing: border-box;
+        }
+        .glp-modal-select:focus { border-color: #1a7a4e; }
+        .glp-viewer-detail-row {
+            font-size: 11px; color: #9a9ea8; margin-top: 4px; padding: 0 16px;
+        }
+        .glp-viewer-detail-row span { margin-right: 10px; }
+        .glp-viewer-detail-row .detail-project { color: #1a7a4e; }
+        .glp-viewer-detail-row .detail-revision { color: #2563eb; }
+        .glp-viewer-detail-row .detail-discard { color: #dc2626; }
+        .glp-viewer-detail-row .detail-approval { color: #16a34a; }
+
         .rd-glp-strip {
             display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
             margin-bottom: 14px; padding: 10px 14px;
@@ -1464,11 +1709,70 @@
                 <div style="font-size:19px;font-weight:600;color:#1a1c22;letter-spacing:-0.2px">GLP Vision</div>
                 <div style="font-size:12px;color:#8b8f9a;margin-top:3px">Scientific evidence traceability and regulatory-grade documentation</div>
             </div>
-            <div class="glp-workspace">
+            <div class="glp-workspace" id="glpWorkspace">
                 <div class="glp-sidebar" id="glpSidebar"></div>
                 <div class="glp-finder" id="glpFinder"></div>
                 <div class="glp-viewer" id="glpViewer">
                     <div class="glp-viewer-empty">Select a document to preview</div>
+                </div>
+            </div>
+
+            <!-- Revise Modal -->
+            <div class="glp-modal-overlay" id="glpReviseModal">
+                <div class="glp-modal">
+                    <div class="glp-modal-header">
+                        <span>Request Revision</span>
+                        <button class="glp-modal-close" onclick="glpCloseReviseModal()">&times;</button>
+                    </div>
+                    <div class="glp-modal-body">
+                        <textarea class="glp-modal-textarea" id="glpReviseText" placeholder="Describe what needs to be revised..."></textarea>
+                    </div>
+                    <div class="glp-modal-footer">
+                        <button class="glp-modal-btn" onclick="glpCloseReviseModal()">Cancel</button>
+                        <button class="glp-modal-btn primary" onclick="glpSubmitRevision()">Submit Revision</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Discard Modal -->
+            <div class="glp-modal-overlay" id="glpDiscardModal">
+                <div class="glp-modal">
+                    <div class="glp-modal-header">
+                        <span>Discard Document</span>
+                        <button class="glp-modal-close" onclick="glpCloseDiscardModal()">&times;</button>
+                    </div>
+                    <div class="glp-modal-body">
+                        <select class="glp-modal-select" id="glpDiscardReason">
+                            <option value="">Select a reason...</option>
+                            <option value="Mistaken upload">Mistaken upload</option>
+                            <option value="Wrong category">Wrong category</option>
+                            <option value="Duplicate">Duplicate</option>
+                            <option value="Not admissible for GLP records">Not admissible for GLP records</option>
+                            <option value="Other">Other</option>
+                        </select>
+                        <textarea class="glp-modal-textarea" id="glpDiscardNote" placeholder="Additional note (optional)..." style="min-height:60px"></textarea>
+                    </div>
+                    <div class="glp-modal-footer">
+                        <button class="glp-modal-btn" onclick="glpCloseDiscardModal()">Cancel</button>
+                        <button class="glp-modal-btn danger" onclick="glpSubmitDiscard()">Discard</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Approve Modal -->
+            <div class="glp-modal-overlay" id="glpApproveModal">
+                <div class="glp-modal">
+                    <div class="glp-modal-header">
+                        <span>Approve Document</span>
+                        <button class="glp-modal-close" onclick="glpCloseApproveModal()">&times;</button>
+                    </div>
+                    <div class="glp-modal-body">
+                        <textarea class="glp-modal-textarea" id="glpApproveComment" placeholder="Approval comment (optional)..." style="min-height:60px"></textarea>
+                    </div>
+                    <div class="glp-modal-footer">
+                        <button class="glp-modal-btn" onclick="glpCloseApproveModal()">Cancel</button>
+                        <button class="glp-modal-btn primary" onclick="glpSubmitApproval()">Approve</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -2834,6 +3138,11 @@
             glpFilterResearcher = '';
             glpFilterStatus = '';
             glpFilterType = '';
+            glpFilterYear = '';
+            glpFilterTime = '';
+            glpFilterSort = 'newest';
+            glpSearchText = '';
+            glpVisionMode = 'all';
             glpSelectedFile = null;
             // Switch to GLP tab
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -2844,7 +3153,7 @@
             if (glpTab) glpTab.classList.add('active');
             // Init or refresh GLP
             if (!glpInitDone) { glpInitDone = true; glpInit(); }
-            else { glpLoadAll().then(() => { glpRenderSidebar(); glpRenderFinder(); document.getElementById('glpViewer').innerHTML = '<div class="glp-viewer-empty">Select a document to preview</div>'; }); }
+            else { glpLoadAll().then(() => { glpRenderSidebar(); glpRenderFinder(); glpResetViewer(); }); }
         }
 
         function rdOpenInGlpStatus(projectId, status) {
@@ -2852,6 +3161,11 @@
             glpFilterResearcher = '';
             glpFilterStatus = status;
             glpFilterType = '';
+            glpFilterYear = '';
+            glpFilterTime = '';
+            glpFilterSort = 'newest';
+            glpSearchText = '';
+            glpVisionMode = 'all';
             glpSelectedFile = null;
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
             const glpBtn = document.querySelector('.tab-btn[data-tab="glp"]');
@@ -2860,7 +3174,7 @@
             const glpTab = document.getElementById('tab-glp');
             if (glpTab) glpTab.classList.add('active');
             if (!glpInitDone) { glpInitDone = true; glpInit(); }
-            else { glpLoadAll().then(() => { glpRenderSidebar(); glpRenderFinder(); document.getElementById('glpViewer').innerHTML = '<div class="glp-viewer-empty">Select a document to preview</div>'; }); }
+            else { glpLoadAll().then(() => { glpRenderSidebar(); glpRenderFinder(); glpResetViewer(); }); }
         }
 
         async function rdDeleteDocWs(docId) {
@@ -3246,14 +3560,23 @@
         const GLP_WS = 'theralia';
         let glpInitDone = false;
         let glpFiles = [];
+        let glpAllFiles = [];  // unfiltered copy for master client-side filtering
+        let glpFilteredFiles = []; // result after client-side filtering (master only)
         let glpResearchers = [];
         let glpProjects = [];
         let glpFilterResearcher = '';
         let glpFilterProject = '';
         let glpFilterStatus = '';
         let glpFilterType = '';
+        let glpFilterYear = '';
+        let glpFilterTime = '';
+        let glpFilterSort = 'newest';
+        let glpFilterCategory = '';
+        let glpSearchText = '';
+        let glpVisionMode = 'all';
         let glpSelectedFile = null;
         let glpIsMaster = false;
+        let _glpActionFileId = null; // file id for modal actions
 
         function glpFetch(url, opts) { return fetch(url + (url.includes('?') ? '&' : '?') + 'ws=' + GLP_WS, { credentials: 'include', ...opts }); }
         function glpJson(url) { return glpFetch(url).then(r => r.json()); }
@@ -3269,6 +3592,28 @@
 
         async function glpInit() {
             glpIsMaster = hasAuthority('is_workspace_master');
+            if (glpIsMaster) {
+                document.getElementById('glpWorkspace').classList.add('master-view');
+                // Set up master viewer shell
+                const viewer = document.getElementById('glpViewer');
+                viewer.innerHTML = `
+                    <div class="glp-viewer-toolbar" id="glpToolbar">
+                        <span class="glp-viewer-fname">No file selected</span>
+                    </div>
+                    <div class="glp-viewer-empty" id="glpViewerEmpty" style="flex:1;display:flex;align-items:center;justify-content:center;color:#b0b4be;font-size:13px">Select a file to preview</div>
+                    <iframe class="glp-viewer-pdf-frame" id="glpViewerPdf" style="display:none"></iframe>
+                    <div id="glpViewerDetail" class="glp-viewer-detail-row" style="display:none"></div>
+                    <div class="glp-intel-panel" id="glpIntelPanel" style="display:none">
+                        <div class="glp-intel-strip">
+                            <span class="glp-intel-strip-label" id="glpIntelSopLabel">SOPs (0)</span>
+                            <div class="glp-intel-chips" id="glpIntelSops"><span class="glp-intel-empty">No linked SOPs</span></div>
+                        </div>
+                        <div class="glp-intel-strip">
+                            <span class="glp-intel-strip-label" id="glpIntelPresLabel">PRES (0)</span>
+                            <div class="glp-intel-chips" id="glpIntelPres"><span class="glp-intel-empty">No linked presentations</span></div>
+                        </div>
+                    </div>`;
+            }
             await glpLoadAll();
             glpRenderSidebar();
             glpRenderFinder();
@@ -3280,7 +3625,8 @@
                 const params = [];
                 if (glpFilterResearcher) params.push('researcher_id=' + encodeURIComponent(glpFilterResearcher));
                 if (glpFilterProject) params.push('rd_project_id=' + encodeURIComponent(glpFilterProject));
-                if (glpFilterStatus) params.push('status=' + encodeURIComponent(glpFilterStatus));
+                // For non-master, pass status server-side; for master, filter client-side
+                if (!glpIsMaster && glpFilterStatus) params.push('status=' + encodeURIComponent(glpFilterStatus));
                 if (params.length) url += '?' + params.join('&');
 
                 const [filesRes, resRes, projRes] = await Promise.all([
@@ -3289,18 +3635,62 @@
                     glpJson('/api/rd/glp/projects')
                 ]);
                 glpFiles = filesRes.files || [];
+                glpAllFiles = glpFiles.slice(); // keep unfiltered copy
                 glpResearchers = resRes.researchers || [];
                 glpProjects = projRes.projects || [];
             } catch {}
         }
 
+        // ---- Helper: get initials from name ----
+        function glpInitials(name) {
+            if (!name) return '?';
+            const parts = name.trim().split(/\s+/);
+            if (parts.length >= 2) return (parts[0][0] + parts[parts.length-1][0]).toUpperCase();
+            return name.substring(0, 2).toUpperCase();
+        }
+
+        // ---- Helper: type icon class ----
+        function glpTypeClass(ft) {
+            const t = (ft || '').toLowerCase();
+            if (t === 'data') return 'data';
+            if (t === 'sop') return 'sop';
+            if (t === 'pres' || t === 'presentation') return 'pres';
+            if (t === 'report') return 'report';
+            if (t === 'docs') return 'docs';
+            if (t === 'inventory') return 'inventory';
+            return 'data';
+        }
+
+        // ---- Helper: type short label ----
+        function glpTypeLabel(ft) {
+            const t = (ft || '').toUpperCase();
+            if (t === 'PRESENTATION') return 'PRES';
+            return t.substring(0, 4);
+        }
+
+        // ---- Helper: status badge class ----
+        function glpBadgeClass(status) {
+            if (status === 'PENDING') return 'pending';
+            if (status === 'APPROVED') return 'approved';
+            if (status === 'REVISION_NEEDED') return 'revision';
+            if (status === 'DISCARDED') return 'discarded';
+            return '';
+        }
+
+        // ==========================================
+        // SIDEBAR RENDERING
+        // ==========================================
         function glpRenderSidebar() {
+            if (glpIsMaster) return glpRenderSidebarMaster();
+            return glpRenderSidebarResearcher();
+        }
+
+        function glpRenderSidebarResearcher() {
             const sb = document.getElementById('glpSidebar');
             const statusCounts = { all: glpFiles.length };
             ['PENDING','APPROVED','REVISION_NEEDED','DISCARDED'].forEach(s => {
                 statusCounts[s] = glpFiles.filter(f => f.status === s).length;
             });
-
             sb.innerHTML = `
                 <div class="glp-sidebar-section">
                     <div class="glp-sidebar-label">Status</div>
@@ -3330,11 +3720,71 @@
                 </div>`;
         }
 
+        function glpRenderSidebarMaster() {
+            const sb = document.getElementById('glpSidebar');
+            // Status counts from all loaded files (before client-side status filter)
+            const statusCounts = { all: glpAllFiles.length };
+            ['PENDING','APPROVED','REVISION_NEEDED','DISCARDED'].forEach(s => {
+                statusCounts[s] = glpAllFiles.filter(f => f.status === s).length;
+            });
+            // Year extraction
+            const yearSet = new Set();
+            glpAllFiles.forEach(f => {
+                const yr = (f.created_at || '').substring(0, 4);
+                if (yr) yearSet.add(yr);
+            });
+            const years = Array.from(yearSet).sort().reverse();
+
+            sb.innerHTML = `
+                <div class="glp-sidebar-section">
+                    <div class="glp-sidebar-label">STATUS</div>
+                    <div class="glp-sidebar-item ${!glpFilterStatus ? 'active' : ''}" onclick="glpSetStatus('')">All Files <span class="glp-sidebar-count">${statusCounts.all}</span></div>
+                    <div class="glp-sidebar-item ${glpFilterStatus==='PENDING' ? 'active' : ''}" onclick="glpSetStatus('PENDING')">Pending <span class="glp-sidebar-count">${statusCounts.PENDING}</span></div>
+                    <div class="glp-sidebar-item ${glpFilterStatus==='APPROVED' ? 'active' : ''}" onclick="glpSetStatus('APPROVED')">Approved <span class="glp-sidebar-count">${statusCounts.APPROVED}</span></div>
+                    <div class="glp-sidebar-item ${glpFilterStatus==='REVISION_NEEDED' ? 'active' : ''}" onclick="glpSetStatus('REVISION_NEEDED')">Revision <span class="glp-sidebar-count">${statusCounts.REVISION_NEEDED}</span></div>
+                    <div class="glp-sidebar-item ${glpFilterStatus==='DISCARDED' ? 'active' : ''}" onclick="glpSetStatus('DISCARDED')">Discarded <span class="glp-sidebar-count">${statusCounts.DISCARDED}</span></div>
+                </div>
+                <div class="glp-sidebar-section">
+                    <div class="glp-sidebar-label">YEAR</div>
+                    <div class="glp-sidebar-item ${!glpFilterYear ? 'active' : ''}" onclick="glpSetYear('')">All Years</div>
+                    ${years.map(y => `
+                        <div class="glp-sidebar-item ${glpFilterYear===y ? 'active' : ''}" onclick="glpSetYear('${y}')">${y}</div>
+                    `).join('')}
+                </div>
+                <div class="glp-sidebar-section">
+                    <div class="glp-sidebar-label">RESEARCHERS</div>
+                    <div class="glp-sidebar-item ${!glpFilterResearcher ? 'active' : ''}" onclick="glpSetResearcher('')">All Researchers</div>
+                    ${glpResearchers.map(r => `
+                        <div class="glp-sidebar-item researcher-row ${glpFilterResearcher===r.researcher_id ? 'active' : ''}" onclick="glpSetResearcher('${rdEsc(r.researcher_id)}')">
+                            <div class="glp-researcher-avatar">${glpInitials(r.researcher_name)}</div>
+                            <span class="glp-researcher-name">${rdEsc(r.researcher_name || r.researcher_id)}</span>
+                            <span class="glp-sidebar-count">${r.file_count}</span>
+                        </div>
+                    `).join('')}
+                </div>
+                <div class="glp-sidebar-section">
+                    <div class="glp-sidebar-label">PROJECTS</div>
+                    <div class="glp-sidebar-item ${!glpFilterProject ? 'active' : ''}" onclick="glpSetProject('')">All Projects</div>
+                    ${glpProjects.map(p => `
+                        <div class="glp-sidebar-item ${glpFilterProject===p.id ? 'active' : ''}" onclick="glpSetProject('${p.id}')">
+                            ${rdEsc(p.title)} <span class="glp-sidebar-count">${p.file_count}</span>
+                        </div>
+                    `).join('')}
+                </div>`;
+        }
+
+        // ==========================================
+        // FINDER RENDERING
+        // ==========================================
         function glpRenderFinder() {
+            if (glpIsMaster) return glpRenderFinderMaster();
+            return glpRenderFinderResearcher();
+        }
+
+        function glpRenderFinderResearcher() {
             const finder = document.getElementById('glpFinder');
             let filtered = glpFiles;
             if (glpFilterType) filtered = filtered.filter(f => f.file_type === glpFilterType);
-
             const types = ['','SOP','DATA','PRES','REPORT','DOCS','PRESENTATION'];
             finder.innerHTML = `
                 <div class="glp-finder-header">
@@ -3362,21 +3812,160 @@
                 }`;
         }
 
+        function glpRenderFinderMaster() {
+            const finder = document.getElementById('glpFinder');
+            // Apply client-side filters first
+            glpApplyFilters();
+            const files = glpFilteredFiles;
+            // Scope pills: show types present in data
+            const knownTypes = ['DATA','SOP','PRES','PRESENTATION','REPORT','DOCS','INVENTORY'];
+            const presentTypes = knownTypes.filter(t => glpAllFiles.some(f => f.file_type === t));
+
+            finder.innerHTML = `
+                <div class="glp-vision-bar">
+                    <button class="glp-vision-btn ${glpVisionMode==='all' ? 'active' : ''}" onclick="glpSetVisionMode('all')">All</button>
+                    <button class="glp-vision-btn ${glpVisionMode==='training' ? 'active' : ''}" onclick="glpSetVisionMode('training')">Training</button>
+                    <button class="glp-vision-btn ${glpVisionMode==='inventory' ? 'active' : ''}" onclick="glpSetVisionMode('inventory')">Inventory</button>
+                    <button class="glp-vision-btn ${glpVisionMode==='onetoone' ? 'active' : ''}" onclick="glpSetVisionMode('onetoone')">1-to-1</button>
+                </div>
+                <div class="glp-search-area" id="glpSearchArea">
+                    <input type="text" class="glp-search-input" id="glpSearchInput" placeholder="Search files..." value="${rdEsc(glpSearchText)}" oninput="glpSearchText=this.value;glpRenderFinderMaster()">
+                    <div class="glp-scope-pills">
+                        <span class="glp-scope-pill ${!glpFilterType ? 'active' : ''}" onclick="glpSetScope('')">ALL</span>
+                        ${presentTypes.map(t => `
+                            <span class="glp-scope-pill ${glpFilterType===t ? 'active' : ''}" onclick="glpSetScope('${t}')">${glpTypeLabel(t)}</span>
+                        `).join('')}
+                    </div>
+                </div>
+                <div class="glp-filter-row" id="glpStatusChips">
+                    <span class="glp-chip ${!glpFilterStatus ? 'active' : ''}" onclick="glpSetStatusChip('')">All</span>
+                    <span class="glp-chip ${glpFilterStatus==='PENDING' ? 'active' : ''}" onclick="glpSetStatusChip('PENDING')">Pending</span>
+                    <span class="glp-chip ${glpFilterStatus==='APPROVED' ? 'active' : ''}" onclick="glpSetStatusChip('APPROVED')">Approved</span>
+                    <span class="glp-chip ${glpFilterStatus==='REVISION_NEEDED' ? 'active' : ''}" onclick="glpSetStatusChip('REVISION_NEEDED')">Revision</span>
+                    <span class="glp-chip ${glpFilterStatus==='DISCARDED' ? 'active' : ''}" onclick="glpSetStatusChip('DISCARDED')">Discarded</span>
+                    <span style="margin-left:auto"></span>
+                    <select class="glp-category-select ${glpFilterCategory ? 'has-value' : ''}" onchange="glpSetCategory(this.value)">
+                        <option value="" disabled ${!glpFilterCategory ? 'selected' : ''} hidden>Category</option>
+                        <option value="">All Categories</option>
+                        <option value="SOP" ${glpFilterCategory==='SOP' ? 'selected' : ''}>SOP</option>
+                        <option value="DATA" ${glpFilterCategory==='DATA' ? 'selected' : ''}>DATA</option>
+                        <option value="PRES" ${glpFilterCategory==='PRES' ? 'selected' : ''}>PRES</option>
+                        <option value="REPORT" ${glpFilterCategory==='REPORT' ? 'selected' : ''}>REPORT</option>
+                        <option value="DOCS" ${glpFilterCategory==='DOCS' ? 'selected' : ''}>DOCS</option>
+                        <option value="INVENTORY" ${glpFilterCategory==='INVENTORY' ? 'selected' : ''}>INVENTORY</option>
+                    </select>
+                </div>
+                <div class="glp-filter-row" id="glpTimeSortChips">
+                    <span class="glp-chip ${!glpFilterTime ? 'active' : ''}" onclick="glpSetTimeChip('')">All Time</span>
+                    <span class="glp-chip ${glpFilterTime==='7' ? 'active' : ''}" onclick="glpSetTimeChip('7')">7d</span>
+                    <span class="glp-chip ${glpFilterTime==='30' ? 'active' : ''}" onclick="glpSetTimeChip('30')">30d</span>
+                    <span class="glp-chip ${glpFilterTime==='90' ? 'active' : ''}" onclick="glpSetTimeChip('90')">90d</span>
+                    <span class="glp-chip ${glpFilterTime==='365' ? 'active' : ''}" onclick="glpSetTimeChip('365')">Year</span>
+                    <span style="margin-left:auto"></span>
+                    <span class="glp-chip ${glpFilterSort==='newest' ? 'active' : ''}" onclick="glpSetSortChip('newest')">Newest</span>
+                    <span class="glp-chip ${glpFilterSort==='oldest' ? 'active' : ''}" onclick="glpSetSortChip('oldest')">Oldest</span>
+                    <span class="glp-chip ${glpFilterSort==='name' ? 'active' : ''}" onclick="glpSetSortChip('name')">Name</span>
+                </div>
+                <div class="glp-quick-metrics" id="glpQuickMetrics" style="${glpFilterResearcher ? 'display:flex' : 'display:none'}"></div>
+                <div class="glp-results" id="glpResults">
+                    ${files.length === 0
+                        ? '<div style="text-align:center;padding:40px 10px;color:#b0b4be;font-size:13px">' + (glpAllFiles.length === 0 ? 'No documents yet' : 'No matching documents') + '</div>'
+                        : files.map(f => `
+                            <div class="glp-result-item ${glpSelectedFile===f.submission_id ? 'active' : ''}" onclick="glpSelectFile('${f.submission_id}')">
+                                <div class="glp-result-icon ${glpTypeClass(f.file_type)}">${glpTypeLabel(f.file_type)}</div>
+                                <div class="glp-result-body">
+                                    <div class="glp-result-title" title="${rdEsc(f.original_filename)}">${rdEsc(f.original_filename)}</div>
+                                    <div class="glp-result-sub">${f.researcher_name ? rdEsc(f.researcher_name) + ' · ' : ''}${rdDate(f.created_at)}</div>
+                                    <div class="glp-result-meta">
+                                        <span class="glp-result-badge ${glpBadgeClass(f.status)}">${(f.status || '').replace('_',' ')}</span>
+                                        ${f.status === 'APPROVED' ? '<span class="glp-toucan-badge">🦜 Verified</span>' : ''}
+                                        ${f.project_title ? '<span class="glp-project-chip">' + rdEsc(f.project_title) + '</span>' : ''}
+                                    </div>
+                                </div>
+                            </div>
+                        `).join('')
+                    }
+                </div>`;
+
+            // Render quick metrics if researcher selected
+            if (glpFilterResearcher) glpRenderQuickMetrics();
+        }
+
+        // ---- Client-side filtering (master only) ----
+        function glpApplyFilters() {
+            const search = glpSearchText.toLowerCase();
+            const now = new Date();
+            glpFilteredFiles = glpAllFiles.filter(f => {
+                if (glpFilterStatus && f.status !== glpFilterStatus) return false;
+                if (glpFilterType && f.file_type !== glpFilterType) return false;
+                if (glpFilterCategory) {
+                    const ft = (f.file_type || '').toUpperCase();
+                    const cat = glpFilterCategory.toUpperCase();
+                    if (cat === 'PRES') { if (ft !== 'PRES' && ft !== 'PRESENTATION') return false; }
+                    else if (ft !== cat) return false;
+                }
+                if (glpFilterYear) {
+                    const yr = (f.created_at || '').substring(0, 4);
+                    if (yr !== glpFilterYear) return false;
+                }
+                if (search && !(f.original_filename || '').toLowerCase().includes(search)) return false;
+                if (glpFilterTime) {
+                    const days = parseInt(glpFilterTime);
+                    const fileDate = new Date(f.created_at);
+                    if ((now - fileDate) / (1000 * 60 * 60 * 24) > days) return false;
+                }
+                return true;
+            });
+            // Sort
+            if (glpFilterSort === 'newest') {
+                glpFilteredFiles.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+            } else if (glpFilterSort === 'oldest') {
+                glpFilteredFiles.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+            } else if (glpFilterSort === 'name') {
+                glpFilteredFiles.sort((a, b) => (a.original_filename || '').localeCompare(b.original_filename || ''));
+            }
+        }
+
+        // ---- Quick metrics (master, when researcher selected) ----
+        function glpRenderQuickMetrics() {
+            const el = document.getElementById('glpQuickMetrics');
+            if (!el || !glpFilterResearcher) { if (el) el.style.display = 'none'; return; }
+            const files = glpAllFiles;
+            const dataCt = files.filter(f => f.file_type === 'DATA').length;
+            const presCt = files.filter(f => f.file_type === 'PRES' || f.file_type === 'PRESENTATION').length;
+            const sopCt = files.filter(f => f.file_type === 'SOP').length;
+            const pendCt = files.filter(f => f.status === 'PENDING').length;
+            const dates = files.map(f => f.created_at).filter(Boolean).sort();
+            const lastUp = dates.length ? new Date(dates[dates.length - 1]).toLocaleDateString() : 'N/A';
+            el.style.display = 'flex';
+            el.innerHTML = [
+                { v: dataCt, l: 'DATA' }, { v: presCt, l: 'PRES' }, { v: sopCt, l: 'SOP' },
+                { v: pendCt, l: 'PENDING' }, { v: lastUp, l: 'LAST' }
+            ].map(x => `<div class="glp-metric-box"><div class="glp-metric-value">${x.v}</div><div class="glp-metric-label">${x.l}</div></div>`).join('');
+        }
+
+        // ==========================================
+        // FILE SELECTION & VIEWER
+        // ==========================================
         function glpSelectFile(id) {
             glpSelectedFile = id;
+            if (glpIsMaster) return glpSelectFileMaster(id);
+            return glpSelectFileResearcher(id);
+        }
+
+        function glpSelectFileResearcher(id) {
             glpRenderFinder();
             const f = glpFiles.find(x => x.submission_id === id);
             if (!f) return;
-
             const viewer = document.getElementById('glpViewer');
-            const canReview = glpIsMaster && f.status === 'PENDING';
+            const canReview = false; // non-master never reviews
             const previewUrl = f.r2_object_key ? '/api/di/download/' + f.submission_id : '';
-
             viewer.innerHTML = `
                 <div class="glp-viewer-header">
                     <div class="glp-viewer-title">${rdEsc(f.original_filename)}</div>
                     <div class="glp-viewer-meta">
                         <span class="glp-status-badge ${f.status}">${f.status.replace('_',' ')}</span>
+                        ${f.status === 'APPROVED' ? '<span class="glp-toucan-badge">🦜 Verified</span>' : ''}
                         <span>${rdEsc(f.file_type)}</span>
                         <span>${rdDate(f.created_at)}</span>
                         ${f.researcher_name ? '<span>By: ' + rdEsc(f.researcher_name) + '</span>' : ''}
@@ -3387,53 +3976,278 @@
                     ${f.approval_comment ? '<div style="font-size:11px;color:#16a34a;margin-top:6px">Comment: ' + rdEsc(f.approval_comment) + '</div>' : ''}
                     <div class="glp-viewer-actions">
                         ${previewUrl ? '<button class="glp-action-btn view" onclick="window.open(\'/api/di/download/' + f.submission_id + '\',\'_blank\')">Open PDF</button>' : ''}
-                        ${canReview ? `
-                            <button class="glp-action-btn approve" onclick="glpApprove('${f.submission_id}')">Approve</button>
-                            <button class="glp-action-btn revise" onclick="glpRevise('${f.submission_id}')">Revise</button>
-                            <button class="glp-action-btn discard" onclick="glpDiscard('${f.submission_id}')">Discard</button>
-                        ` : ''}
                     </div>
                 </div>
-                ${previewUrl ? '<div class="glp-viewer-preview"><iframe src="/api/di/download/' + f.submission_id + '#toolbar=1"></iframe></div>' : '<div class="glp-viewer-empty">No preview available</div>'}
-            `;
+                ${previewUrl ? '<div class="glp-viewer-preview"><iframe src="/api/di/download/' + f.submission_id + '#toolbar=1"></iframe></div>' : '<div class="glp-viewer-empty">No preview available</div>'}`;
         }
 
-        async function glpSetStatus(s) { glpFilterStatus = s; glpSelectedFile = null; await glpLoadAll(); glpRenderSidebar(); glpRenderFinder(); document.getElementById('glpViewer').innerHTML = '<div class="glp-viewer-empty">Select a document to preview</div>'; }
-        async function glpSetResearcher(id) { glpFilterResearcher = id; glpSelectedFile = null; await glpLoadAll(); glpRenderSidebar(); glpRenderFinder(); document.getElementById('glpViewer').innerHTML = '<div class="glp-viewer-empty">Select a document to preview</div>'; }
-        async function glpSetProject(id) { glpFilterProject = id; glpSelectedFile = null; await glpLoadAll(); glpRenderSidebar(); glpRenderFinder(); document.getElementById('glpViewer').innerHTML = '<div class="glp-viewer-empty">Select a document to preview</div>'; }
+        function glpSelectFileMaster(id) {
+            // Update active state in results list
+            document.querySelectorAll('.glp-result-item').forEach(el => el.classList.remove('active'));
+            const activeEl = document.querySelector(`.glp-result-item[onclick*="'${id}'"]`);
+            if (activeEl) activeEl.classList.add('active');
 
-        async function glpApprove(id) {
-            const comment = prompt('Approval comment (optional):') || '';
+            const f = glpAllFiles.find(x => x.submission_id === id) || glpFilteredFiles.find(x => x.submission_id === id);
+            if (!f) return;
+
+            const canReview = f.status === 'PENDING';
+            const previewUrl = f.r2_object_key ? '/api/di/download/' + f.submission_id : '';
+
+            // Update toolbar
+            const toolbar = document.getElementById('glpToolbar');
+            toolbar.innerHTML = `
+                <span class="glp-viewer-fname" title="${rdEsc(f.original_filename)}">${rdEsc(f.original_filename)}</span>
+                <span class="glp-status-badge ${f.status}" style="margin-left:4px">${(f.status || '').replace('_',' ')}</span>
+                ${f.status === 'APPROVED' ? '<span class="glp-toucan-badge" style="margin-left:2px">🦜 Verified</span>' : ''}
+                ${canReview ? `
+                    <button class="glp-toolbar-btn approve" onclick="glpOpenApproveModal('${f.submission_id}')">Approve</button>
+                    <button class="glp-toolbar-btn revise" onclick="glpOpenReviseModal('${f.submission_id}')">Revise</button>
+                    <button class="glp-toolbar-btn discard" onclick="glpOpenDiscardModal('${f.submission_id}')">Discard</button>
+                ` : ''}
+                ${previewUrl ? `<a class="glp-toolbar-btn download" href="/api/di/download/${f.submission_id}" target="_blank" style="text-decoration:none">Open</a>` : ''}`;
+
+            // Detail row (revision/discard/approval info)
+            const detailEl = document.getElementById('glpViewerDetail');
+            let detailHtml = '';
+            if (f.researcher_name) detailHtml += `<span>By: ${rdEsc(f.researcher_name)}</span>`;
+            detailHtml += `<span>${rdEsc(f.file_type)} · ${rdDate(f.created_at)}</span>`;
+            if (f.project_title) detailHtml += `<span class="detail-project">Project: ${rdEsc(f.project_title)}</span>`;
+            if (f.revision_comments) detailHtml += `<span class="detail-revision">Revision: ${rdEsc(f.revision_comments)}</span>`;
+            if (f.discard_reason) detailHtml += `<span class="detail-discard">Discarded: ${rdEsc(f.discard_reason)}${f.discard_note ? ' — ' + rdEsc(f.discard_note) : ''}</span>`;
+            if (f.approval_comment) detailHtml += `<span class="detail-approval">Comment: ${rdEsc(f.approval_comment)}</span>`;
+            detailEl.innerHTML = detailHtml;
+            detailEl.style.display = detailHtml ? '' : 'none';
+
+            // Show PDF or empty
+            const emptyEl = document.getElementById('glpViewerEmpty');
+            const pdfEl = document.getElementById('glpViewerPdf');
+            if (previewUrl) {
+                emptyEl.style.display = 'none';
+                pdfEl.style.display = '';
+                pdfEl.src = '/api/di/download/' + f.submission_id + '#toolbar=1&zoom=page-width';
+            } else {
+                emptyEl.style.display = 'flex';
+                emptyEl.textContent = 'No preview available';
+                pdfEl.style.display = 'none';
+                pdfEl.src = '';
+            }
+
+            // Intel panel: show linked files by type
+            const intelPanel = document.getElementById('glpIntelPanel');
+            intelPanel.style.display = '';
+            // Find linked SOPs and PRES from same researcher/project
+            const sopFiles = glpAllFiles.filter(x => x.submission_id !== id && x.file_type === 'SOP' && (
+                (f.researcher_id && x.researcher_id === f.researcher_id) ||
+                (f.rd_project_id && x.rd_project_id === f.rd_project_id)
+            ));
+            const presFiles = glpAllFiles.filter(x => x.submission_id !== id && (x.file_type === 'PRES' || x.file_type === 'PRESENTATION') && (
+                (f.researcher_id && x.researcher_id === f.researcher_id) ||
+                (f.rd_project_id && x.rd_project_id === f.rd_project_id)
+            ));
+            document.getElementById('glpIntelSopLabel').textContent = `SOPs (${sopFiles.length})`;
+            document.getElementById('glpIntelSops').innerHTML = sopFiles.length
+                ? sopFiles.slice(0, 5).map(s => `<span class="glp-intel-chip" onclick="glpSelectFile('${s.submission_id}')" style="cursor:pointer" title="${rdEsc(s.original_filename)}">${rdEsc(s.original_filename)}</span>`).join('')
+                : '<span class="glp-intel-empty">No linked SOPs</span>';
+            document.getElementById('glpIntelPresLabel').textContent = `PRES (${presFiles.length})`;
+            document.getElementById('glpIntelPres').innerHTML = presFiles.length
+                ? presFiles.slice(0, 5).map(s => `<span class="glp-intel-chip" onclick="glpSelectFile('${s.submission_id}')" style="cursor:pointer" title="${rdEsc(s.original_filename)}">${rdEsc(s.original_filename)}</span>`).join('')
+                : '<span class="glp-intel-empty">No linked presentations</span>';
+        }
+
+        // ==========================================
+        // VISION MODES
+        // ==========================================
+        function glpSetVisionMode(mode) {
+            glpVisionMode = mode;
+            if (mode === 'all') {
+                glpRenderFinderMaster();
+            } else {
+                // Placeholder for Training/Inventory/1-to-1 — infrastructure present
+                const finder = document.getElementById('glpFinder');
+                const modeLabels = { training: 'Training', inventory: 'Inventory', onetoone: '1-to-1 Meetings' };
+                finder.innerHTML = `
+                    <div class="glp-vision-bar">
+                        <button class="glp-vision-btn ${glpVisionMode==='all' ? 'active' : ''}" onclick="glpSetVisionMode('all')">All</button>
+                        <button class="glp-vision-btn ${glpVisionMode==='training' ? 'active' : ''}" onclick="glpSetVisionMode('training')">Training</button>
+                        <button class="glp-vision-btn ${glpVisionMode==='inventory' ? 'active' : ''}" onclick="glpSetVisionMode('inventory')">Inventory</button>
+                        <button class="glp-vision-btn ${glpVisionMode==='onetoone' ? 'active' : ''}" onclick="glpSetVisionMode('onetoone')">1-to-1</button>
+                    </div>
+                    <div style="flex:1;display:flex;align-items:center;justify-content:center;text-align:center;padding:40px;color:#9a9ea8;font-size:13px">
+                        <div>
+                            <div style="font-size:15px;font-weight:600;color:#2a2d35;margin-bottom:6px">${modeLabels[mode] || mode}</div>
+                            <div>This module will be connected to Theralia ${modeLabels[mode] || mode} data.</div>
+                        </div>
+                    </div>`;
+            }
+        }
+
+        // ==========================================
+        // FILTER SETTERS
+        // ==========================================
+        function glpSetScope(type) {
+            glpFilterType = type;
+            glpRenderFinder();
+        }
+
+        function glpSetStatusChip(s) {
+            glpFilterStatus = s;
+            glpSelectedFile = null;
+            // Sync sidebar + finder
+            glpRenderSidebar();
+            glpRenderFinder();
+            glpResetViewer();
+        }
+
+        function glpSetTimeChip(t) {
+            glpFilterTime = t;
+            glpRenderFinder();
+        }
+
+        function glpSetCategory(c) {
+            glpFilterCategory = c;
+            glpRenderFinder();
+        }
+
+        function glpSetSortChip(s) {
+            glpFilterSort = s;
+            glpRenderFinder();
+        }
+
+        function glpSetYear(y) {
+            glpFilterYear = y;
+            glpSelectedFile = null;
+            glpRenderSidebar();
+            glpRenderFinder();
+            glpResetViewer();
+        }
+
+        async function glpSetStatus(s) {
+            glpFilterStatus = s;
+            glpSelectedFile = null;
+            if (glpIsMaster) {
+                // Client-side: just re-render
+                glpRenderSidebar();
+                glpRenderFinder();
+                glpResetViewer();
+            } else {
+                await glpLoadAll(); glpRenderSidebar(); glpRenderFinder();
+                document.getElementById('glpViewer').innerHTML = '<div class="glp-viewer-empty">Select a document to preview</div>';
+            }
+        }
+
+        async function glpSetResearcher(id) {
+            glpFilterResearcher = id;
+            glpSelectedFile = null;
+            await glpLoadAll();
+            glpRenderSidebar();
+            glpRenderFinder();
+            glpResetViewer();
+        }
+
+        async function glpSetProject(id) {
+            glpFilterProject = id;
+            glpSelectedFile = null;
+            await glpLoadAll();
+            glpRenderSidebar();
+            glpRenderFinder();
+            glpResetViewer();
+        }
+
+        // ---- Reset viewer to empty state ----
+        function glpResetViewer() {
+            if (glpIsMaster) {
+                const toolbar = document.getElementById('glpToolbar');
+                if (toolbar) toolbar.innerHTML = '<span class="glp-viewer-fname">No file selected</span>';
+                const emptyEl = document.getElementById('glpViewerEmpty');
+                if (emptyEl) { emptyEl.style.display = 'flex'; emptyEl.textContent = 'Select a file to preview'; }
+                const pdfEl = document.getElementById('glpViewerPdf');
+                if (pdfEl) { pdfEl.style.display = 'none'; pdfEl.src = ''; }
+                const detailEl = document.getElementById('glpViewerDetail');
+                if (detailEl) { detailEl.style.display = 'none'; detailEl.innerHTML = ''; }
+                const intelEl = document.getElementById('glpIntelPanel');
+                if (intelEl) intelEl.style.display = 'none';
+            } else {
+                document.getElementById('glpViewer').innerHTML = '<div class="glp-viewer-empty">Select a document to preview</div>';
+            }
+        }
+
+        // ==========================================
+        // REVIEW ACTIONS (Modal-based for master)
+        // ==========================================
+        function glpOpenApproveModal(id) {
+            _glpActionFileId = id;
+            document.getElementById('glpApproveComment').value = '';
+            document.getElementById('glpApproveModal').classList.add('active');
+        }
+        function glpCloseApproveModal() {
+            document.getElementById('glpApproveModal').classList.remove('active');
+            _glpActionFileId = null;
+        }
+        async function glpSubmitApproval() {
+            const id = _glpActionFileId;
+            if (!id) return;
+            const comment = document.getElementById('glpApproveComment').value || '';
+            glpCloseApproveModal();
             try {
                 const res = await glpFetch('/api/rd/glp/approve/' + id, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ approval_comment: comment }) });
                 const data = await res.json();
                 if (data.success) { await glpLoadAll(); glpRenderSidebar(); glpRenderFinder(); glpSelectFile(id); }
-                else alert(data.error || 'Failed');
+                else alert(data.error || 'Approval failed');
             } catch { alert('Approval failed.'); }
         }
 
-        async function glpRevise(id) {
-            const comments = prompt('Revision comments:');
-            if (!comments) return;
+        function glpOpenReviseModal(id) {
+            _glpActionFileId = id;
+            document.getElementById('glpReviseText').value = '';
+            document.getElementById('glpReviseModal').classList.add('active');
+        }
+        function glpCloseReviseModal() {
+            document.getElementById('glpReviseModal').classList.remove('active');
+            _glpActionFileId = null;
+        }
+        async function glpSubmitRevision() {
+            const id = _glpActionFileId;
+            if (!id) return;
+            const comments = document.getElementById('glpReviseText').value;
+            if (!comments) { alert('Please describe what needs to be revised.'); return; }
+            glpCloseReviseModal();
             try {
                 const res = await glpFetch('/api/rd/glp/revise/' + id, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ comments }) });
                 const data = await res.json();
                 if (data.success) { await glpLoadAll(); glpRenderSidebar(); glpRenderFinder(); glpSelectFile(id); }
-                else alert(data.error || 'Failed');
+                else alert(data.error || 'Revision failed');
             } catch { alert('Revision failed.'); }
         }
 
-        async function glpDiscard(id) {
-            const reason = prompt('Discard reason:\n- Mistaken upload\n- Wrong category\n- Duplicate\n- Not admissible for GLP records\n- Other');
-            if (!reason) return;
-            const note = reason === 'Other' ? prompt('Additional note:') || '' : '';
+        function glpOpenDiscardModal(id) {
+            _glpActionFileId = id;
+            document.getElementById('glpDiscardReason').value = '';
+            document.getElementById('glpDiscardNote').value = '';
+            document.getElementById('glpDiscardModal').classList.add('active');
+        }
+        function glpCloseDiscardModal() {
+            document.getElementById('glpDiscardModal').classList.remove('active');
+            _glpActionFileId = null;
+        }
+        async function glpSubmitDiscard() {
+            const id = _glpActionFileId;
+            if (!id) return;
+            const reason = document.getElementById('glpDiscardReason').value;
+            if (!reason) { alert('Please select a discard reason.'); return; }
+            const note = document.getElementById('glpDiscardNote').value || '';
+            glpCloseDiscardModal();
             try {
                 const res = await glpFetch('/api/rd/glp/discard/' + id, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ reason, note }) });
                 const data = await res.json();
                 if (data.success) { await glpLoadAll(); glpRenderSidebar(); glpRenderFinder(); glpSelectFile(id); }
-                else alert(data.error || 'Failed');
+                else alert(data.error || 'Discard failed');
             } catch { alert('Discard failed.'); }
         }
+
+        // Legacy compat: keep prompt-based actions for non-master (researcher view doesn't use them, but safe fallback)
+        async function glpApprove(id) { glpOpenApproveModal(id); }
+        async function glpRevise(id) { glpOpenReviseModal(id); }
+        async function glpDiscard(id) { glpOpenDiscardModal(id); }
 
     </script>
 </body>
