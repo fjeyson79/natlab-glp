@@ -18344,28 +18344,45 @@ app.get('/api/rd/projects/:projectId/documents', requireAuth, async (req, res) =
     try {
         if (!(await checkRdTables())) return res.json({ documents: [] });
 
-        // Join di_submissions using original_filename + workspace_id as stable keys.
-        // Also try rd_project_id if available, but fall back to filename-only match
-        // since rd_project_id may be NULL on older submissions.
+        // Step 1: Always get rd_documents (never fails)
         const r = await pool.query(
-            `SELECT d.id, d.workspace_id, d.project_id, d.document_type, d.title, d.filename,
-                    d.file_type, d.r2_key, d.file_size, d.uploaded_by, d.created_at,
-                    ds.status AS glp_status,
-                    ds.revision_comments AS glp_revision_note,
-                    ds.discard_reason AS glp_discard_reason,
-                    ds.discard_note AS glp_discard_note,
-                    ds.signed_at AS glp_approved_at,
-                    ds.discarded_at AS glp_discarded_at,
-                    ds.updated_at AS glp_updated_at
-             FROM rd_documents d
-             LEFT JOIN di_submissions ds
-                ON ds.original_filename = d.filename
-               AND ds.workspace_id = d.workspace_id
-               AND (ds.rd_project_id = d.project_id OR ds.rd_project_id IS NULL)
-             WHERE d.project_id = $1 AND d.workspace_id = $2
-             ORDER BY d.created_at DESC`,
+            `SELECT id, workspace_id, project_id, document_type, title, filename,
+                    file_type, r2_key, file_size, uploaded_by, created_at
+             FROM rd_documents
+             WHERE project_id = $1 AND workspace_id = $2
+             ORDER BY created_at DESC`,
             [req.params.projectId, req.workspace_id]);
-        res.json({ documents: r.rows });
+        const docs = r.rows;
+
+        // Step 2: Enrich with GLP status from di_submissions (safe — cannot erase docs)
+        if (docs.length > 0) {
+            try {
+                const filenames = docs.map(d => d.filename).filter(Boolean);
+                const glpRes = await pool.query(
+                    `SELECT original_filename, status, revision_comments, discard_reason, discard_note,
+                            signed_at, discarded_at, updated_at
+                     FROM di_submissions
+                     WHERE original_filename = ANY($1) AND workspace_id = $2`,
+                    [filenames, req.workspace_id]);
+                const glpMap = {};
+                glpRes.rows.forEach(g => { glpMap[g.original_filename] = g; });
+                docs.forEach(d => {
+                    const g = glpMap[d.filename];
+                    d.glp_status = g ? g.status : null;
+                    d.glp_revision_note = g ? g.revision_comments : null;
+                    d.glp_discard_reason = g ? g.discard_reason : null;
+                    d.glp_discard_note = g ? g.discard_note : null;
+                    d.glp_approved_at = g ? g.signed_at : null;
+                    d.glp_discarded_at = g ? g.discarded_at : null;
+                    d.glp_updated_at = g ? g.updated_at : null;
+                });
+            } catch (glpErr) {
+                console.error('[RD] GLP enrichment error (non-fatal):', glpErr.message);
+                // docs still returned without GLP fields — frontend normalizes to PENDING
+            }
+        }
+
+        res.json({ documents: docs });
     } catch (err) { console.error('[RD] docs error:', err.message); res.status(500).json({ error: 'Failed to load documents' }); }
 });
 
