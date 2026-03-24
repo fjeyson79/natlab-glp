@@ -3090,14 +3090,17 @@
             const listEl = document.getElementById('rdFilesList');
             if (!listEl) return;
 
+            // Normalize glp_status: null/undefined → PENDING (newly uploaded files default to PENDING in GLP)
             // Exclude discarded files from R&D project-facing view
-            const docs = _rdDetailDocs.filter(d => d.glp_status !== 'DISCARDED');
+            const docs = _rdDetailDocs
+                .map(d => ({ ...d, glp_status: d.glp_status || 'PENDING' }))
+                .filter(d => d.glp_status !== 'DISCARDED');
 
             // GLP Status Strip (computed from active docs only)
             const glpStrip = document.getElementById('rdGlpStrip');
             if (glpStrip) {
                 const gc = { PENDING: 0, APPROVED: 0, REVISION_NEEDED: 0 };
-                docs.forEach(d => { if (d.glp_status && gc[d.glp_status] !== undefined) gc[d.glp_status]++; });
+                docs.forEach(d => { if (gc[d.glp_status] !== undefined) gc[d.glp_status]++; });
                 const pid = _rdDetailProjectId;
                 glpStrip.innerHTML = '<span class="rd-glp-strip-label">GLP Status</span>' +
                     '<span class="rd-glp-strip-item pending" onclick="rdOpenInGlpStatus(\'' + pid + '\',\'PENDING\')"><span class="num">' + gc.PENDING + '</span> Pending</span>' +

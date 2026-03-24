@@ -18581,10 +18581,25 @@ app.get('/api/rd/glp/projects', requireAuth, async (req, res) => {
     }
 });
 
+// Helper: check if current user is workspace master for the current workspace
+async function isWorkspaceMaster(req) {
+    try {
+        const hasWu = await checkWuTable();
+        const hasPos = hasWu && await checkStartupPositionCols();
+        if (!hasPos) return false;
+        const r = await pool.query(
+            `SELECT wu.is_workspace_master FROM workspace_users wu
+             JOIN workspaces w ON w.id = wu.workspace_id
+             WHERE wu.user_id = $1 AND w.id = $2 AND wu.is_active = TRUE`,
+            [req.session.user?.researcher_id, req.workspace_id]);
+        return r.rows.length > 0 && r.rows[0].is_workspace_master === true;
+    } catch { return false; }
+}
+
 // POST /api/rd/glp/approve/:id — Master Founder / CSO approve
 app.post('/api/rd/glp/approve/:id', requireAuth, async (req, res) => {
     try {
-        if (!req.session.user?._authority?.is_workspace_master) return res.status(403).json({ error: 'Master authority required' });
+        if (!(await isWorkspaceMaster(req))) return res.status(403).json({ error: 'Master authority required' });
         // Delegate to performApproval
         const comment = req.body.approval_comment || null;
         await performApproval(req.params.id, comment);
@@ -18598,7 +18613,7 @@ app.post('/api/rd/glp/approve/:id', requireAuth, async (req, res) => {
 // POST /api/rd/glp/revise/:id — Master Founder / CSO revise
 app.post('/api/rd/glp/revise/:id', requireAuth, async (req, res) => {
     try {
-        if (!req.session.user?._authority?.is_workspace_master) return res.status(403).json({ error: 'Master authority required' });
+        if (!(await isWorkspaceMaster(req))) return res.status(403).json({ error: 'Master authority required' });
         const comments = req.body.comments;
         if (!comments) return res.status(400).json({ error: 'Comments required' });
         await performRevision(req.params.id, comments);
@@ -18612,7 +18627,7 @@ app.post('/api/rd/glp/revise/:id', requireAuth, async (req, res) => {
 // POST /api/rd/glp/discard/:id — Master Founder / CSO discard
 app.post('/api/rd/glp/discard/:id', requireAuth, async (req, res) => {
     try {
-        if (!req.session.user?._authority?.is_workspace_master) return res.status(403).json({ error: 'Master authority required' });
+        if (!(await isWorkspaceMaster(req))) return res.status(403).json({ error: 'Master authority required' });
         const { reason, note } = req.body || {};
         const validReasons = ['Mistaken upload', 'Wrong category', 'Duplicate', 'Not admissible for GLP records', 'Other'];
         if (!reason || !validReasons.includes(reason)) return res.status(400).json({ error: 'Valid discard reason required' });
