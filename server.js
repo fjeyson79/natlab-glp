@@ -18349,35 +18349,45 @@ app.get('/api/rd/projects/:projectId/documents', requireAuth, async (req, res) =
              ORDER BY d.created_at DESC`,
             [req.params.projectId, req.workspace_id]);
 
-        // Enrich with GLP status if di_submissions join is possible
+        // Enrich with GLP status from di_submissions
+        // Note: r2_object_key changes after approval (performApproval renames the file),
+        // so we match by rd_project_id + original_filename as the stable join key.
         let docs = r.rows;
         if (docs.length > 0) {
             try {
-                const keys = docs.map(d => d.r2_key).filter(Boolean);
-                if (keys.length > 0) {
+                const hasProjectCol = await hasRdProjectIdCol();
+                let glpRows = [];
+                if (hasProjectCol) {
                     const glpRes = await pool.query(
-                        `SELECT r2_object_key, status, revision_comments, discard_reason, discard_note,
-                                signed_at, discarded_at, updated_at, pi_dragon_seal
+                        `SELECT original_filename, rd_project_id, status, revision_comments, discard_reason, discard_note,
+                                signed_at, discarded_at, updated_at, pi_dragon_seal, r2_object_key
                          FROM di_submissions
-                         WHERE r2_object_key = ANY($1) AND workspace_id = $2`,
-                        [keys, req.workspace_id]);
-                    const glpMap = {};
-                    glpRes.rows.forEach(g => { glpMap[g.r2_object_key] = g; });
-                    docs = docs.map(d => {
-                        const g = glpMap[d.r2_key];
-                        return {
-                            ...d,
-                            glp_status: g ? g.status : null,
-                            glp_revision_note: g ? g.revision_comments : null,
-                            glp_discard_reason: g ? g.discard_reason : null,
-                            glp_discard_note: g ? g.discard_note : null,
-                            glp_approved_at: g ? g.signed_at : null,
-                            glp_discarded_at: g ? g.discarded_at : null,
-                            glp_updated_at: g ? g.updated_at : null,
-                            glp_seal: g ? (g.pi_dragon_seal || false) : false
-                        };
-                    });
+                         WHERE rd_project_id = $1 AND workspace_id = $2`,
+                        [req.params.projectId, req.workspace_id]);
+                    glpRows = glpRes.rows;
                 }
+                // Build lookup by filename (stable across approval rename)
+                const glpByName = {};
+                const glpByKey = {};
+                glpRows.forEach(g => {
+                    glpByName[g.original_filename] = g;
+                    if (g.r2_object_key) glpByKey[g.r2_object_key] = g;
+                });
+                docs = docs.map(d => {
+                    // Try r2_key match first (works for PENDING), then filename match (works after approval)
+                    const g = glpByKey[d.r2_key] || glpByName[d.filename] || null;
+                    return {
+                        ...d,
+                        glp_status: g ? g.status : null,
+                        glp_revision_note: g ? g.revision_comments : null,
+                        glp_discard_reason: g ? g.discard_reason : null,
+                        glp_discard_note: g ? g.discard_note : null,
+                        glp_approved_at: g ? g.signed_at : null,
+                        glp_discarded_at: g ? g.discarded_at : null,
+                        glp_updated_at: g ? g.updated_at : null,
+                        glp_seal: g ? (g.pi_dragon_seal || false) : false
+                    };
+                });
             } catch (glpErr) {
                 // GLP enrichment failed — still return base documents
                 console.error('[RD] GLP enrichment error:', glpErr.message);
