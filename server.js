@@ -18097,16 +18097,23 @@ async function checkRdTables() {
     return _rdTablesChecked;
 }
 
-// Ensure di_submissions affiliation CHECK includes THERALIA (migration 049)
-let _affiliationCheckWidened = null;
-async function ensureTheraliaAffiliation() {
-    if (_affiliationCheckWidened !== null) return _affiliationCheckWidened;
+// Ensure di_submissions constraints include Theralia/R&D values (migrations 048+049)
+let _diConstraintsWidened = null;
+async function ensureDiSubmissionsConstraints() {
+    if (_diConstraintsWidened !== null) return _diConstraintsWidened;
     try {
+        // Widen affiliation to include THERALIA
         await pool.query(`ALTER TABLE di_submissions DROP CONSTRAINT IF EXISTS di_submissions_affiliation_check`);
         await pool.query(`ALTER TABLE di_submissions ADD CONSTRAINT di_submissions_affiliation_check CHECK (affiliation IN ('LiU', 'UNAV', 'EXTERNAL', 'THERALIA'))`);
-        _affiliationCheckWidened = true;
-    } catch { _affiliationCheckWidened = false; }
-    return _affiliationCheckWidened;
+        // Widen file_type to include R&D categories
+        await pool.query(`ALTER TABLE di_submissions DROP CONSTRAINT IF EXISTS di_submissions_file_type_check`);
+        await pool.query(`ALTER TABLE di_submissions ADD CONSTRAINT di_submissions_file_type_check CHECK (file_type IN ('SOP', 'DATA', 'INVENTORY', 'PRESENTATION', 'REPORT', 'DOCS', 'PRES'))`);
+        _diConstraintsWidened = true;
+    } catch (e) {
+        console.error('[RD] constraint widen failed:', e.message);
+        _diConstraintsWidened = false;
+    }
+    return _diConstraintsWidened;
 }
 
 const rdDocUpload = multer({
@@ -18348,7 +18355,7 @@ app.get('/api/rd/projects/:projectId/documents', requireAuth, async (req, res) =
 app.post('/api/rd/projects/:projectId/documents', requireAuth, rdDocUpload.single('file'), async (req, res) => {
     try {
         if (!(await checkRdTables())) return res.status(503).json({ error: 'Not ready' });
-        await ensureTheraliaAffiliation();
+        await ensureDiSubmissionsConstraints();
         if (!req.file) return res.status(400).json({ error: 'No file' });
         const docType = req.body.document_type;
         if (!['SOP','DATA','PRES','REPORT','DOCS'].includes(docType)) return res.status(400).json({ error: 'Invalid document_type' });
@@ -18370,22 +18377,18 @@ app.post('/api/rd/projects/:projectId/documents', requireAuth, rdDocUpload.singl
                  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
                 [req.workspace_id, req.params.projectId, docType, title, req.file.originalname, req.file.mimetype, r2Key, req.file.size, userName]);
 
-            // 2. Also register in GLP/DI workflow (if rd_project_id column exists)
-            try {
+            // 2. Also register in GLP/DI workflow
+            const hasProjectCol = await hasRdProjectIdCol();
+            if (hasProjectCol) {
                 await client.query(
                     `INSERT INTO di_submissions (researcher_id, affiliation, file_type, original_filename, r2_object_key, workspace_id, rd_project_id)
                      VALUES ($1, $2, $3, $4, $5, $6, $7)`,
                     [userId, userAff, docType, req.file.originalname, r2Key, req.workspace_id, req.params.projectId]);
-            } catch (glpErr) {
-                // If rd_project_id column doesn't exist yet, insert without it
-                if (glpErr.message && glpErr.message.includes('rd_project_id')) {
-                    await client.query(
-                        `INSERT INTO di_submissions (researcher_id, affiliation, file_type, original_filename, r2_object_key, workspace_id)
-                         VALUES ($1, $2, $3, $4, $5, $6)`,
-                        [userId, userAff, docType, req.file.originalname, r2Key, req.workspace_id]);
-                } else {
-                    throw glpErr;
-                }
+            } else {
+                await client.query(
+                    `INSERT INTO di_submissions (researcher_id, affiliation, file_type, original_filename, r2_object_key, workspace_id)
+                     VALUES ($1, $2, $3, $4, $5, $6)`,
+                    [userId, userAff, docType, req.file.originalname, r2Key, req.workspace_id]);
             }
 
             await client.query('COMMIT');
@@ -18397,13 +18400,8 @@ app.post('/api/rd/projects/:projectId/documents', requireAuth, rdDocUpload.singl
             client.release();
         }
     } catch (err) {
-        console.error('[RD] upload doc error:', err.message);
-        let msg = 'Upload failed';
-        if (err.message && err.message.includes('affiliation')) msg = 'Upload failed: affiliation not accepted';
-        else if (err.message && err.message.includes('file_type')) msg = 'Upload failed: invalid file type';
-        else if (err.message && err.message.includes('rd_documents')) msg = 'Upload failed: document insert error';
-        else if (err.message && err.message.includes('di_submissions')) msg = 'Upload failed: GLP submission insert error';
-        res.status(500).json({ error: msg });
+        console.error('[RD] upload doc error:', err.message, err.detail || '');
+        res.status(500).json({ error: 'Upload failed: ' + (err.message || 'unknown error') });
     }
 });
 
