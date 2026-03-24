@@ -18340,18 +18340,50 @@ app.patch('/api/rd/grants/:id', requireAuth, async (req, res) => {
 app.get('/api/rd/projects/:projectId/documents', requireAuth, async (req, res) => {
     try {
         if (!(await checkRdTables())) return res.json({ documents: [] });
-        // Join with di_submissions to get GLP status + review feedback via matching r2_key
+        // First get rd_documents for this project
         const r = await pool.query(
-            `SELECT d.*, ds.status as glp_status, ds.revision_comments as glp_revision_note,
-                    ds.discard_reason as glp_discard_reason, ds.discard_note as glp_discard_note,
-                    ds.signed_at as glp_approved_at, ds.discarded_at as glp_discarded_at, ds.updated_at as glp_updated_at
+            `SELECT d.id, d.workspace_id, d.project_id, d.document_type, d.title, d.filename,
+                    d.file_type, d.r2_key, d.file_size, d.uploaded_by, d.created_at
              FROM rd_documents d
-             LEFT JOIN di_submissions ds ON ds.r2_object_key = d.r2_key AND ds.workspace_id = d.workspace_id
              WHERE d.project_id=$1 AND d.workspace_id=$2
              ORDER BY d.created_at DESC`,
             [req.params.projectId, req.workspace_id]);
-        res.json({ documents: r.rows });
-    } catch (err) { console.error('[RD] docs error:', err.message); res.status(500).json({ error: 'Failed' }); }
+
+        // Enrich with GLP status if di_submissions join is possible
+        let docs = r.rows;
+        if (docs.length > 0) {
+            try {
+                const keys = docs.map(d => d.r2_key).filter(Boolean);
+                if (keys.length > 0) {
+                    const glpRes = await pool.query(
+                        `SELECT r2_object_key, status, revision_comments, discard_reason, discard_note,
+                                signed_at, discarded_at, updated_at
+                         FROM di_submissions
+                         WHERE r2_object_key = ANY($1) AND workspace_id = $2`,
+                        [keys, req.workspace_id]);
+                    const glpMap = {};
+                    glpRes.rows.forEach(g => { glpMap[g.r2_object_key] = g; });
+                    docs = docs.map(d => {
+                        const g = glpMap[d.r2_key];
+                        return {
+                            ...d,
+                            glp_status: g ? g.status : null,
+                            glp_revision_note: g ? g.revision_comments : null,
+                            glp_discard_reason: g ? g.discard_reason : null,
+                            glp_discard_note: g ? g.discard_note : null,
+                            glp_approved_at: g ? g.signed_at : null,
+                            glp_discarded_at: g ? g.discarded_at : null,
+                            glp_updated_at: g ? g.updated_at : null
+                        };
+                    });
+                }
+            } catch (glpErr) {
+                // GLP enrichment failed — still return base documents
+                console.error('[RD] GLP enrichment error:', glpErr.message);
+            }
+        }
+        res.json({ documents: docs });
+    } catch (err) { console.error('[RD] docs error:', err.message); res.status(500).json({ error: 'Failed to load documents' }); }
 });
 
 app.post('/api/rd/projects/:projectId/documents', requireAuth, rdDocUpload.single('file'), async (req, res) => {

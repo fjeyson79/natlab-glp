@@ -3043,14 +3043,23 @@
                         _rdFilesSearch = '';
                         const searchInput = document.getElementById('rdFilesSearchInput');
                         if (searchInput) searchInput.value = '';
-                        // Small delay to ensure DB commit is fully visible
-                        await new Promise(r => setTimeout(r, 150));
-                        // Reload docs
-                        const docsRes = await rdJson('/api/rd/projects/' + projectId + '/documents');
-                        _rdDetailDocs = docsRes.documents || [];
+                        // Reload docs — try re-fetch, fall back to inserting returned doc
+                        try {
+                            const docsRes = await rdJson('/api/rd/projects/' + projectId + '/documents');
+                            if (docsRes.documents && docsRes.documents.length > 0) {
+                                _rdDetailDocs = docsRes.documents;
+                            } else if (data.document) {
+                                // Backend returned the inserted doc — add it to current list
+                                _rdDetailDocs = [{ ...data.document, glp_status: 'PENDING' }, ..._rdDetailDocs];
+                            }
+                        } catch {
+                            // Re-fetch failed — use the document from upload response
+                            if (data.document) {
+                                _rdDetailDocs = [{ ...data.document, glp_status: 'PENDING' }, ..._rdDetailDocs];
+                            }
+                        }
                         rdRenderFilesList();
-                        await rdLoadAll();
-                        rdRenderNav();
+                        try { await rdLoadAll(); rdRenderNav(); } catch {}
                     } else {
                         rdUpMsg(data.error || 'Upload failed.', true);
                     }
