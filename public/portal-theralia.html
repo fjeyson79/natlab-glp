@@ -3035,7 +3035,7 @@
                     } else {
                         rdUpMsg(data.error || 'Upload failed.', true);
                     }
-                } catch { rdUpMsg('Upload failed.', true); }
+                } catch (e) { rdUpMsg(e.message || 'Upload failed.', true); }
                 upBtn.textContent = 'Upload';
                 upBtn.disabled = !selectedFile;
             };

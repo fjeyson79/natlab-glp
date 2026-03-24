@@ -18097,6 +18097,18 @@ async function checkRdTables() {
     return _rdTablesChecked;
 }
 
+// Ensure di_submissions affiliation CHECK includes THERALIA (migration 049)
+let _affiliationCheckWidened = null;
+async function ensureTheraliaAffiliation() {
+    if (_affiliationCheckWidened !== null) return _affiliationCheckWidened;
+    try {
+        await pool.query(`ALTER TABLE di_submissions DROP CONSTRAINT IF EXISTS di_submissions_affiliation_check`);
+        await pool.query(`ALTER TABLE di_submissions ADD CONSTRAINT di_submissions_affiliation_check CHECK (affiliation IN ('LiU', 'UNAV', 'EXTERNAL', 'THERALIA'))`);
+        _affiliationCheckWidened = true;
+    } catch { _affiliationCheckWidened = false; }
+    return _affiliationCheckWidened;
+}
+
 const rdDocUpload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: 20 * 1024 * 1024 },
@@ -18336,6 +18348,7 @@ app.get('/api/rd/projects/:projectId/documents', requireAuth, async (req, res) =
 app.post('/api/rd/projects/:projectId/documents', requireAuth, rdDocUpload.single('file'), async (req, res) => {
     try {
         if (!(await checkRdTables())) return res.status(503).json({ error: 'Not ready' });
+        await ensureTheraliaAffiliation();
         if (!req.file) return res.status(400).json({ error: 'No file' });
         const docType = req.body.document_type;
         if (!['SOP','DATA','PRES','REPORT','DOCS'].includes(docType)) return res.status(400).json({ error: 'Invalid document_type' });
@@ -18383,7 +18396,15 @@ app.post('/api/rd/projects/:projectId/documents', requireAuth, rdDocUpload.singl
         } finally {
             client.release();
         }
-    } catch (err) { console.error('[RD] upload doc error:', err.message); res.status(500).json({ error: 'Failed' }); }
+    } catch (err) {
+        console.error('[RD] upload doc error:', err.message);
+        let msg = 'Upload failed';
+        if (err.message && err.message.includes('affiliation')) msg = 'Upload failed: affiliation not accepted';
+        else if (err.message && err.message.includes('file_type')) msg = 'Upload failed: invalid file type';
+        else if (err.message && err.message.includes('rd_documents')) msg = 'Upload failed: document insert error';
+        else if (err.message && err.message.includes('di_submissions')) msg = 'Upload failed: GLP submission insert error';
+        res.status(500).json({ error: msg });
+    }
 });
 
 app.get('/api/rd/documents/:id/download', requireAuth, async (req, res) => {
