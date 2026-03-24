@@ -18358,21 +18358,33 @@ app.get('/api/rd/projects/:projectId/documents', requireAuth, async (req, res) =
         if (docs.length > 0) {
             try {
                 const filenames = docs.map(d => d.filename).filter(Boolean);
-                // Query scoped by workspace; ORDER BY created_at DESC so newest status wins
+                const r2Keys = docs.map(d => d.r2_key).filter(Boolean);
+                // Fetch all candidate di_submissions rows (by filename OR r2_key)
                 const glpRes = await pool.query(
-                    `SELECT original_filename, status, revision_comments, discard_reason, discard_note,
-                            signed_at, discarded_at
+                    `SELECT original_filename, r2_object_key, status, revision_comments,
+                            discard_reason, discard_note, signed_at, discarded_at
                      FROM di_submissions
-                     WHERE original_filename = ANY($1) AND workspace_id = $2
-                     ORDER BY created_at DESC`,
-                    [filenames, req.workspace_id]);
-                // Build map: keep only the FIRST (newest) row per filename
-                const glpMap = {};
+                     WHERE workspace_id = $1
+                       AND (original_filename = ANY($2) OR r2_object_key = ANY($3))`,
+                    [req.workspace_id, filenames, r2Keys]);
+                // Build lookup by r2_object_key (exact 1:1 match, works for PENDING files)
+                const glpByKey = {};
                 glpRes.rows.forEach(g => {
-                    if (!glpMap[g.original_filename]) glpMap[g.original_filename] = g;
+                    if (g.r2_object_key) glpByKey[g.r2_object_key] = g;
                 });
+                // Build lookup by filename (for approved/revised files where r2_key changed)
+                // Keep the row with the strongest review state per filename
+                const statusPriority = { DISCARDED: 4, APPROVED: 3, REVISION_NEEDED: 2, PENDING: 1 };
+                const glpByName = {};
+                glpRes.rows.forEach(g => {
+                    const existing = glpByName[g.original_filename];
+                    const gPri = statusPriority[g.status] || 0;
+                    const ePri = existing ? (statusPriority[existing.status] || 0) : -1;
+                    if (gPri > ePri) glpByName[g.original_filename] = g;
+                });
+                // Match: prefer exact r2_key match, fall back to filename match
                 docs.forEach(d => {
-                    const g = glpMap[d.filename];
+                    const g = glpByKey[d.r2_key] || glpByName[d.filename] || null;
                     d.glp_status = g ? g.status : null;
                     d.glp_revision_note = g ? g.revision_comments : null;
                     d.glp_discard_reason = g ? g.discard_reason : null;
