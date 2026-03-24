@@ -18357,7 +18357,7 @@ app.get('/api/rd/projects/:projectId/documents', requireAuth, async (req, res) =
                 if (keys.length > 0) {
                     const glpRes = await pool.query(
                         `SELECT r2_object_key, status, revision_comments, discard_reason, discard_note,
-                                signed_at, discarded_at, updated_at
+                                signed_at, discarded_at, updated_at, pi_dragon_seal
                          FROM di_submissions
                          WHERE r2_object_key = ANY($1) AND workspace_id = $2`,
                         [keys, req.workspace_id]);
@@ -18373,7 +18373,8 @@ app.get('/api/rd/projects/:projectId/documents', requireAuth, async (req, res) =
                             glp_discard_note: g ? g.discard_note : null,
                             glp_approved_at: g ? g.signed_at : null,
                             glp_discarded_at: g ? g.discarded_at : null,
-                            glp_updated_at: g ? g.updated_at : null
+                            glp_updated_at: g ? g.updated_at : null,
+                            glp_seal: g ? (g.pi_dragon_seal || false) : false
                         };
                     });
                 }
@@ -18495,6 +18496,7 @@ app.get('/api/rd/glp/files', requireAuth, async (req, res) => {
         let q = `SELECT s.submission_id, s.researcher_id, s.original_filename, s.file_type,
                         s.status, s.created_at, s.signed_at, s.r2_object_key,
                         s.revision_comments, s.approval_comment, s.discard_reason, s.discard_note,
+                        s.pi_dragon_seal,
                         a.name as researcher_name, a.affiliation
                         ${projectColSelect}${projectNameCol}
                  FROM di_submissions s
@@ -18645,6 +18647,23 @@ app.post('/api/rd/glp/discard/:id', requireAuth, async (req, res) => {
     } catch (err) {
         console.error('[RD-GLP] discard error:', err.message);
         res.status(500).json({ error: err.message || 'Failed' });
+    }
+});
+
+// POST /api/rd/glp/seal/:id — Toggle Toucan Seal (workspace master only)
+app.post('/api/rd/glp/seal/:id', requireAuth, async (req, res) => {
+    try {
+        if (!(await isWorkspaceMaster(req))) return res.status(403).json({ error: 'Master authority required' });
+        const { enabled } = req.body;
+        if (typeof enabled !== 'boolean') return res.status(400).json({ error: 'enabled must be a boolean' });
+        const result = await pool.query(
+            'UPDATE di_submissions SET pi_dragon_seal = $1 WHERE submission_id = $2 AND workspace_id = $3 RETURNING submission_id, pi_dragon_seal',
+            [enabled, req.params.id, req.workspace_id]);
+        if (result.rows.length === 0) return res.status(404).json({ error: 'File not found' });
+        res.json({ success: true, pi_dragon_seal: result.rows[0].pi_dragon_seal });
+    } catch (err) {
+        console.error('[RD-GLP] seal toggle error:', err.message);
+        res.status(500).json({ error: 'Failed to toggle seal' });
     }
 });
 
