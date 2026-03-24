@@ -18358,14 +18358,19 @@ app.get('/api/rd/projects/:projectId/documents', requireAuth, async (req, res) =
         if (docs.length > 0) {
             try {
                 const filenames = docs.map(d => d.filename).filter(Boolean);
+                // Query scoped by workspace; ORDER BY created_at DESC so newest status wins
                 const glpRes = await pool.query(
                     `SELECT original_filename, status, revision_comments, discard_reason, discard_note,
-                            signed_at, discarded_at, updated_at
+                            signed_at, discarded_at
                      FROM di_submissions
-                     WHERE original_filename = ANY($1) AND workspace_id = $2`,
+                     WHERE original_filename = ANY($1) AND workspace_id = $2
+                     ORDER BY created_at DESC`,
                     [filenames, req.workspace_id]);
+                // Build map: keep only the FIRST (newest) row per filename
                 const glpMap = {};
-                glpRes.rows.forEach(g => { glpMap[g.original_filename] = g; });
+                glpRes.rows.forEach(g => {
+                    if (!glpMap[g.original_filename]) glpMap[g.original_filename] = g;
+                });
                 docs.forEach(d => {
                     const g = glpMap[d.filename];
                     d.glp_status = g ? g.status : null;
@@ -18374,11 +18379,10 @@ app.get('/api/rd/projects/:projectId/documents', requireAuth, async (req, res) =
                     d.glp_discard_note = g ? g.discard_note : null;
                     d.glp_approved_at = g ? g.signed_at : null;
                     d.glp_discarded_at = g ? g.discarded_at : null;
-                    d.glp_updated_at = g ? g.updated_at : null;
                 });
             } catch (glpErr) {
                 console.error('[RD] GLP enrichment error (non-fatal):', glpErr.message);
-                // docs still returned without GLP fields — frontend normalizes to PENDING
+                // Non-fatal: docs returned without GLP fields, frontend normalizes to PENDING
             }
         }
 
