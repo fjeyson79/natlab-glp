@@ -3100,21 +3100,20 @@
             if (!listEl) return;
 
             // Normalize glp_status: null/undefined → PENDING (newly uploaded files default to PENDING in GLP)
-            // Exclude discarded files from R&D project-facing view
             const docs = _rdDetailDocs
-                .map(d => ({ ...d, glp_status: d.glp_status || 'PENDING' }))
-                .filter(d => d.glp_status !== 'DISCARDED');
+                .map(d => ({ ...d, glp_status: d.glp_status || 'PENDING' }));
 
-            // GLP Status Strip (computed from active docs only)
+            // GLP Status Strip (mirrors GLP Vision — all states)
             const glpStrip = document.getElementById('rdGlpStrip');
             if (glpStrip) {
-                const gc = { PENDING: 0, APPROVED: 0, REVISION_NEEDED: 0 };
+                const gc = { PENDING: 0, APPROVED: 0, REVISION_NEEDED: 0, DISCARDED: 0 };
                 docs.forEach(d => { if (gc[d.glp_status] !== undefined) gc[d.glp_status]++; });
                 const pid = _rdDetailProjectId;
                 glpStrip.innerHTML = '<span class="rd-glp-strip-label">GLP Status</span>' +
                     '<span class="rd-glp-strip-item pending" onclick="rdOpenInGlpStatus(\'' + pid + '\',\'PENDING\')"><span class="num">' + gc.PENDING + '</span> Pending</span>' +
                     '<span class="rd-glp-strip-item approved" onclick="rdOpenInGlpStatus(\'' + pid + '\',\'APPROVED\')"><span class="num">' + gc.APPROVED + '</span> Approved</span>' +
-                    '<span class="rd-glp-strip-item revision" onclick="rdOpenInGlpStatus(\'' + pid + '\',\'REVISION_NEEDED\')"><span class="num">' + gc.REVISION_NEEDED + '</span> Revision</span>';
+                    '<span class="rd-glp-strip-item revision" onclick="rdOpenInGlpStatus(\'' + pid + '\',\'REVISION_NEEDED\')"><span class="num">' + gc.REVISION_NEEDED + '</span> Revision</span>' +
+                    '<span class="rd-glp-strip-item discarded" onclick="rdOpenInGlpStatus(\'' + pid + '\',\'DISCARDED\')"><span class="num">' + gc.DISCARDED + '</span> Discarded</span>';
             }
 
             // Summary (from active docs only)
@@ -3142,6 +3141,8 @@
                     let feedback = '';
                     if (d.glp_status === 'REVISION_NEEDED' && d.glp_revision_note) {
                         feedback = '<div class="rd-file-feedback" style="color:#2563eb">Revision: ' + rdEsc(d.glp_revision_note) + '</div>';
+                    } else if (d.glp_status === 'DISCARDED' && d.glp_discard_reason) {
+                        feedback = '<div class="rd-file-feedback" style="color:#dc2626">Discarded: ' + rdEsc(d.glp_discard_reason) + (d.glp_discard_note ? ' \u2014 ' + rdEsc(d.glp_discard_note) : '') + '</div>';
                     }
                     const reviewDate = d.glp_approved_at || d.glp_updated_at;
                     const reviewLine = (d.glp_status && d.glp_status !== 'PENDING' && reviewDate)
