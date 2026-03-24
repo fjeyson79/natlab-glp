@@ -18502,16 +18502,31 @@ app.get('/api/rd/glp/files', requireAuth, async (req, res) => {
 app.get('/api/rd/glp/researchers', requireAuth, async (req, res) => {
     try {
         const ws = req.workspace_id;
+        // Only show researchers who are members of this workspace AND have submissions in it
         const r = await pool.query(
             `SELECT DISTINCT s.researcher_id, a.name as researcher_name, COUNT(*)::int as file_count
-             FROM di_submissions s LEFT JOIN di_allowlist a ON s.researcher_id = a.researcher_id
+             FROM di_submissions s
+             LEFT JOIN di_allowlist a ON s.researcher_id = a.researcher_id
+             INNER JOIN workspace_users wu ON wu.user_id = s.researcher_id AND wu.workspace_id = $1 AND wu.is_active = TRUE
              WHERE s.workspace_id = $1 AND s.status NOT IN ('ARCHIVED')
              GROUP BY s.researcher_id, a.name ORDER BY a.name`,
             [ws]);
         res.json({ researchers: r.rows });
     } catch (err) {
-        console.error('[RD-GLP] researchers error:', err.message);
-        res.status(500).json({ error: 'Failed' });
+        // Fallback: if workspace_users table doesn't exist, use original query
+        try {
+            const ws = req.workspace_id;
+            const r = await pool.query(
+                `SELECT DISTINCT s.researcher_id, a.name as researcher_name, COUNT(*)::int as file_count
+                 FROM di_submissions s LEFT JOIN di_allowlist a ON s.researcher_id = a.researcher_id
+                 WHERE s.workspace_id = $1 AND s.status NOT IN ('ARCHIVED')
+                 GROUP BY s.researcher_id, a.name ORDER BY a.name`,
+                [ws]);
+            res.json({ researchers: r.rows });
+        } catch (err2) {
+            console.error('[RD-GLP] researchers error:', err2.message);
+            res.status(500).json({ error: 'Failed' });
+        }
     }
 });
 
