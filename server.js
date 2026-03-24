@@ -18097,7 +18097,7 @@ async function checkRdTables() {
     return _rdTablesChecked;
 }
 
-// Ensure di_submissions constraints include Theralia/R&D values (migrations 048+049)
+// Ensure di_submissions constraints/columns support Theralia/R&D uploads (migrations 048-050)
 let _diConstraintsWidened = null;
 async function ensureDiSubmissionsConstraints() {
     if (_diConstraintsWidened !== null) return _diConstraintsWidened;
@@ -18108,6 +18108,8 @@ async function ensureDiSubmissionsConstraints() {
         // Widen file_type to include R&D categories
         await pool.query(`ALTER TABLE di_submissions DROP CONSTRAINT IF EXISTS di_submissions_file_type_check`);
         await pool.query(`ALTER TABLE di_submissions ADD CONSTRAINT di_submissions_file_type_check CHECK (file_type IN ('SOP', 'DATA', 'INVENTORY', 'PRESENTATION', 'REPORT', 'DOCS', 'PRES'))`);
+        // Widen r2_object_key from VARCHAR(100) to TEXT (migration 050)
+        await pool.query(`ALTER TABLE di_submissions ALTER COLUMN r2_object_key TYPE TEXT`);
         _diConstraintsWidened = true;
     } catch (e) {
         console.error('[RD] constraint widen failed:', e.message);
