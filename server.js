@@ -18800,6 +18800,166 @@ app.listen(PORT, "0.0.0.0", async () => {
 
 
 
+// ========================================================
+// THERALIA INVENTORY MODULE (Migration 053)
+// ========================================================
+
+// Table existence cache
+let _theraliaInventoryTablesOk = null;
+async function checkTheraliaInventoryTables() {
+    if (_theraliaInventoryTablesOk !== null) return _theraliaInventoryTablesOk;
+    try {
+        const r = await pool.query(
+            `SELECT COUNT(*)::int AS cnt FROM information_schema.tables
+             WHERE table_name IN ('theralia_purchases','theralia_strategic_assets','theralia_asset_classes')`);
+        _theraliaInventoryTablesOk = r.rows[0].cnt >= 3;
+    } catch { _theraliaInventoryTablesOk = false; }
+    return _theraliaInventoryTablesOk;
+}
+
+// --- Purchases ---
+app.get('/api/theralia/inventory/purchases', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkTheraliaInventoryTables())) return res.json({ purchases: [] });
+        const r = await pool.query(
+            `SELECT * FROM theralia_purchases WHERE workspace_id = $1 ORDER BY created_at DESC`,
+            [req.workspace_id]);
+        res.json({ purchases: r.rows });
+    } catch (err) { console.error('[TH-INV] purchases list error:', err.message); res.status(500).json({ error: 'Failed' }); }
+});
+
+app.post('/api/theralia/inventory/purchases', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkTheraliaInventoryTables())) return res.status(503).json({ error: 'Not ready' });
+        const b = req.body;
+        if (!b.name || !b.category) return res.status(400).json({ error: 'name and category required' });
+        const validCurrencies = ['EUR','SEK','USD'];
+        const currency = validCurrencies.includes(b.cost_currency) ? b.cost_currency : 'EUR';
+        const user = req.session.user?.name || req.session.user?.researcher_id || 'unknown';
+        const r = await pool.query(
+            `INSERT INTO theralia_purchases
+             (workspace_id, name, category, supplier, purchase_date, cost_value, cost_currency, status,
+              related_project, notes, product_name, product_url, product_reference_type, created_by)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+            [req.workspace_id, b.name, b.category, b.supplier||null, b.purchase_date||null,
+             b.cost_value||null, currency, b.status||'ordered',
+             b.related_project||null, b.notes||null, b.product_name||null, b.product_url||null,
+             b.product_reference_type||null, user]);
+        res.json({ ok: true, purchase: r.rows[0] });
+    } catch (err) { console.error('[TH-INV] purchase create error:', err.message); res.status(500).json({ error: 'Failed' }); }
+});
+
+app.put('/api/theralia/inventory/purchases/:id', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkTheraliaInventoryTables())) return res.status(503).json({ error: 'Not ready' });
+        const b = req.body;
+        const validCurrencies = ['EUR','SEK','USD'];
+        if (b.cost_currency && !validCurrencies.includes(b.cost_currency)) b.cost_currency = 'EUR';
+        const r = await pool.query(
+            `UPDATE theralia_purchases SET
+                name=COALESCE($1,name), category=COALESCE($2,category), supplier=$3,
+                purchase_date=$4, cost_value=$5, cost_currency=COALESCE($6,cost_currency),
+                status=COALESCE($7,status), related_project=$8, notes=$9,
+                product_name=$10, product_url=$11, product_reference_type=$12, updated_at=NOW()
+             WHERE id=$13 AND workspace_id=$14 RETURNING *`,
+            [b.name, b.category, b.supplier!==undefined?b.supplier:null,
+             b.purchase_date||null, b.cost_value!==undefined?b.cost_value:null,
+             b.cost_currency, b.status, b.related_project!==undefined?b.related_project:null,
+             b.notes!==undefined?b.notes:null, b.product_name!==undefined?b.product_name:null,
+             b.product_url!==undefined?b.product_url:null, b.product_reference_type!==undefined?b.product_reference_type:null,
+             req.params.id, req.workspace_id]);
+        if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+        res.json({ ok: true, purchase: r.rows[0] });
+    } catch (err) { console.error('[TH-INV] purchase update error:', err.message); res.status(500).json({ error: 'Failed' }); }
+});
+
+// --- Asset Classes ---
+app.get('/api/theralia/inventory/asset-classes', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkTheraliaInventoryTables())) return res.json({ classes: [] });
+        const r = await pool.query(
+            `SELECT * FROM theralia_asset_classes WHERE workspace_id = $1
+             ORDER BY is_default DESC,
+                      CASE class_key WHEN 'patent' THEN 1 WHEN 'patent_application' THEN 2 WHEN 'lead_candidate' THEN 3 WHEN 'platform_asset' THEN 4 ELSE 99 END,
+                      display_name ASC`,
+            [req.workspace_id]);
+        res.json({ classes: r.rows });
+    } catch (err) { console.error('[TH-INV] asset-classes list error:', err.message); res.status(500).json({ error: 'Failed' }); }
+});
+
+app.post('/api/theralia/inventory/asset-classes', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkTheraliaInventoryTables())) return res.status(503).json({ error: 'Not ready' });
+        const b = req.body;
+        if (!b.display_name) return res.status(400).json({ error: 'display_name required' });
+        const classKey = b.display_name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+        if (!classKey) return res.status(400).json({ error: 'Invalid display_name' });
+        const user = req.session.user?.name || req.session.user?.researcher_id || 'unknown';
+        const r = await pool.query(
+            `INSERT INTO theralia_asset_classes (workspace_id, class_key, display_name, is_default, created_by)
+             VALUES ($1,$2,$3,FALSE,$4) RETURNING *`,
+            [req.workspace_id, classKey, b.display_name, user]);
+        res.json({ ok: true, asset_class: r.rows[0] });
+    } catch (err) {
+        if (err.code === '23505') return res.status(409).json({ error: 'Category already exists' });
+        console.error('[TH-INV] asset-class create error:', err.message); res.status(500).json({ error: 'Failed' });
+    }
+});
+
+// --- Strategic Assets ---
+app.get('/api/theralia/inventory/strategic-assets', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkTheraliaInventoryTables())) return res.json({ assets: [] });
+        const r = await pool.query(
+            `SELECT sa.*, ac.display_name as class_display_name
+             FROM theralia_strategic_assets sa
+             LEFT JOIN theralia_asset_classes ac ON ac.workspace_id = sa.workspace_id AND ac.class_key = sa.asset_class
+             WHERE sa.workspace_id = $1
+             ORDER BY sa.created_at DESC`,
+            [req.workspace_id]);
+        res.json({ assets: r.rows });
+    } catch (err) { console.error('[TH-INV] strategic-assets list error:', err.message); res.status(500).json({ error: 'Failed' }); }
+});
+
+app.post('/api/theralia/inventory/strategic-assets', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkTheraliaInventoryTables())) return res.status(503).json({ error: 'Not ready' });
+        const b = req.body;
+        if (!b.title || !b.asset_class) return res.status(400).json({ error: 'title and asset_class required' });
+        const user = req.session.user?.name || req.session.user?.researcher_id || 'unknown';
+        const r = await pool.query(
+            `INSERT INTO theralia_strategic_assets
+             (workspace_id, title, asset_class, status, jurisdiction, filing_date, owner_name,
+              related_project, linked_company_ip_id, notes, created_by)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+            [req.workspace_id, b.title, b.asset_class, b.status||'draft',
+             b.jurisdiction||null, b.filing_date||null, b.owner_name||null,
+             b.related_project||null, b.linked_company_ip_id||null, b.notes||null, user]);
+        res.json({ ok: true, asset: r.rows[0] });
+    } catch (err) { console.error('[TH-INV] strategic-asset create error:', err.message); res.status(500).json({ error: 'Failed' }); }
+});
+
+app.put('/api/theralia/inventory/strategic-assets/:id', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkTheraliaInventoryTables())) return res.status(503).json({ error: 'Not ready' });
+        const b = req.body;
+        const r = await pool.query(
+            `UPDATE theralia_strategic_assets SET
+                title=COALESCE($1,title), asset_class=COALESCE($2,asset_class), status=COALESCE($3,status),
+                jurisdiction=$4, filing_date=$5, owner_name=$6, related_project=$7,
+                linked_company_ip_id=$8, notes=$9, updated_at=NOW()
+             WHERE id=$10 AND workspace_id=$11 RETURNING *`,
+            [b.title, b.asset_class, b.status,
+             b.jurisdiction!==undefined?b.jurisdiction:null, b.filing_date||null,
+             b.owner_name!==undefined?b.owner_name:null, b.related_project!==undefined?b.related_project:null,
+             b.linked_company_ip_id!==undefined?b.linked_company_ip_id:null,
+             b.notes!==undefined?b.notes:null,
+             req.params.id, req.workspace_id]);
+        if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+        res.json({ ok: true, asset: r.rows[0] });
+    } catch (err) { console.error('[TH-INV] strategic-asset update error:', err.message); res.status(500).json({ error: 'Failed' }); }
+});
+
 // SKINOTEK portal route
 app.get('/skinotek', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'access-skinotek.html'));

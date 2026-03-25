@@ -1372,6 +1372,73 @@
             font-size: 13px; color: #8b8f9a; line-height: 1.65;
             max-width: 380px; margin: 0 auto;
         }
+
+        /* ---- Inventory Module ---- */
+        .inv-overview { display: flex; gap: 10px; padding: 18px 0 0; flex-wrap: wrap; }
+        .inv-metric { background: #fff; border: 1px solid rgba(0,0,0,0.06); border-radius: 10px; padding: 14px 18px; min-width: 120px; display: flex; flex-direction: column; gap: 2px; }
+        .inv-metric-num { font-size: 22px; font-weight: 700; color: #1a1c22; line-height: 1; }
+        .inv-metric-label { font-size: 11px; font-weight: 600; color: #9a9ea8; text-transform: uppercase; letter-spacing: 0.3px; }
+        .inv-mode-toggle { display: flex; gap: 0; background: #f0f2f5; border-radius: 8px; padding: 3px; margin: 14px 0 0; }
+        .inv-mode-btn { background: none; border: none; padding: 8px 16px; font-size: 12px; font-weight: 600; color: #78787f; cursor: pointer; border-radius: 6px; transition: all 0.15s; white-space: nowrap; }
+        .inv-mode-btn.active { background: #fff; color: #1a1c22; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+        .inv-mode-btn:hover:not(.active) { color: #1a1c22; }
+        .inv-workspace { display: grid; grid-template-columns: 1fr 340px; gap: 0; background: #fff; border: 1px solid rgba(0,0,0,0.06); border-radius: 12px; margin-top: 14px; min-height: 500px; overflow: hidden; }
+        @media (max-width: 900px) { .inv-workspace { grid-template-columns: 1fr; } }
+        .inv-list-panel { padding: 16px 20px; border-right: 1px solid rgba(0,0,0,0.06); overflow-y: auto; max-height: 600px; }
+        .inv-detail-panel { padding: 20px; overflow-y: auto; max-height: 600px; background: #fafbfc; }
+        .inv-toolbar { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
+        .inv-search { flex: 1; min-width: 160px; padding: 7px 10px; border: 1px solid #e0e2e7; border-radius: 6px; font-size: 12px; background: #fafbfc; }
+        .inv-search:focus { outline: none; border-color: #1a1c22; }
+        .inv-filter-select { padding: 7px 8px; border: 1px solid #e0e2e7; border-radius: 6px; font-size: 12px; background: #fafbfc; cursor: pointer; }
+        .inv-add-btn { padding: 7px 14px; background: #1a1c22; color: #fff; border: none; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; }
+        .inv-add-btn:hover { background: #333; }
+        .inv-row { padding: 10px 12px; border-bottom: 1px solid rgba(0,0,0,0.04); cursor: pointer; transition: background 0.1s; display: flex; align-items: center; gap: 10px; }
+        .inv-row:hover { background: #f6f7f9; }
+        .inv-row.selected { background: #eef0f4; }
+        .inv-row-name { font-size: 13px; font-weight: 500; color: #1a1c22; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .inv-row-meta { font-size: 11px; color: #9a9ea8; white-space: nowrap; }
+        .inv-badge { display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
+        .inv-badge.active { background: #dcfce7; color: #166534; }
+        .inv-badge.ordered { background: #dbeafe; color: #1e40af; }
+        .inv-badge.received { background: #e0e7ff; color: #3730a3; }
+        .inv-badge.used { background: #f3f4f6; color: #6b7280; }
+        .inv-badge.archived { background: #f3f4f6; color: #9ca3af; }
+        .inv-badge.pending { background: #fef3c7; color: #92400e; }
+        .inv-badge.draft { background: #f3f4f6; color: #6b7280; }
+        .inv-badge.restricted { background: #fce7f3; color: #9d174d; }
+        .inv-detail-title { font-size: 16px; font-weight: 600; color: #1a1c22; margin-bottom: 14px; }
+        .inv-detail-section { margin-bottom: 16px; }
+        .inv-detail-label { font-size: 10px; font-weight: 600; color: #9a9ea8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+        .inv-detail-val { font-size: 13px; color: #1a1c22; line-height: 1.5; }
+        .inv-detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .inv-detail-actions { display: flex; gap: 8px; margin-top: 16px; }
+        .inv-detail-actions button { padding: 7px 14px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; border: 1px solid #e0e2e7; background: #fff; color: #1a1c22; }
+        .inv-detail-actions button:hover { background: #f0f2f5; }
+        .inv-detail-actions button.primary { background: #1a1c22; color: #fff; border-color: #1a1c22; }
+        .inv-detail-actions button.primary:hover { background: #333; }
+        .inv-empty { text-align: center; padding: 40px 20px; color: #9a9ea8; font-size: 13px; }
+        .inv-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 1000; display: none; align-items: center; justify-content: center; }
+        .inv-modal-overlay.active { display: flex; }
+        .inv-modal { background: #fff; border-radius: 12px; padding: 28px 32px; width: 480px; max-width: 95vw; max-height: 85vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.15); }
+        .inv-modal h3 { font-size: 16px; font-weight: 600; color: #1a1c22; margin: 0 0 18px; }
+        .inv-form-field { margin-bottom: 12px; }
+        .inv-form-field label { display: block; font-size: 11px; font-weight: 600; color: #555a66; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.3px; }
+        .inv-form-field input, .inv-form-field select, .inv-form-field textarea { width: 100%; padding: 8px 10px; border: 1px solid #e0e2e7; border-radius: 6px; font-size: 13px; box-sizing: border-box; }
+        .inv-form-field textarea { resize: vertical; min-height: 60px; }
+        .inv-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .inv-form-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
+        .inv-form-actions button { padding: 8px 18px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; }
+        .inv-form-actions .inv-cancel { background: #f0f2f5; color: #555a66; }
+        .inv-form-actions .inv-submit { background: #1a1c22; color: #fff; }
+        .inv-embedded-container { margin-top: 14px; background: #fff; border: 1px solid rgba(0,0,0,0.06); border-radius: 12px; overflow: hidden; min-height: 500px; }
+        .inv-embedded-label { padding: 10px 18px; background: #f6f7f9; border-bottom: 1px solid rgba(0,0,0,0.06); font-size: 11px; color: #9a9ea8; font-weight: 500; }
+        .inv-embedded-label span { color: #555a66; font-weight: 600; }
+        .inv-embedded-frame { width: 100%; border: none; min-height: 520px; }
+        .inv-add-cat-btn { padding: 7px 10px; background: none; border: 1px dashed #d0d2d8; border-radius: 6px; font-size: 11px; font-weight: 600; color: #9a9ea8; cursor: pointer; }
+        .inv-add-cat-btn:hover { border-color: #1a1c22; color: #1a1c22; }
+        .inv-product-link { color: #2563eb; text-decoration: none; font-size: 12px; }
+        .inv-product-link:hover { text-decoration: underline; }
+        .inv-ref-badge { display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 9px; font-weight: 600; text-transform: uppercase; background: #f0f2f5; color: #78787f; margin-left: 4px; }
     </style>
     <script src="js/presentation-mode.js"></script>
 </head>
@@ -1829,15 +1896,210 @@
         <!-- TAB: INVENTORY                                 -->
         <!-- ============================================== -->
         <div class="tab-content" id="tab-inventory">
-            <div class="empty-tab">
-                <div class="empty-tab-card">
-                    <div class="empty-tab-icon">
-                        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4M4 7l8 4M4 7v10l8 4m0-10v10"/></svg>
+
+            <!-- Summary Header -->
+            <div class="inv-overview" id="invOverview">
+                <div class="inv-metric"><span class="inv-metric-num" id="invM-purchases">0</span><span class="inv-metric-label">Purchases</span></div>
+                <div class="inv-metric"><span class="inv-metric-num" id="invM-assets">0</span><span class="inv-metric-label">Strategic Assets</span></div>
+            </div>
+
+            <!-- Mode Toggle -->
+            <div class="inv-mode-toggle" id="invModeToggle">
+                <button class="inv-mode-btn active" data-inv-mode="purchases">Purchases</button>
+                <button class="inv-mode-btn" data-inv-mode="assets">Strategic Assets</button>
+                <button class="inv-mode-btn" data-inv-mode="natlab">NAT-Lab Inventory</button>
+                <button class="inv-mode-btn" data-inv-mode="oligo">Oligo Explorer</button>
+            </div>
+
+            <!-- Purchases View -->
+            <div id="invPurchasesView">
+                <div class="inv-workspace">
+                    <div class="inv-list-panel">
+                        <div class="inv-toolbar">
+                            <input class="inv-search" id="invPurchSearch" type="text" placeholder="Search purchases...">
+                            <select class="inv-filter-select" id="invPurchCatFilter">
+                                <option value="">All Categories</option>
+                                <option value="oligonucleotide">Oligonucleotide</option>
+                                <option value="reagent">Reagent</option>
+                                <option value="kit">Kit</option>
+                                <option value="consumable">Consumable</option>
+                                <option value="service">Service</option>
+                                <option value="software">Software</option>
+                                <option value="prototype_material">Prototype Material</option>
+                                <option value="other">Other</option>
+                            </select>
+                            <select class="inv-filter-select" id="invPurchStatusFilter">
+                                <option value="">All Statuses</option>
+                                <option value="active">Active</option>
+                                <option value="ordered">Ordered</option>
+                                <option value="received">Received</option>
+                                <option value="used">Used</option>
+                                <option value="archived">Archived</option>
+                            </select>
+                            <button class="inv-add-btn" onclick="invOpenPurchaseForm()">+ New Purchase</button>
+                        </div>
+                        <div id="invPurchList"></div>
                     </div>
-                    <div class="empty-tab-title">Inventory</div>
-                    <div class="empty-tab-desc">Materials tracking, laboratory assets, consumables management, and operational startup resources.</div>
+                    <div class="inv-detail-panel" id="invPurchDetail">
+                        <div class="inv-empty">Select a purchase to view details</div>
+                    </div>
                 </div>
             </div>
+
+            <!-- Strategic Assets View -->
+            <div id="invAssetsView" style="display:none">
+                <div class="inv-workspace">
+                    <div class="inv-list-panel">
+                        <div class="inv-toolbar">
+                            <input class="inv-search" id="invAssetSearch" type="text" placeholder="Search assets...">
+                            <select class="inv-filter-select" id="invAssetClassFilter"></select>
+                            <select class="inv-filter-select" id="invAssetStatusFilter">
+                                <option value="">All Statuses</option>
+                                <option value="active">Active</option>
+                                <option value="pending">Pending</option>
+                                <option value="draft">Draft</option>
+                                <option value="restricted">Restricted</option>
+                                <option value="archived">Archived</option>
+                            </select>
+                            <button class="inv-add-cat-btn" id="invAddCatBtn" style="display:none" onclick="invOpenCategoryModal()">+ Add Category</button>
+                            <button class="inv-add-btn" onclick="invOpenAssetForm()">+ New Asset</button>
+                        </div>
+                        <div id="invAssetList"></div>
+                    </div>
+                    <div class="inv-detail-panel" id="invAssetDetail">
+                        <div class="inv-empty">Select an asset to view details</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- NAT-Lab Inventory Embedded View -->
+            <div id="invNatlabView" style="display:none">
+                <div class="inv-embedded-container">
+                    <div class="inv-embedded-label"><span>NAT-Lab</span> &middot; General Inventory &middot; Read only</div>
+                    <iframe class="inv-embedded-frame" id="invNatlabFrame" src="about:blank" sandbox="allow-same-origin allow-scripts"></iframe>
+                </div>
+            </div>
+
+            <!-- Oligo Explorer Embedded View -->
+            <div id="invOligoView" style="display:none">
+                <div class="inv-embedded-container">
+                    <div class="inv-embedded-label"><span>NAT-Lab</span> &middot; Oligo Explorer &middot; Read only</div>
+                    <iframe class="inv-embedded-frame" id="invOligoFrame" src="about:blank" sandbox="allow-same-origin allow-scripts"></iframe>
+                </div>
+            </div>
+
+            <!-- Purchase Form Modal -->
+            <div class="inv-modal-overlay" id="invPurchModal">
+                <div class="inv-modal">
+                    <h3 id="invPurchModalTitle">New Purchase</h3>
+                    <input type="hidden" id="invPurchEditId" value="">
+                    <div class="inv-form-row">
+                        <div class="inv-form-field"><label>Name *</label><input id="invPF_name" type="text"></div>
+                        <div class="inv-form-field"><label>Category *</label>
+                            <select id="invPF_category">
+                                <option value="oligonucleotide">Oligonucleotide</option>
+                                <option value="reagent">Reagent</option>
+                                <option value="kit">Kit</option>
+                                <option value="consumable">Consumable</option>
+                                <option value="service">Service</option>
+                                <option value="software">Software</option>
+                                <option value="prototype_material">Prototype Material</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="inv-form-row">
+                        <div class="inv-form-field"><label>Supplier</label><input id="invPF_supplier" type="text"></div>
+                        <div class="inv-form-field"><label>Status</label>
+                            <select id="invPF_status">
+                                <option value="ordered">Ordered</option>
+                                <option value="received">Received</option>
+                                <option value="active">Active</option>
+                                <option value="used">Used</option>
+                                <option value="archived">Archived</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="inv-form-row">
+                        <div class="inv-form-field"><label>Purchase Date</label><input id="invPF_purchase_date" type="date"></div>
+                        <div class="inv-form-field"><label>Related Project</label><input id="invPF_related_project" type="text"></div>
+                    </div>
+                    <div class="inv-form-row">
+                        <div class="inv-form-field"><label>Cost</label><input id="invPF_cost_value" type="number" step="0.01"></div>
+                        <div class="inv-form-field"><label>Currency</label>
+                            <select id="invPF_cost_currency">
+                                <option value="EUR">EUR</option>
+                                <option value="SEK">SEK</option>
+                                <option value="USD">USD</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="inv-form-row">
+                        <div class="inv-form-field"><label>Product Name</label><input id="invPF_product_name" type="text" placeholder="e.g. HPLC-purified oligo"></div>
+                        <div class="inv-form-field"><label>Reference Type</label>
+                            <select id="invPF_product_reference_type">
+                                <option value="">None</option>
+                                <option value="external">External</option>
+                                <option value="natlab">NAT-Lab</option>
+                                <option value="supplier">Supplier</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="inv-form-field"><label>Product URL</label><input id="invPF_product_url" type="url" placeholder="https://..."></div>
+                    <div class="inv-form-field"><label>Notes</label><textarea id="invPF_notes"></textarea></div>
+                    <div class="inv-form-actions">
+                        <button class="inv-cancel" onclick="invClosePurchaseForm()">Cancel</button>
+                        <button class="inv-submit" onclick="invSavePurchase()">Save</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Asset Form Modal -->
+            <div class="inv-modal-overlay" id="invAssetModal">
+                <div class="inv-modal">
+                    <h3 id="invAssetModalTitle">New Strategic Asset</h3>
+                    <input type="hidden" id="invAssetEditId" value="">
+                    <div class="inv-form-field"><label>Title *</label><input id="invAF_title" type="text"></div>
+                    <div class="inv-form-row">
+                        <div class="inv-form-field"><label>Asset Class *</label><select id="invAF_asset_class"></select></div>
+                        <div class="inv-form-field"><label>Status</label>
+                            <select id="invAF_status">
+                                <option value="draft">Draft</option>
+                                <option value="pending">Pending</option>
+                                <option value="active">Active</option>
+                                <option value="restricted">Restricted</option>
+                                <option value="archived">Archived</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="inv-form-row">
+                        <div class="inv-form-field"><label>Jurisdiction</label><input id="invAF_jurisdiction" type="text" placeholder="e.g. EU, US, PCT"></div>
+                        <div class="inv-form-field"><label>Filing Date</label><input id="invAF_filing_date" type="date"></div>
+                    </div>
+                    <div class="inv-form-row">
+                        <div class="inv-form-field"><label>Owner</label><input id="invAF_owner_name" type="text"></div>
+                        <div class="inv-form-field"><label>Related Project</label><input id="invAF_related_project" type="text"></div>
+                    </div>
+                    <div class="inv-form-field"><label>Notes</label><textarea id="invAF_notes"></textarea></div>
+                    <div class="inv-form-actions">
+                        <button class="inv-cancel" onclick="invCloseAssetForm()">Cancel</button>
+                        <button class="inv-submit" onclick="invSaveAsset()">Save</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Add Category Modal -->
+            <div class="inv-modal-overlay" id="invCatModal">
+                <div class="inv-modal" style="width:360px">
+                    <h3>Add Asset Category</h3>
+                    <div class="inv-form-field"><label>Category Name *</label><input id="invCatName" type="text" placeholder="e.g. Trade Secret"></div>
+                    <div class="inv-form-actions">
+                        <button class="inv-cancel" onclick="invCloseCategoryModal()">Cancel</button>
+                        <button class="inv-submit" onclick="invSaveCategory()">Create</button>
+                    </div>
+                </div>
+            </div>
+
         </div>
 
         <!-- ============================================== -->
@@ -4431,6 +4693,366 @@
         async function glpApprove(id) { glpOpenApproveModal(id); }
         async function glpRevise(id) { glpOpenReviseModal(id); }
         async function glpDiscard(id) { glpOpenDiscardModal(id); }
+
+        /* ============================================== */
+        /* INVENTORY MODULE                               */
+        /* ============================================== */
+        const INV_WS = 'theralia';
+        function invFetch(url, opts) { return fetch(url + (url.includes('?') ? '&' : '?') + 'ws=' + INV_WS, { credentials: 'include', ...opts }); }
+        function invJson(url) { return invFetch(url).then(r => r.json()); }
+
+        let _invPurchases = [];
+        let _invAssets = [];
+        let _invAssetClasses = [];
+        let _invMode = 'purchases';
+        let _invSelectedPurchase = null;
+        let _invSelectedAsset = null;
+        let _invInitDone = false;
+        let _invNatlabLoaded = false;
+        let _invOligoLoaded = false;
+
+        function invEsc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+        function invDate(d) { if (!d) return '\u2014'; try { return new Date(d).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }); } catch { return d; } }
+        function invCost(val, cur) { if (val == null) return '\u2014'; return (cur||'EUR') + ' ' + new Intl.NumberFormat('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(val); }
+
+        // Mode switching
+        document.getElementById('invModeToggle').addEventListener('click', (e) => {
+            const btn = e.target.closest('.inv-mode-btn');
+            if (!btn) return;
+            const mode = btn.dataset.invMode;
+            if (mode === _invMode) return;
+            _invMode = mode;
+            document.querySelectorAll('.inv-mode-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            document.getElementById('invPurchasesView').style.display = mode === 'purchases' ? '' : 'none';
+            document.getElementById('invAssetsView').style.display = mode === 'assets' ? '' : 'none';
+            document.getElementById('invNatlabView').style.display = mode === 'natlab' ? '' : 'none';
+            document.getElementById('invOligoView').style.display = mode === 'oligo' ? '' : 'none';
+
+            if (mode === 'natlab' && !_invNatlabLoaded) {
+                _invNatlabLoaded = true;
+                document.getElementById('invNatlabFrame').src = '/upload.html?section=inventory';
+            }
+            if (mode === 'oligo' && !_invOligoLoaded) {
+                _invOligoLoaded = true;
+                document.getElementById('invOligoFrame').src = '/oligo-id.html';
+            }
+            sessionStorage.setItem('theralia_inventory_tab', mode);
+            invAutoFocusSearch(mode);
+        });
+
+        function invAutoFocusSearch(mode) {
+            if (mode === 'purchases') setTimeout(() => document.getElementById('invPurchSearch')?.focus(), 0);
+            else if (mode === 'assets') setTimeout(() => document.getElementById('invAssetSearch')?.focus(), 0);
+        }
+
+        async function invInit() {
+            if (_invInitDone) return;
+            _invInitDone = true;
+            await Promise.all([invLoadPurchases(), invLoadAssets(), invLoadAssetClasses()]);
+
+            // Show Add Category button for admins
+            if (hasAuthority('can_manage_workspace') || _userPosition === 'founder' || _userPosition === 'ceo') {
+                const catBtn = document.getElementById('invAddCatBtn');
+                if (catBtn) catBtn.style.display = '';
+            }
+
+            // Wire up search and filter events
+            document.getElementById('invPurchSearch').addEventListener('input', invRenderPurchaseList);
+            document.getElementById('invPurchCatFilter').addEventListener('change', invRenderPurchaseList);
+            document.getElementById('invPurchStatusFilter').addEventListener('change', invRenderPurchaseList);
+            document.getElementById('invAssetSearch').addEventListener('input', invRenderAssetList);
+            document.getElementById('invAssetClassFilter').addEventListener('change', invRenderAssetList);
+            document.getElementById('invAssetStatusFilter').addEventListener('change', invRenderAssetList);
+
+            // Restore last active inventory sub-tab
+            const saved = sessionStorage.getItem('theralia_inventory_tab');
+            if (saved && saved !== 'purchases') {
+                const btn = document.querySelector('.inv-mode-btn[data-inv-mode="' + saved + '"]');
+                if (btn) btn.click();
+            } else {
+                invAutoFocusSearch('purchases');
+            }
+        }
+
+        // Lazy init on tab switch
+        const origTabClick = document.getElementById('tabNav');
+        origTabClick.addEventListener('click', (e) => {
+            const btn = e.target.closest('.tab-btn');
+            if (btn && btn.dataset.tab === 'inventory') invInit();
+        });
+
+        // ---- Purchases ----
+        async function invLoadPurchases() {
+            try {
+                const data = await invJson('/api/theralia/inventory/purchases');
+                _invPurchases = data.purchases || [];
+            } catch { _invPurchases = []; }
+            document.getElementById('invM-purchases').textContent = _invPurchases.filter(p => p.status !== 'archived').length;
+            invRenderPurchaseList();
+        }
+
+        function invRenderPurchaseList() {
+            const search = (document.getElementById('invPurchSearch').value || '').toLowerCase();
+            const catFilter = document.getElementById('invPurchCatFilter').value;
+            const statusFilter = document.getElementById('invPurchStatusFilter').value;
+            let list = _invPurchases;
+            if (search) list = list.filter(p => (p.name||'').toLowerCase().includes(search) || (p.supplier||'').toLowerCase().includes(search) || (p.product_name||'').toLowerCase().includes(search));
+            if (catFilter) list = list.filter(p => p.category === catFilter);
+            if (statusFilter) list = list.filter(p => p.status === statusFilter);
+
+            const el = document.getElementById('invPurchList');
+            if (list.length === 0) {
+                el.innerHTML = '<div class="inv-empty">' + (search || catFilter || statusFilter ? 'No purchases matching filter' : 'No purchases yet. Add your first item.') + '</div>';
+                return;
+            }
+            el.innerHTML = list.map(p => `<div class="inv-row ${_invSelectedPurchase === p.id ? 'selected' : ''}" onclick="invSelectPurchase('${p.id}')">
+                <span class="inv-badge ${p.status}">${p.status}</span>
+                <span class="inv-row-name">${invEsc(p.name)}</span>
+                <span class="inv-row-meta">${invEsc(p.category)}</span>
+                <span class="inv-row-meta">${invDate(p.purchase_date)}</span>
+            </div>`).join('');
+        }
+
+        function invSelectPurchase(id) {
+            _invSelectedPurchase = id;
+            invRenderPurchaseList();
+            const p = _invPurchases.find(x => x.id === id);
+            if (!p) return;
+            const detailEl = document.getElementById('invPurchDetail');
+            const productSection = (p.product_name || p.product_url) ? `
+                <div class="inv-detail-section">
+                    <div class="inv-detail-label">Product Reference</div>
+                    ${p.product_name ? '<div class="inv-detail-val">' + invEsc(p.product_name) + (p.product_reference_type ? ' <span class="inv-ref-badge">' + invEsc(p.product_reference_type) + '</span>' : '') + '</div>' : ''}
+                    ${p.product_url ? '<div><a class="inv-product-link" href="' + invEsc(p.product_url) + '" target="_blank" rel="noopener">' + invEsc(p.product_url) + '</a></div>' : ''}
+                </div>` : '';
+
+            detailEl.innerHTML = `
+                <div class="inv-detail-title">${invEsc(p.name)}</div>
+                <div class="inv-detail-grid">
+                    <div class="inv-detail-section"><div class="inv-detail-label">Category</div><div class="inv-detail-val">${invEsc(p.category)}</div></div>
+                    <div class="inv-detail-section"><div class="inv-detail-label">Status</div><div class="inv-detail-val"><span class="inv-badge ${p.status}">${p.status}</span></div></div>
+                    <div class="inv-detail-section"><div class="inv-detail-label">Supplier</div><div class="inv-detail-val">${invEsc(p.supplier) || '\u2014'}</div></div>
+                    <div class="inv-detail-section"><div class="inv-detail-label">Purchase Date</div><div class="inv-detail-val">${invDate(p.purchase_date)}</div></div>
+                    <div class="inv-detail-section"><div class="inv-detail-label">Cost</div><div class="inv-detail-val">${invCost(p.cost_value, p.cost_currency)}</div></div>
+                    <div class="inv-detail-section"><div class="inv-detail-label">Related Project</div><div class="inv-detail-val">${invEsc(p.related_project) || '\u2014'}</div></div>
+                </div>
+                ${productSection}
+                ${p.notes ? '<div class="inv-detail-section"><div class="inv-detail-label">Notes</div><div class="inv-detail-val">' + invEsc(p.notes) + '</div></div>' : ''}
+                <div class="inv-detail-section"><div class="inv-detail-label">Created</div><div class="inv-detail-val">${invDate(p.created_at)} by ${invEsc(p.created_by)}</div></div>
+                <div class="inv-detail-actions">
+                    <button class="primary" onclick="invEditPurchase('${p.id}')">Edit</button>
+                    ${p.status !== 'archived' ? '<button onclick="invArchivePurchase(\'' + p.id + '\')">Archive</button>' : ''}
+                </div>`;
+        }
+
+        function invOpenPurchaseForm(p) {
+            document.getElementById('invPurchModalTitle').textContent = p ? 'Edit Purchase' : 'New Purchase';
+            document.getElementById('invPurchEditId').value = p ? p.id : '';
+            document.getElementById('invPF_name').value = p ? p.name : '';
+            document.getElementById('invPF_category').value = p ? p.category : 'reagent';
+            document.getElementById('invPF_supplier').value = p ? (p.supplier||'') : '';
+            document.getElementById('invPF_status').value = p ? p.status : 'ordered';
+            document.getElementById('invPF_purchase_date').value = p && p.purchase_date ? p.purchase_date.substring(0,10) : '';
+            document.getElementById('invPF_related_project').value = p ? (p.related_project||'') : '';
+            document.getElementById('invPF_cost_value').value = p && p.cost_value != null ? p.cost_value : '';
+            document.getElementById('invPF_cost_currency').value = p ? (p.cost_currency||'EUR') : 'EUR';
+            document.getElementById('invPF_product_name').value = p ? (p.product_name||'') : '';
+            document.getElementById('invPF_product_url').value = p ? (p.product_url||'') : '';
+            document.getElementById('invPF_product_reference_type').value = p ? (p.product_reference_type||'') : '';
+            document.getElementById('invPF_notes').value = p ? (p.notes||'') : '';
+            document.getElementById('invPurchModal').classList.add('active');
+        }
+
+        function invClosePurchaseForm() { document.getElementById('invPurchModal').classList.remove('active'); }
+
+        function invEditPurchase(id) {
+            const p = _invPurchases.find(x => x.id === id);
+            if (p) invOpenPurchaseForm(p);
+        }
+
+        async function invSavePurchase() {
+            const editId = document.getElementById('invPurchEditId').value;
+            const body = {
+                name: document.getElementById('invPF_name').value.trim(),
+                category: document.getElementById('invPF_category').value,
+                supplier: document.getElementById('invPF_supplier').value.trim() || null,
+                status: document.getElementById('invPF_status').value,
+                purchase_date: document.getElementById('invPF_purchase_date').value || null,
+                related_project: document.getElementById('invPF_related_project').value.trim() || null,
+                cost_value: document.getElementById('invPF_cost_value').value || null,
+                cost_currency: document.getElementById('invPF_cost_currency').value,
+                product_name: document.getElementById('invPF_product_name').value.trim() || null,
+                product_url: document.getElementById('invPF_product_url').value.trim() || null,
+                product_reference_type: document.getElementById('invPF_product_reference_type').value || null,
+                notes: document.getElementById('invPF_notes').value.trim() || null
+            };
+            if (!body.name || !body.category) { alert('Name and category are required.'); return; }
+            try {
+                const url = editId ? '/api/theralia/inventory/purchases/' + editId : '/api/theralia/inventory/purchases';
+                const method = editId ? 'PUT' : 'POST';
+                const res = await invFetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+                const data = await res.json();
+                if (data.ok) {
+                    invClosePurchaseForm();
+                    await invLoadPurchases();
+                    if (editId) invSelectPurchase(editId);
+                } else { alert(data.error || 'Save failed'); }
+            } catch { alert('Save failed.'); }
+        }
+
+        async function invArchivePurchase(id) {
+            if (!confirm('Archive this purchase?')) return;
+            try {
+                const res = await invFetch('/api/theralia/inventory/purchases/' + id, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ status: 'archived' }) });
+                const data = await res.json();
+                if (data.ok) { await invLoadPurchases(); invSelectPurchase(id); }
+            } catch { alert('Archive failed.'); }
+        }
+
+        // ---- Strategic Assets ----
+        async function invLoadAssets() {
+            try {
+                const data = await invJson('/api/theralia/inventory/strategic-assets');
+                _invAssets = data.assets || [];
+            } catch { _invAssets = []; }
+            document.getElementById('invM-assets').textContent = _invAssets.filter(a => a.status !== 'archived').length;
+            invRenderAssetList();
+        }
+
+        async function invLoadAssetClasses() {
+            try {
+                const data = await invJson('/api/theralia/inventory/asset-classes');
+                _invAssetClasses = data.classes || [];
+            } catch { _invAssetClasses = []; }
+            invRenderAssetClassDropdowns();
+        }
+
+        function invRenderAssetClassDropdowns() {
+            const filterEl = document.getElementById('invAssetClassFilter');
+            const formEl = document.getElementById('invAF_asset_class');
+            const opts = _invAssetClasses.map(c => '<option value="' + invEsc(c.class_key) + '">' + invEsc(c.display_name) + '</option>').join('');
+            filterEl.innerHTML = '<option value="">All Classes</option>' + opts;
+            formEl.innerHTML = opts || '<option value="">No categories</option>';
+        }
+
+        function invRenderAssetList() {
+            const search = (document.getElementById('invAssetSearch').value || '').toLowerCase();
+            const classFilter = document.getElementById('invAssetClassFilter').value;
+            const statusFilter = document.getElementById('invAssetStatusFilter').value;
+            let list = _invAssets;
+            if (search) list = list.filter(a => (a.title||'').toLowerCase().includes(search) || (a.owner_name||'').toLowerCase().includes(search));
+            if (classFilter) list = list.filter(a => a.asset_class === classFilter);
+            if (statusFilter) list = list.filter(a => a.status === statusFilter);
+
+            const el = document.getElementById('invAssetList');
+            if (list.length === 0) {
+                el.innerHTML = '<div class="inv-empty">' + (search || classFilter || statusFilter ? 'No strategic assets matching filter' : 'No strategic assets yet. Add patent, candidate, or platform asset.') + '</div>';
+                return;
+            }
+            el.innerHTML = list.map(a => `<div class="inv-row ${_invSelectedAsset === a.id ? 'selected' : ''}" onclick="invSelectAsset('${a.id}')">
+                <span class="inv-badge ${a.status}">${a.status}</span>
+                <span class="inv-row-name">${invEsc(a.title)}</span>
+                <span class="inv-row-meta">${invEsc(a.class_display_name || a.asset_class)}</span>
+            </div>`).join('');
+        }
+
+        function invSelectAsset(id) {
+            _invSelectedAsset = id;
+            invRenderAssetList();
+            const a = _invAssets.find(x => x.id === id);
+            if (!a) return;
+            const detailEl = document.getElementById('invAssetDetail');
+            detailEl.innerHTML = `
+                <div class="inv-detail-title">${invEsc(a.title)}</div>
+                <div class="inv-detail-grid">
+                    <div class="inv-detail-section"><div class="inv-detail-label">Asset Class</div><div class="inv-detail-val">${invEsc(a.class_display_name || a.asset_class)}</div></div>
+                    <div class="inv-detail-section"><div class="inv-detail-label">Status</div><div class="inv-detail-val"><span class="inv-badge ${a.status}">${a.status}</span></div></div>
+                    <div class="inv-detail-section"><div class="inv-detail-label">Jurisdiction</div><div class="inv-detail-val">${invEsc(a.jurisdiction) || '\u2014'}</div></div>
+                    <div class="inv-detail-section"><div class="inv-detail-label">Filing Date</div><div class="inv-detail-val">${invDate(a.filing_date)}</div></div>
+                    <div class="inv-detail-section"><div class="inv-detail-label">Owner</div><div class="inv-detail-val">${invEsc(a.owner_name) || '\u2014'}</div></div>
+                    <div class="inv-detail-section"><div class="inv-detail-label">Related Project</div><div class="inv-detail-val">${invEsc(a.related_project) || '\u2014'}</div></div>
+                </div>
+                ${a.notes ? '<div class="inv-detail-section"><div class="inv-detail-label">Notes</div><div class="inv-detail-val">' + invEsc(a.notes) + '</div></div>' : ''}
+                <div class="inv-detail-section"><div class="inv-detail-label">Created</div><div class="inv-detail-val">${invDate(a.created_at)} by ${invEsc(a.created_by)}</div></div>
+                <div class="inv-detail-actions">
+                    <button class="primary" onclick="invEditAsset('${a.id}')">Edit</button>
+                    ${a.status !== 'archived' ? '<button onclick="invArchiveAsset(\'' + a.id + '\')">Archive</button>' : ''}
+                </div>`;
+        }
+
+        function invOpenAssetForm(a) {
+            document.getElementById('invAssetModalTitle').textContent = a ? 'Edit Strategic Asset' : 'New Strategic Asset';
+            document.getElementById('invAssetEditId').value = a ? a.id : '';
+            document.getElementById('invAF_title').value = a ? a.title : '';
+            document.getElementById('invAF_asset_class').value = a ? a.asset_class : (_invAssetClasses[0]?.class_key || '');
+            document.getElementById('invAF_status').value = a ? a.status : 'draft';
+            document.getElementById('invAF_jurisdiction').value = a ? (a.jurisdiction||'') : '';
+            document.getElementById('invAF_filing_date').value = a && a.filing_date ? a.filing_date.substring(0,10) : '';
+            document.getElementById('invAF_owner_name').value = a ? (a.owner_name||'') : '';
+            document.getElementById('invAF_related_project').value = a ? (a.related_project||'') : '';
+            document.getElementById('invAF_notes').value = a ? (a.notes||'') : '';
+            document.getElementById('invAssetModal').classList.add('active');
+        }
+
+        function invCloseAssetForm() { document.getElementById('invAssetModal').classList.remove('active'); }
+
+        function invEditAsset(id) {
+            const a = _invAssets.find(x => x.id === id);
+            if (a) invOpenAssetForm(a);
+        }
+
+        async function invSaveAsset() {
+            const editId = document.getElementById('invAssetEditId').value;
+            const body = {
+                title: document.getElementById('invAF_title').value.trim(),
+                asset_class: document.getElementById('invAF_asset_class').value,
+                status: document.getElementById('invAF_status').value,
+                jurisdiction: document.getElementById('invAF_jurisdiction').value.trim() || null,
+                filing_date: document.getElementById('invAF_filing_date').value || null,
+                owner_name: document.getElementById('invAF_owner_name').value.trim() || null,
+                related_project: document.getElementById('invAF_related_project').value.trim() || null,
+                notes: document.getElementById('invAF_notes').value.trim() || null
+            };
+            if (!body.title || !body.asset_class) { alert('Title and asset class are required.'); return; }
+            try {
+                const url = editId ? '/api/theralia/inventory/strategic-assets/' + editId : '/api/theralia/inventory/strategic-assets';
+                const method = editId ? 'PUT' : 'POST';
+                const res = await invFetch(url, { method, headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+                const data = await res.json();
+                if (data.ok) {
+                    invCloseAssetForm();
+                    await invLoadAssets();
+                    if (editId) invSelectAsset(editId);
+                } else { alert(data.error || 'Save failed'); }
+            } catch { alert('Save failed.'); }
+        }
+
+        async function invArchiveAsset(id) {
+            if (!confirm('Archive this asset?')) return;
+            try {
+                const res = await invFetch('/api/theralia/inventory/strategic-assets/' + id, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ status: 'archived' }) });
+                const data = await res.json();
+                if (data.ok) { await invLoadAssets(); invSelectAsset(id); }
+            } catch { alert('Archive failed.'); }
+        }
+
+        // ---- Asset Categories ----
+        function invOpenCategoryModal() { document.getElementById('invCatName').value = ''; document.getElementById('invCatModal').classList.add('active'); }
+        function invCloseCategoryModal() { document.getElementById('invCatModal').classList.remove('active'); }
+
+        async function invSaveCategory() {
+            const name = document.getElementById('invCatName').value.trim();
+            if (!name) { alert('Category name is required.'); return; }
+            try {
+                const res = await invFetch('/api/theralia/inventory/asset-classes', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ display_name: name }) });
+                const data = await res.json();
+                if (data.ok) {
+                    invCloseCategoryModal();
+                    await invLoadAssetClasses();
+                } else { alert(data.error || 'Create failed'); }
+            } catch { alert('Create failed.'); }
+        }
 
     </script>
 </body>
