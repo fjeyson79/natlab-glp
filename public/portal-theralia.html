@@ -3211,10 +3211,10 @@
                     '<span class="rd-glp-strip-item discarded" onclick="rdOpenInGlpStatus(\'' + pid + '\',\'DISCARDED\')"><span class="num">' + gc.DISCARDED + '</span> Discarded</span>';
             }
 
-            // R&D Project Files — show only PENDING + APPROVED (active files)
-            const docs = allDocs.filter(d => d.glp_status === 'PENDING' || d.glp_status === 'APPROVED');
+            // R&D Project Files — show ALL statuses (mirrors GLP Vision)
+            const docs = allDocs;
 
-            // Summary counts from visible active docs
+            // Summary counts from all docs
             const counts = {};
             RD_DOC_CATS.forEach(t => { counts[t] = docs.filter(d => d.document_type === t).length; });
             countEl.textContent = docs.length + ' document' + (docs.length !== 1 ? 's' : '');
@@ -3239,16 +3239,22 @@
                     const reviewDate = d.glp_approved_at;
                     const reviewLine = (d.glp_status === 'APPROVED' && reviewDate)
                         ? '<span style="font-size:9px;color:#b0b4be;margin-left:4px">Approved ' + rdDate(reviewDate) + '</span>' : '';
+                    const discardLine = (d.glp_status === 'DISCARDED' && d.glp_discarded_at)
+                        ? '<span style="font-size:9px;color:#b0b4be;margin-left:4px">Discarded ' + rdDate(d.glp_discarded_at) + '</span>' : '';
+                    const revisionLine = (d.glp_status === 'REVISION_NEEDED' && d.glp_revision_note)
+                        ? '<span style="font-size:9px;color:#b0b4be;margin-left:4px" title="' + rdEsc(d.glp_revision_note) + '">Rev. note</span>' : '';
+                    // Use rd_documents download if available, otherwise di_submissions download
+                    const dlUrl = d.id ? '/api/rd/documents/' + d.id + '/download' : '/api/di/download/' + d.submission_id;
 
                     return `<div style="margin-bottom:2px">
                         <div class="rd-file-row">
-                            <span class="rd-badge" style="background:rgba(0,0,0,0.04);color:#9a9ea8;flex-shrink:0">${d.document_type}</span>
-                            <a class="rd-file-row-name" href="/api/rd/documents/${d.id}/download" target="_blank" title="${rdEsc(d.filename)}">${rdEsc(d.title || d.filename)}</a>
+                            <span class="rd-badge" style="background:rgba(0,0,0,0.04);color:#9a9ea8;flex-shrink:0">${d.document_type || 'FILE'}</span>
+                            <a class="rd-file-row-name" href="${dlUrl}" target="_blank" title="${rdEsc(d.filename)}">${rdEsc(d.title || d.filename)}</a>
                             ${d.glp_status ? '<span class="glp-status-badge ' + d.glp_status + '">' + d.glp_status.replace('_',' ') + '</span>' : ''}
-                            ${reviewLine}
+                            ${reviewLine}${discardLine}${revisionLine}
                             <span class="rd-file-row-date">${rdDate(d.created_at)}</span>
                             <div class="rd-file-row-actions">
-                                <button class="rd-file-action primary" onclick="event.stopPropagation();window.open('/api/rd/documents/${d.id}/download','_blank')">View</button>
+                                <button class="rd-file-action primary" onclick="event.stopPropagation();window.open('${dlUrl}','_blank')">View</button>
                             </div>
                         </div>
                     </div>`;

@@ -18350,65 +18350,78 @@ app.patch('/api/rd/grants/:id', requireAuth, async (req, res) => {
     } catch (err) { console.error('[RD] update grant error:', err.message); res.status(500).json({ error: 'Failed' }); }
 });
 
+// ---- Shared Project Documents Resolver ----
+// Single source of truth: di_submissions (with rd_project_id), enriched with rd_documents metadata.
+// Returns ALL statuses, preserves distinct historical rows (re-uploads).
+async function resolveProjectDocuments(workspace_id, project_id) {
+    const hasProjectCol = await hasRdProjectIdCol();
+    if (!hasProjectCol) return [];
+
+    const hasRd = await checkRdTables();
+
+    // Primary: all di_submissions linked to this project (same logic as GLP Vision)
+    const subRes = await pool.query(
+        `SELECT s.submission_id, s.researcher_id, s.original_filename, s.file_type,
+                s.status, s.created_at, s.signed_at, s.r2_object_key,
+                s.revision_comments, s.discard_reason, s.discard_note,
+                s.discarded_at, s.approval_comment, s.pi_dragon_seal
+         FROM di_submissions s
+         WHERE s.workspace_id = $1 AND s.rd_project_id = $2
+           AND s.status NOT IN ('ARCHIVED')
+         ORDER BY s.created_at DESC`,
+        [workspace_id, project_id]);
+    const subs = subRes.rows;
+
+    // Enrich with rd_documents metadata (document_type, title, rd doc id) via r2_key or filename
+    let rdByKey = {}, rdByName = {};
+    if (hasRd && subs.length > 0) {
+        try {
+            const rdRes = await pool.query(
+                `SELECT id, document_type, title, filename, r2_key, file_size
+                 FROM rd_documents
+                 WHERE project_id = $1 AND workspace_id = $2`,
+                [project_id, workspace_id]);
+            rdRes.rows.forEach(rd => {
+                if (rd.r2_key) rdByKey[rd.r2_key] = rd;
+                if (rd.filename) rdByName[rd.filename] = rd;
+            });
+        } catch (e) {
+            console.error('[RD] rd_documents enrichment (non-fatal):', e.message);
+        }
+    }
+
+    return subs.map(s => {
+        // Match: prefer exact r2_key, fallback to filename
+        const rd = rdByKey[s.r2_object_key] || rdByName[s.original_filename] || null;
+        return {
+            id: rd ? rd.id : null,
+            submission_id: s.submission_id,
+            workspace_id: workspace_id,
+            project_id: project_id,
+            document_type: rd ? rd.document_type : null,
+            title: rd ? rd.title : s.original_filename,
+            filename: s.original_filename,
+            file_type: s.file_type,
+            r2_key: s.r2_object_key,
+            file_size: rd ? rd.file_size : null,
+            uploaded_by: s.researcher_id,
+            created_at: s.created_at,
+            glp_status: s.status,
+            glp_revision_note: s.revision_comments,
+            glp_discard_reason: s.discard_reason,
+            glp_discard_note: s.discard_note,
+            glp_approved_at: s.signed_at,
+            glp_discarded_at: s.discarded_at,
+            glp_approval_comment: s.approval_comment,
+            glp_pi_dragon_seal: s.pi_dragon_seal
+        };
+    });
+}
+
 // ---- Project Documents ----
 app.get('/api/rd/projects/:projectId/documents', requireAuth, async (req, res) => {
     try {
-        if (!(await checkRdTables())) return res.json({ documents: [] });
-
-        // Step 1: Always get rd_documents (never fails)
-        const r = await pool.query(
-            `SELECT id, workspace_id, project_id, document_type, title, filename,
-                    file_type, r2_key, file_size, uploaded_by, created_at
-             FROM rd_documents
-             WHERE project_id = $1 AND workspace_id = $2
-             ORDER BY created_at DESC`,
-            [req.params.projectId, req.workspace_id]);
-        const docs = r.rows;
-
-        // Step 2: Enrich with GLP status from di_submissions (safe — cannot erase docs)
-        if (docs.length > 0) {
-            try {
-                const filenames = docs.map(d => d.filename).filter(Boolean);
-                const r2Keys = docs.map(d => d.r2_key).filter(Boolean);
-                // Fetch all candidate di_submissions rows (by filename OR r2_key)
-                const glpRes = await pool.query(
-                    `SELECT original_filename, r2_object_key, status, revision_comments,
-                            discard_reason, discard_note, signed_at, discarded_at
-                     FROM di_submissions
-                     WHERE workspace_id = $1
-                       AND (original_filename = ANY($2) OR r2_object_key = ANY($3))`,
-                    [req.workspace_id, filenames, r2Keys]);
-                // Build lookup by r2_object_key (exact 1:1 match, works for PENDING files)
-                const glpByKey = {};
-                glpRes.rows.forEach(g => {
-                    if (g.r2_object_key) glpByKey[g.r2_object_key] = g;
-                });
-                // Build lookup by filename (for approved/revised files where r2_key changed)
-                // Keep the row with the strongest review state per filename
-                const statusPriority = { DISCARDED: 4, APPROVED: 3, REVISION_NEEDED: 2, PENDING: 1 };
-                const glpByName = {};
-                glpRes.rows.forEach(g => {
-                    const existing = glpByName[g.original_filename];
-                    const gPri = statusPriority[g.status] || 0;
-                    const ePri = existing ? (statusPriority[existing.status] || 0) : -1;
-                    if (gPri > ePri) glpByName[g.original_filename] = g;
-                });
-                // Match: prefer exact r2_key match, fall back to filename match
-                docs.forEach(d => {
-                    const g = glpByKey[d.r2_key] || glpByName[d.filename] || null;
-                    d.glp_status = g ? g.status : null;
-                    d.glp_revision_note = g ? g.revision_comments : null;
-                    d.glp_discard_reason = g ? g.discard_reason : null;
-                    d.glp_discard_note = g ? g.discard_note : null;
-                    d.glp_approved_at = g ? g.signed_at : null;
-                    d.glp_discarded_at = g ? g.discarded_at : null;
-                });
-            } catch (glpErr) {
-                console.error('[RD] GLP enrichment error (non-fatal):', glpErr.message);
-                // Non-fatal: docs returned without GLP fields, frontend normalizes to PENDING
-            }
-        }
-
+        const docs = await resolveProjectDocuments(req.workspace_id, req.params.projectId);
         res.json({ documents: docs });
     } catch (err) { console.error('[RD] docs error:', err.message); res.status(500).json({ error: 'Failed to load documents' }); }
 });
