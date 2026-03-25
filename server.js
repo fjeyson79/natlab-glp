@@ -18960,6 +18960,59 @@ app.put('/api/theralia/inventory/strategic-assets/:id', requireAuth, async (req,
     } catch (err) { console.error('[TH-INV] strategic-asset update error:', err.message); res.status(500).json({ error: 'Failed' }); }
 });
 
+// --- Theralia Bridge: NAT-Lab General Inventory (read-only) ---
+app.get('/api/theralia/bridge/natlab-general-inventory', requireAuth, async (req, res) => {
+    try {
+        const q = (req.query.q || '').trim();
+        let query = `SELECT ii.id, ii.item_type, ii.item_name, ii.item_identifier, ii.quantity, ii.quantity_unit,
+                            ii.storage_location, ii.storage_temperature, ii.vendor_company, ii.lot_or_batch_number,
+                            ii.expiry_date, ii.status, ii.visibility_scope, ii.affiliation, ii.source,
+                            ii.product_link, ii.notes, ii.updated_at,
+                            a.name AS created_by_name
+                     FROM di_inventory_items ii
+                     LEFT JOIN di_allowlist a ON a.researcher_id = ii.created_by
+                     WHERE ii.visibility_scope = 'group' AND ii.status IN ('Approved','Received')`;
+        const params = [];
+        if (q) {
+            params.push('%' + q + '%');
+            query += ` AND (ii.item_name ILIKE $1 OR ii.item_identifier ILIKE $1 OR ii.vendor_company ILIKE $1 OR ii.storage_location ILIKE $1)`;
+        }
+        query += ` ORDER BY ii.updated_at DESC LIMIT 200`;
+        const r = await pool.query(query, params);
+        res.json({ items: r.rows });
+    } catch (err) {
+        console.error('[TH-BRIDGE] natlab-inventory error:', err.message);
+        res.json({ items: [], error: 'Failed to load' });
+    }
+});
+
+// --- Theralia Bridge: Oligo Explorer (read-only) ---
+app.get('/api/theralia/bridge/oligo-explorer', requireAuth, async (req, res) => {
+    try {
+        const q = (req.query.q || '').trim();
+        // Check if probe_catalog exists
+        const tableCheck = await pool.query(
+            `SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name='probe_catalog') AS ok`);
+        if (!tableCheck.rows[0]?.ok) return res.json({ probes: [] });
+
+        let query = `SELECT pc.id, pc.canonical_id, pc.display_name, pc.sequence, pc.length_nt,
+                            pc.chemistry_code, pc.oligo_kind, pc.status, pc.finalized_at, pc.polymer_type,
+                            pc.mod5, pc.mod3
+                     FROM probe_catalog pc WHERE 1=1`;
+        const params = [];
+        if (q) {
+            params.push('%' + q + '%');
+            query += ` AND (pc.display_name ILIKE $1 OR pc.canonical_id ILIKE $1 OR pc.sequence ILIKE $1)`;
+        }
+        query += ` ORDER BY pc.created_at DESC LIMIT 200`;
+        const r = await pool.query(query, params);
+        res.json({ probes: r.rows });
+    } catch (err) {
+        console.error('[TH-BRIDGE] oligo-explorer error:', err.message);
+        res.json({ probes: [], error: 'Failed to load' });
+    }
+});
+
 // SKINOTEK portal route
 app.get('/skinotek', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'access-skinotek.html'));

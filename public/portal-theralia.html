@@ -1433,7 +1433,6 @@
         .inv-embedded-container { margin-top: 14px; background: #fff; border: 1px solid rgba(0,0,0,0.06); border-radius: 12px; overflow: hidden; min-height: 500px; }
         .inv-embedded-label { padding: 10px 18px; background: #f6f7f9; border-bottom: 1px solid rgba(0,0,0,0.06); font-size: 11px; color: #9a9ea8; font-weight: 500; }
         .inv-embedded-label span { color: #555a66; font-weight: 600; }
-        .inv-embedded-frame { width: 100%; border: none; min-height: 520px; }
         .inv-add-cat-btn { padding: 7px 10px; background: none; border: 1px dashed #d0d2d8; border-radius: 6px; font-size: 11px; font-weight: 600; color: #9a9ea8; cursor: pointer; }
         .inv-add-cat-btn:hover { border-color: #1a1c22; color: #1a1c22; }
         .inv-product-link { color: #2563eb; text-decoration: none; font-size: 12px; }
@@ -1972,19 +1971,29 @@
                 </div>
             </div>
 
-            <!-- NAT-Lab Inventory Embedded View -->
+            <!-- NAT-Lab Inventory Bridge View -->
             <div id="invNatlabView" style="display:none">
                 <div class="inv-embedded-container">
                     <div class="inv-embedded-label"><span>NAT-Lab</span> &middot; General Inventory &middot; Read only</div>
-                    <iframe class="inv-embedded-frame" id="invNatlabFrame" src="about:blank" sandbox="allow-same-origin allow-scripts"></iframe>
+                    <div style="padding:14px 18px">
+                        <input class="inv-search" id="invNatlabSearch" type="text" placeholder="Search inventory items...">
+                    </div>
+                    <div id="invNatlabList" style="padding:0 18px 18px;max-height:500px;overflow-y:auto">
+                        <div class="inv-empty">Loading...</div>
+                    </div>
                 </div>
             </div>
 
-            <!-- Oligo Explorer Embedded View -->
+            <!-- Oligo Explorer Bridge View -->
             <div id="invOligoView" style="display:none">
                 <div class="inv-embedded-container">
                     <div class="inv-embedded-label"><span>NAT-Lab</span> &middot; Oligo Explorer &middot; Read only</div>
-                    <iframe class="inv-embedded-frame" id="invOligoFrame" src="about:blank" sandbox="allow-same-origin allow-scripts"></iframe>
+                    <div style="padding:14px 18px">
+                        <input class="inv-search" id="invOligoSearch" type="text" placeholder="Search oligos by name, ID, or sequence...">
+                    </div>
+                    <div id="invOligoList" style="padding:0 18px 18px;max-height:500px;overflow-y:auto">
+                        <div class="inv-empty">Loading...</div>
+                    </div>
                 </div>
             </div>
 
@@ -4731,20 +4740,24 @@
 
             if (mode === 'natlab' && !_invNatlabLoaded) {
                 _invNatlabLoaded = true;
-                document.getElementById('invNatlabFrame').src = '/upload.html?section=inventory';
+                invLoadNatlabInventory();
+                document.getElementById('invNatlabSearch').addEventListener('input', invDebounce(invLoadNatlabInventory, 300));
             }
             if (mode === 'oligo' && !_invOligoLoaded) {
                 _invOligoLoaded = true;
-                document.getElementById('invOligoFrame').src = '/oligo-id.html';
+                invLoadOligoExplorer();
+                document.getElementById('invOligoSearch').addEventListener('input', invDebounce(invLoadOligoExplorer, 300));
             }
             sessionStorage.setItem('theralia_inventory_tab', mode);
             invAutoFocusSearch(mode);
         });
 
         function invAutoFocusSearch(mode) {
-            if (mode === 'purchases') setTimeout(() => document.getElementById('invPurchSearch')?.focus(), 0);
-            else if (mode === 'assets') setTimeout(() => document.getElementById('invAssetSearch')?.focus(), 0);
+            const ids = { purchases: 'invPurchSearch', assets: 'invAssetSearch', natlab: 'invNatlabSearch', oligo: 'invOligoSearch' };
+            if (ids[mode]) setTimeout(() => document.getElementById(ids[mode])?.focus(), 0);
         }
+
+        function invDebounce(fn, ms) { let t; return () => { clearTimeout(t); t = setTimeout(fn, ms); }; }
 
         async function invInit() {
             if (_invInitDone) return;
@@ -5052,6 +5065,78 @@
                     await invLoadAssetClasses();
                 } else { alert(data.error || 'Create failed'); }
             } catch { alert('Create failed.'); }
+        }
+
+        // ---- NAT-Lab General Inventory Bridge ----
+        async function invLoadNatlabInventory() {
+            const listEl = document.getElementById('invNatlabList');
+            const q = (document.getElementById('invNatlabSearch')?.value || '').trim();
+            try {
+                const data = await invJson('/api/theralia/bridge/natlab-general-inventory' + (q ? '&q=' + encodeURIComponent(q) : ''));
+                const items = data.items || [];
+                if (data.error) { listEl.innerHTML = '<div class="inv-empty">Unable to load NAT-Lab inventory.</div>'; return; }
+                if (items.length === 0) { listEl.innerHTML = '<div class="inv-empty">No NAT-Lab inventory items' + (q ? ' matching "' + invEsc(q) + '"' : ' available') + '.</div>'; return; }
+                listEl.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:12px">' +
+                    '<thead><tr style="border-bottom:2px solid #e0e2e7;text-align:left">' +
+                    '<th style="padding:6px 8px;color:#9a9ea8;font-weight:600;font-size:10px;text-transform:uppercase">Name</th>' +
+                    '<th style="padding:6px 8px;color:#9a9ea8;font-weight:600;font-size:10px;text-transform:uppercase">Type</th>' +
+                    '<th style="padding:6px 8px;color:#9a9ea8;font-weight:600;font-size:10px;text-transform:uppercase">Vendor</th>' +
+                    '<th style="padding:6px 8px;color:#9a9ea8;font-weight:600;font-size:10px;text-transform:uppercase">Qty</th>' +
+                    '<th style="padding:6px 8px;color:#9a9ea8;font-weight:600;font-size:10px;text-transform:uppercase">Storage</th>' +
+                    '<th style="padding:6px 8px;color:#9a9ea8;font-weight:600;font-size:10px;text-transform:uppercase">Status</th>' +
+                    '<th style="padding:6px 8px;color:#9a9ea8;font-weight:600;font-size:10px;text-transform:uppercase">Owner</th>' +
+                    '</tr></thead><tbody>' +
+                    items.map(i => '<tr style="border-bottom:1px solid rgba(0,0,0,0.04)">' +
+                        '<td style="padding:7px 8px;font-weight:500;color:#1a1c22">' + invEsc(i.item_name) + '</td>' +
+                        '<td style="padding:7px 8px;color:#555a66">' + invEsc(i.item_type) + '</td>' +
+                        '<td style="padding:7px 8px;color:#555a66">' + (invEsc(i.vendor_company) || '\u2014') + '</td>' +
+                        '<td style="padding:7px 8px;color:#555a66">' + (i.quantity != null ? i.quantity + ' ' + invEsc(i.quantity_unit) : '\u2014') + '</td>' +
+                        '<td style="padding:7px 8px;color:#555a66">' + invEsc(i.storage_location) + ' (' + invEsc(i.storage_temperature) + ')</td>' +
+                        '<td style="padding:7px 8px"><span class="inv-badge ' + (i.status||'').toLowerCase() + '">' + invEsc(i.status) + '</span></td>' +
+                        '<td style="padding:7px 8px;color:#9a9ea8;font-size:11px">' + (invEsc(i.created_by_name) || '\u2014') + '</td>' +
+                    '</tr>').join('') +
+                    '</tbody></table>';
+            } catch {
+                listEl.innerHTML = '<div class="inv-empty">Unable to load NAT-Lab inventory.</div>';
+            }
+        }
+
+        // ---- Oligo Explorer Bridge ----
+        async function invLoadOligoExplorer() {
+            const listEl = document.getElementById('invOligoList');
+            const q = (document.getElementById('invOligoSearch')?.value || '').trim();
+            try {
+                const data = await invJson('/api/theralia/bridge/oligo-explorer' + (q ? '&q=' + encodeURIComponent(q) : ''));
+                const probes = data.probes || [];
+                if (data.error) { listEl.innerHTML = '<div class="inv-empty">Unable to load Oligo Explorer.</div>'; return; }
+                if (probes.length === 0) { listEl.innerHTML = '<div class="inv-empty">No oligos' + (q ? ' matching "' + invEsc(q) + '"' : ' available') + '.</div>'; return; }
+                listEl.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:12px">' +
+                    '<thead><tr style="border-bottom:2px solid #e0e2e7;text-align:left">' +
+                    '<th style="padding:6px 8px;color:#9a9ea8;font-weight:600;font-size:10px;text-transform:uppercase">Name</th>' +
+                    '<th style="padding:6px 8px;color:#9a9ea8;font-weight:600;font-size:10px;text-transform:uppercase">ID</th>' +
+                    '<th style="padding:6px 8px;color:#9a9ea8;font-weight:600;font-size:10px;text-transform:uppercase">Sequence</th>' +
+                    '<th style="padding:6px 8px;color:#9a9ea8;font-weight:600;font-size:10px;text-transform:uppercase">Length</th>' +
+                    '<th style="padding:6px 8px;color:#9a9ea8;font-weight:600;font-size:10px;text-transform:uppercase">Type</th>' +
+                    '<th style="padding:6px 8px;color:#9a9ea8;font-weight:600;font-size:10px;text-transform:uppercase">Mods</th>' +
+                    '<th style="padding:6px 8px;color:#9a9ea8;font-weight:600;font-size:10px;text-transform:uppercase">Status</th>' +
+                    '</tr></thead><tbody>' +
+                    probes.map(p => {
+                        const seqShort = p.sequence && p.sequence.length > 40 ? p.sequence.substring(0, 40) + '\u2026' : (p.sequence || '\u2014');
+                        const mods = [p.mod5 ? "5':" + invEsc(p.mod5) : '', p.mod3 ? "3':" + invEsc(p.mod3) : ''].filter(Boolean).join(', ') || '\u2014';
+                        return '<tr style="border-bottom:1px solid rgba(0,0,0,0.04)">' +
+                            '<td style="padding:7px 8px;font-weight:500;color:#1a1c22">' + invEsc(p.display_name) + '</td>' +
+                            '<td style="padding:7px 8px;color:#555a66;font-size:11px">' + invEsc(p.canonical_id) + '</td>' +
+                            '<td style="padding:7px 8px;font-family:monospace;font-size:11px;color:#555a66;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + invEsc(p.sequence) + '">' + invEsc(seqShort) + '</td>' +
+                            '<td style="padding:7px 8px;color:#555a66;text-align:center">' + (p.length_nt || '\u2014') + '</td>' +
+                            '<td style="padding:7px 8px;color:#555a66">' + (invEsc(p.polymer_type) || invEsc(p.oligo_kind) || '\u2014') + '</td>' +
+                            '<td style="padding:7px 8px;color:#9a9ea8;font-size:11px">' + mods + '</td>' +
+                            '<td style="padding:7px 8px"><span class="inv-badge ' + (p.status||'').toLowerCase() + '">' + invEsc(p.status) + '</span></td>' +
+                        '</tr>';
+                    }).join('') +
+                    '</tbody></table>';
+            } catch {
+                listEl.innerHTML = '<div class="inv-empty">Unable to load Oligo Explorer.</div>';
+            }
         }
 
     </script>
