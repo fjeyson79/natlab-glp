@@ -1975,8 +1975,23 @@
             <div id="invNatlabView" style="display:none">
                 <div class="inv-embedded-container">
                     <div class="inv-embedded-label"><span>NAT-Lab</span> &middot; General Inventory &middot; Read only</div>
-                    <div style="padding:14px 18px">
-                        <input class="inv-search" id="invNatlabSearch" type="text" placeholder="Search inventory items...">
+                    <div style="padding:14px 18px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                        <input class="inv-search" id="invNatlabSearch" type="text" placeholder="Search inventory items..." style="flex:1;min-width:180px">
+                        <select class="inv-filter-select" id="invNatlabTypeFilter">
+                            <option value="">All Types</option>
+                            <option value="Chemical">Chemical</option>
+                            <option value="Biological">Biological</option>
+                            <option value="Equipment">Equipment</option>
+                            <option value="Consumable">Consumable</option>
+                            <option value="Kit">Kit</option>
+                            <option value="Oligo">Oligo</option>
+                            <option value="Other">Other</option>
+                        </select>
+                        <select class="inv-filter-select" id="invNatlabAffFilter">
+                            <option value="">All Affiliations</option>
+                            <option value="LiU">LiU</option>
+                            <option value="UNAV">UNAV</option>
+                        </select>
                     </div>
                     <div id="invNatlabList" style="padding:0 18px 18px;max-height:500px;overflow-y:auto">
                         <div class="inv-empty">Loading...</div>
@@ -1988,8 +2003,19 @@
             <div id="invOligoView" style="display:none">
                 <div class="inv-embedded-container">
                     <div class="inv-embedded-label"><span>NAT-Lab</span> &middot; Oligo Explorer &middot; Read only</div>
-                    <div style="padding:14px 18px">
-                        <input class="inv-search" id="invOligoSearch" type="text" placeholder="Search oligos by name, ID, or sequence...">
+                    <div style="padding:14px 18px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                        <input class="inv-search" id="invOligoSearch" type="text" placeholder="Search oligos by name, ID, sequence, supplier..." style="flex:1;min-width:180px">
+                        <select class="inv-filter-select" id="invOligoBasisFilter">
+                            <option value="">All Types</option>
+                            <option value="DNA">DNA</option>
+                            <option value="RNA">RNA</option>
+                        </select>
+                        <select class="inv-filter-select" id="invOligoStatusFilter">
+                            <option value="">All Statuses</option>
+                            <option value="ACTIVE">Active</option>
+                            <option value="DRAFT">Draft</option>
+                            <option value="RETIRED">Retired</option>
+                        </select>
                     </div>
                     <div id="invOligoList" style="padding:0 18px 18px;max-height:500px;overflow-y:auto">
                         <div class="inv-empty">Loading...</div>
@@ -2063,14 +2089,16 @@
                 </div>
             </div>
 
-            <!-- Asset Form Modal -->
+            <!-- Asset Form Modal (category-specific) -->
             <div class="inv-modal-overlay" id="invAssetModal">
-                <div class="inv-modal">
+                <div class="inv-modal" style="width:560px">
                     <h3 id="invAssetModalTitle">New Strategic Asset</h3>
                     <input type="hidden" id="invAssetEditId" value="">
+
+                    <!-- Common fields -->
                     <div class="inv-form-field"><label>Title *</label><input id="invAF_title" type="text"></div>
                     <div class="inv-form-row">
-                        <div class="inv-form-field"><label>Asset Class *</label><select id="invAF_asset_class"></select></div>
+                        <div class="inv-form-field"><label>Asset Class *</label><select id="invAF_asset_class" onchange="invAssetClassChanged()"></select></div>
                         <div class="inv-form-field"><label>Status</label>
                             <select id="invAF_status">
                                 <option value="draft">Draft</option>
@@ -2082,14 +2110,109 @@
                         </div>
                     </div>
                     <div class="inv-form-row">
-                        <div class="inv-form-field"><label>Jurisdiction</label><input id="invAF_jurisdiction" type="text" placeholder="e.g. EU, US, PCT"></div>
-                        <div class="inv-form-field"><label>Filing Date</label><input id="invAF_filing_date" type="date"></div>
-                    </div>
-                    <div class="inv-form-row">
                         <div class="inv-form-field"><label>Owner</label><input id="invAF_owner_name" type="text"></div>
                         <div class="inv-form-field"><label>Related Project</label><input id="invAF_related_project" type="text"></div>
                     </div>
-                    <div class="inv-form-field"><label>Notes</label><textarea id="invAF_notes"></textarea></div>
+                    <div class="inv-form-field"><label>Summary</label><textarea id="invAF_summary" rows="2"></textarea></div>
+
+                    <!-- Patent / Patent Application fields -->
+                    <div id="invAF_patentSection" style="display:none">
+                        <div style="font-size:11px;font-weight:700;color:#555a66;text-transform:uppercase;letter-spacing:0.5px;margin:16px 0 8px;border-top:1px solid #e0e2e7;padding-top:14px">Patent Information</div>
+                        <div class="inv-form-row">
+                            <div class="inv-form-field"><label>Patent Type</label><input id="invAF_patent_type" type="text" placeholder="e.g. Utility, Provisional"></div>
+                            <div class="inv-form-field"><label>Assignee</label><input id="invAF_assignee" type="text"></div>
+                        </div>
+                        <div class="inv-form-row">
+                            <div class="inv-form-field"><label>Inventors</label><input id="invAF_inventors" type="text" placeholder="Comma-separated"></div>
+                            <div class="inv-form-field"><label>Priority Date</label><input id="invAF_priority_date" type="date"></div>
+                        </div>
+                        <div class="inv-form-field"><label>Confidentiality Level</label>
+                            <select id="invAF_confidentiality">
+                                <option value="">Not specified</option>
+                                <option value="public">Public</option>
+                                <option value="confidential">Confidential</option>
+                                <option value="restricted">Restricted</option>
+                            </select>
+                        </div>
+                        <!-- Jurisdictions -->
+                        <div style="font-size:11px;font-weight:700;color:#555a66;text-transform:uppercase;letter-spacing:0.5px;margin:14px 0 8px">Jurisdictions</div>
+                        <div id="invAF_jurisdictions"></div>
+                        <button type="button" style="padding:5px 12px;font-size:11px;border:1px dashed #d0d2d8;border-radius:5px;background:none;color:#555a66;cursor:pointer;margin-top:4px" onclick="invAddJurisdiction()">+ Add Jurisdiction</button>
+                    </div>
+
+                    <!-- Lead Candidate fields -->
+                    <div id="invAF_leadSection" style="display:none">
+                        <div style="font-size:11px;font-weight:700;color:#555a66;text-transform:uppercase;letter-spacing:0.5px;margin:16px 0 8px;border-top:1px solid #e0e2e7;padding-top:14px">Lead Candidate &mdash; General</div>
+                        <div class="inv-form-row">
+                            <div class="inv-form-field"><label>Modality</label><input id="invAF_lc_modality" type="text" placeholder="e.g. ASO, siRNA"></div>
+                            <div class="inv-form-field"><label>Intended Indication</label><input id="invAF_lc_indication" type="text"></div>
+                        </div>
+                        <div class="inv-form-row">
+                            <div class="inv-form-field"><label>Target Context</label><input id="invAF_lc_target" type="text"></div>
+                            <div class="inv-form-field"><label>Mechanism Concept</label><input id="invAF_lc_mechanism" type="text"></div>
+                        </div>
+                        <div class="inv-form-row">
+                            <div class="inv-form-field"><label>Development Stage</label><input id="invAF_lc_dev_stage" type="text" placeholder="e.g. Discovery, Lead Optimization"></div>
+                            <div class="inv-form-field"><label>Related Platform Asset</label><input id="invAF_lc_platform_ref" type="text"></div>
+                        </div>
+
+                        <div style="font-size:11px;font-weight:700;color:#555a66;text-transform:uppercase;letter-spacing:0.5px;margin:14px 0 8px">Technical Info</div>
+                        <div class="inv-form-field"><label>Sequence</label><textarea id="invAF_lc_sequence" rows="2" style="font-family:monospace;font-size:12px"></textarea></div>
+                        <div class="inv-form-row">
+                            <div class="inv-form-field"><label>Length</label><input id="invAF_lc_length" type="text"></div>
+                            <div class="inv-form-field"><label>Chemistry Type</label><input id="invAF_lc_chemistry" type="text" placeholder="e.g. PS, PO, 2'OMe"></div>
+                        </div>
+                        <div class="inv-form-row">
+                            <div class="inv-form-field"><label>5' Modification</label><input id="invAF_lc_mod5" type="text"></div>
+                            <div class="inv-form-field"><label>3' Modification</label><input id="invAF_lc_mod3" type="text"></div>
+                        </div>
+                        <div class="inv-form-field"><label>Internal Modifications Summary</label><input id="invAF_lc_int_mods" type="text"></div>
+                        <div class="inv-form-row">
+                            <div class="inv-form-field"><label>Conjugate / Payload</label><input id="invAF_lc_conjugate" type="text"></div>
+                            <div class="inv-form-field"><label>Purification</label><input id="invAF_lc_purification" type="text"></div>
+                        </div>
+                        <div class="inv-form-row">
+                            <div class="inv-form-field"><label>Supplier</label><input id="invAF_lc_supplier" type="text"></div>
+                            <div class="inv-form-field"><label>Synthesis Reference</label><input id="invAF_lc_synth_ref" type="text"></div>
+                        </div>
+                        <div class="inv-form-field"><label>Linked Oligo Reference</label><input id="invAF_lc_oligo_ref" type="text"></div>
+                        <div class="inv-form-field"><label>Stability Note</label><input id="invAF_lc_stability" type="text"></div>
+                        <div class="inv-form-field"><label>Toxicity Note</label><input id="invAF_lc_toxicity" type="text"></div>
+                        <div class="inv-form-field"><label>Performance Note</label><input id="invAF_lc_performance" type="text"></div>
+                    </div>
+
+                    <!-- Platform Asset fields -->
+                    <div id="invAF_platformSection" style="display:none">
+                        <div style="font-size:11px;font-weight:700;color:#555a66;text-transform:uppercase;letter-spacing:0.5px;margin:16px 0 8px;border-top:1px solid #e0e2e7;padding-top:14px">Platform Asset &mdash; General</div>
+                        <div class="inv-form-row">
+                            <div class="inv-form-field"><label>Platform Type</label><input id="invAF_pa_platform_type" type="text" placeholder="e.g. Therapeutic, Diagnostic"></div>
+                            <div class="inv-form-field"><label>Application Area</label><input id="invAF_pa_application" type="text"></div>
+                        </div>
+                        <div class="inv-form-field"><label>Scientific Rationale</label><textarea id="invAF_pa_rationale" rows="2"></textarea></div>
+                        <div class="inv-form-field"><label>Intended Use</label><input id="invAF_pa_intended_use" type="text"></div>
+
+                        <div style="font-size:11px;font-weight:700;color:#555a66;text-transform:uppercase;letter-spacing:0.5px;margin:14px 0 8px">Strategic Value</div>
+                        <div class="inv-form-field"><label>Value Proposition</label><textarea id="invAF_pa_value_prop" rows="2"></textarea></div>
+                        <div class="inv-form-field"><label>Competitive Advantage</label><input id="invAF_pa_competitive" type="text"></div>
+                        <div class="inv-form-row">
+                            <div class="inv-form-field"><label>Development Stage</label><input id="invAF_pa_dev_stage" type="text"></div>
+                            <div class="inv-form-field"><label>IP Coverage Summary</label><input id="invAF_pa_ip_coverage" type="text"></div>
+                        </div>
+                        <div class="inv-form-row">
+                            <div class="inv-form-field"><label>Linked Patents</label><input id="invAF_pa_linked_patents" type="text" placeholder="Comma-separated"></div>
+                            <div class="inv-form-field"><label>Linked Lead Candidates</label><input id="invAF_pa_linked_leads" type="text" placeholder="Comma-separated"></div>
+                        </div>
+                        <div class="inv-form-field"><label>Key Milestones</label><textarea id="invAF_pa_milestones" rows="2"></textarea></div>
+                        <div class="inv-form-field"><label>Risk Summary</label><textarea id="invAF_pa_risk" rows="2"></textarea></div>
+
+                        <div style="font-size:11px;font-weight:700;color:#555a66;text-transform:uppercase;letter-spacing:0.5px;margin:14px 0 8px">Interest &amp; Negotiation</div>
+                        <div class="inv-form-field"><label>Potential Interest</label><textarea id="invAF_pa_interest" rows="2" placeholder="Pharma interest, investor interest..."></textarea></div>
+                        <div class="inv-form-field"><label>Negotiation Notes</label><textarea id="invAF_pa_negotiation" rows="2"></textarea></div>
+                        <div class="inv-form-field"><label>External Partner Relevance</label><input id="invAF_pa_partner" type="text"></div>
+                    </div>
+
+                    <!-- Common bottom fields -->
+                    <div class="inv-form-field" style="margin-top:12px"><label>Notes</label><textarea id="invAF_notes"></textarea></div>
                     <div class="inv-form-actions">
                         <button class="inv-cancel" onclick="invCloseAssetForm()">Cancel</button>
                         <button class="inv-submit" onclick="invSaveAsset()">Save</button>
@@ -4741,12 +4864,18 @@
             if (mode === 'natlab' && !_invNatlabLoaded) {
                 _invNatlabLoaded = true;
                 invLoadNatlabInventory();
-                document.getElementById('invNatlabSearch').addEventListener('input', invDebounce(invLoadNatlabInventory, 300));
+                const natlabDebounced = invDebounce(invLoadNatlabInventory, 300);
+                document.getElementById('invNatlabSearch').addEventListener('input', natlabDebounced);
+                document.getElementById('invNatlabTypeFilter').addEventListener('change', invLoadNatlabInventory);
+                document.getElementById('invNatlabAffFilter').addEventListener('change', invLoadNatlabInventory);
             }
             if (mode === 'oligo' && !_invOligoLoaded) {
                 _invOligoLoaded = true;
                 invLoadOligoExplorer();
-                document.getElementById('invOligoSearch').addEventListener('input', invDebounce(invLoadOligoExplorer, 300));
+                const oligoDebounced = invDebounce(invLoadOligoExplorer, 300);
+                document.getElementById('invOligoSearch').addEventListener('input', oligoDebounced);
+                document.getElementById('invOligoBasisFilter').addEventListener('change', invLoadOligoExplorer);
+                document.getElementById('invOligoStatusFilter').addEventListener('change', invLoadOligoExplorer);
             }
             sessionStorage.setItem('theralia_inventory_tab', mode);
             invAutoFocusSearch(mode);
@@ -4970,28 +5099,320 @@
             </div>`).join('');
         }
 
+        function invIsPatentClass(cls) { return cls === 'patent' || cls === 'patent_application'; }
+        function invIsLeadClass(cls) { return cls === 'lead_candidate'; }
+        function invIsPlatformClass(cls) { return cls === 'platform_asset'; }
+
         function invSelectAsset(id) {
             _invSelectedAsset = id;
             invRenderAssetList();
             const a = _invAssets.find(x => x.id === id);
             if (!a) return;
+            const d = a.details_json || {};
             const detailEl = document.getElementById('invAssetDetail');
-            detailEl.innerHTML = `
-                <div class="inv-detail-title">${invEsc(a.title)}</div>
+            let html = `<div class="inv-detail-title">${invEsc(a.title)}</div>
                 <div class="inv-detail-grid">
                     <div class="inv-detail-section"><div class="inv-detail-label">Asset Class</div><div class="inv-detail-val">${invEsc(a.class_display_name || a.asset_class)}</div></div>
                     <div class="inv-detail-section"><div class="inv-detail-label">Status</div><div class="inv-detail-val"><span class="inv-badge ${a.status}">${a.status}</span></div></div>
-                    <div class="inv-detail-section"><div class="inv-detail-label">Jurisdiction</div><div class="inv-detail-val">${invEsc(a.jurisdiction) || '\u2014'}</div></div>
-                    <div class="inv-detail-section"><div class="inv-detail-label">Filing Date</div><div class="inv-detail-val">${invDate(a.filing_date)}</div></div>
                     <div class="inv-detail-section"><div class="inv-detail-label">Owner</div><div class="inv-detail-val">${invEsc(a.owner_name) || '\u2014'}</div></div>
                     <div class="inv-detail-section"><div class="inv-detail-label">Related Project</div><div class="inv-detail-val">${invEsc(a.related_project) || '\u2014'}</div></div>
-                </div>
-                ${a.notes ? '<div class="inv-detail-section"><div class="inv-detail-label">Notes</div><div class="inv-detail-val">' + invEsc(a.notes) + '</div></div>' : ''}
-                <div class="inv-detail-section"><div class="inv-detail-label">Created</div><div class="inv-detail-val">${invDate(a.created_at)} by ${invEsc(a.created_by)}</div></div>
-                <div class="inv-detail-actions">
+                </div>`;
+            if (a.summary) html += `<div class="inv-detail-section"><div class="inv-detail-label">Summary</div><div class="inv-detail-val">${invEsc(a.summary)}</div></div>`;
+
+            // Patent / Patent Application details
+            if (invIsPatentClass(a.asset_class)) {
+                html += '<div style="font-size:10px;font-weight:700;color:#9a9ea8;text-transform:uppercase;letter-spacing:0.5px;margin:16px 0 8px;border-top:1px solid #e0e2e7;padding-top:12px">Patent Information</div>';
+                html += '<div class="inv-detail-grid">';
+                html += `<div class="inv-detail-section"><div class="inv-detail-label">Patent Type</div><div class="inv-detail-val">${invEsc(d.patent_type) || '\u2014'}</div></div>`;
+                html += `<div class="inv-detail-section"><div class="inv-detail-label">Assignee</div><div class="inv-detail-val">${invEsc(d.assignee) || '\u2014'}</div></div>`;
+                html += `<div class="inv-detail-section"><div class="inv-detail-label">Inventors</div><div class="inv-detail-val">${invEsc(d.inventors) || '\u2014'}</div></div>`;
+                html += `<div class="inv-detail-section"><div class="inv-detail-label">Priority Date</div><div class="inv-detail-val">${invDate(d.priority_date)}</div></div>`;
+                html += `<div class="inv-detail-section"><div class="inv-detail-label">Confidentiality</div><div class="inv-detail-val">${invEsc(d.confidentiality_level) || '\u2014'}</div></div>`;
+                html += '</div>';
+                const jurs = d.jurisdictions || [];
+                if (jurs.length > 0) {
+                    html += '<div style="font-size:10px;font-weight:700;color:#9a9ea8;text-transform:uppercase;letter-spacing:0.5px;margin:12px 0 6px">Jurisdictions</div>';
+                    html += '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:8px"><thead><tr style="border-bottom:1px solid #e0e2e7">';
+                    html += '<th style="padding:4px 6px;text-align:left;font-size:10px;color:#9a9ea8;font-weight:600">JUR</th>';
+                    html += '<th style="padding:4px 6px;text-align:left;font-size:10px;color:#9a9ea8;font-weight:600">App. No.</th>';
+                    html += '<th style="padding:4px 6px;text-align:left;font-size:10px;color:#9a9ea8;font-weight:600">Pub. No.</th>';
+                    html += '<th style="padding:4px 6px;text-align:left;font-size:10px;color:#9a9ea8;font-weight:600">Filed</th>';
+                    html += '<th style="padding:4px 6px;text-align:left;font-size:10px;color:#9a9ea8;font-weight:600">Status</th>';
+                    html += '</tr></thead><tbody>';
+                    jurs.forEach(j => {
+                        html += '<tr style="border-bottom:1px solid rgba(0,0,0,0.04)">';
+                        html += '<td style="padding:5px 6px;font-weight:600">' + invEsc(j.jurisdiction) + '</td>';
+                        html += '<td style="padding:5px 6px">' + (invEsc(j.application_number) || '\u2014') + '</td>';
+                        html += '<td style="padding:5px 6px">' + (invEsc(j.publication_number) || '\u2014') + '</td>';
+                        html += '<td style="padding:5px 6px">' + invDate(j.filing_date) + '</td>';
+                        html += '<td style="padding:5px 6px">' + (invEsc(j.jurisdiction_status) || '\u2014') + '</td>';
+                        html += '</tr>';
+                    });
+                    html += '</tbody></table>';
+                }
+            }
+
+            // Lead Candidate details
+            if (invIsLeadClass(a.asset_class)) {
+                html += '<div style="font-size:10px;font-weight:700;color:#9a9ea8;text-transform:uppercase;letter-spacing:0.5px;margin:16px 0 8px;border-top:1px solid #e0e2e7;padding-top:12px">Lead Candidate</div>';
+                html += '<div class="inv-detail-grid">';
+                const lcFields = [['Modality','modality'],['Intended Indication','intended_indication'],['Target Context','target_context'],['Mechanism Concept','mechanism_concept'],['Development Stage','development_stage'],['Related Platform','related_platform_asset_id']];
+                lcFields.forEach(([label,key]) => { html += `<div class="inv-detail-section"><div class="inv-detail-label">${label}</div><div class="inv-detail-val">${invEsc(d[key]) || '\u2014'}</div></div>`; });
+                html += '</div>';
+                html += '<div style="font-size:10px;font-weight:700;color:#9a9ea8;text-transform:uppercase;letter-spacing:0.5px;margin:12px 0 6px">Technical Info</div>';
+                if (d.sequence) html += `<div class="inv-detail-section"><div class="inv-detail-label">Sequence</div><div class="inv-detail-val" style="font-family:monospace;font-size:12px;word-break:break-all">${invEsc(d.sequence)}</div></div>`;
+                html += '<div class="inv-detail-grid">';
+                const techFields = [['Length','length'],['Chemistry','chemistry_type'],["5' Mod",'mod_5'],["3' Mod",'mod_3'],['Internal Mods','internal_modifications_summary'],['Conjugate/Payload','conjugate_or_payload'],['Purification','purification'],['Supplier','supplier'],['Synthesis Ref','synthesis_reference'],['Oligo Ref','linked_oligo_reference']];
+                techFields.forEach(([label,key]) => { if (d[key]) html += `<div class="inv-detail-section"><div class="inv-detail-label">${label}</div><div class="inv-detail-val">${invEsc(d[key])}</div></div>`; });
+                html += '</div>';
+                const noteFields = [['Stability','stability_note'],['Toxicity','toxicity_note'],['Performance','performance_note']];
+                noteFields.forEach(([label,key]) => { if (d[key]) html += `<div class="inv-detail-section"><div class="inv-detail-label">${label}</div><div class="inv-detail-val">${invEsc(d[key])}</div></div>`; });
+            }
+
+            // Platform Asset details
+            if (invIsPlatformClass(a.asset_class)) {
+                html += '<div style="font-size:10px;font-weight:700;color:#9a9ea8;text-transform:uppercase;letter-spacing:0.5px;margin:16px 0 8px;border-top:1px solid #e0e2e7;padding-top:12px">Platform Asset</div>';
+                html += '<div class="inv-detail-grid">';
+                const paGeneral = [['Platform Type','platform_type'],['Application Area','application_area'],['Intended Use','intended_use']];
+                paGeneral.forEach(([label,key]) => { html += `<div class="inv-detail-section"><div class="inv-detail-label">${label}</div><div class="inv-detail-val">${invEsc(d[key]) || '\u2014'}</div></div>`; });
+                html += '</div>';
+                if (d.scientific_rationale) html += `<div class="inv-detail-section"><div class="inv-detail-label">Scientific Rationale</div><div class="inv-detail-val">${invEsc(d.scientific_rationale)}</div></div>`;
+
+                html += '<div style="font-size:10px;font-weight:700;color:#9a9ea8;text-transform:uppercase;letter-spacing:0.5px;margin:12px 0 6px">Strategic Value</div>';
+                const paStrat = [['Value Proposition','value_proposition'],['Competitive Advantage','competitive_advantage'],['Development Stage','development_stage'],['IP Coverage','ip_coverage_summary'],['Linked Patents','linked_patents'],['Linked Lead Candidates','linked_lead_candidates'],['Key Milestones','key_milestones'],['Risk Summary','risk_summary']];
+                paStrat.forEach(([label,key]) => { if (d[key]) html += `<div class="inv-detail-section"><div class="inv-detail-label">${label}</div><div class="inv-detail-val">${invEsc(d[key])}</div></div>`; });
+
+                html += '<div style="font-size:10px;font-weight:700;color:#9a9ea8;text-transform:uppercase;letter-spacing:0.5px;margin:12px 0 6px">Interest &amp; Negotiation</div>';
+                const paNeg = [['Potential Interest','potential_interest'],['Negotiation Notes','negotiation_notes'],['External Partner Relevance','external_partner_relevance']];
+                paNeg.forEach(([label,key]) => { if (d[key]) html += `<div class="inv-detail-section"><div class="inv-detail-label">${label}</div><div class="inv-detail-val">${invEsc(d[key])}</div></div>`; });
+            }
+
+            if (a.notes) html += `<div class="inv-detail-section"><div class="inv-detail-label">Notes</div><div class="inv-detail-val">${invEsc(a.notes)}</div></div>`;
+            html += `<div class="inv-detail-section"><div class="inv-detail-label">Created</div><div class="inv-detail-val">${invDate(a.created_at)} by ${invEsc(a.created_by)}</div></div>`;
+
+            // Supporting files section
+            html += '<div id="invAssetFilesSection" data-asset-id="' + a.id + '"></div>';
+
+            html += `<div class="inv-detail-actions">
                     <button class="primary" onclick="invEditAsset('${a.id}')">Edit</button>
                     ${a.status !== 'archived' ? '<button onclick="invArchiveAsset(\'' + a.id + '\')">Archive</button>' : ''}
                 </div>`;
+
+            detailEl.innerHTML = html;
+            invLoadAssetFiles(a.id);
+        }
+
+        // ---- Asset Files ----
+        async function invLoadAssetFiles(assetId) {
+            const section = document.getElementById('invAssetFilesSection');
+            if (!section) return;
+            try {
+                const data = await invJson('/api/theralia/inventory/strategic-assets/' + assetId + '/files');
+                const files = data.files || [];
+                let fhtml = '<div style="font-size:10px;font-weight:700;color:#9a9ea8;text-transform:uppercase;letter-spacing:0.5px;margin:16px 0 8px;border-top:1px solid #e0e2e7;padding-top:12px">Supporting Documents</div>';
+                if (files.length > 0) {
+                    files.forEach(f => {
+                        fhtml += '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(0,0,0,0.04)">';
+                        fhtml += '<a href="/api/theralia/inventory/asset-files/' + f.id + '/download?ws=theralia" target="_blank" style="color:#2563eb;font-size:12px;text-decoration:none;flex:1">' + invEsc(f.file_name) + '</a>';
+                        fhtml += '<span style="font-size:10px;color:#9a9ea8">' + invDate(f.uploaded_at) + '</span>';
+                        fhtml += '<button onclick="invDeleteAssetFile(\'' + f.id + '\',\'' + assetId + '\')" style="border:none;background:none;color:#dc2626;font-size:11px;cursor:pointer;padding:2px 6px">Remove</button>';
+                        fhtml += '</div>';
+                    });
+                } else {
+                    fhtml += '<div style="font-size:12px;color:#9a9ea8;padding:4px 0">No documents uploaded.</div>';
+                }
+                fhtml += '<div style="margin-top:8px"><input type="file" id="invAssetFileInput" accept=".pdf" style="font-size:11px">';
+                fhtml += ' <button onclick="invUploadAssetFile(\'' + assetId + '\')" style="padding:4px 10px;font-size:11px;border:1px solid #e0e2e7;border-radius:4px;background:#fff;cursor:pointer">Upload PDF</button></div>';
+                section.innerHTML = fhtml;
+            } catch { section.innerHTML = ''; }
+        }
+
+        async function invUploadAssetFile(assetId) {
+            const fileInput = document.getElementById('invAssetFileInput');
+            if (!fileInput?.files?.length) { alert('Select a PDF file first.'); return; }
+            const fd = new FormData();
+            fd.append('file', fileInput.files[0]);
+            try {
+                const res = await invFetch('/api/theralia/inventory/strategic-assets/' + assetId + '/files', { method: 'POST', body: fd });
+                const data = await res.json();
+                if (data.ok) invLoadAssetFiles(assetId);
+                else alert(data.error || 'Upload failed');
+            } catch { alert('Upload failed.'); }
+        }
+
+        async function invDeleteAssetFile(fileId, assetId) {
+            if (!confirm('Remove this document?')) return;
+            try {
+                const res = await invFetch('/api/theralia/inventory/asset-files/' + fileId, { method: 'DELETE' });
+                const data = await res.json();
+                if (data.ok) invLoadAssetFiles(assetId);
+            } catch { alert('Delete failed.'); }
+        }
+
+        // ---- Asset Form (category-specific) ----
+        function invAssetClassChanged() {
+            const cls = document.getElementById('invAF_asset_class').value;
+            document.getElementById('invAF_patentSection').style.display = invIsPatentClass(cls) ? '' : 'none';
+            document.getElementById('invAF_leadSection').style.display = invIsLeadClass(cls) ? '' : 'none';
+            document.getElementById('invAF_platformSection').style.display = invIsPlatformClass(cls) ? '' : 'none';
+        }
+
+        let _invJurisdictionCount = 0;
+        function invAddJurisdiction(j) {
+            const idx = _invJurisdictionCount++;
+            const container = document.getElementById('invAF_jurisdictions');
+            const div = document.createElement('div');
+            div.className = 'inv-jur-block';
+            div.id = 'invJur_' + idx;
+            div.style.cssText = 'border:1px solid #e0e2e7;border-radius:6px;padding:8px;margin-bottom:6px;position:relative';
+            j = j || {};
+            div.innerHTML = `
+                <button type="button" onclick="this.parentElement.remove()" style="position:absolute;top:4px;right:6px;border:none;background:none;color:#dc2626;font-size:14px;cursor:pointer">&times;</button>
+                <div class="inv-form-row" style="margin-bottom:4px">
+                    <div class="inv-form-field"><label>Jurisdiction</label><select class="jur-jurisdiction" style="width:100%;padding:5px;border:1px solid #e0e2e7;border-radius:4px;font-size:12px">
+                        <option value="">Select</option><option value="WO" ${j.jurisdiction==='WO'?'selected':''}>WO (PCT)</option><option value="EP" ${j.jurisdiction==='EP'?'selected':''}>EP</option><option value="US" ${j.jurisdiction==='US'?'selected':''}>US</option><option value="CN" ${j.jurisdiction==='CN'?'selected':''}>CN</option><option value="JP" ${j.jurisdiction==='JP'?'selected':''}>JP</option><option value="KR" ${j.jurisdiction==='KR'?'selected':''}>KR</option><option value="IN" ${j.jurisdiction==='IN'?'selected':''}>IN</option><option value="SE" ${j.jurisdiction==='SE'?'selected':''}>SE</option><option value="ES" ${j.jurisdiction==='ES'?'selected':''}>ES</option><option value="OTHER" ${j.jurisdiction==='OTHER'?'selected':''}>Other</option>
+                    </select></div>
+                    <div class="inv-form-field"><label>Status</label><input class="jur-status" type="text" value="${invEsc(j.jurisdiction_status||'')}" style="padding:5px;border:1px solid #e0e2e7;border-radius:4px;font-size:12px"></div>
+                </div>
+                <div class="inv-form-row" style="margin-bottom:4px">
+                    <div class="inv-form-field"><label>Application No.</label><input class="jur-app-no" type="text" value="${invEsc(j.application_number||'')}" style="padding:5px;border:1px solid #e0e2e7;border-radius:4px;font-size:12px"></div>
+                    <div class="inv-form-field"><label>Publication No.</label><input class="jur-pub-no" type="text" value="${invEsc(j.publication_number||'')}" style="padding:5px;border:1px solid #e0e2e7;border-radius:4px;font-size:12px"></div>
+                </div>
+                <div class="inv-form-row">
+                    <div class="inv-form-field"><label>Filing Date</label><input class="jur-filing" type="date" value="${j.filing_date?j.filing_date.substring(0,10):''}" style="padding:5px;border:1px solid #e0e2e7;border-radius:4px;font-size:12px"></div>
+                    <div class="inv-form-field"><label>Publication Date</label><input class="jur-pub-date" type="date" value="${j.publication_date?j.publication_date.substring(0,10):''}" style="padding:5px;border:1px solid #e0e2e7;border-radius:4px;font-size:12px"></div>
+                </div>`;
+            container.appendChild(div);
+        }
+
+        function invCollectJurisdictions() {
+            const blocks = document.querySelectorAll('.inv-jur-block');
+            const jurs = [];
+            blocks.forEach(b => {
+                const jur = b.querySelector('.jur-jurisdiction')?.value;
+                if (!jur) return;
+                jurs.push({
+                    jurisdiction: jur,
+                    application_number: b.querySelector('.jur-app-no')?.value?.trim() || null,
+                    publication_number: b.querySelector('.jur-pub-no')?.value?.trim() || null,
+                    filing_date: b.querySelector('.jur-filing')?.value || null,
+                    publication_date: b.querySelector('.jur-pub-date')?.value || null,
+                    jurisdiction_status: b.querySelector('.jur-status')?.value?.trim() || null
+                });
+            });
+            return jurs;
+        }
+
+        function invVal(id) { const el = document.getElementById(id); return el ? el.value.trim() : ''; }
+
+        function invCollectDetailsJson(cls) {
+            if (invIsPatentClass(cls)) {
+                return {
+                    patent_type: invVal('invAF_patent_type') || null,
+                    assignee: invVal('invAF_assignee') || null,
+                    inventors: invVal('invAF_inventors') || null,
+                    priority_date: invVal('invAF_priority_date') || null,
+                    confidentiality_level: invVal('invAF_confidentiality') || null,
+                    jurisdictions: invCollectJurisdictions()
+                };
+            }
+            if (invIsLeadClass(cls)) {
+                return {
+                    modality: invVal('invAF_lc_modality') || null,
+                    intended_indication: invVal('invAF_lc_indication') || null,
+                    target_context: invVal('invAF_lc_target') || null,
+                    mechanism_concept: invVal('invAF_lc_mechanism') || null,
+                    development_stage: invVal('invAF_lc_dev_stage') || null,
+                    related_platform_asset_id: invVal('invAF_lc_platform_ref') || null,
+                    sequence: invVal('invAF_lc_sequence') || null,
+                    length: invVal('invAF_lc_length') || null,
+                    chemistry_type: invVal('invAF_lc_chemistry') || null,
+                    mod_5: invVal('invAF_lc_mod5') || null,
+                    mod_3: invVal('invAF_lc_mod3') || null,
+                    internal_modifications_summary: invVal('invAF_lc_int_mods') || null,
+                    conjugate_or_payload: invVal('invAF_lc_conjugate') || null,
+                    purification: invVal('invAF_lc_purification') || null,
+                    supplier: invVal('invAF_lc_supplier') || null,
+                    synthesis_reference: invVal('invAF_lc_synth_ref') || null,
+                    linked_oligo_reference: invVal('invAF_lc_oligo_ref') || null,
+                    stability_note: invVal('invAF_lc_stability') || null,
+                    toxicity_note: invVal('invAF_lc_toxicity') || null,
+                    performance_note: invVal('invAF_lc_performance') || null
+                };
+            }
+            if (invIsPlatformClass(cls)) {
+                return {
+                    platform_type: invVal('invAF_pa_platform_type') || null,
+                    application_area: invVal('invAF_pa_application') || null,
+                    scientific_rationale: invVal('invAF_pa_rationale') || null,
+                    intended_use: invVal('invAF_pa_intended_use') || null,
+                    value_proposition: invVal('invAF_pa_value_prop') || null,
+                    competitive_advantage: invVal('invAF_pa_competitive') || null,
+                    development_stage: invVal('invAF_pa_dev_stage') || null,
+                    ip_coverage_summary: invVal('invAF_pa_ip_coverage') || null,
+                    linked_patents: invVal('invAF_pa_linked_patents') || null,
+                    linked_lead_candidates: invVal('invAF_pa_linked_leads') || null,
+                    key_milestones: invVal('invAF_pa_milestones') || null,
+                    risk_summary: invVal('invAF_pa_risk') || null,
+                    potential_interest: invVal('invAF_pa_interest') || null,
+                    negotiation_notes: invVal('invAF_pa_negotiation') || null,
+                    external_partner_relevance: invVal('invAF_pa_partner') || null
+                };
+            }
+            return null;
+        }
+
+        function invPopulateDetailsForm(cls, d) {
+            d = d || {};
+            if (invIsPatentClass(cls)) {
+                document.getElementById('invAF_patent_type').value = d.patent_type || '';
+                document.getElementById('invAF_assignee').value = d.assignee || '';
+                document.getElementById('invAF_inventors').value = d.inventors || '';
+                document.getElementById('invAF_priority_date').value = d.priority_date ? d.priority_date.substring(0,10) : '';
+                document.getElementById('invAF_confidentiality').value = d.confidentiality_level || '';
+                document.getElementById('invAF_jurisdictions').innerHTML = '';
+                _invJurisdictionCount = 0;
+                (d.jurisdictions || []).forEach(j => invAddJurisdiction(j));
+            }
+            if (invIsLeadClass(cls)) {
+                document.getElementById('invAF_lc_modality').value = d.modality || '';
+                document.getElementById('invAF_lc_indication').value = d.intended_indication || '';
+                document.getElementById('invAF_lc_target').value = d.target_context || '';
+                document.getElementById('invAF_lc_mechanism').value = d.mechanism_concept || '';
+                document.getElementById('invAF_lc_dev_stage').value = d.development_stage || '';
+                document.getElementById('invAF_lc_platform_ref').value = d.related_platform_asset_id || '';
+                document.getElementById('invAF_lc_sequence').value = d.sequence || '';
+                document.getElementById('invAF_lc_length').value = d.length || '';
+                document.getElementById('invAF_lc_chemistry').value = d.chemistry_type || '';
+                document.getElementById('invAF_lc_mod5').value = d.mod_5 || '';
+                document.getElementById('invAF_lc_mod3').value = d.mod_3 || '';
+                document.getElementById('invAF_lc_int_mods').value = d.internal_modifications_summary || '';
+                document.getElementById('invAF_lc_conjugate').value = d.conjugate_or_payload || '';
+                document.getElementById('invAF_lc_purification').value = d.purification || '';
+                document.getElementById('invAF_lc_supplier').value = d.supplier || '';
+                document.getElementById('invAF_lc_synth_ref').value = d.synthesis_reference || '';
+                document.getElementById('invAF_lc_oligo_ref').value = d.linked_oligo_reference || '';
+                document.getElementById('invAF_lc_stability').value = d.stability_note || '';
+                document.getElementById('invAF_lc_toxicity').value = d.toxicity_note || '';
+                document.getElementById('invAF_lc_performance').value = d.performance_note || '';
+            }
+            if (invIsPlatformClass(cls)) {
+                document.getElementById('invAF_pa_platform_type').value = d.platform_type || '';
+                document.getElementById('invAF_pa_application').value = d.application_area || '';
+                document.getElementById('invAF_pa_rationale').value = d.scientific_rationale || '';
+                document.getElementById('invAF_pa_intended_use').value = d.intended_use || '';
+                document.getElementById('invAF_pa_value_prop').value = d.value_proposition || '';
+                document.getElementById('invAF_pa_competitive').value = d.competitive_advantage || '';
+                document.getElementById('invAF_pa_dev_stage').value = d.development_stage || '';
+                document.getElementById('invAF_pa_ip_coverage').value = d.ip_coverage_summary || '';
+                document.getElementById('invAF_pa_linked_patents').value = d.linked_patents || '';
+                document.getElementById('invAF_pa_linked_leads').value = d.linked_lead_candidates || '';
+                document.getElementById('invAF_pa_milestones').value = d.key_milestones || '';
+                document.getElementById('invAF_pa_risk').value = d.risk_summary || '';
+                document.getElementById('invAF_pa_interest').value = d.potential_interest || '';
+                document.getElementById('invAF_pa_negotiation').value = d.negotiation_notes || '';
+                document.getElementById('invAF_pa_partner').value = d.external_partner_relevance || '';
+            }
         }
 
         function invOpenAssetForm(a) {
@@ -5000,11 +5421,17 @@
             document.getElementById('invAF_title').value = a ? a.title : '';
             document.getElementById('invAF_asset_class').value = a ? a.asset_class : (_invAssetClasses[0]?.class_key || '');
             document.getElementById('invAF_status').value = a ? a.status : 'draft';
-            document.getElementById('invAF_jurisdiction').value = a ? (a.jurisdiction||'') : '';
-            document.getElementById('invAF_filing_date').value = a && a.filing_date ? a.filing_date.substring(0,10) : '';
             document.getElementById('invAF_owner_name').value = a ? (a.owner_name||'') : '';
             document.getElementById('invAF_related_project').value = a ? (a.related_project||'') : '';
+            document.getElementById('invAF_summary').value = a ? (a.summary||'') : '';
             document.getElementById('invAF_notes').value = a ? (a.notes||'') : '';
+            // Reset jurisdiction blocks
+            document.getElementById('invAF_jurisdictions').innerHTML = '';
+            _invJurisdictionCount = 0;
+            // Populate category-specific fields
+            const cls = a ? a.asset_class : (document.getElementById('invAF_asset_class').value || '');
+            invAssetClassChanged();
+            invPopulateDetailsForm(cls, a ? (a.details_json || {}) : {});
             document.getElementById('invAssetModal').classList.add('active');
         }
 
@@ -5017,15 +5444,16 @@
 
         async function invSaveAsset() {
             const editId = document.getElementById('invAssetEditId').value;
+            const cls = document.getElementById('invAF_asset_class').value;
             const body = {
                 title: document.getElementById('invAF_title').value.trim(),
-                asset_class: document.getElementById('invAF_asset_class').value,
+                asset_class: cls,
                 status: document.getElementById('invAF_status').value,
-                jurisdiction: document.getElementById('invAF_jurisdiction').value.trim() || null,
-                filing_date: document.getElementById('invAF_filing_date').value || null,
                 owner_name: document.getElementById('invAF_owner_name').value.trim() || null,
                 related_project: document.getElementById('invAF_related_project').value.trim() || null,
-                notes: document.getElementById('invAF_notes').value.trim() || null
+                summary: document.getElementById('invAF_summary').value.trim() || null,
+                notes: document.getElementById('invAF_notes').value.trim() || null,
+                details_json: invCollectDetailsJson(cls)
             };
             if (!body.title || !body.asset_class) { alert('Title and asset class are required.'); return; }
             try {
@@ -5037,6 +5465,7 @@
                     invCloseAssetForm();
                     await invLoadAssets();
                     if (editId) invSelectAsset(editId);
+                    else if (data.asset?.id) invSelectAsset(data.asset.id);
                 } else { alert(data.error || 'Save failed'); }
             } catch { alert('Save failed.'); }
         }
@@ -5071,27 +5500,37 @@
         async function invLoadNatlabInventory() {
             const listEl = document.getElementById('invNatlabList');
             const q = (document.getElementById('invNatlabSearch')?.value || '').trim();
+            const itemType = document.getElementById('invNatlabTypeFilter')?.value || '';
+            const aff = document.getElementById('invNatlabAffFilter')?.value || '';
             try {
-                const data = await invJson('/api/theralia/bridge/natlab-general-inventory' + (q ? '&q=' + encodeURIComponent(q) : ''));
+                let url = '/api/theralia/bridge/natlab-general-inventory?_=1';
+                if (q) url += '&q=' + encodeURIComponent(q);
+                if (itemType) url += '&item_type=' + encodeURIComponent(itemType);
+                if (aff) url += '&affiliation=' + encodeURIComponent(aff);
+                const data = await invJson(url);
                 const items = data.items || [];
                 if (data.error) { listEl.innerHTML = '<div class="inv-empty">Unable to load NAT-Lab inventory.</div>'; return; }
-                if (items.length === 0) { listEl.innerHTML = '<div class="inv-empty">No NAT-Lab inventory items' + (q ? ' matching "' + invEsc(q) + '"' : ' available') + '.</div>'; return; }
+                if (items.length === 0) { listEl.innerHTML = '<div class="inv-empty">No NAT-Lab inventory items' + (q || itemType || aff ? ' matching filter' : ' available') + '.</div>'; return; }
                 listEl.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:12px">' +
                     '<thead><tr style="border-bottom:2px solid #e0e2e7;text-align:left">' +
                     '<th style="padding:6px 8px;color:#9a9ea8;font-weight:600;font-size:10px;text-transform:uppercase">Name</th>' +
                     '<th style="padding:6px 8px;color:#9a9ea8;font-weight:600;font-size:10px;text-transform:uppercase">Type</th>' +
+                    '<th style="padding:6px 8px;color:#9a9ea8;font-weight:600;font-size:10px;text-transform:uppercase">Identifier</th>' +
                     '<th style="padding:6px 8px;color:#9a9ea8;font-weight:600;font-size:10px;text-transform:uppercase">Vendor</th>' +
                     '<th style="padding:6px 8px;color:#9a9ea8;font-weight:600;font-size:10px;text-transform:uppercase">Qty</th>' +
                     '<th style="padding:6px 8px;color:#9a9ea8;font-weight:600;font-size:10px;text-transform:uppercase">Storage</th>' +
+                    '<th style="padding:6px 8px;color:#9a9ea8;font-weight:600;font-size:10px;text-transform:uppercase">Aff.</th>' +
                     '<th style="padding:6px 8px;color:#9a9ea8;font-weight:600;font-size:10px;text-transform:uppercase">Status</th>' +
                     '<th style="padding:6px 8px;color:#9a9ea8;font-weight:600;font-size:10px;text-transform:uppercase">Owner</th>' +
                     '</tr></thead><tbody>' +
                     items.map(i => '<tr style="border-bottom:1px solid rgba(0,0,0,0.04)">' +
                         '<td style="padding:7px 8px;font-weight:500;color:#1a1c22">' + invEsc(i.item_name) + '</td>' +
                         '<td style="padding:7px 8px;color:#555a66">' + invEsc(i.item_type) + '</td>' +
+                        '<td style="padding:7px 8px;color:#555a66;font-size:11px">' + (invEsc(i.item_identifier) || '\u2014') + '</td>' +
                         '<td style="padding:7px 8px;color:#555a66">' + (invEsc(i.vendor_company) || '\u2014') + '</td>' +
                         '<td style="padding:7px 8px;color:#555a66">' + (i.quantity != null ? i.quantity + ' ' + invEsc(i.quantity_unit) : '\u2014') + '</td>' +
-                        '<td style="padding:7px 8px;color:#555a66">' + invEsc(i.storage_location) + ' (' + invEsc(i.storage_temperature) + ')</td>' +
+                        '<td style="padding:7px 8px;color:#555a66">' + (invEsc(i.storage_location) || '') + (i.storage_temperature ? ' (' + invEsc(i.storage_temperature) + ')' : '') + '</td>' +
+                        '<td style="padding:7px 8px;color:#9a9ea8;font-size:11px">' + (invEsc(i.affiliation) || '\u2014') + '</td>' +
                         '<td style="padding:7px 8px"><span class="inv-badge ' + (i.status||'').toLowerCase() + '">' + invEsc(i.status) + '</span></td>' +
                         '<td style="padding:7px 8px;color:#9a9ea8;font-size:11px">' + (invEsc(i.created_by_name) || '\u2014') + '</td>' +
                     '</tr>').join('') +
@@ -5105,11 +5544,17 @@
         async function invLoadOligoExplorer() {
             const listEl = document.getElementById('invOligoList');
             const q = (document.getElementById('invOligoSearch')?.value || '').trim();
+            const basis = document.getElementById('invOligoBasisFilter')?.value || '';
+            const status = document.getElementById('invOligoStatusFilter')?.value || '';
             try {
-                const data = await invJson('/api/theralia/bridge/oligo-explorer' + (q ? '&q=' + encodeURIComponent(q) : ''));
+                let url = '/api/theralia/bridge/oligo-explorer?_=1';
+                if (q) url += '&q=' + encodeURIComponent(q);
+                if (basis) url += '&basis=' + encodeURIComponent(basis);
+                if (status) url += '&status=' + encodeURIComponent(status);
+                const data = await invJson(url);
                 const probes = data.probes || [];
                 if (data.error) { listEl.innerHTML = '<div class="inv-empty">Unable to load Oligo Explorer.</div>'; return; }
-                if (probes.length === 0) { listEl.innerHTML = '<div class="inv-empty">No oligos' + (q ? ' matching "' + invEsc(q) + '"' : ' available') + '.</div>'; return; }
+                if (probes.length === 0) { listEl.innerHTML = '<div class="inv-empty">No oligos' + (q || basis || status ? ' matching filter' : ' available') + '.</div>'; return; }
                 listEl.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:12px">' +
                     '<thead><tr style="border-bottom:2px solid #e0e2e7;text-align:left">' +
                     '<th style="padding:6px 8px;color:#9a9ea8;font-weight:600;font-size:10px;text-transform:uppercase">Name</th>' +
@@ -5118,6 +5563,8 @@
                     '<th style="padding:6px 8px;color:#9a9ea8;font-weight:600;font-size:10px;text-transform:uppercase">Length</th>' +
                     '<th style="padding:6px 8px;color:#9a9ea8;font-weight:600;font-size:10px;text-transform:uppercase">Type</th>' +
                     '<th style="padding:6px 8px;color:#9a9ea8;font-weight:600;font-size:10px;text-transform:uppercase">Mods</th>' +
+                    '<th style="padding:6px 8px;color:#9a9ea8;font-weight:600;font-size:10px;text-transform:uppercase">Supplier</th>' +
+                    '<th style="padding:6px 8px;color:#9a9ea8;font-weight:600;font-size:10px;text-transform:uppercase">Synth.</th>' +
                     '<th style="padding:6px 8px;color:#9a9ea8;font-weight:600;font-size:10px;text-transform:uppercase">Status</th>' +
                     '</tr></thead><tbody>' +
                     probes.map(p => {
@@ -5126,10 +5573,12 @@
                         return '<tr style="border-bottom:1px solid rgba(0,0,0,0.04)">' +
                             '<td style="padding:7px 8px;font-weight:500;color:#1a1c22">' + invEsc(p.display_name) + '</td>' +
                             '<td style="padding:7px 8px;color:#555a66;font-size:11px">' + invEsc(p.canonical_id) + '</td>' +
-                            '<td style="padding:7px 8px;font-family:monospace;font-size:11px;color:#555a66;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + invEsc(p.sequence) + '">' + invEsc(seqShort) + '</td>' +
+                            '<td style="padding:7px 8px;font-family:monospace;font-size:11px;color:#555a66;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + invEsc(p.sequence) + '">' + invEsc(seqShort) + '</td>' +
                             '<td style="padding:7px 8px;color:#555a66;text-align:center">' + (p.length_nt || '\u2014') + '</td>' +
                             '<td style="padding:7px 8px;color:#555a66">' + (invEsc(p.polymer_type) || invEsc(p.oligo_kind) || '\u2014') + '</td>' +
                             '<td style="padding:7px 8px;color:#9a9ea8;font-size:11px">' + mods + '</td>' +
+                            '<td style="padding:7px 8px;color:#555a66;font-size:11px">' + (invEsc(p.supplier) || '\u2014') + '</td>' +
+                            '<td style="padding:7px 8px;color:#555a66;text-align:center">' + (p.synthesis_count || 0) + '</td>' +
                             '<td style="padding:7px 8px"><span class="inv-badge ' + (p.status||'').toLowerCase() + '">' + invEsc(p.status) + '</span></td>' +
                         '</tr>';
                     }).join('') +

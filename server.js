@@ -18817,6 +18817,39 @@ async function checkTheraliaInventoryTables() {
     return _theraliaInventoryTablesOk;
 }
 
+let _theraliaAssetFilesOk = null;
+async function checkTheraliaAssetFilesTable() {
+    if (_theraliaAssetFilesOk !== null) return _theraliaAssetFilesOk;
+    try {
+        const r = await pool.query(
+            `SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name='theralia_strategic_asset_files') AS ok`);
+        _theraliaAssetFilesOk = r.rows[0].ok;
+    } catch { _theraliaAssetFilesOk = false; }
+    return _theraliaAssetFilesOk;
+}
+
+let _theraliaDetailsJsonOk = null;
+async function checkTheraliaDetailsJson() {
+    if (_theraliaDetailsJsonOk !== null) return _theraliaDetailsJsonOk;
+    try {
+        const r = await pool.query(
+            `SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='theralia_strategic_assets' AND column_name='details_json') AS ok`);
+        _theraliaDetailsJsonOk = r.rows[0].ok;
+    } catch { _theraliaDetailsJsonOk = false; }
+    return _theraliaDetailsJsonOk;
+}
+
+// Multer for Theralia asset file uploads (PDF only, 10MB)
+const theraliaAssetUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 10 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+        const name = (file.originalname || '').toLowerCase();
+        if (name.endsWith('.pdf')) return cb(null, true);
+        return cb(new Error('Only PDF files are accepted'), false);
+    }
+});
+
 // --- Purchases ---
 app.get('/api/theralia/inventory/purchases', requireAuth, async (req, res) => {
     try {
@@ -18910,8 +18943,13 @@ app.post('/api/theralia/inventory/asset-classes', requireAuth, async (req, res) 
 app.get('/api/theralia/inventory/strategic-assets', requireAuth, async (req, res) => {
     try {
         if (!(await checkTheraliaInventoryTables())) return res.json({ assets: [] });
+        const hasDetails = await checkTheraliaDetailsJson();
+        const detailsCols = hasDetails ? ', sa.summary, sa.details_json' : ", NULL AS summary, NULL AS details_json";
         const r = await pool.query(
-            `SELECT sa.*, ac.display_name as class_display_name
+            `SELECT sa.id, sa.workspace_id, sa.title, sa.asset_class, sa.status, sa.jurisdiction,
+                    sa.filing_date, sa.owner_name, sa.related_project, sa.linked_company_ip_id,
+                    sa.notes, sa.created_by, sa.created_at, sa.updated_at,
+                    ac.display_name as class_display_name ${detailsCols}
              FROM theralia_strategic_assets sa
              LEFT JOIN theralia_asset_classes ac ON ac.workspace_id = sa.workspace_id AND ac.class_key = sa.asset_class
              WHERE sa.workspace_id = $1
@@ -18927,14 +18965,28 @@ app.post('/api/theralia/inventory/strategic-assets', requireAuth, async (req, re
         const b = req.body;
         if (!b.title || !b.asset_class) return res.status(400).json({ error: 'title and asset_class required' });
         const user = req.session.user?.name || req.session.user?.researcher_id || 'unknown';
-        const r = await pool.query(
-            `INSERT INTO theralia_strategic_assets
-             (workspace_id, title, asset_class, status, jurisdiction, filing_date, owner_name,
-              related_project, linked_company_ip_id, notes, created_by)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
-            [req.workspace_id, b.title, b.asset_class, b.status||'draft',
-             b.jurisdiction||null, b.filing_date||null, b.owner_name||null,
-             b.related_project||null, b.linked_company_ip_id||null, b.notes||null, user]);
+        const hasDetails = await checkTheraliaDetailsJson();
+        let r;
+        if (hasDetails) {
+            r = await pool.query(
+                `INSERT INTO theralia_strategic_assets
+                 (workspace_id, title, asset_class, status, jurisdiction, filing_date, owner_name,
+                  related_project, linked_company_ip_id, notes, summary, details_json, created_by)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+                [req.workspace_id, b.title, b.asset_class, b.status||'draft',
+                 b.jurisdiction||null, b.filing_date||null, b.owner_name||null,
+                 b.related_project||null, b.linked_company_ip_id||null, b.notes||null,
+                 b.summary||null, b.details_json ? JSON.stringify(b.details_json) : null, user]);
+        } else {
+            r = await pool.query(
+                `INSERT INTO theralia_strategic_assets
+                 (workspace_id, title, asset_class, status, jurisdiction, filing_date, owner_name,
+                  related_project, linked_company_ip_id, notes, created_by)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+                [req.workspace_id, b.title, b.asset_class, b.status||'draft',
+                 b.jurisdiction||null, b.filing_date||null, b.owner_name||null,
+                 b.related_project||null, b.linked_company_ip_id||null, b.notes||null, user]);
+        }
         res.json({ ok: true, asset: r.rows[0] });
     } catch (err) { console.error('[TH-INV] strategic-asset create error:', err.message); res.status(500).json({ error: 'Failed' }); }
 });
@@ -18943,27 +18995,115 @@ app.put('/api/theralia/inventory/strategic-assets/:id', requireAuth, async (req,
     try {
         if (!(await checkTheraliaInventoryTables())) return res.status(503).json({ error: 'Not ready' });
         const b = req.body;
-        const r = await pool.query(
-            `UPDATE theralia_strategic_assets SET
-                title=COALESCE($1,title), asset_class=COALESCE($2,asset_class), status=COALESCE($3,status),
-                jurisdiction=$4, filing_date=$5, owner_name=$6, related_project=$7,
-                linked_company_ip_id=$8, notes=$9, updated_at=NOW()
-             WHERE id=$10 AND workspace_id=$11 RETURNING *`,
-            [b.title, b.asset_class, b.status,
-             b.jurisdiction!==undefined?b.jurisdiction:null, b.filing_date||null,
-             b.owner_name!==undefined?b.owner_name:null, b.related_project!==undefined?b.related_project:null,
-             b.linked_company_ip_id!==undefined?b.linked_company_ip_id:null,
-             b.notes!==undefined?b.notes:null,
-             req.params.id, req.workspace_id]);
+        const hasDetails = await checkTheraliaDetailsJson();
+        let r;
+        if (hasDetails) {
+            r = await pool.query(
+                `UPDATE theralia_strategic_assets SET
+                    title=COALESCE($1,title), asset_class=COALESCE($2,asset_class), status=COALESCE($3,status),
+                    jurisdiction=$4, filing_date=$5, owner_name=$6, related_project=$7,
+                    linked_company_ip_id=$8, notes=$9, summary=$10,
+                    details_json=COALESCE($11, details_json), updated_at=NOW()
+                 WHERE id=$12 AND workspace_id=$13 RETURNING *`,
+                [b.title, b.asset_class, b.status,
+                 b.jurisdiction!==undefined?b.jurisdiction:null, b.filing_date||null,
+                 b.owner_name!==undefined?b.owner_name:null, b.related_project!==undefined?b.related_project:null,
+                 b.linked_company_ip_id!==undefined?b.linked_company_ip_id:null,
+                 b.notes!==undefined?b.notes:null,
+                 b.summary!==undefined?b.summary:null,
+                 b.details_json ? JSON.stringify(b.details_json) : null,
+                 req.params.id, req.workspace_id]);
+        } else {
+            r = await pool.query(
+                `UPDATE theralia_strategic_assets SET
+                    title=COALESCE($1,title), asset_class=COALESCE($2,asset_class), status=COALESCE($3,status),
+                    jurisdiction=$4, filing_date=$5, owner_name=$6, related_project=$7,
+                    linked_company_ip_id=$8, notes=$9, updated_at=NOW()
+                 WHERE id=$10 AND workspace_id=$11 RETURNING *`,
+                [b.title, b.asset_class, b.status,
+                 b.jurisdiction!==undefined?b.jurisdiction:null, b.filing_date||null,
+                 b.owner_name!==undefined?b.owner_name:null, b.related_project!==undefined?b.related_project:null,
+                 b.linked_company_ip_id!==undefined?b.linked_company_ip_id:null,
+                 b.notes!==undefined?b.notes:null,
+                 req.params.id, req.workspace_id]);
+        }
         if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' });
         res.json({ ok: true, asset: r.rows[0] });
     } catch (err) { console.error('[TH-INV] strategic-asset update error:', err.message); res.status(500).json({ error: 'Failed' }); }
 });
 
-// --- Theralia Bridge: NAT-Lab General Inventory (read-only) ---
+// --- Strategic Asset Files ---
+app.get('/api/theralia/inventory/strategic-assets/:id/files', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkTheraliaAssetFilesTable())) return res.json({ files: [] });
+        const r = await pool.query(
+            `SELECT id, asset_id, file_name, file_type, description, uploaded_by, uploaded_at
+             FROM theralia_strategic_asset_files WHERE asset_id = $1 AND workspace_id = $2
+             ORDER BY uploaded_at DESC`,
+            [req.params.id, req.workspace_id]);
+        res.json({ files: r.rows });
+    } catch (err) { console.error('[TH-INV] asset-files list error:', err.message); res.json({ files: [] }); }
+});
+
+app.post('/api/theralia/inventory/strategic-assets/:id/files', requireAuth, theraliaAssetUpload.single('file'), async (req, res) => {
+    try {
+        if (!(await checkTheraliaAssetFilesTable())) return res.status(503).json({ error: 'Not ready' });
+        if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+        // Verify asset belongs to workspace
+        const assetCheck = await pool.query(
+            `SELECT id FROM theralia_strategic_assets WHERE id = $1 AND workspace_id = $2`,
+            [req.params.id, req.workspace_id]);
+        if (assetCheck.rows.length === 0) return res.status(404).json({ error: 'Asset not found' });
+        const user = req.session.user?.name || req.session.user?.researcher_id || 'unknown';
+        const r2Key = `theralia/assets/${req.params.id}/${Date.now()}_${req.file.originalname}`;
+        await uploadToR2(req.file.buffer, r2Key, req.file.mimetype || 'application/pdf');
+        const r = await pool.query(
+            `INSERT INTO theralia_strategic_asset_files
+             (asset_id, workspace_id, file_name, file_type, r2_object_key, description, uploaded_by)
+             VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, asset_id, file_name, file_type, description, uploaded_by, uploaded_at`,
+            [req.params.id, req.workspace_id, req.file.originalname, req.file.mimetype || 'application/pdf',
+             r2Key, req.body.description || null, user]);
+        res.json({ ok: true, file: r.rows[0] });
+    } catch (err) { console.error('[TH-INV] asset-file upload error:', err.message); res.status(500).json({ error: 'Upload failed' }); }
+});
+
+app.get('/api/theralia/inventory/asset-files/:fileId/download', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkTheraliaAssetFilesTable())) return res.status(503).json({ error: 'Not ready' });
+        const r = await pool.query(
+            `SELECT file_name, r2_object_key, file_type FROM theralia_strategic_asset_files WHERE id = $1 AND workspace_id = $2`,
+            [req.params.fileId, req.workspace_id]);
+        if (r.rows.length === 0) return res.status(404).json({ error: 'File not found' });
+        const row = r.rows[0];
+        const buf = await downloadFromR2(row.r2_object_key);
+        if (!buf) return res.status(404).json({ error: 'File not found in storage' });
+        res.set('Content-Type', row.file_type || 'application/pdf');
+        res.set('Content-Disposition', `inline; filename="${row.file_name}"`);
+        res.send(buf);
+    } catch (err) { console.error('[TH-INV] asset-file download error:', err.message); res.status(500).json({ error: 'Download failed' }); }
+});
+
+app.delete('/api/theralia/inventory/asset-files/:fileId', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkTheraliaAssetFilesTable())) return res.status(503).json({ error: 'Not ready' });
+        const r = await pool.query(
+            `DELETE FROM theralia_strategic_asset_files WHERE id = $1 AND workspace_id = $2 RETURNING r2_object_key`,
+            [req.params.fileId, req.workspace_id]);
+        if (r.rows.length === 0) return res.status(404).json({ error: 'File not found' });
+        try { await deleteFromR2(r.rows[0].r2_object_key); } catch (e) { console.error('[TH-INV] R2 delete warning:', e.message); }
+        res.json({ ok: true });
+    } catch (err) { console.error('[TH-INV] asset-file delete error:', err.message); res.status(500).json({ error: 'Delete failed' }); }
+});
+
+// --- Theralia Bridge: NAT-Lab General Inventory (read-only, mirrors inventory-v2 logic) ---
 app.get('/api/theralia/bridge/natlab-general-inventory', requireAuth, async (req, res) => {
     try {
         const q = (req.query.q || '').trim();
+        const itemType = (req.query.item_type || '').trim();
+        const affiliation = (req.query.affiliation || '').trim();
+        const validTypes = ['Chemical','Biological','Equipment','Consumable','Kit','Oligo','Other'];
+        const validAffs = ['LiU','UNAV'];
+
         let query = `SELECT ii.id, ii.item_type, ii.item_name, ii.item_identifier, ii.quantity, ii.quantity_unit,
                             ii.storage_location, ii.storage_temperature, ii.vendor_company, ii.lot_or_batch_number,
                             ii.expiry_date, ii.status, ii.visibility_scope, ii.affiliation, ii.source,
@@ -18973,9 +19113,18 @@ app.get('/api/theralia/bridge/natlab-general-inventory', requireAuth, async (req
                      LEFT JOIN di_allowlist a ON a.researcher_id = ii.created_by
                      WHERE ii.visibility_scope = 'group' AND ii.status IN ('Approved','Received')`;
         const params = [];
+        let pIdx = 0;
         if (q) {
-            params.push('%' + q + '%');
-            query += ` AND (ii.item_name ILIKE $1 OR ii.item_identifier ILIKE $1 OR ii.vendor_company ILIKE $1 OR ii.storage_location ILIKE $1)`;
+            pIdx++; params.push('%' + q + '%');
+            query += ` AND (ii.item_name ILIKE $${pIdx} OR ii.item_identifier ILIKE $${pIdx} OR ii.vendor_company ILIKE $${pIdx} OR ii.storage_location ILIKE $${pIdx} OR ii.lot_or_batch_number ILIKE $${pIdx})`;
+        }
+        if (itemType && validTypes.includes(itemType)) {
+            pIdx++; params.push(itemType);
+            query += ` AND ii.item_type = $${pIdx}`;
+        }
+        if (affiliation && validAffs.includes(affiliation)) {
+            pIdx++; params.push(affiliation);
+            query += ` AND ii.affiliation = $${pIdx}`;
         }
         query += ` ORDER BY ii.updated_at DESC LIMIT 200`;
         const r = await pool.query(query, params);
@@ -18986,24 +19135,58 @@ app.get('/api/theralia/bridge/natlab-general-inventory', requireAuth, async (req
     }
 });
 
-// --- Theralia Bridge: Oligo Explorer (read-only) ---
+// --- Theralia Bridge: Oligo Explorer (read-only, mirrors /api/oligo/oligos logic) ---
 app.get('/api/theralia/bridge/oligo-explorer', requireAuth, async (req, res) => {
     try {
         const q = (req.query.q || '').trim();
+        const basis = (req.query.basis || '').trim().toUpperCase();
+        const status = (req.query.status || '').trim().toUpperCase();
         // Check if probe_catalog exists
         const tableCheck = await pool.query(
             `SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name='probe_catalog') AS ok`);
         if (!tableCheck.rows[0]?.ok) return res.json({ probes: [] });
 
-        let query = `SELECT pc.id, pc.canonical_id, pc.display_name, pc.sequence, pc.length_nt,
-                            pc.chemistry_code, pc.oligo_kind, pc.status, pc.finalized_at, pc.polymer_type,
-                            pc.mod5, pc.mod3
-                     FROM probe_catalog pc WHERE 1=1`;
+        // Check if probe_syntheses exists for synthesis data
+        const synthCheck = await pool.query(
+            `SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name='probe_syntheses') AS ok`);
+        const hasSynth = synthCheck.rows[0]?.ok;
+
+        let query;
         const params = [];
-        if (q) {
-            params.push('%' + q + '%');
-            query += ` AND (pc.display_name ILIKE $1 OR pc.canonical_id ILIKE $1 OR pc.sequence ILIKE $1)`;
+        let pIdx = 0;
+
+        if (hasSynth) {
+            query = `SELECT pc.id, pc.canonical_id, pc.display_name, pc.sequence, pc.length_nt,
+                            pc.chemistry_code, pc.oligo_kind, pc.status, pc.finalized_at, pc.polymer_type,
+                            pc.mod5, pc.mod3,
+                            COUNT(ps.id) FILTER (WHERE ps.excel_status = 'active' OR ps.excel_status IS NULL)::int AS synthesis_count,
+                            MAX(ps.supplier) AS supplier,
+                            MAX(ps.order_number) AS order_number
+                     FROM probe_catalog pc
+                     LEFT JOIN probe_syntheses ps ON ps.probe_id = pc.id
+                     WHERE 1=1`;
+        } else {
+            query = `SELECT pc.id, pc.canonical_id, pc.display_name, pc.sequence, pc.length_nt,
+                            pc.chemistry_code, pc.oligo_kind, pc.status, pc.finalized_at, pc.polymer_type,
+                            pc.mod5, pc.mod3,
+                            0 AS synthesis_count, NULL AS supplier, NULL AS order_number
+                     FROM probe_catalog pc WHERE 1=1`;
         }
+        if (q) {
+            pIdx++; params.push('%' + q + '%');
+            query += ` AND (pc.display_name ILIKE $${pIdx} OR pc.canonical_id ILIKE $${pIdx} OR pc.sequence ILIKE $${pIdx}`;
+            if (hasSynth) query += ` OR ps.order_number ILIKE $${pIdx} OR ps.supplier ILIKE $${pIdx}`;
+            query += `)`;
+        }
+        if (basis && ['DNA','RNA'].includes(basis)) {
+            pIdx++; params.push(basis);
+            query += ` AND pc.polymer_type = $${pIdx}`;
+        }
+        if (status && ['ACTIVE','DRAFT','RETIRED'].includes(status)) {
+            pIdx++; params.push(status);
+            query += ` AND pc.status = $${pIdx}`;
+        }
+        if (hasSynth) query += ` GROUP BY pc.id`;
         query += ` ORDER BY pc.created_at DESC LIMIT 200`;
         const r = await pool.query(query, params);
         res.json({ probes: r.rows });
