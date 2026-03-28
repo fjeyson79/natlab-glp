@@ -1576,6 +1576,51 @@
         }
         .ip-cta-btn:hover { background: #15803d; }
         .ip-cta-btn svg { width: 14px; height: 14px; }
+
+        /* ---- Investor Phase panels ---- */
+        .ip-phase-panel { display: none; }
+        .ip-phase-panel.active { display: block; }
+
+        /* ---- Mechanism Steps ---- */
+        .ip-steps-row {
+            display: grid; grid-template-columns: 1fr 1fr 1fr;
+            gap: 14px; margin-bottom: 40px;
+        }
+        @media (max-width: 700px) { .ip-steps-row { grid-template-columns: 1fr; } }
+        .ip-step-card {
+            background: #ffffff; border: 1px solid #e0e2e6;
+            border-radius: 10px; padding: 22px 20px;
+        }
+        .ip-step-number {
+            font-size: 10px; font-weight: 700; letter-spacing: 1.2px;
+            text-transform: uppercase; color: #16a34a; margin-bottom: 8px;
+        }
+        .ip-step-title {
+            font-size: 14px; font-weight: 600; color: #1a1c22; margin-bottom: 6px;
+        }
+        .ip-step-text {
+            font-size: 12px; color: #5a5d66; line-height: 1.6;
+        }
+
+        /* ---- GLP Statement ---- */
+        .ip-glp-statement {
+            background: rgba(22,163,74,0.04); border: 1px solid rgba(22,163,74,0.12);
+            border-radius: 10px; padding: 20px 24px; margin-bottom: 44px;
+        }
+        .ip-glp-label {
+            font-size: 9px; font-weight: 700; letter-spacing: 1.6px;
+            text-transform: uppercase; color: #16a34a; margin-bottom: 8px;
+        }
+        .ip-glp-text {
+            font-size: 14px; font-weight: 500; color: #2a2d35; line-height: 1.65;
+        }
+
+        /* ---- Expansion cards (3-col) ---- */
+        .ip-expand-row {
+            display: grid; grid-template-columns: 1fr 1fr 1fr;
+            gap: 14px; margin-bottom: 40px;
+        }
+        @media (max-width: 700px) { .ip-expand-row { grid-template-columns: 1fr; } }
     </style>
     <script src="js/presentation-mode.js"></script>
 </head>
@@ -2437,7 +2482,7 @@
 
                 <!-- Main Content -->
                 <main class="ip-main" id="ipMainContent">
-                    <div id="ipPhase1">
+                    <div id="ipPhase1" class="ip-phase-panel active">
                         <div class="ip-phase-label">Why and General Overview</div>
 
                         <h2 class="ip-headline">Precision therapeutics begin with biological recognition</h2>
@@ -2493,6 +2538,90 @@
                             </button>
                         </div>
                     </div>
+
+                    <!-- Phase 2: Technology -->
+                    <div id="ipPhase2" class="ip-phase-panel">
+                        <div class="ip-phase-label">Technology</div>
+
+                        <h2 class="ip-headline">Localized therapeutic activation in antimicrobial resistance</h2>
+
+                        <p class="ip-why">Antimicrobial resistance requires more precise therapeutic strategies that act directly at infection sites while minimizing systemic exposure. Theralia applies its delivery-first approach to selectively activate therapeutics in the local bacterial environment.</p>
+
+                        <!-- Video Centerpiece -->
+                        <div class="ip-video-card">
+                            <div class="ip-video-title">
+                                <svg class="ip-play-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="5 3 19 12 5 21 5 3" fill="currentColor" stroke="none"/></svg>
+                                TOUCAN-MRSA: Localized activation at the site of infection
+                            </div>
+                            <div class="ip-video-wrapper">
+                                <video controls preload="metadata" playsinline
+                                       src="/assets/video/theralia-toucan-mrsa.mp4"
+                                       style="border-radius: 0 0 13px 13px;">
+                                </video>
+                            </div>
+                        </div>
+                        <div class="ip-video-caption">Conceptual animation of the TOUCAN-MRSA proof of concept, showing localized activation in the infection environment.</div>
+
+                        <!-- Mechanism Interpretation -->
+                        <p class="ip-interpretation">In the TOUCAN-MRSA system, therapeutic activation is triggered by bacterial associated activity at the infection site, enabling localized release of active compounds.</p>
+
+                        <!-- How it works -->
+                        <div class="ip-section-title">How it works</div>
+                        <div class="ip-steps-row">
+                            <div class="ip-step-card">
+                                <div class="ip-step-number">Step 1</div>
+                                <div class="ip-step-title">Delivery</div>
+                                <div class="ip-step-text">The therapeutic system reaches infected tissue without active effect during circulation.</div>
+                            </div>
+                            <div class="ip-step-card">
+                                <div class="ip-step-number">Step 2</div>
+                                <div class="ip-step-title">Activation</div>
+                                <div class="ip-step-text">Local bacterial associated signals trigger selective activation at the infection site.</div>
+                            </div>
+                            <div class="ip-step-card">
+                                <div class="ip-step-number">Step 3</div>
+                                <div class="ip-step-title">Action</div>
+                                <div class="ip-step-text">The active compound is released where treatment is needed.</div>
+                            </div>
+                        </div>
+
+                        <!-- GLP Statement -->
+                        <div class="ip-glp-statement">
+                            <div class="ip-glp-label">GLP Framework</div>
+                            <div class="ip-glp-text">Experimental evaluation is conducted within structured workflows linking protocol, execution, and validation.</div>
+                        </div>
+
+                        <!-- Extending the platform -->
+                        <div class="ip-section-title">Extending the platform beyond infection</div>
+                        <div class="ip-expand-row">
+                            <div class="ip-material-card">
+                                <div class="ip-material-type">Oncology</div>
+                                <div class="ip-material-title">TOUCAN-ONCO</div>
+                                <div class="ip-material-desc">Targeting tumor microenvironments through localized activation strategies.</div>
+                            </div>
+                            <div class="ip-material-card">
+                                <div class="ip-material-type">Enzymatic</div>
+                                <div class="ip-material-title">TOUCAN-Fusion</div>
+                                <div class="ip-material-desc">Directed enzymatic activity for controlled therapeutic activation.</div>
+                            </div>
+                            <div class="ip-material-card">
+                                <div class="ip-material-type">Inflammation</div>
+                                <div class="ip-material-title">TOUCAN-AIM</div>
+                                <div class="ip-material-desc">Modulating inflammatory and infection associated environments using activation based strategies.</div>
+                            </div>
+                        </div>
+
+                        <!-- Transition to Phase 3 -->
+                        <div class="ip-transition">
+                            <div class="ip-transition-label">Next Phase</div>
+                            <p class="ip-transition-text">The next phase focuses on validation, showing how the TOUCAN-MRSA concept is supported by experimental evidence and structured workflows.</p>
+                            <button class="ip-cta-btn" onclick="ipNavigate('phase3')">
+                                Explore Validation
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                            </button>
+                        </div>
+                    </div>
+
                 </main>
             </div>
         </div>
@@ -5813,13 +5942,24 @@
 
         function ipNavigate(phase) {
             if (phase === 'dataroom') return;
+            var phaseMap = { phase1: 'ipPhase1', phase2: 'ipPhase2' };
+
+            // Check if phase is implemented
+            if (!phaseMap[phase]) {
+                alert('Phase: ' + phase + ' — coming in the next release');
+                return;
+            }
+
+            // Update nav active state
             document.querySelectorAll('#tab-investors .ip-nav-item').forEach(n => n.classList.remove('active'));
             const target = document.querySelector('#tab-investors .ip-nav-item[data-phase="' + phase + '"]');
             if (target) target.classList.add('active');
+
+            // Show/hide phase panels
+            document.querySelectorAll('#tab-investors .ip-phase-panel').forEach(p => p.classList.remove('active'));
+            var el = document.getElementById(phaseMap[phase]);
+            if (el) el.classList.add('active');
             currentInvestorPhase = phase;
-            if (phase !== 'phase1') {
-                alert('Phase: ' + phase + ' — coming in the next release');
-            }
         }
 
         (function() {
