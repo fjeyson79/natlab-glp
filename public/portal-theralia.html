@@ -1623,6 +1623,51 @@
         }
         @media (max-width: 700px) { .ip-expand-row { grid-template-columns: 1fr; } }
 
+        /* ---- Section block (Phase 4) ---- */
+        .ip-section-block {
+            margin-bottom: 40px;
+        }
+        .ip-section-block-title {
+            font-size: 16px; font-weight: 600; color: #1a1c22;
+            margin-bottom: 10px;
+        }
+        .ip-section-block-text {
+            font-size: 14px; color: #5a5d66; line-height: 1.7;
+            max-width: 680px;
+        }
+        .ip-dev-grid {
+            display: grid; grid-template-columns: 1fr 1fr;
+            gap: 14px; margin-top: 4px;
+        }
+        @media (max-width: 700px) { .ip-dev-grid { grid-template-columns: 1fr; } }
+        .ip-dev-card {
+            background: #ffffff; border: 1px solid #e0e2e6;
+            border-radius: 10px; padding: 20px 22px;
+        }
+        .ip-dev-label {
+            font-size: 9px; font-weight: 700; letter-spacing: 1.2px;
+            text-transform: uppercase; color: #16a34a; margin-bottom: 8px;
+        }
+        .ip-dev-text {
+            font-size: 13px; color: #2a2d35; line-height: 1.6;
+        }
+        .ip-dev-list {
+            list-style: none; padding: 0; margin: 0;
+        }
+        .ip-dev-list li {
+            font-size: 13px; color: #2a2d35; line-height: 1.6;
+            padding: 3px 0 3px 14px; position: relative;
+        }
+        .ip-dev-list li::before {
+            content: ''; position: absolute; left: 0; top: 11px;
+            width: 5px; height: 5px; border-radius: 50%;
+            background: #16a34a; opacity: 0.5;
+        }
+        .ip-platform-line {
+            font-size: 13px; color: #8b8f9a; font-style: italic;
+            margin-top: 10px;
+        }
+
         /* ---- Floating Actions ---- */
         .ip-fab-wrap {
             position: absolute; bottom: 28px; right: 28px; z-index: 50;
@@ -2771,6 +2816,104 @@
                                 Explore Strategic Value
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
                             </button>
+                        </div>
+                    </div>
+
+                    <!-- Phase 4: Strategic Value -->
+                    <div id="ipPhase4" class="ip-phase-panel">
+                        <div class="ip-phase-label">Strategic Value</div>
+
+                        <h2 class="ip-headline">From validated science to clinical translation and scalable impact</h2>
+
+                        <!-- Section 1 -->
+                        <div class="ip-section-block">
+                            <div class="ip-section-block-title">Targeting high-need infections beyond standard antibiotics</div>
+                            <div class="ip-section-block-text">Standard antibiotics are effective in routine infections but remain suboptimal in complex and difficult-to-treat cases. Theralia focuses on these high-need scenarios, where localized activation can provide meaningful therapeutic benefit.</div>
+                        </div>
+
+                        <!-- Section 2 -->
+                        <div class="ip-section-block">
+                            <div class="ip-section-block-title">Bone infections as a high-impact starting indication</div>
+                            <div class="ip-section-block-text">Bone infections represent a severe clinical challenge with poor prognosis and limited treatment options. Standard therapies often require prolonged administration and may fail to fully resolve infection.</div>
+                        </div>
+
+                        <!-- Section 3 -->
+                        <div class="ip-section-block">
+                            <div class="ip-section-block-title">Faster and more efficient treatment</div>
+                            <div class="ip-section-block-text">Theralia's approach enables localized activation with an expected treatment cycle of approximately 3 days, compared to 7–14 days with standard antibiotics.</div>
+                            <div class="ip-section-block-text" style="margin-top:10px;">This reduction has the potential to significantly decrease hospital stays and improve patient outcomes.</div>
+                        </div>
+
+                        <!-- Section 4: Development Status -->
+                        <div class="ip-section-block">
+                            <div class="ip-section-block-title">Advancing toward first-in-human trials</div>
+                            <div class="ip-dev-grid">
+                                <div class="ip-dev-card">
+                                    <div class="ip-dev-label">Current Stage</div>
+                                    <div class="ip-dev-text">Preclinical development nearing completion</div>
+                                </div>
+                                <div class="ip-dev-card">
+                                    <div class="ip-dev-label">Ongoing Work</div>
+                                    <ul class="ip-dev-list">
+                                        <li>Biodistribution studies with strong preliminary data</li>
+                                        <li>GLP toxicology studies in preparation</li>
+                                        <li>Scale-up of oligonucleotide production under GMP-like conditions</li>
+                                    </ul>
+                                </div>
+                                <div class="ip-dev-card">
+                                    <div class="ip-dev-label">Next Milestones</div>
+                                    <ul class="ip-dev-list">
+                                        <li>IND submission preparation</li>
+                                        <li>Transition to full GMP production</li>
+                                        <li>First-in-human trial initiation</li>
+                                    </ul>
+                                </div>
+                                <div class="ip-dev-card">
+                                    <div class="ip-dev-label">Clinical Execution</div>
+                                    <div class="ip-dev-text">First-in-human studies planned at the Medical University of Vienna under the supervision of European key opinion leaders in antibiotic development and pharmacology.</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Section 5 -->
+                        <div class="ip-section-block">
+                            <div class="ip-section-block-title">Reducing clinical and healthcare burden</div>
+                            <div class="ip-section-block-text">Shorter treatment cycles and localized activity may reduce hospitalization time, limit systemic exposure, and improve treatment efficiency in high-cost clinical settings.</div>
+                        </div>
+
+                        <!-- Section 6: Platform -->
+                        <div class="ip-section-block">
+                            <div class="ip-section-block-title">A platform beyond infection</div>
+                            <div class="ip-expand-row">
+                                <div class="ip-material-card">
+                                    <div class="ip-material-type">Lead Program</div>
+                                    <div class="ip-material-title">TOUCAN-MRSA</div>
+                                    <div class="ip-material-desc">Localized infection treatment (lead program)</div>
+                                </div>
+                                <div class="ip-material-card">
+                                    <div class="ip-material-type">Oncology</div>
+                                    <div class="ip-material-title">TOUCAN-ONCO</div>
+                                    <div class="ip-material-desc">Targeting tumor-associated environments</div>
+                                </div>
+                                <div class="ip-material-card">
+                                    <div class="ip-material-type">Inflammation</div>
+                                    <div class="ip-material-title">TOUCAN-AIM</div>
+                                    <div class="ip-material-desc">Inflammation-driven conditions</div>
+                                </div>
+                            </div>
+                            <div class="ip-platform-line">The same activation principle can be adapted across multiple disease contexts.</div>
+                        </div>
+
+                        <!-- Section 7 -->
+                        <div class="ip-section-block">
+                            <div class="ip-section-block-title">Focused entry, scalable platform</div>
+                            <div class="ip-section-block-text">Theralia combines a clearly defined clinical entry point with a broader platform strategy, enabling expansion across multiple therapeutic areas while maintaining a focused development pathway.</div>
+                        </div>
+
+                        <!-- Section 8: Engage -->
+                        <div class="ip-section-block" style="margin-bottom:0;">
+                            <div class="ip-section-block-title">Engage with Theralia</div>
+                            <div class="ip-section-block-text">Review the data, explore the validation framework, and discuss how Theralia can address high-value clinical challenges.</div>
                         </div>
                     </div>
 
@@ -6102,7 +6245,7 @@
         /* INVESTOR JOURNEY NAV                          */
         /* ============================================== */
         let currentInvestorPhase = 'phase1';
-        var ipPhaseMap = { phase1: 'ipPhase1', phase2: 'ipPhase2', phase3: 'ipPhase3' };
+        var ipPhaseMap = { phase1: 'ipPhase1', phase2: 'ipPhase2', phase3: 'ipPhase3', phase4: 'ipPhase4' };
 
         function ipNavigate(phase) {
             if (phase === 'dataroom') return;
