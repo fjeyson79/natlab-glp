@@ -1627,6 +1627,10 @@
         .ip-section-block {
             margin-bottom: 40px;
         }
+        .ip-section-keyword {
+            font-size: 10px; font-weight: 700; letter-spacing: 1.4px;
+            text-transform: uppercase; color: #16a34a; margin-bottom: 6px;
+        }
         .ip-section-block-title {
             font-size: 16px; font-weight: 600; color: #1a1c22;
             margin-bottom: 10px;
@@ -1634,6 +1638,27 @@
         .ip-section-block-text {
             font-size: 14px; color: #5a5d66; line-height: 1.7;
             max-width: 680px;
+        }
+        .ip-engage-items {
+            display: flex; flex-direction: column; gap: 8px; margin-top: 14px;
+        }
+        .ip-engage-item {
+            display: inline-flex; align-items: center; gap: 8px;
+            font-size: 13px; font-weight: 500; color: #2a2d35;
+            cursor: pointer; transition: color 0.12s;
+        }
+        .ip-engage-item:hover { color: #16a34a; }
+        .ip-engage-dot {
+            width: 5px; height: 5px; border-radius: 50%;
+            background: #16a34a; opacity: 0.5; flex-shrink: 0;
+        }
+        .ip-final-statement {
+            margin-top: 48px; padding-top: 32px;
+            border-top: 1px solid #e0e2e6;
+        }
+        .ip-final-statement p {
+            font-size: 14px; color: #5a5d66; line-height: 1.75;
+            max-width: 680px; margin-bottom: 12px;
         }
         .ip-dev-grid {
             display: grid; grid-template-columns: 1fr 1fr;
@@ -2823,29 +2848,42 @@
                     <div id="ipPhase4" class="ip-phase-panel">
                         <div class="ip-phase-label">Strategic Value</div>
 
-                        <h2 class="ip-headline">From validated science to clinical translation and scalable impact</h2>
+                        <h2 class="ip-headline">Where antibiotics fall short, precision creates value</h2>
 
-                        <!-- Section 1 -->
+                        <!-- 1. Positioning -->
                         <div class="ip-section-block">
-                            <div class="ip-section-block-title">Targeting high-need infections beyond standard antibiotics</div>
-                            <div class="ip-section-block-text">Standard antibiotics are effective in routine infections but remain suboptimal in complex and difficult-to-treat cases. Theralia focuses on these high-need scenarios, where localized activation can provide meaningful therapeutic benefit.</div>
+                            <div class="ip-section-keyword">Positioning</div>
+                            <div class="ip-section-block-title">Not all infections are equal</div>
+                            <div class="ip-section-block-text">While standard antibiotics remain effective in routine infections, a subset of cases remains unresolved, requiring prolonged treatment and often leading to poor outcomes.</div>
+                            <div class="ip-section-block-text" style="margin-top:10px;">These conditions define a high-value clinical space where therapeutic precision becomes essential.</div>
                         </div>
 
-                        <!-- Section 2 -->
+                        <!-- 2. Entry Indication -->
                         <div class="ip-section-block">
-                            <div class="ip-section-block-title">Bone infections as a high-impact starting indication</div>
-                            <div class="ip-section-block-text">Bone infections represent a severe clinical challenge with poor prognosis and limited treatment options. Standard therapies often require prolonged administration and may fail to fully resolve infection.</div>
+                            <div class="ip-section-keyword">Entry Indication</div>
+                            <div class="ip-section-block-title">Bone infections as a high-impact starting point</div>
+                            <div class="ip-section-block-text">Theralia targets infections where current therapies are suboptimal. Bone infections represent a clear entry point, characterized by high morbidity, long treatment cycles, and significant healthcare burden.</div>
                         </div>
 
-                        <!-- Section 3 -->
+                        <!-- 3. Clinical Shift -->
                         <div class="ip-section-block">
-                            <div class="ip-section-block-title">Faster and more efficient treatment</div>
-                            <div class="ip-section-block-text">Theralia's approach enables localized activation with an expected treatment cycle of approximately 3 days, compared to 7–14 days with standard antibiotics.</div>
-                            <div class="ip-section-block-text" style="margin-top:10px;">This reduction has the potential to significantly decrease hospital stays and improve patient outcomes.</div>
+                            <div class="ip-section-keyword">Clinical Shift</div>
+                            <div class="ip-section-block-title">From prolonged treatment to localized resolution</div>
+                            <div class="ip-section-block-text">Standard therapies typically require 7–14 days of systemic antibiotic exposure.</div>
+                            <div class="ip-section-block-text" style="margin-top:10px;">Theralia's approach enables localized activation with an expected treatment cycle of approximately 3 days.</div>
+                            <div class="ip-section-block-text" style="margin-top:10px;">This shift has the potential to reduce hospitalization time and improve treatment efficiency.</div>
                         </div>
 
-                        <!-- Section 4: Development Status -->
+                        <!-- 4. Economic Impact -->
                         <div class="ip-section-block">
+                            <div class="ip-section-keyword">Economic Impact</div>
+                            <div class="ip-section-block-title">Clinical benefit aligned with healthcare value</div>
+                            <div class="ip-section-block-text">In high-cost clinical settings, shorter treatments and localized activity may reduce hospitalization time, limit systemic exposure, and improve overall efficiency.</div>
+                        </div>
+
+                        <!-- 5. Development Status -->
+                        <div class="ip-section-block">
+                            <div class="ip-section-keyword">Development Status</div>
                             <div class="ip-section-block-title">Advancing toward first-in-human trials</div>
                             <div class="ip-dev-grid">
                                 <div class="ip-dev-card">
@@ -2875,15 +2913,18 @@
                             </div>
                         </div>
 
-                        <!-- Section 5 -->
+                        <!-- 6. Intellectual Property -->
                         <div class="ip-section-block">
-                            <div class="ip-section-block-title">Reducing clinical and healthcare burden</div>
-                            <div class="ip-section-block-text">Shorter treatment cycles and localized activity may reduce hospitalization time, limit systemic exposure, and improve treatment efficiency in high-cost clinical settings.</div>
+                            <div class="ip-section-keyword">Intellectual Property</div>
+                            <div class="ip-section-block-title">Protected and proprietary approach</div>
+                            <div class="ip-section-block-text">Theralia's platform is supported by a growing intellectual property portfolio covering targeted activation strategies and oligonucleotide-based delivery systems.</div>
                         </div>
 
-                        <!-- Section 6: Platform -->
+                        <!-- 7. Platform -->
                         <div class="ip-section-block">
-                            <div class="ip-section-block-title">A platform beyond infection</div>
+                            <div class="ip-section-keyword">Platform</div>
+                            <div class="ip-section-block-title">A technology beyond infection</div>
+                            <div class="ip-section-block-text" style="margin-bottom:16px;">The same activation principle can be extended across multiple disease contexts.</div>
                             <div class="ip-expand-row">
                                 <div class="ip-material-card">
                                     <div class="ip-material-type">Lead Program</div>
@@ -2901,19 +2942,37 @@
                                     <div class="ip-material-desc">Inflammation-driven conditions</div>
                                 </div>
                             </div>
-                            <div class="ip-platform-line">The same activation principle can be adapted across multiple disease contexts.</div>
                         </div>
 
-                        <!-- Section 7 -->
+                        <!-- 8. Investment Logic -->
                         <div class="ip-section-block">
-                            <div class="ip-section-block-title">Focused entry, scalable platform</div>
-                            <div class="ip-section-block-text">Theralia combines a clearly defined clinical entry point with a broader platform strategy, enabling expansion across multiple therapeutic areas while maintaining a focused development pathway.</div>
+                            <div class="ip-section-keyword">Investment Logic</div>
+                            <div class="ip-section-block-title">Focused entry, scalable opportunity</div>
+                            <div class="ip-section-block-text">Theralia combines a clearly defined clinical entry point with a platform capable of expanding across multiple therapeutic areas, enabling both focus and scalability.</div>
                         </div>
 
-                        <!-- Section 8: Engage -->
+                        <!-- 9. Team -->
+                        <div class="ip-section-block">
+                            <div class="ip-section-keyword">Team</div>
+                            <div class="ip-section-block-title">Execution and accountability</div>
+                            <div class="ip-section-block-text">Development is led by a multidisciplinary team with expertise in nucleic acid therapeutics, infection biology, and clinical translation, supported by leading European institutions.</div>
+                        </div>
+
+                        <!-- 10. Engagement -->
                         <div class="ip-section-block" style="margin-bottom:0;">
-                            <div class="ip-section-block-title">Engage with Theralia</div>
-                            <div class="ip-section-block-text">Review the data, explore the validation framework, and discuss how Theralia can address high-value clinical challenges.</div>
+                            <div class="ip-section-keyword">Engagement</div>
+                            <div class="ip-section-block-title">Explore Theralia</div>
+                            <div class="ip-engage-items">
+                                <span class="ip-engage-item" onclick="ipActionHandler('Meet the team')"><span class="ip-engage-dot"></span>Meet the team</span>
+                                <span class="ip-engage-item" onclick="ipActionHandler('Explore validation (GLP Vision)')"><span class="ip-engage-dot"></span>Explore validation (GLP Vision)</span>
+                                <span class="ip-engage-item" onclick="ipActionHandler('Request meeting')"><span class="ip-engage-dot"></span>Request meeting</span>
+                            </div>
+                        </div>
+
+                        <!-- Final Statement -->
+                        <div class="ip-final-statement">
+                            <p>We believe precision activation can redefine the treatment of difficult infections and expand into oncology and inflammatory diseases.</p>
+                            <p>We would welcome the opportunity to discuss how Theralia can address high-value clinical challenges and the path toward clinical translation.</p>
                         </div>
                     </div>
 
@@ -6262,6 +6321,10 @@
             var el = document.getElementById(ipPhaseMap[phase]);
             if (el) el.classList.add('active');
             currentInvestorPhase = phase;
+
+            // Scroll to top of investor content area
+            var tabEl = document.getElementById('tab-investors');
+            if (tabEl) tabEl.scrollIntoView({ block: 'start', behavior: 'smooth' });
 
             // Update floating actions for new phase
             ipUpdateFabActions();
