@@ -1443,6 +1443,7 @@
             display: grid;
             grid-template-columns: 220px 1fr;
             min-height: 600px;
+            position: relative;
         }
         @media (max-width: 860px) {
             .ip-layout { grid-template-columns: 1fr; }
@@ -1621,6 +1622,103 @@
             gap: 14px; margin-bottom: 40px;
         }
         @media (max-width: 700px) { .ip-expand-row { grid-template-columns: 1fr; } }
+
+        /* ---- Floating Actions ---- */
+        .ip-fab-wrap {
+            position: absolute; bottom: 28px; right: 28px; z-index: 50;
+        }
+        .ip-fab-btn {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 9px 18px; background: #ffffff; color: #1a1c22;
+            border: 1px solid #e0e2e6; border-radius: 24px;
+            font-size: 12px; font-weight: 600; cursor: pointer;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+            transition: box-shadow 0.15s, border-color 0.15s;
+        }
+        .ip-fab-btn:hover { border-color: #c8cacd; box-shadow: 0 4px 18px rgba(0,0,0,0.09); }
+        .ip-fab-btn .ip-fab-plus { color: #16a34a; font-size: 14px; font-weight: 700; }
+        .ip-fab-menu {
+            display: none; position: absolute; bottom: 48px; right: 0;
+            background: #ffffff; border: 1px solid #e0e2e6;
+            border-radius: 10px; min-width: 190px;
+            box-shadow: 0 6px 24px rgba(0,0,0,0.08);
+            padding: 6px 0; overflow: hidden;
+        }
+        .ip-fab-menu.open { display: block; }
+        .ip-fab-menu-title {
+            font-size: 9px; font-weight: 700; letter-spacing: 1.4px;
+            text-transform: uppercase; color: #8b8f9a;
+            padding: 10px 16px 6px;
+        }
+        .ip-fab-menu-item {
+            display: block; width: 100%; text-align: left; background: none;
+            border: none; padding: 9px 16px; font-size: 13px; font-weight: 500;
+            color: #2a2d35; cursor: pointer; transition: background 0.1s;
+        }
+        .ip-fab-menu-item:hover { background: #f6f7f9; }
+
+        /* ---- Interactive Figure ---- */
+        .ip-figure-card {
+            background: #ffffff; border: 1px solid #e0e2e6;
+            border-radius: 14px; overflow: hidden; margin-bottom: 12px;
+            position: relative;
+        }
+        .ip-figure-img-wrap {
+            position: relative; width: 100%; background: #fafbfc;
+            display: flex; align-items: center; justify-content: center;
+            min-height: 320px; padding: 16px;
+        }
+        .ip-figure-img-wrap img {
+            max-width: 100%; max-height: 520px; display: block;
+            border-radius: 6px;
+        }
+        .ip-figure-explain {
+            position: absolute; bottom: 16px; left: 16px; right: 16px;
+            background: rgba(255,255,255,0.95); border: 1px solid #e0e2e6;
+            border-radius: 10px; padding: 16px 20px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+        }
+        .ip-figure-explain-title {
+            font-size: 13px; font-weight: 600; color: #1a1c22; margin-bottom: 4px;
+        }
+        .ip-figure-explain-text {
+            font-size: 12px; color: #5a5d66; line-height: 1.5;
+        }
+        .ip-figure-controls {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 14px 20px; border-top: 1px solid #e0e2e6;
+        }
+        .ip-figure-step-label {
+            font-size: 11px; color: #8b8f9a; font-weight: 500;
+        }
+        .ip-figure-btns { display: flex; gap: 8px; }
+        .ip-figure-nav-btn {
+            padding: 6px 16px; border-radius: 6px; font-size: 12px;
+            font-weight: 600; cursor: pointer; border: 1px solid #e0e2e6;
+            background: #ffffff; color: #2a2d35; transition: all 0.12s;
+        }
+        .ip-figure-nav-btn:hover { background: #f6f7f9; border-color: #c8cacd; }
+        .ip-figure-nav-btn.primary {
+            background: #16a34a; color: #fff; border-color: #16a34a;
+        }
+        .ip-figure-nav-btn.primary:hover { background: #15803d; }
+        .ip-figure-nav-btn:disabled { opacity: 0.35; cursor: default; }
+
+        /* ---- Publication / GLP cards ---- */
+        .ip-pub-card {
+            background: #ffffff; border: 1px solid #e0e2e6;
+            border-radius: 10px; padding: 20px 22px; margin-bottom: 14px;
+        }
+        .ip-pub-type {
+            font-size: 9px; font-weight: 700; letter-spacing: 1.2px;
+            text-transform: uppercase; color: #16a34a; margin-bottom: 6px;
+        }
+        .ip-pub-title {
+            font-size: 14px; font-weight: 600; color: #1a1c22; margin-bottom: 4px;
+        }
+        .ip-pub-text {
+            font-size: 12px; color: #8b8f9a; line-height: 1.55;
+        }
     </style>
     <script src="js/presentation-mode.js"></script>
 </head>
@@ -2622,7 +2720,74 @@
                         </div>
                     </div>
 
+                    <!-- Phase 3: Validation -->
+                    <div id="ipPhase3" class="ip-phase-panel">
+                        <div class="ip-phase-label">Validation</div>
+
+                        <h2 class="ip-headline">In vivo proof of concept and structured experimental validation</h2>
+
+                        <p class="ip-why">Following the conceptual framework presented in the previous section, the TOUCAN-MRSA system has been evaluated in vivo to assess localized activation and therapeutic effect under controlled experimental conditions.</p>
+
+                        <!-- Interactive Figure -->
+                        <div class="ip-section-title">In vivo proof of concept</div>
+                        <div class="ip-figure-card" id="ipFigure5">
+                            <div class="ip-figure-img-wrap">
+                                <img id="ipFigure5Img" src="/assets/investor/phase3-figure5-panel1-invivo.png" alt="Figure 5">
+                                <div class="ip-figure-explain" id="ipFigure5Explain">
+                                    <div class="ip-figure-explain-title" id="ipFigure5Title">In vivo efficacy</div>
+                                    <div class="ip-figure-explain-text" id="ipFigure5Text">TOUCAN resolves infection in a murine model.</div>
+                                </div>
+                            </div>
+                            <div class="ip-figure-controls">
+                                <span class="ip-figure-step-label" id="ipFigure5Label">Step 1 of 4</span>
+                                <div class="ip-figure-btns">
+                                    <button class="ip-figure-nav-btn" id="ipFigure5Back" onclick="ipFigureNav(-1)" disabled>Back</button>
+                                    <button class="ip-figure-nav-btn primary" id="ipFigure5Next" onclick="ipFigureNav(1)">Next</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="ip-video-caption">Figure 5 &mdash; guided walkthrough of in vivo proof of concept</div>
+
+                        <!-- Publication -->
+                        <div class="ip-pub-card">
+                            <div class="ip-pub-type">Publication</div>
+                            <div class="ip-pub-title">Journal of Controlled Release (2023)</div>
+                            <div class="ip-pub-text">Peer-reviewed study presenting the TOUCAN-MRSA proof of concept, including in vivo efficacy data.</div>
+                        </div>
+
+                        <!-- Structured validation -->
+                        <div class="ip-section-title" style="margin-top:36px;">Structured experimental validation</div>
+                        <p class="ip-interpretation">All experimental data associated with this study is organized within a structured framework linking figures, datasets, and protocols, ensuring traceability and data integrity.</p>
+
+                        <!-- GLP Vision entry -->
+                        <div class="ip-glp-statement">
+                            <div class="ip-glp-label">GLP Vision</div>
+                            <div class="ip-glp-text">Explore validation in GLP Vision &mdash; view figure-by-figure data, linked protocols, and structured experimental context.</div>
+                        </div>
+
+                        <!-- Transition to Phase 4 -->
+                        <div class="ip-transition">
+                            <div class="ip-transition-label">Next Phase</div>
+                            <p class="ip-transition-text">The following section outlines how this validated approach translates into strategic and investment value.</p>
+                            <button class="ip-cta-btn" onclick="ipNavigate('phase4')">
+                                Explore Strategic Value
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                            </button>
+                        </div>
+                    </div>
+
                 </main>
+
+                <!-- Floating Actions -->
+                <div class="ip-fab-wrap" id="ipFabWrap">
+                    <div class="ip-fab-menu" id="ipFabMenu">
+                        <div class="ip-fab-menu-title">Explore</div>
+                        <div id="ipFabMenuItems"></div>
+                    </div>
+                    <button class="ip-fab-btn" id="ipFabBtn" onclick="ipToggleFab()">
+                        <span class="ip-fab-plus">+</span> Actions
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -5939,27 +6104,31 @@
         /* INVESTOR JOURNEY NAV                          */
         /* ============================================== */
         let currentInvestorPhase = 'phase1';
+        var ipPhaseMap = { phase1: 'ipPhase1', phase2: 'ipPhase2', phase3: 'ipPhase3' };
 
         function ipNavigate(phase) {
             if (phase === 'dataroom') return;
-            var phaseMap = { phase1: 'ipPhase1', phase2: 'ipPhase2' };
-
-            // Check if phase is implemented
-            if (!phaseMap[phase]) {
+            if (!ipPhaseMap[phase]) {
                 alert('Phase: ' + phase + ' — coming in the next release');
                 return;
             }
 
-            // Update nav active state
             document.querySelectorAll('#tab-investors .ip-nav-item').forEach(n => n.classList.remove('active'));
             const target = document.querySelector('#tab-investors .ip-nav-item[data-phase="' + phase + '"]');
             if (target) target.classList.add('active');
 
-            // Show/hide phase panels
             document.querySelectorAll('#tab-investors .ip-phase-panel').forEach(p => p.classList.remove('active'));
-            var el = document.getElementById(phaseMap[phase]);
+            var el = document.getElementById(ipPhaseMap[phase]);
             if (el) el.classList.add('active');
             currentInvestorPhase = phase;
+
+            // Update floating actions for new phase
+            ipUpdateFabActions();
+            // Close fab menu on phase change
+            var menu = document.getElementById('ipFabMenu');
+            if (menu) menu.classList.remove('open');
+            // Reset figure stepper when entering phase3
+            if (phase === 'phase3') ipFigureReset();
         }
 
         (function() {
@@ -5973,6 +6142,111 @@
                 });
             }
         })();
+
+        /* ============================================== */
+        /* FLOATING ACTIONS                              */
+        /* ============================================== */
+        // Phase-to-actions config — future: replace with Investor Monitor settings
+        // Each action: { label, handler }
+        // To connect Investor Monitor later, replace this object with
+        // data fetched from founder-controlled toggles per investor.
+        var ipActionConfig = {
+            phase1: [
+                { label: 'Background' }
+            ],
+            phase2: [
+                { label: 'Publications' },
+                { label: 'Request meeting' }
+            ],
+            phase3: [
+                { label: 'Publications' },
+                { label: 'Data (GLP Vision)' },
+                { label: 'SOP' },
+                { label: 'Request meeting' }
+            ],
+            phase4: [
+                { label: 'Request meeting' }
+            ]
+        };
+
+        function ipActionHandler(label) {
+            // Single handler for all actions — future: route to real destinations
+            alert(label + ' — coming soon');
+        }
+
+        function ipUpdateFabActions() {
+            var items = document.getElementById('ipFabMenuItems');
+            if (!items) return;
+            var actions = ipActionConfig[currentInvestorPhase] || [];
+            items.innerHTML = actions.map(function(a) {
+                return '<button class="ip-fab-menu-item" onclick="ipActionHandler(\'' +
+                    a.label.replace(/'/g, "\\'") + '\')">' + a.label + '</button>';
+            }).join('');
+        }
+
+        function ipToggleFab() {
+            var menu = document.getElementById('ipFabMenu');
+            if (menu) menu.classList.toggle('open');
+        }
+
+        // Close fab on outside click
+        document.addEventListener('click', function(e) {
+            var wrap = document.getElementById('ipFabWrap');
+            if (wrap && !wrap.contains(e.target)) {
+                var menu = document.getElementById('ipFabMenu');
+                if (menu) menu.classList.remove('open');
+            }
+        });
+
+        // Init floating actions
+        ipUpdateFabActions();
+
+        /* ============================================== */
+        /* INTERACTIVE FIGURE (Phase 3)                  */
+        /* ============================================== */
+        var ipFigureSteps = [
+            { img: '/assets/investor/phase3-figure5-panel1-invivo.png', title: 'In vivo efficacy', text: 'TOUCAN resolves infection in a murine model.' },
+            { img: '/assets/investor/phase3-figure5-panel2-histology.png', title: 'Histological confirmation', text: 'Tissue structure is preserved after treatment.' },
+            { img: '/assets/investor/phase3-figure5-panel3-cfu-neutrophils.png', title: 'Bacterial burden and immune response', text: 'Reduced bacterial load with controlled inflammation.' },
+            { img: '/assets/investor/phase3-figure5-full.png', title: 'Take-home message', text: 'Localized activation leads to infection resolution with controlled immune response.' }
+        ];
+        var ipFigureStep = 0;
+
+        function ipFigureRender() {
+            var s = ipFigureSteps[ipFigureStep];
+            var img = document.getElementById('ipFigure5Img');
+            var title = document.getElementById('ipFigure5Title');
+            var text = document.getElementById('ipFigure5Text');
+            var label = document.getElementById('ipFigure5Label');
+            var back = document.getElementById('ipFigure5Back');
+            var next = document.getElementById('ipFigure5Next');
+            if (img) img.src = s.img;
+            if (title) title.textContent = s.title;
+            if (text) text.textContent = s.text;
+            if (label) label.textContent = 'Step ' + (ipFigureStep + 1) + ' of ' + ipFigureSteps.length;
+            if (back) back.disabled = ipFigureStep === 0;
+            if (next) {
+                if (ipFigureStep === ipFigureSteps.length - 1) {
+                    next.textContent = 'Done';
+                    next.classList.remove('primary');
+                } else {
+                    next.textContent = 'Next';
+                    next.classList.add('primary');
+                }
+            }
+        }
+
+        function ipFigureNav(dir) {
+            var newStep = ipFigureStep + dir;
+            if (newStep < 0 || newStep >= ipFigureSteps.length) return;
+            ipFigureStep = newStep;
+            ipFigureRender();
+        }
+
+        function ipFigureReset() {
+            ipFigureStep = 0;
+            ipFigureRender();
+        }
 
     </script>
 </body>
