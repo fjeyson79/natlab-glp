@@ -1438,6 +1438,144 @@
         .inv-product-link { color: #2563eb; text-decoration: none; font-size: 12px; }
         .inv-product-link:hover { text-decoration: underline; }
         .inv-ref-badge { display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 9px; font-weight: 600; text-transform: uppercase; background: #f0f2f5; color: #78787f; margin-left: 4px; }
+        /* ---- Investor Journey (inside Investors tab) ---- */
+        .ip-layout {
+            display: grid;
+            grid-template-columns: 220px 1fr;
+            min-height: 600px;
+        }
+        @media (max-width: 860px) {
+            .ip-layout { grid-template-columns: 1fr; }
+            .ip-sidebar { display: none; }
+        }
+        .ip-sidebar {
+            background: #f0f1f4;
+            border-right: 1px solid #e0e2e6;
+            border-radius: 12px 0 0 12px;
+            padding: 28px 0;
+        }
+        .ip-sidebar-label {
+            font-size: 9px; font-weight: 700; letter-spacing: 1.6px;
+            text-transform: uppercase; color: #8b8f9a; padding: 0 24px; margin-bottom: 18px;
+        }
+        .ip-nav-item {
+            display: flex; align-items: center; gap: 10px;
+            padding: 11px 24px; font-size: 13px; font-weight: 500;
+            color: #8b8f9a; cursor: pointer; transition: all 0.15s;
+            border-left: 2px solid transparent; text-decoration: none;
+        }
+        .ip-nav-item:hover { color: #3a3d45; background: rgba(0,0,0,0.02); }
+        .ip-nav-item.active {
+            color: #1a1c22; border-left-color: #16a34a;
+            background: rgba(22, 163, 74, 0.04);
+        }
+        .ip-nav-item.active .ip-nav-dot {
+            background: #16a34a; box-shadow: 0 0 6px rgba(22,163,74,0.25);
+        }
+        .ip-nav-dot {
+            width: 6px; height: 6px; border-radius: 50%; background: #c8cacd; flex-shrink: 0;
+        }
+        .ip-nav-item.locked { opacity: 0.35; cursor: default; }
+        .ip-nav-item.locked:hover { color: #8b8f9a; background: transparent; }
+        .ip-nav-lock-icon { margin-left: auto; font-size: 11px; opacity: 0.5; }
+        .ip-main {
+            padding: 40px 48px 60px; max-width: 840px;
+        }
+        @media (max-width: 1100px) {
+            .ip-main { padding: 28px 24px 48px; }
+        }
+        .ip-phase-label {
+            font-size: 10px; font-weight: 700; letter-spacing: 2px;
+            text-transform: uppercase; color: #16a34a; margin-bottom: 14px;
+        }
+        .ip-headline {
+            font-size: 26px; font-weight: 700; color: #1a1c22;
+            line-height: 1.25; letter-spacing: -0.3px; margin-bottom: 18px;
+        }
+        .ip-why {
+            font-size: 15px; font-weight: 400; color: #5a5d66;
+            line-height: 1.7; max-width: 680px; margin-bottom: 40px;
+        }
+        .ip-video-card {
+            background: #ffffff; border: 1px solid #e0e2e6;
+            border-radius: 14px; overflow: hidden; margin-bottom: 12px;
+        }
+        .ip-video-title {
+            padding: 14px 20px; font-size: 13px; font-weight: 600;
+            color: #3a3d45; border-bottom: 1px solid #e0e2e6;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .ip-video-title .ip-play-icon { width: 16px; height: 16px; color: #16a34a; }
+        .ip-video-wrapper {
+            position: relative; width: 100%; background: #0a0b0d;
+        }
+        .ip-video-wrapper video {
+            width: 100%; display: block; border-radius: 0 0 13px 13px;
+        }
+        .ip-video-caption {
+            font-size: 11px; color: #8b8f9a; text-align: center;
+            padding: 10px 0 0; margin-bottom: 40px;
+        }
+        .ip-interpretation {
+            font-size: 15px; font-weight: 400; color: #5a5d66;
+            line-height: 1.75; max-width: 680px; margin-bottom: 36px;
+        }
+        .ip-takehome {
+            background: rgba(22,163,74,0.04); border: 1px solid rgba(22,163,74,0.12);
+            border-radius: 10px; padding: 22px 26px; margin-bottom: 44px;
+        }
+        .ip-takehome-label {
+            font-size: 9px; font-weight: 700; letter-spacing: 1.6px;
+            text-transform: uppercase; color: #16a34a; margin-bottom: 10px;
+        }
+        .ip-takehome-text {
+            font-size: 14px; font-weight: 500; color: #2a2d35; line-height: 1.65;
+        }
+        .ip-section-title {
+            font-size: 10px; font-weight: 700; letter-spacing: 1.6px;
+            text-transform: uppercase; color: #8b8f9a; margin-bottom: 16px;
+        }
+        .ip-cards-row {
+            display: grid; grid-template-columns: 1fr 1fr;
+            gap: 14px; margin-bottom: 36px;
+        }
+        @media (max-width: 600px) { .ip-cards-row { grid-template-columns: 1fr; } }
+        .ip-material-card {
+            background: #ffffff; border: 1px solid #e0e2e6;
+            border-radius: 10px; padding: 20px 22px; cursor: pointer;
+            transition: border-color 0.15s, background 0.15s;
+        }
+        .ip-material-card:hover { border-color: #c8cacd; background: #fafbfc; }
+        .ip-material-type {
+            font-size: 9px; font-weight: 700; letter-spacing: 1.2px;
+            text-transform: uppercase; color: #16a34a; margin-bottom: 8px;
+        }
+        .ip-material-title {
+            font-size: 14px; font-weight: 600; color: #1a1c22; margin-bottom: 6px;
+        }
+        .ip-material-desc {
+            font-size: 12px; color: #8b8f9a; line-height: 1.55;
+        }
+        .ip-transition {
+            background: #ffffff; border: 1px solid #e0e2e6;
+            border-radius: 12px; padding: 28px 30px; margin-top: 8px;
+        }
+        .ip-transition-label {
+            font-size: 9px; font-weight: 700; letter-spacing: 1.6px;
+            text-transform: uppercase; color: #8b8f9a; margin-bottom: 12px;
+        }
+        .ip-transition-text {
+            font-size: 14px; color: #5a5d66; line-height: 1.65;
+            margin-bottom: 22px; max-width: 600px;
+        }
+        .ip-cta-btn {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 10px 22px; background: #16a34a; color: #fff;
+            border: none; border-radius: 7px; font-size: 13px;
+            font-weight: 600; cursor: pointer; transition: background 0.15s;
+        }
+        .ip-cta-btn:hover { background: #15803d; }
+        .ip-cta-btn svg { width: 14px; height: 14px; }
     </style>
     <script src="js/presentation-mode.js"></script>
 </head>
@@ -2268,15 +2406,94 @@
         <!-- TAB: INVESTORS                                 -->
         <!-- ============================================== -->
         <div class="tab-content" id="tab-investors">
-            <div class="empty-tab">
-                <div class="empty-tab-card">
-                    <div class="empty-tab-icon">
-                        <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zm14 10v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+            <div class="ip-layout">
+                <!-- Left Journey Nav -->
+                <nav class="ip-sidebar">
+                    <div class="ip-sidebar-label">Investor Journey</div>
+                    <a class="ip-nav-item active" data-phase="phase1">
+                        <span class="ip-nav-dot"></span>
+                        Why &amp; Overview
+                    </a>
+                    <a class="ip-nav-item" data-phase="phase2">
+                        <span class="ip-nav-dot"></span>
+                        Technology
+                    </a>
+                    <a class="ip-nav-item" data-phase="phase3">
+                        <span class="ip-nav-dot"></span>
+                        Validation
+                    </a>
+                    <a class="ip-nav-item" data-phase="phase4">
+                        <span class="ip-nav-dot"></span>
+                        Strategic Value
+                    </a>
+                    <a class="ip-nav-item locked" data-phase="dataroom">
+                        <span class="ip-nav-dot"></span>
+                        Data Room
+                        <span class="ip-nav-lock-icon">
+                            <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                        </span>
+                    </a>
+                </nav>
+
+                <!-- Main Content -->
+                <main class="ip-main" id="ipMainContent">
+                    <div id="ipPhase1">
+                        <div class="ip-phase-label">Why and General Overview</div>
+
+                        <h2 class="ip-headline">Precision therapeutics begin with biological recognition</h2>
+
+                        <p class="ip-why">Current therapies often act throughout the body instead of only at the disease site. This limits precision and increases systemic exposure. Theralia is built on a different principle &mdash; therapeutic activity should be activated only where it is needed.</p>
+
+                        <!-- Video Centerpiece -->
+                        <div class="ip-video-card">
+                            <div class="ip-video-title">
+                                <svg class="ip-play-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="5 3 19 12 5 21 5 3" fill="currentColor" stroke="none"/></svg>
+                                Biological activity can be triggered locally through enzymatic processes
+                            </div>
+                            <div class="ip-video-wrapper">
+                                <video controls preload="metadata" playsinline
+                                       src="/assets/video/theralia-nuclease-concept.mp4"
+                                       style="border-radius: 0 0 13px 13px;">
+                                </video>
+                            </div>
+                        </div>
+                        <div class="ip-video-caption">Nuclease concept &mdash; Phase 1 overview</div>
+
+                        <!-- Interpretation -->
+                        <p class="ip-interpretation">Disease environments contain specific enzymatic activities that can act as molecular signals. Theralia uses these activities as biomarkers and designs oligonucleotide-based systems that respond selectively to them.</p>
+
+                        <!-- Take Home Message -->
+                        <div class="ip-takehome">
+                            <div class="ip-takehome-label">Take Home Message</div>
+                            <div class="ip-takehome-text">Specific nucleases act as biomarkers of disease, and tailored oligonucleotide substrates enable selective recognition and activation.</div>
+                        </div>
+
+                        <!-- Supporting Material -->
+                        <div class="ip-section-title">Supporting Material</div>
+                        <div class="ip-cards-row">
+                            <div class="ip-material-card" onclick="alert('Executive Summary — coming soon')">
+                                <div class="ip-material-type">Overview</div>
+                                <div class="ip-material-title">Executive Summary</div>
+                                <div class="ip-material-desc">Short introduction to Theralia, its rationale, and translational vision.</div>
+                            </div>
+                            <div class="ip-material-card" onclick="alert('Pitch Deck — coming soon')">
+                                <div class="ip-material-type">Presentation</div>
+                                <div class="ip-material-title">Pitch Deck</div>
+                                <div class="ip-material-desc">Company overview, platform logic, and strategic opportunity.</div>
+                            </div>
+                        </div>
+
+                        <!-- Transition to Phase 2 -->
+                        <div class="ip-transition">
+                            <div class="ip-transition-label">Next Phase</div>
+                            <p class="ip-transition-text">This principle creates the basis for localized therapeutic activation. In the next phase, this concept is applied to antimicrobial resistance through TOUCAN-MRSA.</p>
+                            <button class="ip-cta-btn" onclick="ipNavigate('phase2')">
+                                Explore Technology
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                            </button>
+                        </div>
                     </div>
-                    <div class="empty-tab-title">Investors</div>
-                    <div class="empty-tab-desc">Investor relationship management, quarterly updates, data room preparation, and fundraising pipeline tracking.</div>
-                    <a href="/theralia/investor" style="display:inline-block;margin-top:16px;padding:9px 20px;background:#1a1c22;color:#fff;border-radius:7px;font-size:13px;font-weight:600;text-decoration:none;transition:background 0.15s;" onmouseover="this.style.background='#333'" onmouseout="this.style.background='#1a1c22'">Open Investor Portal</a>
-                </div>
+                </main>
             </div>
         </div>
 
@@ -5588,6 +5805,34 @@
                 listEl.innerHTML = '<div class="inv-empty">Unable to load Oligo Explorer.</div>';
             }
         }
+
+        /* ============================================== */
+        /* INVESTOR JOURNEY NAV                          */
+        /* ============================================== */
+        let currentInvestorPhase = 'phase1';
+
+        function ipNavigate(phase) {
+            if (phase === 'dataroom') return;
+            document.querySelectorAll('#tab-investors .ip-nav-item').forEach(n => n.classList.remove('active'));
+            const target = document.querySelector('#tab-investors .ip-nav-item[data-phase="' + phase + '"]');
+            if (target) target.classList.add('active');
+            currentInvestorPhase = phase;
+            if (phase !== 'phase1') {
+                alert('Phase: ' + phase + ' — coming in the next release');
+            }
+        }
+
+        (function() {
+            const sidebar = document.querySelector('#tab-investors .ip-sidebar');
+            if (sidebar) {
+                sidebar.addEventListener('click', function(e) {
+                    const item = e.target.closest('.ip-nav-item');
+                    if (!item || item.classList.contains('locked')) return;
+                    e.preventDefault();
+                    ipNavigate(item.dataset.phase);
+                });
+            }
+        })();
 
     </script>
 </body>
