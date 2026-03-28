@@ -19206,3 +19206,8 @@ app.get('/theralia', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'access-theralia.html'));
 });
 
+// Theralia investor portal route
+app.get('/theralia/investor', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'investor-theralia.html'));
+});
+
