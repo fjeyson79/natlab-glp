@@ -3574,7 +3574,7 @@
         <div class="tab-content" id="tab-investroom" style="background:#f6f7f9; padding:0; max-width:none;">
             <div class="ir-shell">
                 <!-- Left Investor Panel -->
-                <div class="ir-sidebar">
+                <div class="ir-sidebar" style="display:none;">
                     <div class="ir-sidebar-label">Investors</div>
                     <div class="ir-sidebar-filters">
                         <span class="ir-sidebar-filter active" data-filter="all">All</span>
@@ -7476,52 +7476,11 @@
         }
 
         // Mock data — replace with real API calls later
-        var irMockInvestors = [
-            { id: 'all', name: 'All Investors', signal: null, summary: '' },
-            { id: 'inv1', name: 'Nordic Capital', signal: 'high', summary: '12 min · Viewed full deck', meeting: true },
-            { id: 'inv2', name: 'BioVenture Partners', signal: 'high', summary: '8 min · Requested meeting', meeting: true },
-            { id: 'inv3', name: 'Novartis Venture Fund', signal: 'medium', summary: '5 min · Watched Phase 1 video' },
-            { id: 'inv4', name: 'EQT Life Sciences', signal: 'medium', summary: '4 min · Opened publications' },
-            { id: 'inv5', name: 'Sofinnova Partners', signal: 'low', summary: '2 min · Brief visit' },
-            { id: 'inv6', name: 'HealthCap', signal: 'low', summary: '1 min · Viewed overview' }
-        ];
-
-        var irMockKpis = {
-            all: { views: 47, avgTime: '6.2 min', docs: 28, meetings: 3, videoPlays: 12, watchTime: '34 min' },
-            inv1: { views: 14, avgTime: '12 min', docs: 8, meetings: 1, videoPlays: 4, watchTime: '18 min' },
-            inv2: { views: 9, avgTime: '8 min', docs: 6, meetings: 1, videoPlays: 3, watchTime: '9 min' },
-            inv3: { views: 8, avgTime: '5 min', docs: 5, meetings: 0, videoPlays: 2, watchTime: '4 min' },
-            inv4: { views: 7, avgTime: '4 min', docs: 4, meetings: 1, videoPlays: 2, watchTime: '2 min' },
-            inv5: { views: 5, avgTime: '2 min', docs: 3, meetings: 0, videoPlays: 1, watchTime: '1 min' },
-            inv6: { views: 4, avgTime: '1 min', docs: 2, meetings: 0, videoPlays: 0, watchTime: '0 min' }
-        };
-
-        var irMockFeed = {
-            all: [
-                { dot: 'meeting', text: '<strong>BioVenture Partners</strong> requested a meeting — Investment Discussion', time: '4 hours ago' },
-                { dot: 'doc', text: '<strong>Nordic Capital</strong> opened GLP Vision — Figure 5 data', time: '2 hours ago' },
-                { dot: 'video', text: '<strong>Novartis Venture Fund</strong> played Phase 1 video (4:12 watched)', time: '5 hours ago' },
-                { dot: 'doc', text: '<strong>EQT Life Sciences</strong> opened TOUCAN paper', time: '1 day ago' },
-                { dot: 'visit', text: '<strong>Nordic Capital</strong> returned to portal', time: '1 day ago' },
-                { dot: 'doc', text: '<strong>Sofinnova Partners</strong> viewed Executive Summary', time: '2 days ago' },
-                { dot: 'meeting', text: '<strong>EQT Life Sciences</strong> requested a meeting — Platform, TOUCAN', time: '3 days ago' }
-            ]
-        };
-
-        var irMockContent = {
-            all: [
-                { rank: 'Most viewed', name: 'Phase 1 — Why & Overview', stat: '32 views · 18 min avg' },
-                { rank: 'Most engaging', name: 'TOUCAN-MRSA Video', stat: '12 plays · 34 min total' },
-                { rank: 'Most opened', name: 'TOUCAN Paper (JCR 2023)', stat: '11 opens' },
-                { rank: 'Low engagement', name: 'Phase 4 — Strategic Value', stat: '4 views · 1.2 min avg' }
-            ],
-            inv1: [
-                { rank: 'Most time', name: 'Phase 2 — Technology', stat: '6 min spent' },
-                { rank: 'Focused on', name: 'GLP Vision — Figure 5', stat: '4 min · Data + SOPs' },
-                { rank: 'Watched', name: 'TOUCAN-MRSA Video', stat: 'Full completion' },
-                { rank: 'Skipped', name: 'Phase 4 — Strategic Value', stat: 'Not visited' }
-            ]
-        };
+        // Investor data — empty until real backend is connected
+        var irMockInvestors = [];
+        var irMockKpis = { all: { views: 0, avgTime: '—', docs: 0, meetings: 0, videoPlays: 0, watchTime: '—' } };
+        var irMockFeed = { all: [] };
+        var irMockContent = { all: [] };
 
         var irPhaseData = [
             { id: 'phase1', label: 'Phase 1 — Why & Overview', fields: [
