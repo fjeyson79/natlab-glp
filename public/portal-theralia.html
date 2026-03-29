@@ -6664,18 +6664,20 @@
         var _ipPdfState = null;
 
         function _ipHideRightContent() {
-            // Hide all direct children of main except the PDF preview
+            // Force-hide all direct children of main except the PDF preview.
+            // Must use style.display because CSS classes like .ip-phase-panel.active
+            // set display:block which overrides the hidden attribute.
             var main = document.getElementById('ipMainContent');
             Array.from(main.children).forEach(function(el) {
-                if (el.id !== 'ipPdfPreview') el.hidden = true;
+                if (el.id !== 'ipPdfPreview') el.style.display = 'none';
             });
         }
 
         function _ipRestoreRightContent() {
-            // Restore all direct children of main
+            // Remove inline display override so CSS classes resume control
             var main = document.getElementById('ipMainContent');
             Array.from(main.children).forEach(function(el) {
-                el.hidden = false;
+                el.style.display = '';
             });
         }
 
