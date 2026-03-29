@@ -56,6 +56,16 @@
         }
         .tab-btn:hover { color: #c8c8cf; }
         .tab-btn.active { color: #ffffff; border-bottom-color: #ffffff; }
+        .tab-btn.locked { color: #55555f; cursor: default; opacity: 0.5; }
+        .tab-btn.locked:hover { color: #55555f; }
+        .ir-locked-msg {
+            max-width: 480px; margin: 80px auto; text-align: center; padding: 48px 32px;
+            background: #ffffff; border: 1px solid #e0e2e6; border-radius: 14px;
+        }
+        .ir-locked-msg-icon { margin-bottom: 16px; color: #8b8f9a; }
+        .ir-locked-msg-text {
+            font-size: 14px; color: #5a5d66; line-height: 1.7;
+        }
 
         /* ---- Light Content Surface ---- */
         .main {
@@ -3620,6 +3630,26 @@
             </div>
         </div>
 
+        <!-- Locked tab placeholders (investor due diligence) -->
+        <div class="tab-content" id="tab-company-locked">
+            <div class="ir-locked-msg">
+                <div class="ir-locked-msg-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg></div>
+                <div class="ir-locked-msg-text">This section is activated during due diligence, as part of the structured data room review.</div>
+            </div>
+        </div>
+        <div class="tab-content" id="tab-rnd-locked">
+            <div class="ir-locked-msg">
+                <div class="ir-locked-msg-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg></div>
+                <div class="ir-locked-msg-text">This section is activated during due diligence, as part of the structured data room review.</div>
+            </div>
+        </div>
+        <div class="tab-content" id="tab-glp-locked">
+            <div class="ir-locked-msg">
+                <div class="ir-locked-msg-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg></div>
+                <div class="ir-locked-msg-text">This section is activated during due diligence, as part of the structured data room review.</div>
+            </div>
+        </div>
+
     </div><!-- /.main -->
 
     <script>
@@ -3652,6 +3682,12 @@
                 }
                 // Show InvestRoom tab if founder/admin
                 if (typeof irCheckAccess === 'function') irCheckAccess();
+
+                // Investor role: restrict visible tabs
+                var userRole = (user.role || '').toLowerCase();
+                if (_userPosition === 'investor' || userRole === 'investor') {
+                    _setupInvestorAccess(_userPosition === 'investor_due_diligence' || userRole === 'investor_due_diligence');
+                }
             } catch (err) {
                 window.location.href = 'access-theralia.html';
             }
@@ -3659,6 +3695,39 @@
 
         function hasAuthority(flag) {
             return !!_userAuthority[flag];
+        }
+
+        // Investor tab access: hide non-investor tabs, lock due-diligence tabs
+        function _setupInvestorAccess(isDueDiligence) {
+            var allTabs = ['dashboard', 'company', 'rnd', 'glp', 'inventory', 'training', 'finance', 'investors', 'investroom'];
+            // Tabs visible to investor (always)
+            var investorVisible = { investors: true };
+            // Tabs visible but locked (unless due diligence)
+            var investorLocked = { company: true, rnd: true, glp: true };
+
+            allTabs.forEach(function(tab) {
+                var btn = document.querySelector('.tab-btn[data-tab="' + tab + '"]');
+                if (!btn) return;
+                if (investorVisible[tab]) {
+                    btn.style.display = '';
+                } else if (investorLocked[tab]) {
+                    btn.style.display = '';
+                    if (!isDueDiligence) {
+                        btn.classList.add('locked');
+                        _lockedTabs[tab] = true;
+                    }
+                } else {
+                    btn.style.display = 'none';
+                }
+            });
+
+            // Activate investors tab, deactivate dashboard
+            document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+            document.querySelectorAll('.tab-content').forEach(function(tc) { tc.classList.remove('active'); });
+            var invBtn = document.querySelector('.tab-btn[data-tab="investors"]');
+            if (invBtn) invBtn.classList.add('active');
+            var invTab = document.getElementById('tab-investors');
+            if (invTab) invTab.classList.add('active');
         }
 
         loadUser();
@@ -3674,12 +3743,22 @@
         /* ============================================== */
         /* TAB NAVIGATION                                 */
         /* ============================================== */
+        var _lockedTabs = {};
         document.getElementById('tabNav').addEventListener('click', (e) => {
             const btn = e.target.closest('.tab-btn');
             if (!btn) return;
             const tab = btn.dataset.tab;
             // Guard: block InvestRoom access for non-founders
             if (tab === 'investroom' && !_irHasAccess) return;
+            // Handle locked tabs — show message instead of loading content
+            if (_lockedTabs[tab]) {
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
+                var lockTarget = document.getElementById('tab-' + tab + '-locked');
+                if (lockTarget) lockTarget.classList.add('active');
+                return;
+            }
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
