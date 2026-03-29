@@ -1677,6 +1677,19 @@
             font-size: 14px; color: #5a5d66; line-height: 1.75;
             max-width: 680px; margin-bottom: 12px;
         }
+        .ip-core-belief {
+            font-style: italic; font-size: 15px; color: #3a3d45;
+            line-height: 1.85; max-width: 680px;
+            border-left: 2px solid rgba(22,163,74,0.25);
+            padding-left: 20px; margin-top: 8px;
+            font-family: Georgia, 'Times New Roman', serif;
+        }
+        .ip-core-belief::before {
+            content: '\201C'; display: block;
+            font-size: 32px; color: rgba(22,163,74,0.3);
+            line-height: 1; margin-bottom: 4px;
+            font-family: Georgia, serif;
+        }
         .ip-dev-grid {
             display: grid; grid-template-columns: 1fr 1fr;
             gap: 14px; margin-top: 4px;
@@ -1888,6 +1901,18 @@
         .ip-pub-card {
             background: #ffffff; border: 1px solid #e0e2e6;
             border-radius: 10px; padding: 20px 22px; margin-bottom: 14px;
+            display: flex; flex-direction: column;
+        }
+        .ip-pub-action {
+            display: inline-flex; align-items: center; gap: 4px;
+            margin-top: 14px; align-self: flex-end;
+            padding: 6px 14px; border: 1px solid rgba(22,163,74,0.2);
+            border-radius: 6px; background: rgba(22,163,74,0.04);
+            font-size: 12px; font-weight: 600; color: #16a34a;
+            cursor: pointer; text-decoration: none; transition: all 0.12s;
+        }
+        .ip-pub-action:hover {
+            background: rgba(22,163,74,0.08); border-color: rgba(22,163,74,0.35);
         }
         .ip-pub-type {
             font-size: 9px; font-weight: 700; letter-spacing: 1.2px;
@@ -2933,6 +2958,7 @@
                             <div class="ip-pub-type">Publication</div>
                             <div class="ip-pub-title">Journal of Controlled Release (2023)</div>
                             <div class="ip-pub-text">Peer-reviewed study presenting the TOUCAN-MRSA proof of concept, including in vivo efficacy data.</div>
+                            <a class="ip-pub-action" href="#" onclick="event.preventDefault();ipOpenPdfPreview('/assets/investor/publications/phase2-toucan-paper.pdf','phase3')">View publication &rarr;</a>
                         </div>
 
                         <!-- Structured validation -->
@@ -3114,8 +3140,7 @@
 
                         <!-- Final Statement -->
                         <div class="ip-final-statement ip-emphasis">
-                            <p>We believe precision activation can redefine the treatment of difficult infections and expand into oncology and inflammatory diseases.</p>
-                            <p>We would welcome the opportunity to discuss how Theralia can address high-value clinical challenges and the path toward clinical translation.</p>
+                            <div class="ip-core-belief">We believe precision activation can redefine the treatment of difficult infections and expand into oncology and inflammatory diseases. We would welcome the opportunity to discuss how Theralia can address high-value clinical challenges and the path toward clinical translation.</div>
                         </div>
                     </div>
 
