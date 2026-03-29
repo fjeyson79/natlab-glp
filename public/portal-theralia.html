@@ -6664,17 +6664,19 @@
         var _ipPdfState = null;
 
         function _ipHideRightContent() {
-            // Hide only the content nodes inside main, not main itself
-            document.querySelectorAll('#ipMainContent > .ip-phase-panel').forEach(function(p) { p.hidden = true; });
-            var glpv = document.getElementById('ipGlpVision');
-            if (glpv) glpv.hidden = true;
+            // Hide all direct children of main except the PDF preview
+            var main = document.getElementById('ipMainContent');
+            Array.from(main.children).forEach(function(el) {
+                if (el.id !== 'ipPdfPreview') el.hidden = true;
+            });
         }
 
         function _ipRestoreRightContent() {
-            // Restore visibility based on saved state
-            document.querySelectorAll('#ipMainContent > .ip-phase-panel').forEach(function(p) { p.hidden = false; });
-            var glpv = document.getElementById('ipGlpVision');
-            if (glpv) glpv.hidden = false;
+            // Restore all direct children of main
+            var main = document.getElementById('ipMainContent');
+            Array.from(main.children).forEach(function(el) {
+                el.hidden = false;
+            });
         }
 
         function ipOpenPdfPreview(pdfUrl, overlayKey) {
@@ -6689,7 +6691,7 @@
             var main = document.getElementById('ipMainContent');
             main.classList.add('ip-main--preview');
             document.getElementById('ipPdfPreview').classList.add('active');
-            document.getElementById('ipPdfFrame').src = pdfUrl;
+            document.getElementById('ipPdfFrame').src = pdfUrl + '#toolbar=0&navpanes=0&scrollbar=1';
         }
 
         function _ipExitPreview() {
