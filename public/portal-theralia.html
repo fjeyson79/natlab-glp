@@ -3687,6 +3687,12 @@
                 var userRole = (user.role || '').toLowerCase();
                 if (_userPosition === 'investor' || userRole === 'investor') {
                     _setupInvestorAccess(_userPosition === 'investor_due_diligence' || userRole === 'investor_due_diligence');
+                    // Record investor visit (fire-and-forget)
+                    fetch('/api/investor/record-visit?workspace=theralia', {
+                        method: 'POST', credentials: 'include',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({})
+                    }).catch(function() {});
                 }
             } catch (err) {
                 window.location.href = 'access-theralia.html';
@@ -7475,8 +7481,7 @@
             }
         }
 
-        // Mock data — replace with real API calls later
-        // Investor data — empty until real backend is connected
+        // Investor data — loaded from backend
         var irMockInvestors = [];
         var irMockKpis = { all: { views: 0, avgTime: '—', docs: 0, meetings: 0, videoPlays: 0, watchTime: '—' } };
         var irMockFeed = { all: [] };
@@ -7530,10 +7535,40 @@
         var irCurrentFilter = 'all';
 
         function irInit() {
-            irRenderInvestorList();
+            irLoadVisitors();
             irRenderView();
             irRenderPhaseEditors();
             document.getElementById('irLastUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+
+        function irLoadVisitors() {
+            fetch('/api/investor/visitors?workspace=theralia', { credentials: 'include' })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    var visitors = data.visitors || [];
+                    irMockInvestors = visitors.map(function(v) {
+                        var mins = v.last_seen_at ? Math.round((Date.now() - new Date(v.last_seen_at).getTime()) / 60000) : null;
+                        var timeAgo = mins === null ? '' : mins < 60 ? mins + ' min ago' : mins < 1440 ? Math.round(mins / 60) + 'h ago' : Math.round(mins / 1440) + 'd ago';
+                        return {
+                            id: v.researcher_id,
+                            name: v.investor_name || v.investor_email || v.researcher_id,
+                            signal: v.visit_count >= 3 ? 'high' : v.visit_count >= 2 ? 'medium' : 'low',
+                            summary: v.visit_count + ' visit' + (v.visit_count !== 1 ? 's' : '') + (timeAgo ? ' \u00B7 ' + timeAgo : ''),
+                            email: v.investor_email,
+                            company: v.investor_company,
+                            visit_count: v.visit_count
+                        };
+                    });
+                    // Show sidebar if we have visitors
+                    if (irMockInvestors.length > 0) {
+                        var sidebar = document.querySelector('#tab-investroom .ir-sidebar');
+                        if (sidebar) sidebar.style.display = '';
+                    }
+                    irRenderInvestorList();
+                })
+                .catch(function() {
+                    irRenderInvestorList();
+                });
         }
 
         function irSetMode(mode) {
@@ -7549,6 +7584,7 @@
             var btn = document.querySelector('.ir-refresh-btn');
             if (btn) { btn.classList.remove('spin'); void btn.offsetWidth; btn.classList.add('spin'); }
             document.getElementById('irLastUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            irLoadVisitors();
             irRenderView();
         }
 

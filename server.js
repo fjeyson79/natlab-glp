@@ -18923,6 +18923,90 @@ app.post('/api/investor/request-meeting', async (req, res) => {
 // END INVESTOR MEETING BOOKING
 // =====================================================
 
+// =====================================================
+// INVESTOR PORTAL VISIT TRACKING
+// =====================================================
+
+// Record investor visit (called from investor portal on load)
+app.post('/api/investor/record-visit', requireAuth, async (req, res) => {
+    try {
+        const user = req.session.user;
+        const ws = req.query.workspace || req.body.workspace || 'theralia';
+        // Only record for investor-role users
+        const wsUser = await pool.query(
+            `SELECT role, workspace_position FROM workspace_users wu
+             JOIN workspaces w ON wu.workspace_id = w.id
+             WHERE wu.user_id = $1 AND w.slug = $2`,
+            [user.researcher_id, ws]
+        );
+        const wsRole = wsUser.rows[0]?.role;
+        if (wsRole !== 'investor') {
+            return res.json({ ok: true, recorded: false });
+        }
+        // Check if table exists
+        const tbl = await pool.query(`SELECT to_regclass('public.investor_portal_visits') AS t`);
+        if (!tbl.rows[0]?.t) {
+            return res.json({ ok: true, recorded: false });
+        }
+        // Upsert visit
+        await pool.query(
+            `INSERT INTO investor_portal_visits (workspace_id, researcher_id, investor_name, investor_email, investor_company)
+             VALUES ($1, $2, $3, $4, $5)
+             ON CONFLICT (workspace_id, researcher_id) DO UPDATE SET
+                last_seen_at = NOW(),
+                visit_count = investor_portal_visits.visit_count + 1,
+                investor_name = COALESCE(EXCLUDED.investor_name, investor_portal_visits.investor_name),
+                investor_email = COALESCE(EXCLUDED.investor_email, investor_portal_visits.investor_email)`,
+            [ws, user.researcher_id, user.name, user.institution_email, req.body.company || null]
+        );
+        res.json({ ok: true, recorded: true });
+    } catch (err) {
+        console.error('[INVESTOR-VISIT] Error:', err.message);
+        res.json({ ok: true, recorded: false });
+    }
+});
+
+// List investor visitors (founder-only, for InvestRoom)
+app.get('/api/investor/visitors', requireAuth, async (req, res) => {
+    try {
+        const user = req.session.user;
+        const ws = req.query.workspace || 'theralia';
+        // Check founder access
+        const wsUser = await pool.query(
+            `SELECT role, workspace_position FROM workspace_users wu
+             JOIN workspaces w ON wu.workspace_id = w.id
+             WHERE wu.user_id = $1 AND w.slug = $2`,
+            [user.researcher_id, ws]
+        );
+        const pos = (wsUser.rows[0]?.workspace_position || '').toLowerCase();
+        const role = wsUser.rows[0]?.role;
+        if (!['ceo', 'cso', 'founder'].includes(pos) && role !== 'founder') {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+        // Check table exists
+        const tbl = await pool.query(`SELECT to_regclass('public.investor_portal_visits') AS t`);
+        if (!tbl.rows[0]?.t) {
+            return res.json({ visitors: [] });
+        }
+        const result = await pool.query(
+            `SELECT researcher_id, investor_name, investor_email, investor_company,
+                    last_seen_at, visit_count, created_at
+             FROM investor_portal_visits
+             WHERE workspace_id = $1
+             ORDER BY last_seen_at DESC`,
+            [ws]
+        );
+        res.json({ visitors: result.rows });
+    } catch (err) {
+        console.error('[INVESTOR-VISITORS] Error:', err.message);
+        res.status(500).json({ error: 'Failed to load visitors' });
+    }
+});
+
+// =====================================================
+// END INVESTOR PORTAL VISIT TRACKING
+// =====================================================
+
 app.listen(PORT, "0.0.0.0", async () => {
     console.log("[STARTUP] Server listening on port " + PORT);
     // Safety check: warn if any di_submissions row has no r2_object_key
