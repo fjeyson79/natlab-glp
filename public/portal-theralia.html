@@ -1741,6 +1741,78 @@
         }
         .ip-fab-menu-item:hover { background: #f6f7f9; }
 
+        /* ---- Action Overlay Card ---- */
+        .ip-overlay-backdrop {
+            display: none; position: fixed; inset: 0; z-index: 200;
+            background: rgba(0,0,0,0.18);
+        }
+        .ip-overlay-backdrop.open { display: flex; align-items: center; justify-content: center; }
+        .ip-overlay-card {
+            background: #ffffff; border: 1px solid #e0e2e6;
+            border-radius: 14px; padding: 28px 30px; min-width: 320px; max-width: 420px;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.10);
+        }
+        .ip-overlay-title {
+            font-size: 15px; font-weight: 600; color: #1a1c22; margin-bottom: 14px;
+        }
+        .ip-overlay-text {
+            font-size: 13px; color: #5a5d66; line-height: 1.65; margin-bottom: 18px;
+        }
+        .ip-overlay-link {
+            display: flex; align-items: center; gap: 8px;
+            padding: 10px 14px; margin-bottom: 6px;
+            background: #fafbfc; border: 1px solid #e0e2e6; border-radius: 8px;
+            font-size: 13px; font-weight: 500; color: #1a1c22;
+            cursor: pointer; text-decoration: none; transition: border-color 0.12s;
+        }
+        .ip-overlay-link:hover { border-color: #16a34a; }
+        .ip-overlay-link-icon {
+            width: 14px; height: 14px; color: #16a34a; flex-shrink: 0;
+        }
+        .ip-overlay-close {
+            display: block; margin-top: 16px; background: none; border: none;
+            font-size: 12px; color: #8b8f9a; cursor: pointer; padding: 0;
+        }
+        .ip-overlay-close:hover { color: #1a1c22; }
+
+        /* ---- GLP Vision View ---- */
+        .ip-glpv-panel { display: none; }
+        .ip-glpv-panel.active { display: block; }
+        .ip-glpv-back {
+            display: inline-flex; align-items: center; gap: 6px;
+            font-size: 12px; font-weight: 500; color: #8b8f9a;
+            cursor: pointer; margin-bottom: 20px; background: none; border: none; padding: 0;
+        }
+        .ip-glpv-back:hover { color: #1a1c22; }
+        .ip-glpv-grid {
+            display: grid; grid-template-columns: 1fr 1fr;
+            gap: 14px;
+        }
+        @media (max-width: 700px) { .ip-glpv-grid { grid-template-columns: 1fr; } }
+        .ip-glpv-fig {
+            background: #ffffff; border: 1px solid #e0e2e6;
+            border-radius: 10px; padding: 20px 22px;
+        }
+        .ip-glpv-fig-label {
+            font-size: 10px; font-weight: 700; letter-spacing: 1.2px;
+            text-transform: uppercase; color: #16a34a; margin-bottom: 6px;
+        }
+        .ip-glpv-fig-title {
+            font-size: 14px; font-weight: 600; color: #1a1c22; margin-bottom: 4px;
+        }
+        .ip-glpv-fig-desc {
+            font-size: 12px; color: #8b8f9a; line-height: 1.5; margin-bottom: 12px;
+        }
+        .ip-glpv-fig-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+        .ip-glpv-btn {
+            display: inline-flex; align-items: center; gap: 5px;
+            padding: 5px 12px; border: 1px solid #e0e2e6; border-radius: 6px;
+            font-size: 11px; font-weight: 600; color: #2a2d35;
+            background: #fafbfc; cursor: pointer; text-decoration: none;
+            transition: border-color 0.12s;
+        }
+        .ip-glpv-btn:hover { border-color: #16a34a; }
+
         /* ---- Interactive Figure ---- */
         .ip-figure-card {
             background: #ffffff; border: 1px solid #e0e2e6;
@@ -3021,7 +3093,71 @@
                         </div>
                     </div>
 
+                    <!-- GLP Vision View -->
+                    <div id="ipGlpVision" class="ip-glpv-panel">
+                        <button class="ip-glpv-back" onclick="ipCloseGlpVision()">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                            Back to Validation
+                        </button>
+                        <div class="ip-phase-label">GLP Vision</div>
+                        <h2 class="ip-headline">Structured validation data</h2>
+                        <p class="ip-why" style="margin-bottom:32px;">Figure-by-figure access to validation data, linked protocols, and experimental context.</p>
+
+                        <div class="ip-glpv-grid">
+                            <div class="ip-glpv-fig">
+                                <div class="ip-glpv-fig-label">Figure 2b</div>
+                                <div class="ip-glpv-fig-title">In vitro validation of drug molecule</div>
+                                <div class="ip-glpv-fig-desc">Functional validation of the active compound in vitro.</div>
+                                <div class="ip-glpv-fig-btns">
+                                    <a class="ip-glpv-btn" href="/assets/investor/glp/data/data-figure2b-in-vitro-validation-drug-molecule.pdf" target="_blank">Data</a>
+                                    <a class="ip-glpv-btn" href="/assets/investor/glp/sop/sop-figure2-3-bacterial-culture.pdf" target="_blank">SOP</a>
+                                </div>
+                            </div>
+                            <div class="ip-glpv-fig">
+                                <div class="ip-glpv-fig-label">Figure 3a</div>
+                                <div class="ip-glpv-fig-title">Modularity</div>
+                                <div class="ip-glpv-fig-desc">Modular design of the activation system.</div>
+                                <div class="ip-glpv-fig-btns">
+                                    <a class="ip-glpv-btn" href="/assets/investor/glp/data/data-figure3a-modularity.pdf" target="_blank">Data</a>
+                                    <a class="ip-glpv-btn" href="/assets/investor/glp/sop/sop-figure2-3-bacterial-culture.pdf" target="_blank">SOP</a>
+                                </div>
+                            </div>
+                            <div class="ip-glpv-fig">
+                                <div class="ip-glpv-fig-label">Figure 3b</div>
+                                <div class="ip-glpv-fig-title">Specificity</div>
+                                <div class="ip-glpv-fig-desc">Selective activation under target conditions.</div>
+                                <div class="ip-glpv-fig-btns">
+                                    <a class="ip-glpv-btn" href="/assets/investor/glp/data/data-figure3b-specificity.pdf" target="_blank">Data</a>
+                                    <a class="ip-glpv-btn" href="/assets/investor/glp/sop/sop-figure2-3-bacterial-culture.pdf" target="_blank">SOP</a>
+                                </div>
+                            </div>
+                            <div class="ip-glpv-fig">
+                                <div class="ip-glpv-fig-label">Figure 4</div>
+                                <div class="ip-glpv-fig-title">Dose response</div>
+                                <div class="ip-glpv-fig-desc">Dose-dependent activity assessment.</div>
+                                <div class="ip-glpv-fig-btns">
+                                    <a class="ip-glpv-btn" href="/assets/investor/glp/data/data-figure4-dose-response.pdf" target="_blank">Data</a>
+                                    <a class="ip-glpv-btn" href="/assets/investor/glp/sop/sop-figure4-mic.pdf" target="_blank">SOP</a>
+                                </div>
+                            </div>
+                            <div class="ip-glpv-fig" style="grid-column: 1 / -1;">
+                                <div class="ip-glpv-fig-label">Figure 5</div>
+                                <div class="ip-glpv-fig-title">In vivo proof of concept</div>
+                                <div class="ip-glpv-fig-desc">Localized activation and therapeutic effect in a murine infection model.</div>
+                                <div class="ip-glpv-fig-btns">
+                                    <a class="ip-glpv-btn" href="/assets/investor/glp/data/data-figure5-in-vivo-proof-of-concept.pdf" target="_blank">Data</a>
+                                    <button class="ip-glpv-btn" onclick="ipShowOverlay('sop-fig5')">SOPs</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                 </main>
+
+                <!-- Action Overlay -->
+                <div class="ip-overlay-backdrop" id="ipOverlay" onclick="if(event.target===this)ipCloseOverlay()">
+                    <div class="ip-overlay-card" id="ipOverlayCard"></div>
+                </div>
 
                 <!-- Floating Actions -->
                 <div class="ip-fab-wrap" id="ipFabWrap">
@@ -6363,6 +6499,9 @@
             if (target) target.classList.add('active');
 
             document.querySelectorAll('#tab-investors .ip-phase-panel').forEach(p => p.classList.remove('active'));
+            // Also hide GLP Vision if open
+            var glpv = document.getElementById('ipGlpVision');
+            if (glpv) glpv.classList.remove('active');
             var el = document.getElementById(ipPhaseMap[phase]);
             if (el) el.classList.add('active');
             currentInvestorPhase = phase;
@@ -6418,9 +6557,96 @@
             ]
         };
 
+        /* ---- Overlay content templates ---- */
+        var ipOverlayTemplates = {
+            'background': {
+                title: 'Background',
+                links: [
+                    { label: 'Nature Medicine', href: '/assets/investor/publications/phase1-nature-medicine.pdf' },
+                    { label: 'Nuclease review', href: '/assets/investor/publications/phase1-nuclease-review.pdf' }
+                ]
+            },
+            'publications-p2': {
+                title: 'Publications',
+                links: [
+                    { label: 'TOUCAN paper', href: '/assets/investor/publications/phase2-toucan-paper.pdf' },
+                    { label: 'Editorial — ADC/TOUCAN', href: '/assets/investor/publications/phase2-editorial-adc-toucan.pdf' }
+                ]
+            },
+            'publications-p3': {
+                title: 'Publications',
+                links: [
+                    { label: 'TOUCAN paper', href: '/assets/investor/publications/phase2-toucan-paper.pdf' }
+                ]
+            },
+            'sop-fig5': {
+                title: 'SOPs — Figure 5',
+                links: [
+                    { label: 'Animal model', href: '/assets/investor/glp/sop/sop-figure5-animal-model.pdf' },
+                    { label: 'CFU quantification', href: '/assets/investor/glp/sop/sop-figure5-cfu.pdf' },
+                    { label: 'BSL-2 procedures', href: '/assets/investor/glp/sop/sop-figure5-bsl2.pdf' }
+                ]
+            },
+            'meeting': {
+                title: 'Request meeting',
+                text: 'We would be pleased to discuss the platform, the data, and the clinical path in more detail.',
+                links: []
+            }
+        };
+
+        function ipShowOverlay(key) {
+            var tpl = ipOverlayTemplates[key];
+            if (!tpl) return;
+            var card = document.getElementById('ipOverlayCard');
+            var linkIcon = '<svg class="ip-overlay-link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
+            var html = '<div class="ip-overlay-title">' + tpl.title + '</div>';
+            if (tpl.text) html += '<div class="ip-overlay-text">' + tpl.text + '</div>';
+            (tpl.links || []).forEach(function(l) {
+                html += '<a class="ip-overlay-link" href="' + l.href + '" target="_blank">' + linkIcon + l.label + '</a>';
+            });
+            html += '<button class="ip-overlay-close" onclick="ipCloseOverlay()">Close</button>';
+            card.innerHTML = html;
+            document.getElementById('ipOverlay').classList.add('open');
+            // Close fab menu when overlay opens
+            var fabMenu = document.getElementById('ipFabMenu');
+            if (fabMenu) fabMenu.classList.remove('open');
+        }
+
+        function ipCloseOverlay() {
+            document.getElementById('ipOverlay').classList.remove('open');
+        }
+
         function ipActionHandler(label) {
-            // Single handler for all actions — future: route to real destinations
+            // Route actions to real destinations based on phase context
+            var key = label.toLowerCase();
+            if (key === 'background') { ipShowOverlay('background'); return; }
+            if (key === 'publications' && currentInvestorPhase === 'phase2') { ipShowOverlay('publications-p2'); return; }
+            if (key === 'publications' && currentInvestorPhase === 'phase3') { ipShowOverlay('publications-p3'); return; }
+            if (key === 'data (glp vision)') { ipOpenGlpVision(); return; }
+            if (key === 'sop') { ipShowOverlay('sop-fig5'); return; }
+            if (key === 'request meeting') { ipShowOverlay('meeting'); return; }
+            if (key === 'explore validation (glp vision)') { ipOpenGlpVision(); return; }
+            if (key === 'meet the team') { ipShowOverlay('meeting'); return; }
             alert(label + ' — coming soon');
+        }
+
+        /* ---- GLP Vision view control ---- */
+        function ipOpenGlpVision() {
+            // Hide all phase panels, show GLP Vision
+            document.querySelectorAll('#tab-investors .ip-phase-panel').forEach(function(p) { p.classList.remove('active'); });
+            document.getElementById('ipGlpVision').classList.add('active');
+            // Scroll to top
+            var tabEl = document.getElementById('tab-investors');
+            if (tabEl) tabEl.scrollIntoView({ block: 'start', behavior: 'smooth' });
+        }
+
+        function ipCloseGlpVision() {
+            document.getElementById('ipGlpVision').classList.remove('active');
+            // Return to Phase 3
+            var el = document.getElementById('ipPhase3');
+            if (el) el.classList.add('active');
+            var tabEl = document.getElementById('tab-investors');
+            if (tabEl) tabEl.scrollIntoView({ block: 'start', behavior: 'smooth' });
         }
 
         function ipUpdateFabActions() {
