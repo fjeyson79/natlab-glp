@@ -1001,6 +1001,22 @@ async function migrate() {
             `CREATE INDEX IF NOT EXISTS idx_ipa_type ON investor_portal_activity(activity_type)`,
             `CREATE INDEX IF NOT EXISTS idx_ipa_created ON investor_portal_activity(created_at DESC)`,
 
+            // ==================== INVESTOR PORTAL SESSIONS (migration 037) ====================
+            `CREATE TABLE IF NOT EXISTS investor_portal_sessions (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                workspace_id VARCHAR(30) NOT NULL DEFAULT 'theralia',
+                researcher_id VARCHAR(50) NOT NULL,
+                investor_email VARCHAR(255),
+                started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                ended_at TIMESTAMPTZ,
+                duration_seconds INT DEFAULT 0,
+                end_reason VARCHAR(20),
+                CHECK (end_reason IS NULL OR end_reason IN ('logout', 'inactivity', 'close'))
+            )`,
+            `CREATE INDEX IF NOT EXISTS idx_ips_user ON investor_portal_sessions(workspace_id, researcher_id)`,
+            `CREATE INDEX IF NOT EXISTS idx_ips_active ON investor_portal_sessions(ended_at) WHERE ended_at IS NULL`,
+
         ];
 
         for (const sql of migrations) {

@@ -2004,9 +2004,10 @@
         .ir-mode-btn:hover:not(.active) { color: #3a3d45; }
         /* KPI */
         .ir-kpi-strip {
-            display: grid; grid-template-columns: repeat(3, 1fr);
+            display: grid; grid-template-columns: repeat(4, 1fr);
             gap: 10px; margin-bottom: 32px;
         }
+        @media (max-width: 800px) { .ir-kpi-strip { grid-template-columns: repeat(2, 1fr); } }
         .ir-kpi-icon { font-size: 26px; line-height: 1; margin-bottom: 8px; }
         .ir-kpi-card {
             background: #ffffff; border: 1px solid #e0e2e6;
@@ -3693,6 +3694,8 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({})
                     }).catch(function() {});
+                    // Start portal session tracking
+                    _ipStartSession();
                 }
             } catch (err) {
                 window.location.href = 'access-theralia.html';
@@ -3739,6 +3742,7 @@
         loadUser();
 
         document.getElementById('logoutBtn').addEventListener('click', async () => {
+            if (typeof _ipEndSession === 'function') _ipEndSession('logout');
             try {
                 await fetch('/api/di/logout', { method: 'POST', credentials: 'include' });
             } catch (err) {}
@@ -7207,6 +7211,55 @@
             }).catch(function() {});
         }
 
+        /* ---- Portal Session Tracking ---- */
+        var _ipSessionId = null;
+        var _ipHeartbeatTimer = null;
+
+        function _ipStartSession() {
+            fetch('/api/investor/session-start', {
+                method: 'POST', credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ workspace: 'theralia' })
+            }).then(function(r) { return r.json(); })
+              .then(function(data) {
+                  _ipSessionId = data.session_id;
+                  if (_ipSessionId) {
+                      _ipHeartbeatTimer = setInterval(_ipHeartbeat, 30000); // 30s
+                  }
+              }).catch(function() {});
+        }
+
+        function _ipHeartbeat() {
+            if (!_ipSessionId) return;
+            fetch('/api/investor/session-heartbeat', {
+                method: 'POST', credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ session_id: _ipSessionId })
+            }).catch(function() {});
+        }
+
+        function _ipEndSession(reason) {
+            if (!_ipSessionId) return;
+            var sid = _ipSessionId;
+            _ipSessionId = null;
+            if (_ipHeartbeatTimer) { clearInterval(_ipHeartbeatTimer); _ipHeartbeatTimer = null; }
+            // Use sendBeacon for reliability on page close
+            if (navigator.sendBeacon) {
+                navigator.sendBeacon('/api/investor/session-end',
+                    new Blob([JSON.stringify({ session_id: sid, reason: reason || 'close' })], { type: 'application/json' }));
+            } else {
+                fetch('/api/investor/session-end', {
+                    method: 'POST', credentials: 'include', keepalive: true,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ session_id: sid, reason: reason || 'close' })
+                }).catch(function() {});
+            }
+        }
+
+        // End session on page close/navigate away
+        window.addEventListener('pagehide', function() { _ipEndSession('close'); });
+        window.addEventListener('beforeunload', function() { _ipEndSession('close'); });
+
         function _ipExitPreview() {
             document.getElementById('ipPdfPreview').classList.remove('active');
             document.getElementById('ipPdfFrame').src = '';
@@ -7527,7 +7580,7 @@
 
         // Investor data — loaded from backend
         var irMockInvestors = [];
-        var irMockKpis = { all: { views: 0, avgTime: '—', docs: 0, meetings: 0, videoPlays: 0, watchTime: '—' } };
+        var irMockKpis = { all: { views: 0, avgTime: '—', docs: 0, meetings: 0, videoPlays: 0, watchTime: '—', portalTime: '—' } };
         var irMockFeed = { all: [] };
         var irMockContent = { all: [] };
 
@@ -7747,6 +7800,7 @@
             strip.innerHTML = [
                 { v: kpi.views, l: 'Total Views', icon: '\uD83D\uDC41\uFE0F' },
                 { v: kpi.avgTime, l: 'Avg Visits / Investor', icon: '\u23F1\uFE0F' }, // visit-based, not time-based
+                { v: kpi.portalTime || '\u2014', l: 'Portal Time', icon: '\uD83D\uDD52' },
                 { v: kpi.docs, l: 'Docs Opened', icon: '\uD83D\uDCC4' },
                 { v: kpi.videoPlays, l: 'Video Plays', icon: '\u25B6\uFE0F' },
                 { v: kpi.watchTime, l: 'Watch Time', icon: '\u231B' },

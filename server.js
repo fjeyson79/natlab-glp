@@ -19021,7 +19021,7 @@ app.get('/api/investor/kpis', requireAuth, async (req, res) => {
             return res.status(403).json({ error: 'Access denied' });
         }
 
-        const result = { all: { views: 0, avgTime: '\u2014', docs: 0, meetings: 0, videoPlays: 0, watchTime: '\u2014' } };
+        const result = { all: { views: 0, avgTime: '\u2014', docs: 0, meetings: 0, videoPlays: 0, watchTime: '\u2014', portalTime: '\u2014' } };
 
         // Visit data
         const visitsTbl = await pool.query(`SELECT to_regclass('public.investor_portal_visits') AS t`);
@@ -19033,7 +19033,7 @@ app.get('/api/investor/kpis', requireAuth, async (req, res) => {
             for (const v of visits.rows) {
                 totalViews += v.visit_count;
                 result[v.researcher_id] = {
-                    views: v.visit_count, avgTime: '\u2014', docs: 0, meetings: 0, videoPlays: 0, watchTime: '\u2014'
+                    views: v.visit_count, avgTime: '\u2014', docs: 0, meetings: 0, videoPlays: 0, watchTime: '\u2014', portalTime: '\u2014'
                 };
             }
             result.all.views = totalViews;
@@ -19094,7 +19094,7 @@ app.get('/api/investor/kpis', requireAuth, async (req, res) => {
                 const cnt = parseInt(row.cnt);
                 const secs = parseInt(row.total_secs) || 0;
                 if (!result[rid]) {
-                    result[rid] = { views: 0, avgTime: '\u2014', docs: 0, meetings: 0, videoPlays: 0, watchTime: '\u2014' };
+                    result[rid] = { views: 0, avgTime: '\u2014', docs: 0, meetings: 0, videoPlays: 0, watchTime: '\u2014', portalTime: '\u2014' };
                 }
                 if (row.activity_type === 'doc_opened') {
                     result[rid].docs = (result[rid].docs || 0) + cnt;
@@ -19121,6 +19121,39 @@ app.get('/api/investor/kpis', requireAuth, async (req, res) => {
                     delete result[rid]._watchSecs;
                 }
             }
+        }
+
+        // Portal session time
+        if (await checkInvestorSessionsTable()) {
+            // Close stale sessions (no heartbeat for > inactivity threshold)
+            await pool.query(
+                `UPDATE investor_portal_sessions
+                 SET ended_at = last_seen_at,
+                     duration_seconds = GREATEST(EXTRACT(EPOCH FROM (last_seen_at - started_at))::int, 0),
+                     end_reason = 'inactivity'
+                 WHERE workspace_id = $1 AND ended_at IS NULL
+                   AND last_seen_at < NOW() - INTERVAL '${INVESTOR_SESSION_INACTIVITY_SEC} seconds'`,
+                [ws]
+            );
+            const sessions = await pool.query(
+                `SELECT researcher_id, SUM(
+                    CASE WHEN ended_at IS NOT NULL THEN duration_seconds
+                         ELSE GREATEST(EXTRACT(EPOCH FROM (NOW() - started_at))::int, 0)
+                    END
+                 ) as total_secs
+                 FROM investor_portal_sessions
+                 WHERE workspace_id = $1
+                 GROUP BY researcher_id`, [ws]
+            );
+            let allPortalSecs = 0;
+            for (const s of sessions.rows) {
+                const secs = parseInt(s.total_secs) || 0;
+                allPortalSecs += secs;
+                if (result[s.researcher_id]) {
+                    result[s.researcher_id].portalTime = secs >= 3600 ? Math.floor(secs / 3600) + 'h ' + Math.round((secs % 3600) / 60) + 'm' : secs >= 60 ? Math.round(secs / 60) + 'm' : secs + 's';
+                }
+            }
+            result.all.portalTime = allPortalSecs >= 3600 ? Math.floor(allPortalSecs / 3600) + 'h ' + Math.round((allPortalSecs % 3600) / 60) + 'm' : allPortalSecs >= 60 ? Math.round(allPortalSecs / 60) + 'm' : allPortalSecs > 0 ? allPortalSecs + 's' : '\u2014';
         }
 
         res.json({ kpis: result });
@@ -19242,7 +19275,89 @@ app.get('/api/investor/activity', requireAuth, async (req, res) => {
 });
 
 // =====================================================
-// END INVESTOR ACTIVITY TRACKING
+// INVESTOR PORTAL SESSIONS
+// =====================================================
+
+const INVESTOR_SESSION_INACTIVITY_SEC = 300; // 5 minutes
+
+let _investorSessionsTableExists = null;
+async function checkInvestorSessionsTable() {
+    if (_investorSessionsTableExists !== null) return _investorSessionsTableExists;
+    try {
+        const r = await pool.query(`SELECT to_regclass('public.investor_portal_sessions') AS t`);
+        _investorSessionsTableExists = !!r.rows[0]?.t;
+    } catch { _investorSessionsTableExists = false; }
+    return _investorSessionsTableExists;
+}
+
+// Start or resume session
+app.post('/api/investor/session-start', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkInvestorSessionsTable())) return res.json({ ok: true, session_id: null });
+        const user = req.session.user;
+        const ws = req.body.workspace || 'theralia';
+        // Close any stale open sessions for this user (inactivity)
+        await pool.query(
+            `UPDATE investor_portal_sessions
+             SET ended_at = last_seen_at,
+                 duration_seconds = GREATEST(EXTRACT(EPOCH FROM (last_seen_at - started_at))::int, 0),
+                 end_reason = 'inactivity'
+             WHERE workspace_id = $1 AND researcher_id = $2 AND ended_at IS NULL`,
+            [ws, user.researcher_id]
+        );
+        // Create new session
+        const ins = await pool.query(
+            `INSERT INTO investor_portal_sessions (workspace_id, researcher_id, investor_email)
+             VALUES ($1, $2, $3) RETURNING id`,
+            [ws, user.researcher_id, user.institution_email]
+        );
+        res.json({ ok: true, session_id: ins.rows[0].id });
+    } catch (err) {
+        console.error('[INVESTOR-SESSION] Start error:', err.message);
+        res.json({ ok: true, session_id: null });
+    }
+});
+
+// Heartbeat
+app.post('/api/investor/session-heartbeat', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkInvestorSessionsTable())) return res.json({ ok: true });
+        const sid = req.body.session_id;
+        if (!sid) return res.json({ ok: true });
+        await pool.query(
+            `UPDATE investor_portal_sessions SET last_seen_at = NOW() WHERE id = $1 AND ended_at IS NULL`,
+            [sid]
+        );
+        res.json({ ok: true });
+    } catch (err) {
+        res.json({ ok: true });
+    }
+});
+
+// Finalize session
+// No requireAuth — sendBeacon doesn't reliably send cookies; session_id acts as token
+app.post('/api/investor/session-end', async (req, res) => {
+    try {
+        if (!(await checkInvestorSessionsTable())) return res.json({ ok: true });
+        const sid = req.body.session_id;
+        const reason = req.body.reason || 'close';
+        if (!sid) return res.json({ ok: true });
+        await pool.query(
+            `UPDATE investor_portal_sessions
+             SET ended_at = NOW(),
+                 duration_seconds = GREATEST(EXTRACT(EPOCH FROM (NOW() - started_at))::int, 0),
+                 end_reason = $2
+             WHERE id = $1 AND ended_at IS NULL`,
+            [sid, ['logout', 'inactivity', 'close'].includes(reason) ? reason : 'close']
+        );
+        res.json({ ok: true });
+    } catch (err) {
+        res.json({ ok: true });
+    }
+});
+
+// =====================================================
+// END INVESTOR PORTAL SESSIONS
 // =====================================================
 
 app.listen(PORT, "0.0.0.0", async () => {
