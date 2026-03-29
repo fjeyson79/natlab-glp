@@ -951,6 +951,26 @@ async function migrate() {
             `CREATE INDEX IF NOT EXISTS idx_di_sample_pack_items_pack ON di_sample_pack_items(pack_id)`,
             `CREATE INDEX IF NOT EXISTS idx_di_sample_pack_items_inv ON di_sample_pack_items(inventory_item_id)`,
 
+            // ==================== INVESTOR MEETING BOOKINGS (migration 034) ====================
+            `CREATE TABLE IF NOT EXISTS investor_meeting_bookings (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                workspace_id VARCHAR(30) NOT NULL DEFAULT 'theralia',
+                investor_name VARCHAR(255) NOT NULL,
+                investor_email VARCHAR(255) NOT NULL,
+                investor_company VARCHAR(255),
+                meeting_type VARCHAR(100) NOT NULL DEFAULT 'Investment Discussion',
+                meeting_note TEXT,
+                local_timezone VARCHAR(100) NOT NULL DEFAULT 'UTC',
+                slot_start_utc TIMESTAMPTZ,
+                slot_end_utc TIMESTAMPTZ,
+                slot_start_local VARCHAR(20) NOT NULL,
+                slot_end_local VARCHAR(20),
+                status VARCHAR(20) NOT NULL DEFAULT 'booked' CHECK (status IN ('booked', 'cancelled', 'completed')),
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )`,
+            `CREATE INDEX IF NOT EXISTS idx_imb_slot ON investor_meeting_bookings(slot_start_local, status)`,
+            `CREATE INDEX IF NOT EXISTS idx_imb_email ON investor_meeting_bookings(investor_email)`,
+
         ];
 
         for (const sql of migrations) {

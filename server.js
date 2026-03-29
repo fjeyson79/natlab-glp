@@ -18766,6 +18766,151 @@ app.get('/api/rd/glp/my-revision-items', requireAuth, async (req, res) => {
 // END THERALIA GLP VISION
 // =====================================================
 
+// =====================================================
+// INVESTOR MEETING BOOKING
+// =====================================================
+
+const INVESTOR_MEETING_ZOOM_LINK = process.env.INVESTOR_MEETING_ZOOM_LINK || 'https://zoom.us/j/CONFIGURE_ME';
+const INVESTOR_MEETING_CEO_EMAIL = process.env.INVESTOR_MEETING_CEO_EMAIL || '';
+const INVESTOR_MEETING_CSO_EMAIL = process.env.INVESTOR_MEETING_CSO_EMAIL || '';
+const INVESTOR_MEETING_N8N_WEBHOOK = process.env.INVESTOR_MEETING_N8N_WEBHOOK || '';
+
+// Cached table check
+let _investorBookingsTableExists = null;
+async function checkInvestorBookingsTable() {
+    if (_investorBookingsTableExists !== null) return _investorBookingsTableExists;
+    try {
+        const r = await pool.query(`SELECT to_regclass('public.investor_meeting_bookings') AS t`);
+        _investorBookingsTableExists = !!r.rows[0]?.t;
+    } catch { _investorBookingsTableExists = false; }
+    return _investorBookingsTableExists;
+}
+
+app.post('/api/investor/request-meeting', async (req, res) => {
+    try {
+        const { investor_name, investor_email, investor_company, meeting_type, meeting_note, date, time, local_timezone } = req.body;
+
+        // Validation
+        if (!investor_name || !investor_email || !date || !time) {
+            return res.status(400).json({ error: 'Missing required fields' });
+        }
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(investor_email)) {
+            return res.status(400).json({ error: 'Invalid email address' });
+        }
+        // Weekday check
+        const dateObj = new Date(date + 'T12:00:00');
+        const dow = dateObj.getDay();
+        if (dow === 0 || dow === 6) {
+            return res.status(400).json({ error: 'Meetings are available Monday–Friday only' });
+        }
+        // Time window check
+        const [hh, mm] = time.split(':').map(Number);
+        if (hh < 9 || hh >= 16 || (hh === 15 && mm > 15)) {
+            return res.status(400).json({ error: 'Time slot outside available window (09:00–16:00)' });
+        }
+
+        // Compute UTC start/end from local timezone
+        const localStart = `${date}T${time}:00`;
+        let slotStartUtc, slotEndUtc;
+        try {
+            // Use Intl to convert local time to UTC
+            const startMs = new Date(new Date(localStart).toLocaleString('en-US', { timeZone: local_timezone || 'UTC' })).getTime();
+            // For reliable UTC conversion, parse directly and adjust
+            const startDate = new Date(localStart);
+            slotStartUtc = startDate.toISOString();
+            const endDate = new Date(startDate.getTime() + 45 * 60 * 1000);
+            slotEndUtc = endDate.toISOString();
+        } catch {
+            slotStartUtc = new Date(localStart).toISOString();
+            slotEndUtc = new Date(new Date(localStart).getTime() + 45 * 60 * 1000).toISOString();
+        }
+
+        const slotStartLocal = `${date} ${time}`;
+        const endMin = mm + 45;
+        const endH = hh + Math.floor(endMin / 60);
+        const endM = endMin % 60;
+        const slotEndLocal = `${date} ${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+
+        const validTypes = ['Investment Discussion', 'Pipeline & Programs', 'Platform, TOUCAN technology', 'Partnership / Collaboration', 'Other Strategic Topic'];
+        const meetingType = validTypes.includes(meeting_type) ? meeting_type : 'Investment Discussion';
+
+        // Persist booking if table exists
+        let bookingId = null;
+        const tableExists = await checkInvestorBookingsTable();
+        if (tableExists) {
+            // Check for duplicate slot
+            const dup = await pool.query(
+                `SELECT id FROM investor_meeting_bookings WHERE slot_start_local = $1 AND status = 'booked'`,
+                [slotStartLocal]
+            );
+            if (dup.rows.length > 0) {
+                return res.status(409).json({ error: 'This time slot is already booked. Please select another.' });
+            }
+            const ins = await pool.query(
+                `INSERT INTO investor_meeting_bookings
+                 (workspace_id, investor_name, investor_email, investor_company, meeting_type, meeting_note, local_timezone, slot_start_utc, slot_end_utc, slot_start_local, slot_end_local, status)
+                 VALUES ('theralia', $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'booked')
+                 RETURNING id`,
+                [investor_name, investor_email, investor_company || null, meetingType, meeting_note || null,
+                 local_timezone || 'UTC', slotStartUtc, slotEndUtc, slotStartLocal, slotEndLocal]
+            );
+            bookingId = ins.rows[0].id;
+        }
+
+        // Build payload for n8n workflow
+        const payload = {
+            booking_id: bookingId,
+            investor_name,
+            investor_email,
+            investor_company: investor_company || '',
+            meeting_type: meetingType,
+            meeting_note: meeting_note || '',
+            date,
+            time,
+            local_timezone: local_timezone || 'UTC',
+            slot_start_utc: slotStartUtc,
+            slot_end_utc: slotEndUtc,
+            slot_start_local: slotStartLocal,
+            slot_end_local: slotEndLocal,
+            zoom_link: INVESTOR_MEETING_ZOOM_LINK,
+            ceo_email: INVESTOR_MEETING_CEO_EMAIL,
+            cso_email: INVESTOR_MEETING_CSO_EMAIL,
+            // Email templates for n8n
+            investor_email_subject: 'Theralia Investor Meeting Confirmation',
+            investor_email_body: `Dear ${investor_name},\n\nThank you for requesting a meeting with Theralia.\n\nConfirmed details:\n• Date: ${date}\n• Time: ${time} (${local_timezone || 'UTC'})\n• Duration: 45 minutes\n• Meeting type: ${meetingType}\n• Zoom: ${INVESTOR_MEETING_ZOOM_LINK}\n${meeting_note ? '\nYour note: ' + meeting_note + '\n' : ''}\nWe look forward to speaking with you.\n\nBest regards,\nThe Theralia Team`,
+            team_email_subject: `New Investor Meeting Request — ${meetingType}`,
+            team_email_body: `New investor meeting booking:\n\n• Investor: ${investor_name}\n• Email: ${investor_email}\n${investor_company ? '• Company: ' + investor_company + '\n' : ''}• Date: ${date}\n• Time: ${time} (${local_timezone || 'UTC'})\n• Meeting type: ${meetingType}\n${meeting_note ? '• Note: ' + meeting_note + '\n' : ''}\n• Zoom: ${INVESTOR_MEETING_ZOOM_LINK}`,
+            calendar_title: `Theralia Investor Meeting: ${meetingType}`,
+            calendar_description: `Theralia Investor Meeting\n\nType: ${meetingType}\nInvestor: ${investor_name} (${investor_email})${investor_company ? '\nCompany: ' + investor_company : ''}${meeting_note ? '\nNote: ' + meeting_note : ''}\n\nZoom: ${INVESTOR_MEETING_ZOOM_LINK}`,
+            calendar_attendees: [investor_email, INVESTOR_MEETING_CEO_EMAIL, INVESTOR_MEETING_CSO_EMAIL].filter(Boolean)
+        };
+
+        // Fire to n8n webhook (non-blocking)
+        if (INVESTOR_MEETING_N8N_WEBHOOK) {
+            fetch(INVESTOR_MEETING_N8N_WEBHOOK, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            }).then(r => {
+                console.log(`[INVESTOR-MEETING] n8n webhook status=${r.status} for ${investor_email}`);
+            }).catch(err => {
+                console.error('[INVESTOR-MEETING] n8n webhook failed (non-blocking):', err.message);
+            });
+        } else {
+            console.warn('[INVESTOR-MEETING] INVESTOR_MEETING_N8N_WEBHOOK not configured, skipping workflow');
+        }
+
+        res.json({ ok: true, booking_id: bookingId });
+    } catch (err) {
+        console.error('[INVESTOR-MEETING] Error:', err.message);
+        res.status(500).json({ error: 'Booking failed. Please try again.' });
+    }
+});
+
+// =====================================================
+// END INVESTOR MEETING BOOKING
+// =====================================================
+
 app.listen(PORT, "0.0.0.0", async () => {
     console.log("[STARTUP] Server listening on port " + PORT);
     // Safety check: warn if any di_submissions row has no r2_object_key

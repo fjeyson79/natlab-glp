@@ -1924,6 +1924,86 @@
         .ip-pub-text {
             font-size: 12px; color: #8b8f9a; line-height: 1.55;
         }
+        /* ---- Meeting Booking Modal ---- */
+        .ip-booking-backdrop {
+            display: none; position: fixed; inset: 0; z-index: 210;
+            background: rgba(0,0,0,0.22);
+        }
+        .ip-booking-backdrop.open { display: flex; align-items: center; justify-content: center; }
+        .ip-booking-card {
+            background: #ffffff; border: 1px solid #e0e2e6;
+            border-radius: 14px; padding: 32px 34px; width: 460px; max-width: 94vw;
+            max-height: 88vh; overflow-y: auto;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.12);
+        }
+        .ip-booking-title {
+            font-size: 17px; font-weight: 700; color: #1a1c22; margin-bottom: 4px;
+        }
+        .ip-booking-subtitle {
+            font-size: 12px; color: #8b8f9a; margin-bottom: 22px;
+        }
+        .ip-booking-field { margin-bottom: 16px; }
+        .ip-booking-label {
+            display: block; font-size: 11px; font-weight: 600;
+            letter-spacing: 0.5px; text-transform: uppercase;
+            color: #8b8f9a; margin-bottom: 5px;
+        }
+        .ip-booking-input {
+            width: 100%; padding: 9px 12px; border: 1px solid #e0e2e6;
+            border-radius: 7px; font-size: 13px; font-family: inherit;
+            color: #1a1c22; background: #fafbfc; transition: border-color 0.12s;
+        }
+        .ip-booking-input:focus { outline: none; border-color: #16a34a; }
+        .ip-booking-row { display: flex; gap: 12px; }
+        .ip-booking-row .ip-booking-field { flex: 1; }
+        .ip-booking-types {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+            margin-bottom: 16px;
+        }
+        .ip-booking-type-card {
+            padding: 10px 14px; border: 1px solid #e0e2e6;
+            border-radius: 8px; font-size: 12px; font-weight: 500;
+            color: #5a5d66; cursor: pointer; text-align: center;
+            transition: all 0.12s; background: #fafbfc;
+        }
+        .ip-booking-type-card:hover { border-color: #c8cacd; }
+        .ip-booking-type-card.selected {
+            border-color: #16a34a; background: rgba(22,163,74,0.04);
+            color: #1a1c22; font-weight: 600;
+        }
+        .ip-booking-tz {
+            font-size: 11px; color: #8b8f9a; margin-top: 4px;
+        }
+        .ip-booking-actions {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-top: 22px; padding-top: 18px; border-top: 1px solid #e0e2e6;
+        }
+        .ip-booking-cancel {
+            background: none; border: none; font-size: 12px;
+            color: #8b8f9a; cursor: pointer; padding: 0;
+        }
+        .ip-booking-cancel:hover { color: #1a1c22; }
+        .ip-booking-submit {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 10px 22px; background: #16a34a; color: #fff;
+            border: none; border-radius: 7px; font-size: 13px;
+            font-weight: 600; cursor: pointer; transition: background 0.12s;
+        }
+        .ip-booking-submit:hover { background: #15803d; }
+        .ip-booking-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+        .ip-booking-success {
+            text-align: center; padding: 20px 0;
+        }
+        .ip-booking-success-icon {
+            width: 48px; height: 48px; margin: 0 auto 16px;
+            color: #16a34a;
+        }
+        .ip-booking-success-title {
+            font-size: 16px; font-weight: 600; color: #1a1c22; margin-bottom: 8px;
+        }
+        .ip-booking-success-text {
+            font-size: 13px; color: #5a5d66; line-height: 1.6;
+        }
     </style>
     <script src="js/presentation-mode.js"></script>
 </head>
@@ -3223,6 +3303,76 @@
                 <!-- Action Overlay -->
                 <div class="ip-overlay-backdrop" id="ipOverlay" onclick="if(event.target===this)ipCloseOverlay()">
                     <div class="ip-overlay-card" id="ipOverlayCard"></div>
+                </div>
+
+                <!-- Meeting Booking Modal -->
+                <div class="ip-booking-backdrop" id="ipBookingModal" onclick="if(event.target===this)ipCloseBooking()">
+                    <div class="ip-booking-card">
+                        <div id="ipBookingForm">
+                            <div class="ip-booking-title">Request a meeting</div>
+                            <div class="ip-booking-subtitle">We look forward to discussing Theralia with you.</div>
+
+                            <div class="ip-booking-row">
+                                <div class="ip-booking-field">
+                                    <label class="ip-booking-label">Name *</label>
+                                    <input class="ip-booking-input" type="text" id="ipBkName" required>
+                                </div>
+                                <div class="ip-booking-field">
+                                    <label class="ip-booking-label">Email *</label>
+                                    <input class="ip-booking-input" type="email" id="ipBkEmail" required>
+                                </div>
+                            </div>
+
+                            <div class="ip-booking-field">
+                                <label class="ip-booking-label">Company / Fund</label>
+                                <input class="ip-booking-input" type="text" id="ipBkCompany" placeholder="Optional">
+                            </div>
+
+                            <div class="ip-booking-row">
+                                <div class="ip-booking-field">
+                                    <label class="ip-booking-label">Date *</label>
+                                    <input class="ip-booking-input" type="date" id="ipBkDate">
+                                </div>
+                                <div class="ip-booking-field">
+                                    <label class="ip-booking-label">Time slot *</label>
+                                    <select class="ip-booking-input" id="ipBkSlot">
+                                        <option value="">Select a date first</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="ip-booking-tz" id="ipBkTz"></div>
+
+                            <label class="ip-booking-label" style="margin-top:16px;">Meeting type</label>
+                            <div class="ip-booking-types" id="ipBkTypes">
+                                <div class="ip-booking-type-card selected" data-type="Investment Discussion">Investment Discussion</div>
+                                <div class="ip-booking-type-card" data-type="Pipeline & Programs">Pipeline &amp; Programs</div>
+                                <div class="ip-booking-type-card" data-type="Platform, TOUCAN technology">Platform, TOUCAN</div>
+                                <div class="ip-booking-type-card" data-type="Partnership / Collaboration">Partnership</div>
+                                <div class="ip-booking-type-card" data-type="Other Strategic Topic">Other Strategic Topic</div>
+                            </div>
+
+                            <div class="ip-booking-field">
+                                <label class="ip-booking-label">Note</label>
+                                <textarea class="ip-booking-input" id="ipBkNote" rows="2" placeholder="Optional — anything you'd like us to prepare"></textarea>
+                            </div>
+
+                            <div class="ip-booking-actions">
+                                <button class="ip-booking-cancel" onclick="ipCloseBooking()">Cancel</button>
+                                <button class="ip-booking-submit" id="ipBkSubmit" onclick="ipSubmitBooking()">
+                                    Request meeting
+                                </button>
+                            </div>
+                        </div>
+
+                        <div id="ipBookingSuccess" style="display:none;">
+                            <div class="ip-booking-success">
+                                <svg class="ip-booking-success-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M8 12l3 3 5-5"/></svg>
+                                <div class="ip-booking-success-title">Meeting requested</div>
+                                <div class="ip-booking-success-text" id="ipBkSuccessText">You will receive a confirmation email with the meeting details and Zoom link.</div>
+                                <button class="ip-booking-cancel" style="margin-top:18px;" onclick="ipCloseBooking()">Close</button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Floating Actions -->
@@ -6755,9 +6905,9 @@
             if (key === 'publications' && currentInvestorPhase === 'phase3') { ipShowOverlay('publications-p3'); return; }
             if (key === 'data (glp vision)') { ipOpenGlpVision(); return; }
             if (key === 'sop') { ipShowOverlay('sop-fig5'); return; }
-            if (key === 'request meeting') { ipShowOverlay('meeting'); return; }
+            if (key === 'request meeting') { ipOpenBooking(); return; }
             if (key === 'explore validation (glp vision)') { ipOpenGlpVision(); return; }
-            if (key === 'meet the team') { ipShowOverlay('meeting'); return; }
+            if (key === 'meet the team') { ipOpenBooking(); return; }
             alert(label + ' — coming soon');
         }
 
@@ -6806,6 +6956,144 @@
 
         // Init floating actions
         ipUpdateFabActions();
+
+        /* ============================================== */
+        /* MEETING BOOKING                               */
+        /* ============================================== */
+        var _ipBkSelectedType = 'Investment Discussion';
+        var _ipBkSubmitting = false;
+
+        function ipOpenBooking() {
+            // Close any open overlay/fab
+            ipCloseOverlay();
+            var fabMenu = document.getElementById('ipFabMenu');
+            if (fabMenu) fabMenu.classList.remove('open');
+            // Reset form
+            document.getElementById('ipBookingForm').style.display = '';
+            document.getElementById('ipBookingSuccess').style.display = 'none';
+            document.getElementById('ipBkName').value = '';
+            document.getElementById('ipBkEmail').value = '';
+            document.getElementById('ipBkCompany').value = '';
+            document.getElementById('ipBkDate').value = '';
+            document.getElementById('ipBkSlot').innerHTML = '<option value="">Select a date first</option>';
+            document.getElementById('ipBkNote').value = '';
+            _ipBkSelectedType = 'Investment Discussion';
+            _ipBkSubmitting = false;
+            document.getElementById('ipBkSubmit').disabled = false;
+            // Reset type cards
+            document.querySelectorAll('#ipBkTypes .ip-booking-type-card').forEach(function(c) {
+                c.classList.toggle('selected', c.dataset.type === _ipBkSelectedType);
+            });
+            // Set date min to tomorrow, disable weekends
+            var dateInput = document.getElementById('ipBkDate');
+            var tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+            dateInput.min = tomorrow.toISOString().split('T')[0];
+            // Timezone label
+            var tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            document.getElementById('ipBkTz').textContent = 'Times shown in ' + tz;
+            // Open
+            document.getElementById('ipBookingModal').classList.add('open');
+        }
+
+        function ipCloseBooking() {
+            document.getElementById('ipBookingModal').classList.remove('open');
+        }
+
+        // Type card selection
+        document.getElementById('ipBkTypes').addEventListener('click', function(e) {
+            var card = e.target.closest('.ip-booking-type-card');
+            if (!card) return;
+            _ipBkSelectedType = card.dataset.type;
+            document.querySelectorAll('#ipBkTypes .ip-booking-type-card').forEach(function(c) {
+                c.classList.toggle('selected', c === card);
+            });
+        });
+
+        // Date change → populate slots, block weekends
+        document.getElementById('ipBkDate').addEventListener('change', function() {
+            var val = this.value;
+            var sel = document.getElementById('ipBkSlot');
+            if (!val) { sel.innerHTML = '<option value="">Select a date first</option>'; return; }
+            var d = new Date(val + 'T12:00:00');
+            var day = d.getDay();
+            if (day === 0 || day === 6) {
+                sel.innerHTML = '<option value="">Weekends not available</option>';
+                return;
+            }
+            // Generate 45-min slots from 09:00 to 16:00
+            var slots = [];
+            for (var h = 9; h < 16; h++) {
+                for (var m = 0; m < 60; m += 45) {
+                    if (h === 15 && m > 15) break; // last slot must end by 16:00
+                    var sh = String(h).padStart(2, '0');
+                    var sm = String(m).padStart(2, '0');
+                    var eh = h; var em = m + 45;
+                    if (em >= 60) { eh++; em -= 60; }
+                    var label = sh + ':' + sm + ' – ' + String(eh).padStart(2, '0') + ':' + String(em).padStart(2, '0');
+                    slots.push('<option value="' + sh + ':' + sm + '">' + label + '</option>');
+                }
+            }
+            sel.innerHTML = '<option value="">Select time</option>' + slots.join('');
+        });
+
+        async function ipSubmitBooking() {
+            if (_ipBkSubmitting) return;
+            var name = document.getElementById('ipBkName').value.trim();
+            var email = document.getElementById('ipBkEmail').value.trim();
+            var company = document.getElementById('ipBkCompany').value.trim();
+            var date = document.getElementById('ipBkDate').value;
+            var slot = document.getElementById('ipBkSlot').value;
+            var note = document.getElementById('ipBkNote').value.trim();
+            // Validation
+            if (!name || !email || !date || !slot) {
+                alert('Please fill in all required fields.');
+                return;
+            }
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                alert('Please enter a valid email address.');
+                return;
+            }
+            var d = new Date(date + 'T12:00:00');
+            if (d.getDay() === 0 || d.getDay() === 6) {
+                alert('Please select a weekday.');
+                return;
+            }
+            _ipBkSubmitting = true;
+            document.getElementById('ipBkSubmit').disabled = true;
+            var tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            try {
+                var res = await fetch('/api/investor/request-meeting', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        investor_name: name,
+                        investor_email: email,
+                        investor_company: company || null,
+                        meeting_type: _ipBkSelectedType,
+                        meeting_note: note || null,
+                        date: date,
+                        time: slot,
+                        local_timezone: tz
+                    })
+                });
+                var data = await res.json();
+                if (!res.ok) {
+                    alert(data.error || 'Booking failed. Please try again.');
+                    _ipBkSubmitting = false;
+                    document.getElementById('ipBkSubmit').disabled = false;
+                    return;
+                }
+                // Success
+                document.getElementById('ipBookingForm').style.display = 'none';
+                document.getElementById('ipBkSuccessText').textContent =
+                    'A confirmation email will be sent to ' + email + ' with the meeting details and Zoom link.';
+                document.getElementById('ipBookingSuccess').style.display = '';
+            } catch (err) {
+                alert('Network error. Please try again.');
+                _ipBkSubmitting = false;
+                document.getElementById('ipBkSubmit').disabled = false;
+            }
+        }
 
         /* ============================================== */
         /* INTERACTIVE FIGURE (Phase 3)                  */
