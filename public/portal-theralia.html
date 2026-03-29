@@ -1627,9 +1627,23 @@
         .ip-section-block {
             margin-bottom: 40px;
         }
+        .ip-section-header {
+            display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+        }
+        .ip-section-icon {
+            width: 20px; height: 20px; flex-shrink: 0; color: #16a34a; opacity: 0.7;
+        }
         .ip-section-keyword {
             font-size: 10px; font-weight: 700; letter-spacing: 1.4px;
-            text-transform: uppercase; color: #16a34a; margin-bottom: 6px;
+            text-transform: uppercase; color: #16a34a;
+        }
+        .ip-section-block.ip-emphasis {
+            background: rgba(22,163,74,0.03); border: 1px solid rgba(22,163,74,0.08);
+            border-radius: 12px; padding: 24px 26px;
+        }
+        .ip-final-statement.ip-emphasis {
+            background: rgba(22,163,74,0.03); border: 1px solid rgba(22,163,74,0.08);
+            border-radius: 12px; padding: 28px 26px; border-top: none;
         }
         .ip-section-block-title {
             font-size: 16px; font-weight: 600; color: #1a1c22;
@@ -2852,7 +2866,10 @@
 
                         <!-- 1. Positioning -->
                         <div class="ip-section-block">
-                            <div class="ip-section-keyword">Positioning</div>
+                            <div class="ip-section-header">
+                                <svg class="ip-section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+                                <div class="ip-section-keyword">Positioning</div>
+                            </div>
                             <div class="ip-section-block-title">Not all infections are equal</div>
                             <div class="ip-section-block-text">While standard antibiotics remain effective in routine infections, a subset of cases remains unresolved, requiring prolonged treatment and often leading to poor outcomes.</div>
                             <div class="ip-section-block-text" style="margin-top:10px;">These conditions define a high-value clinical space where therapeutic precision becomes essential.</div>
@@ -2860,14 +2877,20 @@
 
                         <!-- 2. Entry Indication -->
                         <div class="ip-section-block">
-                            <div class="ip-section-keyword">Entry Indication</div>
+                            <div class="ip-section-header">
+                                <svg class="ip-section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2v4m0 12v4M2 12h4m12 0h4"/><circle cx="12" cy="12" r="3"/><path d="M12 5a7 7 0 017 7m-7-7a7 7 0 00-7 7m14 0a7 7 0 01-7 7m7-7a7 7 0 00-7-7"/></svg>
+                                <div class="ip-section-keyword">Entry Indication</div>
+                            </div>
                             <div class="ip-section-block-title">Bone infections as a high-impact starting point</div>
                             <div class="ip-section-block-text">Theralia targets infections where current therapies are suboptimal. Bone infections represent a clear entry point, characterized by high morbidity, long treatment cycles, and significant healthcare burden.</div>
                         </div>
 
                         <!-- 3. Clinical Shift -->
-                        <div class="ip-section-block">
-                            <div class="ip-section-keyword">Clinical Shift</div>
+                        <div class="ip-section-block ip-emphasis">
+                            <div class="ip-section-header">
+                                <svg class="ip-section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                                <div class="ip-section-keyword">Clinical Shift</div>
+                            </div>
                             <div class="ip-section-block-title">From prolonged treatment to localized resolution</div>
                             <div class="ip-section-block-text">Standard therapies typically require 7–14 days of systemic antibiotic exposure.</div>
                             <div class="ip-section-block-text" style="margin-top:10px;">Theralia's approach enables localized activation with an expected treatment cycle of approximately 3 days.</div>
@@ -2876,14 +2899,20 @@
 
                         <!-- 4. Economic Impact -->
                         <div class="ip-section-block">
-                            <div class="ip-section-keyword">Economic Impact</div>
+                            <div class="ip-section-header">
+                                <svg class="ip-section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 21h18M5 21V7l5-4 5 4v14"/><path d="M9 21v-4h2v4m4 0V11l4-3v13"/><path d="M9 9h2m-2 3h2"/></svg>
+                                <div class="ip-section-keyword">Economic Impact</div>
+                            </div>
                             <div class="ip-section-block-title">Clinical benefit aligned with healthcare value</div>
                             <div class="ip-section-block-text">In high-cost clinical settings, shorter treatments and localized activity may reduce hospitalization time, limit systemic exposure, and improve overall efficiency.</div>
                         </div>
 
                         <!-- 5. Development Status -->
-                        <div class="ip-section-block">
-                            <div class="ip-section-keyword">Development Status</div>
+                        <div class="ip-section-block ip-emphasis">
+                            <div class="ip-section-header">
+                                <svg class="ip-section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 20V4m0 0l-4 4m4-4l4 4"/><path d="M4 14h3m10 0h3M7 18h10"/></svg>
+                                <div class="ip-section-keyword">Development Status</div>
+                            </div>
                             <div class="ip-section-block-title">Advancing toward first-in-human trials</div>
                             <div class="ip-dev-grid">
                                 <div class="ip-dev-card">
@@ -2915,14 +2944,20 @@
 
                         <!-- 6. Intellectual Property -->
                         <div class="ip-section-block">
-                            <div class="ip-section-keyword">Intellectual Property</div>
+                            <div class="ip-section-header">
+                                <svg class="ip-section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                                <div class="ip-section-keyword">Intellectual Property</div>
+                            </div>
                             <div class="ip-section-block-title">Protected and proprietary approach</div>
                             <div class="ip-section-block-text">Theralia's platform is supported by a growing intellectual property portfolio covering targeted activation strategies and oligonucleotide-based delivery systems.</div>
                         </div>
 
                         <!-- 7. Platform -->
                         <div class="ip-section-block">
-                            <div class="ip-section-keyword">Platform</div>
+                            <div class="ip-section-header">
+                                <svg class="ip-section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><path d="M12 7v4m-5.2 6.4L10 13m4 0l3.2 4.4"/><circle cx="12" cy="12" r="1.5"/></svg>
+                                <div class="ip-section-keyword">Platform</div>
+                            </div>
                             <div class="ip-section-block-title">A technology beyond infection</div>
                             <div class="ip-section-block-text" style="margin-bottom:16px;">The same activation principle can be extended across multiple disease contexts.</div>
                             <div class="ip-expand-row">
@@ -2942,25 +2977,35 @@
                                     <div class="ip-material-desc">Inflammation-driven conditions</div>
                                 </div>
                             </div>
+                            <div class="ip-platform-line">One activation principle, multiple disease contexts.</div>
                         </div>
 
                         <!-- 8. Investment Logic -->
                         <div class="ip-section-block">
-                            <div class="ip-section-keyword">Investment Logic</div>
+                            <div class="ip-section-header">
+                                <svg class="ip-section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 20l4-4m0 0l4 4m-4-4V4m12 16l-4-4m0 0l-4 4m4-4V4"/></svg>
+                                <div class="ip-section-keyword">Investment Logic</div>
+                            </div>
                             <div class="ip-section-block-title">Focused entry, scalable opportunity</div>
                             <div class="ip-section-block-text">Theralia combines a clearly defined clinical entry point with a platform capable of expanding across multiple therapeutic areas, enabling both focus and scalability.</div>
                         </div>
 
                         <!-- 9. Team -->
                         <div class="ip-section-block">
-                            <div class="ip-section-keyword">Team</div>
+                            <div class="ip-section-header">
+                                <svg class="ip-section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+                                <div class="ip-section-keyword">Team</div>
+                            </div>
                             <div class="ip-section-block-title">Execution and accountability</div>
                             <div class="ip-section-block-text">Development is led by a multidisciplinary team with expertise in nucleic acid therapeutics, infection biology, and clinical translation, supported by leading European institutions.</div>
                         </div>
 
                         <!-- 10. Engagement -->
                         <div class="ip-section-block" style="margin-bottom:0;">
-                            <div class="ip-section-keyword">Engagement</div>
+                            <div class="ip-section-header">
+                                <svg class="ip-section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
+                                <div class="ip-section-keyword">Engagement</div>
+                            </div>
                             <div class="ip-section-block-title">Explore Theralia</div>
                             <div class="ip-engage-items">
                                 <span class="ip-engage-item" onclick="ipActionHandler('Meet the team')"><span class="ip-engage-dot"></span>Meet the team</span>
@@ -2970,7 +3015,7 @@
                         </div>
 
                         <!-- Final Statement -->
-                        <div class="ip-final-statement">
+                        <div class="ip-final-statement ip-emphasis">
                             <p>We believe precision activation can redefine the treatment of difficult infections and expand into oncology and inflammatory diseases.</p>
                             <p>We would welcome the opportunity to discuss how Theralia can address high-value clinical challenges and the path toward clinical translation.</p>
                         </div>
