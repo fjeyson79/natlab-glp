@@ -985,6 +985,22 @@ async function migrate() {
             )`,
             `CREATE UNIQUE INDEX IF NOT EXISTS idx_ipv_user ON investor_portal_visits(workspace_id, researcher_id)`,
 
+            // ==================== INVESTOR PORTAL ACTIVITY (migration 036) ====================
+            `CREATE TABLE IF NOT EXISTS investor_portal_activity (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                workspace_id VARCHAR(30) NOT NULL DEFAULT 'theralia',
+                researcher_id VARCHAR(50) NOT NULL,
+                investor_email VARCHAR(255),
+                activity_type VARCHAR(30) NOT NULL,
+                content_key TEXT,
+                content_title TEXT,
+                duration_seconds INT,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )`,
+            `CREATE INDEX IF NOT EXISTS idx_ipa_user ON investor_portal_activity(workspace_id, researcher_id)`,
+            `CREATE INDEX IF NOT EXISTS idx_ipa_type ON investor_portal_activity(activity_type)`,
+            `CREATE INDEX IF NOT EXISTS idx_ipa_created ON investor_portal_activity(created_at DESC)`,
+
         ];
 
         for (const sql of migrations) {

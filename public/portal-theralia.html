@@ -7190,6 +7190,21 @@
             main.classList.add('ip-main--preview');
             document.getElementById('ipPdfPreview').classList.add('active');
             document.getElementById('ipPdfFrame').src = pdfUrl + '#toolbar=0&navpanes=0&scrollbar=1';
+            // Track document open
+            _ipTrackActivity('doc_opened', pdfUrl, _ipDocTitle(pdfUrl));
+        }
+
+        function _ipDocTitle(url) {
+            var name = url.split('/').pop().replace(/\.pdf$/i, '').replace(/[-_]/g, ' ');
+            return name.charAt(0).toUpperCase() + name.slice(1);
+        }
+
+        function _ipTrackActivity(type, key, title, duration) {
+            fetch('/api/investor/record-activity', {
+                method: 'POST', credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ activity_type: type, content_key: key || null, content_title: title || null, duration_seconds: duration || null })
+            }).catch(function() {});
         }
 
         function _ipExitPreview() {
@@ -7464,6 +7479,35 @@
         }
 
         /* ============================================== */
+        /* INVESTOR VIDEO TRACKING                       */
+        /* ============================================== */
+        (function() {
+            var videos = document.querySelectorAll('#tab-investors video');
+            var watchStart = {};
+            videos.forEach(function(v, i) {
+                var vkey = v.src || ('video-' + i);
+                var vtitle = v.closest('.ip-video-card')?.querySelector('.ip-video-title')?.textContent?.trim() || 'Video ' + (i + 1);
+                v.addEventListener('play', function() {
+                    watchStart[vkey] = Date.now();
+                    if (typeof _ipTrackActivity === 'function') {
+                        _ipTrackActivity('video_play', vkey, vtitle);
+                    }
+                });
+                var sendWatch = function() {
+                    if (watchStart[vkey]) {
+                        var secs = Math.round((Date.now() - watchStart[vkey]) / 1000);
+                        if (secs > 1 && typeof _ipTrackActivity === 'function') {
+                            _ipTrackActivity('video_watch', vkey, vtitle, secs);
+                        }
+                        delete watchStart[vkey];
+                    }
+                };
+                v.addEventListener('pause', sendWatch);
+                v.addEventListener('ended', sendWatch);
+            });
+        })();
+
+        /* ============================================== */
         /* INVESTROOM                                    */
         /* ============================================== */
 
@@ -7537,6 +7581,7 @@
         function irInit() {
             irLoadVisitors();
             irLoadKpis();
+            irLoadActivity();
             irRenderPhaseEditors();
             document.getElementById('irLastUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         }
@@ -7553,6 +7598,46 @@
                 .catch(function() {
                     irRenderView();
                 });
+        }
+
+        function irLoadActivity() {
+            var inv = irSelectedInvestor;
+            var url = '/api/investor/activity?workspace=theralia' + (inv && inv !== 'all' ? '&investor=' + inv : '');
+            fetch(url, { credentials: 'include' })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    // Build feed
+                    var typeMap = { doc_opened: 'doc', video_play: 'video', video_watch: 'video', glp_vision_opened: 'doc', visit: 'visit', meeting: 'meeting' };
+                    var actionMap = { doc_opened: 'opened', video_play: 'played', video_watch: 'watched', glp_vision_opened: 'opened GLP Vision' };
+                    var feed = (data.feed || []).map(function(f) {
+                        var name = f.investor_name || f.investor_email || 'Investor';
+                        var title = f.content_title || f.content_key || '';
+                        var action = actionMap[f.activity_type] || f.activity_type;
+                        var dur = f.duration_seconds && f.activity_type === 'video_watch' ? ' (' + (f.duration_seconds >= 60 ? Math.round(f.duration_seconds / 60) + ' min' : f.duration_seconds + 's') + ')' : '';
+                        var mins = Math.round((Date.now() - new Date(f.created_at).getTime()) / 60000);
+                        var time = mins < 60 ? mins + ' min ago' : mins < 1440 ? Math.round(mins / 60) + 'h ago' : Math.round(mins / 1440) + 'd ago';
+                        return {
+                            dot: typeMap[f.activity_type] || 'doc',
+                            text: '<strong>' + name + '</strong> ' + action + (title ? ' — ' + title : '') + dur,
+                            time: time
+                        };
+                    });
+                    irMockFeed = { all: feed };
+                    if (inv && inv !== 'all') irMockFeed[inv] = feed;
+
+                    // Build content intelligence
+                    var content = (data.content || []).map(function(c, i) {
+                        var ranks = ['Most accessed', 'Frequently opened', 'Engaged', 'Active'];
+                        var stat = c.cnt + ' open' + (c.cnt != 1 ? 's' : '');
+                        if (c.total_seconds > 0) stat += ' \u00B7 ' + (c.total_seconds >= 60 ? Math.round(c.total_seconds / 60) + ' min' : c.total_seconds + 's');
+                        return { rank: ranks[Math.min(i, ranks.length - 1)], name: c.content_title || c.content_key, stat: stat };
+                    });
+                    irMockContent = { all: content };
+                    if (inv && inv !== 'all') irMockContent[inv] = content;
+
+                    irRenderView();
+                })
+                .catch(function() {});
         }
 
         function irLoadVisitors() {
@@ -7600,6 +7685,7 @@
             document.getElementById('irLastUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             irLoadVisitors();
             irLoadKpis();
+            irLoadActivity();
         }
 
         function irSelectInvestor(id) {
@@ -7607,7 +7693,8 @@
             document.querySelectorAll('.ir-inv-item').forEach(function(el) {
                 el.classList.toggle('active', el.dataset.id === id);
             });
-            irRenderView();
+            irLoadKpis();
+            irLoadActivity();
         }
 
         function irFilterInvestors(filter) {

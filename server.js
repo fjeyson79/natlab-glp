@@ -19079,6 +19079,50 @@ app.get('/api/investor/kpis', requireAuth, async (req, res) => {
             }
         }
 
+        // Activity-based metrics (docs, video plays, watch time)
+        if (await checkInvestorActivityTable()) {
+            const actStats = await pool.query(
+                `SELECT researcher_id, activity_type, COUNT(*) as cnt,
+                        SUM(COALESCE(duration_seconds, 0)) as total_secs
+                 FROM investor_portal_activity
+                 WHERE workspace_id = $1
+                 GROUP BY researcher_id, activity_type`, [ws]
+            );
+            let allDocs = 0, allPlays = 0, allWatch = 0;
+            for (const row of actStats.rows) {
+                const rid = row.researcher_id;
+                const cnt = parseInt(row.cnt);
+                const secs = parseInt(row.total_secs) || 0;
+                if (!result[rid]) {
+                    result[rid] = { views: 0, avgTime: '\u2014', docs: 0, meetings: 0, videoPlays: 0, watchTime: '\u2014' };
+                }
+                if (row.activity_type === 'doc_opened') {
+                    result[rid].docs = (result[rid].docs || 0) + cnt;
+                    allDocs += cnt;
+                } else if (row.activity_type === 'video_play') {
+                    result[rid].videoPlays = (result[rid].videoPlays || 0) + cnt;
+                    allPlays += cnt;
+                } else if (row.activity_type === 'video_watch') {
+                    const prevSecs = parseInt(result[rid]._watchSecs) || 0;
+                    result[rid]._watchSecs = prevSecs + secs;
+                    allWatch += secs;
+                }
+            }
+            result.all.docs = allDocs;
+            result.all.videoPlays = allPlays;
+            if (allWatch > 0) {
+                result.all.watchTime = allWatch >= 60 ? Math.round(allWatch / 60) + ' min' : allWatch + 's';
+            }
+            // Format per-investor watch time
+            for (const rid in result) {
+                if (rid !== 'all' && result[rid]._watchSecs) {
+                    const s = result[rid]._watchSecs;
+                    result[rid].watchTime = s >= 60 ? Math.round(s / 60) + ' min' : s + 's';
+                    delete result[rid]._watchSecs;
+                }
+            }
+        }
+
         res.json({ kpis: result });
     } catch (err) {
         console.error('[INVESTOR-KPIS] Error:', err.message);
@@ -19087,7 +19131,118 @@ app.get('/api/investor/kpis', requireAuth, async (req, res) => {
 });
 
 // =====================================================
-// END INVESTOR PORTAL VISIT TRACKING
+// INVESTOR ACTIVITY TRACKING
+// =====================================================
+
+let _investorActivityTableExists = null;
+async function checkInvestorActivityTable() {
+    if (_investorActivityTableExists !== null) return _investorActivityTableExists;
+    try {
+        const r = await pool.query(`SELECT to_regclass('public.investor_portal_activity') AS t`);
+        _investorActivityTableExists = !!r.rows[0]?.t;
+    } catch { _investorActivityTableExists = false; }
+    return _investorActivityTableExists;
+}
+
+// Record investor activity (authenticated investors only)
+app.post('/api/investor/record-activity', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkInvestorActivityTable())) return res.json({ ok: true, recorded: false });
+        const user = req.session.user;
+        const { activity_type, content_key, content_title, duration_seconds, workspace } = req.body;
+        const ws = workspace || 'theralia';
+        const validTypes = ['doc_opened', 'video_play', 'video_watch', 'glp_vision_opened'];
+        if (!activity_type || !validTypes.includes(activity_type)) {
+            return res.status(400).json({ error: 'Invalid activity_type' });
+        }
+        await pool.query(
+            `INSERT INTO investor_portal_activity (workspace_id, researcher_id, investor_email, activity_type, content_key, content_title, duration_seconds)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [ws, user.researcher_id, user.institution_email, activity_type, content_key || null, content_title || null, duration_seconds || null]
+        );
+        res.json({ ok: true, recorded: true });
+    } catch (err) {
+        console.error('[INVESTOR-ACTIVITY] Error:', err.message);
+        res.json({ ok: true, recorded: false });
+    }
+});
+
+// Investor activity feed + content intelligence (founder-only)
+app.get('/api/investor/activity', requireAuth, async (req, res) => {
+    try {
+        const user = req.session.user;
+        const ws = req.query.workspace || 'theralia';
+        const investorId = req.query.investor || null;
+        // Founder access check
+        const wsUser = await pool.query(
+            `SELECT role, workspace_position FROM workspace_users wu
+             JOIN workspaces w ON wu.workspace_id = w.id
+             WHERE wu.user_id = $1 AND w.slug = $2`,
+            [user.researcher_id, ws]
+        );
+        const pos = (wsUser.rows[0]?.workspace_position || '').toLowerCase();
+        const role = wsUser.rows[0]?.role;
+        if (!['ceo', 'cso', 'founder'].includes(pos) && role !== 'founder') {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+        if (!(await checkInvestorActivityTable())) {
+            return res.json({ feed: [], content: [] });
+        }
+
+        // Recent activity feed (last 20)
+        let feedQuery, feedParams;
+        if (investorId && investorId !== 'all') {
+            feedQuery = `SELECT a.activity_type, a.content_key, a.content_title, a.duration_seconds, a.created_at,
+                                v.investor_name, v.investor_email
+                         FROM investor_portal_activity a
+                         LEFT JOIN investor_portal_visits v ON v.researcher_id = a.researcher_id AND v.workspace_id = a.workspace_id
+                         WHERE a.workspace_id = $1 AND a.researcher_id = $2
+                         ORDER BY a.created_at DESC LIMIT 20`;
+            feedParams = [ws, investorId];
+        } else {
+            feedQuery = `SELECT a.activity_type, a.content_key, a.content_title, a.duration_seconds, a.created_at,
+                                v.investor_name, v.investor_email
+                         FROM investor_portal_activity a
+                         LEFT JOIN investor_portal_visits v ON v.researcher_id = a.researcher_id AND v.workspace_id = a.workspace_id
+                         WHERE a.workspace_id = $1
+                         ORDER BY a.created_at DESC LIMIT 20`;
+            feedParams = [ws];
+        }
+        const feedRows = await pool.query(feedQuery, feedParams);
+
+        // Content intelligence — top opened content
+        let contentQuery, contentParams;
+        if (investorId && investorId !== 'all') {
+            contentQuery = `SELECT content_title, content_key, activity_type, COUNT(*) as cnt,
+                                   SUM(COALESCE(duration_seconds, 0)) as total_seconds
+                            FROM investor_portal_activity
+                            WHERE workspace_id = $1 AND researcher_id = $2 AND content_title IS NOT NULL
+                            GROUP BY content_title, content_key, activity_type
+                            ORDER BY cnt DESC LIMIT 8`;
+            contentParams = [ws, investorId];
+        } else {
+            contentQuery = `SELECT content_title, content_key, activity_type, COUNT(*) as cnt,
+                                   SUM(COALESCE(duration_seconds, 0)) as total_seconds
+                            FROM investor_portal_activity
+                            WHERE workspace_id = $1 AND content_title IS NOT NULL
+                            GROUP BY content_title, content_key, activity_type
+                            ORDER BY cnt DESC LIMIT 8`;
+            contentParams = [ws];
+        }
+        const contentRows = await pool.query(contentQuery, contentParams);
+
+        res.json({
+            feed: feedRows.rows,
+            content: contentRows.rows
+        });
+    } catch (err) {
+        console.error('[INVESTOR-ACTIVITY] Feed error:', err.message);
+        res.status(500).json({ error: 'Failed' });
+    }
+});
+
+// =====================================================
+// END INVESTOR ACTIVITY TRACKING
 // =====================================================
 
 app.listen(PORT, "0.0.0.0", async () => {
