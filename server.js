@@ -19003,6 +19003,89 @@ app.get('/api/investor/visitors', requireAuth, async (req, res) => {
     }
 });
 
+// InvestRoom KPI summary (founder-only)
+app.get('/api/investor/kpis', requireAuth, async (req, res) => {
+    try {
+        const user = req.session.user;
+        const ws = req.query.workspace || 'theralia';
+        // Founder access check
+        const wsUser = await pool.query(
+            `SELECT role, workspace_position FROM workspace_users wu
+             JOIN workspaces w ON wu.workspace_id = w.id
+             WHERE wu.user_id = $1 AND w.slug = $2`,
+            [user.researcher_id, ws]
+        );
+        const pos = (wsUser.rows[0]?.workspace_position || '').toLowerCase();
+        const role = wsUser.rows[0]?.role;
+        if (!['ceo', 'cso', 'founder'].includes(pos) && role !== 'founder') {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+
+        const result = { all: { views: 0, avgTime: '\u2014', docs: 0, meetings: 0, videoPlays: 0, watchTime: '\u2014' } };
+
+        // Visit data
+        const visitsTbl = await pool.query(`SELECT to_regclass('public.investor_portal_visits') AS t`);
+        if (visitsTbl.rows[0]?.t) {
+            const visits = await pool.query(
+                `SELECT researcher_id, investor_email, visit_count FROM investor_portal_visits WHERE workspace_id = $1`, [ws]
+            );
+            let totalViews = 0;
+            for (const v of visits.rows) {
+                totalViews += v.visit_count;
+                result[v.researcher_id] = {
+                    views: v.visit_count, avgTime: '\u2014', docs: 0, meetings: 0, videoPlays: 0, watchTime: '\u2014'
+                };
+            }
+            result.all.views = totalViews;
+            if (visits.rows.length > 0) {
+                result.all.avgTime = Math.round(totalViews / visits.rows.length) + ' visits/inv'; // visit-based metric, not session timing
+            }
+        }
+
+        // Meeting data
+        const meetTbl = await pool.query(`SELECT to_regclass('public.investor_meeting_bookings') AS t`);
+        if (meetTbl.rows[0]?.t) {
+            const meetings = await pool.query(
+                `SELECT investor_email, COUNT(*) as cnt FROM investor_meeting_bookings
+                 WHERE workspace_id = $1 AND status = 'booked'
+                 GROUP BY investor_email`, [ws]
+            );
+            let totalMeetings = 0;
+            for (const m of meetings.rows) {
+                totalMeetings += parseInt(m.cnt);
+                // Match by email to researcher_id
+                for (const rid in result) {
+                    if (rid !== 'all' && result[rid]) {
+                        // Check if this email matches via visits table
+                    }
+                }
+            }
+            result.all.meetings = totalMeetings;
+            // Per-investor meeting count via email match
+            if (visitsTbl.rows[0]?.t) {
+                const emailMap = await pool.query(
+                    `SELECT researcher_id, investor_email FROM investor_portal_visits WHERE workspace_id = $1`, [ws]
+                );
+                const ridByEmail = {};
+                for (const row of emailMap.rows) {
+                    if (row.investor_email) ridByEmail[row.investor_email.toLowerCase()] = row.researcher_id;
+                }
+                for (const m of meetings.rows) {
+                    const rid = ridByEmail[(m.investor_email || '').toLowerCase()];
+                    if (rid && result[rid]) {
+                        result[rid].meetings = parseInt(m.cnt);
+                    }
+                }
+            }
+        }
+
+        res.json({ kpis: result });
+    } catch (err) {
+        console.error('[INVESTOR-KPIS] Error:', err.message);
+        res.status(500).json({ error: 'Failed to load KPIs' });
+    }
+});
+
 // =====================================================
 // END INVESTOR PORTAL VISIT TRACKING
 // =====================================================

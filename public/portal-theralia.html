@@ -2004,10 +2004,10 @@
         .ir-mode-btn:hover:not(.active) { color: #3a3d45; }
         /* KPI */
         .ir-kpi-strip {
-            display: grid; grid-template-columns: repeat(auto-fit, minmax(115px, 1fr));
+            display: grid; grid-template-columns: repeat(3, 1fr);
             gap: 10px; margin-bottom: 32px;
         }
-        .ir-kpi-icon { font-size: 18px; line-height: 1; margin-bottom: 6px; }
+        .ir-kpi-icon { font-size: 26px; line-height: 1; margin-bottom: 8px; }
         .ir-kpi-card {
             background: #ffffff; border: 1px solid #e0e2e6;
             border-top: 2px solid #e0e2e6; border-radius: 10px;
@@ -7536,9 +7536,23 @@
 
         function irInit() {
             irLoadVisitors();
-            irRenderView();
+            irLoadKpis();
             irRenderPhaseEditors();
             document.getElementById('irLastUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+
+        function irLoadKpis() {
+            fetch('/api/investor/kpis?workspace=theralia', { credentials: 'include' })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.kpis) {
+                        irMockKpis = data.kpis;
+                    }
+                    irRenderView();
+                })
+                .catch(function() {
+                    irRenderView();
+                });
         }
 
         function irLoadVisitors() {
@@ -7585,7 +7599,7 @@
             if (btn) { btn.classList.remove('spin'); void btn.offsetWidth; btn.classList.add('spin'); }
             document.getElementById('irLastUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             irLoadVisitors();
-            irRenderView();
+            irLoadKpis();
         }
 
         function irSelectInvestor(id) {
@@ -7645,7 +7659,7 @@
             var strip = document.getElementById('irKpiStrip');
             strip.innerHTML = [
                 { v: kpi.views, l: 'Total Views', icon: '\uD83D\uDC41\uFE0F' },
-                { v: kpi.avgTime, l: 'Avg Time / Session', icon: '\u23F1\uFE0F' },
+                { v: kpi.avgTime, l: 'Avg Visits / Investor', icon: '\u23F1\uFE0F' }, // visit-based, not time-based
                 { v: kpi.docs, l: 'Docs Opened', icon: '\uD83D\uDCC4' },
                 { v: kpi.videoPlays, l: 'Video Plays', icon: '\u25B6\uFE0F' },
                 { v: kpi.watchTime, l: 'Watch Time', icon: '\u231B' },
