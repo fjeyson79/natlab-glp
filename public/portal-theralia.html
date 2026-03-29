@@ -1482,6 +1482,9 @@
         .ip-main {
             padding: 40px 48px 60px; max-width: 840px;
         }
+        .ip-main.ip-main--preview {
+            max-width: none; padding: 0; overflow: hidden;
+        }
         @media (max-width: 1100px) {
             .ip-main { padding: 28px 24px 48px; }
         }
@@ -1812,6 +1815,29 @@
             transition: border-color 0.12s;
         }
         .ip-glpv-btn:hover { border-color: #16a34a; }
+
+        /* ---- PDF Preview (right-panel takeover inside main) ---- */
+        .ip-pdf-preview {
+            display: none; flex-direction: column;
+            background: #f6f7f9; z-index: 40;
+            height: calc(100vh - 100px);
+        }
+        .ip-pdf-preview.active { display: flex; }
+        .ip-pdf-bar {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 10px 16px; background: #ffffff;
+            border-bottom: 1px solid #e0e2e6; flex-shrink: 0;
+        }
+        .ip-pdf-bar-btn {
+            display: inline-flex; align-items: center; gap: 5px;
+            padding: 6px 14px; border: 1px solid #e0e2e6; border-radius: 6px;
+            font-size: 12px; font-weight: 600; color: #2a2d35;
+            background: #ffffff; cursor: pointer; transition: border-color 0.12s;
+        }
+        .ip-pdf-bar-btn:hover { border-color: #16a34a; }
+        .ip-pdf-frame {
+            flex: 1; width: 100%; border: none;
+        }
 
         /* ---- Interactive Figure ---- */
         .ip-figure-card {
@@ -3109,8 +3135,8 @@
                                 <div class="ip-glpv-fig-title">In vitro validation of drug molecule</div>
                                 <div class="ip-glpv-fig-desc">Functional validation of the active compound in vitro.</div>
                                 <div class="ip-glpv-fig-btns">
-                                    <a class="ip-glpv-btn" href="/assets/investor/glp/data/data-figure2b-in-vitro-validation-drug-molecule.pdf" target="_blank">Data</a>
-                                    <a class="ip-glpv-btn" href="/assets/investor/glp/sop/sop-figure2-3-bacterial-culture.pdf" target="_blank">SOP</a>
+                                    <a class="ip-glpv-btn" href="#" onclick="event.preventDefault();ipOpenPdfPreview('/assets/investor/glp/data/data-figure2b-in-vitro-validation-drug-molecule.pdf','glpv')">Data</a>
+                                    <a class="ip-glpv-btn" href="#" onclick="event.preventDefault();ipOpenPdfPreview('/assets/investor/glp/sop/sop-figure2-3-bacterial-culture.pdf','glpv')">SOP</a>
                                 </div>
                             </div>
                             <div class="ip-glpv-fig">
@@ -3118,8 +3144,8 @@
                                 <div class="ip-glpv-fig-title">Modularity</div>
                                 <div class="ip-glpv-fig-desc">Modular design of the activation system.</div>
                                 <div class="ip-glpv-fig-btns">
-                                    <a class="ip-glpv-btn" href="/assets/investor/glp/data/data-figure3a-modularity.pdf" target="_blank">Data</a>
-                                    <a class="ip-glpv-btn" href="/assets/investor/glp/sop/sop-figure2-3-bacterial-culture.pdf" target="_blank">SOP</a>
+                                    <a class="ip-glpv-btn" href="#" onclick="event.preventDefault();ipOpenPdfPreview('/assets/investor/glp/data/data-figure3a-modularity.pdf','glpv')">Data</a>
+                                    <a class="ip-glpv-btn" href="#" onclick="event.preventDefault();ipOpenPdfPreview('/assets/investor/glp/sop/sop-figure2-3-bacterial-culture.pdf','glpv')">SOP</a>
                                 </div>
                             </div>
                             <div class="ip-glpv-fig">
@@ -3127,8 +3153,8 @@
                                 <div class="ip-glpv-fig-title">Specificity</div>
                                 <div class="ip-glpv-fig-desc">Selective activation under target conditions.</div>
                                 <div class="ip-glpv-fig-btns">
-                                    <a class="ip-glpv-btn" href="/assets/investor/glp/data/data-figure3b-specificity.pdf" target="_blank">Data</a>
-                                    <a class="ip-glpv-btn" href="/assets/investor/glp/sop/sop-figure2-3-bacterial-culture.pdf" target="_blank">SOP</a>
+                                    <a class="ip-glpv-btn" href="#" onclick="event.preventDefault();ipOpenPdfPreview('/assets/investor/glp/data/data-figure3b-specificity.pdf','glpv')">Data</a>
+                                    <a class="ip-glpv-btn" href="#" onclick="event.preventDefault();ipOpenPdfPreview('/assets/investor/glp/sop/sop-figure2-3-bacterial-culture.pdf','glpv')">SOP</a>
                                 </div>
                             </div>
                             <div class="ip-glpv-fig">
@@ -3136,8 +3162,8 @@
                                 <div class="ip-glpv-fig-title">Dose response</div>
                                 <div class="ip-glpv-fig-desc">Dose-dependent activity assessment.</div>
                                 <div class="ip-glpv-fig-btns">
-                                    <a class="ip-glpv-btn" href="/assets/investor/glp/data/data-figure4-dose-response.pdf" target="_blank">Data</a>
-                                    <a class="ip-glpv-btn" href="/assets/investor/glp/sop/sop-figure4-mic.pdf" target="_blank">SOP</a>
+                                    <a class="ip-glpv-btn" href="#" onclick="event.preventDefault();ipOpenPdfPreview('/assets/investor/glp/data/data-figure4-dose-response.pdf','glpv')">Data</a>
+                                    <a class="ip-glpv-btn" href="#" onclick="event.preventDefault();ipOpenPdfPreview('/assets/investor/glp/sop/sop-figure4-mic.pdf','glpv')">SOP</a>
                                 </div>
                             </div>
                             <div class="ip-glpv-fig" style="grid-column: 1 / -1;">
@@ -3145,11 +3171,26 @@
                                 <div class="ip-glpv-fig-title">In vivo proof of concept</div>
                                 <div class="ip-glpv-fig-desc">Localized activation and therapeutic effect in a murine infection model.</div>
                                 <div class="ip-glpv-fig-btns">
-                                    <a class="ip-glpv-btn" href="/assets/investor/glp/data/data-figure5-in-vivo-proof-of-concept.pdf" target="_blank">Data</a>
+                                    <a class="ip-glpv-btn" href="#" onclick="event.preventDefault();ipOpenPdfPreview('/assets/investor/glp/data/data-figure5-in-vivo-proof-of-concept.pdf','glpv')">Data</a>
                                     <button class="ip-glpv-btn" onclick="ipShowOverlay('sop-fig5')">SOPs</button>
                                 </div>
                             </div>
                         </div>
+                    </div>
+
+                    <!-- PDF Preview -->
+                    <div class="ip-pdf-preview" id="ipPdfPreview">
+                        <div class="ip-pdf-bar">
+                            <button class="ip-pdf-bar-btn" id="ipPdfBackBtn" onclick="ipPdfBack()">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                                Back
+                            </button>
+                            <button class="ip-pdf-bar-btn" onclick="ipPdfClose()">
+                                Close
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                            </button>
+                        </div>
+                        <iframe class="ip-pdf-frame" id="ipPdfFrame"></iframe>
                     </div>
 
                 </main>
@@ -6598,22 +6639,83 @@
             var tpl = ipOverlayTemplates[key];
             if (!tpl) return;
             var card = document.getElementById('ipOverlayCard');
-            var linkIcon = '<svg class="ip-overlay-link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
+            var linkIcon = '<svg class="ip-overlay-link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7 17l9.2-9.2M17 17V7H7"/></svg>';
             var html = '<div class="ip-overlay-title">' + tpl.title + '</div>';
             if (tpl.text) html += '<div class="ip-overlay-text">' + tpl.text + '</div>';
             (tpl.links || []).forEach(function(l) {
-                html += '<a class="ip-overlay-link" href="' + l.href + '" target="_blank">' + linkIcon + l.label + '</a>';
+                if (l.href && l.href.endsWith('.pdf')) {
+                    html += '<a class="ip-overlay-link" href="#" onclick="event.preventDefault();ipOpenPdfPreview(\'' + l.href + '\',\'' + key + '\')">' + linkIcon + l.label + '</a>';
+                } else {
+                    html += '<a class="ip-overlay-link" href="' + (l.href || '#') + '">' + linkIcon + l.label + '</a>';
+                }
             });
             html += '<button class="ip-overlay-close" onclick="ipCloseOverlay()">Close</button>';
             card.innerHTML = html;
             document.getElementById('ipOverlay').classList.add('open');
-            // Close fab menu when overlay opens
             var fabMenu = document.getElementById('ipFabMenu');
             if (fabMenu) fabMenu.classList.remove('open');
         }
 
         function ipCloseOverlay() {
             document.getElementById('ipOverlay').classList.remove('open');
+        }
+
+        /* ---- PDF Preview (in-portal) ---- */
+        var _ipPdfState = null;
+
+        function _ipHideRightContent() {
+            // Hide only the content nodes inside main, not main itself
+            document.querySelectorAll('#ipMainContent > .ip-phase-panel').forEach(function(p) { p.hidden = true; });
+            var glpv = document.getElementById('ipGlpVision');
+            if (glpv) glpv.hidden = true;
+        }
+
+        function _ipRestoreRightContent() {
+            // Restore visibility based on saved state
+            document.querySelectorAll('#ipMainContent > .ip-phase-panel').forEach(function(p) { p.hidden = false; });
+            var glpv = document.getElementById('ipGlpVision');
+            if (glpv) glpv.hidden = false;
+        }
+
+        function ipOpenPdfPreview(pdfUrl, overlayKey) {
+            _ipPdfState = {
+                phase: currentInvestorPhase,
+                scrollY: window.scrollY,
+                overlayKey: overlayKey || null,
+                glpVisionOpen: document.getElementById('ipGlpVision').classList.contains('active')
+            };
+            ipCloseOverlay();
+            _ipHideRightContent();
+            var main = document.getElementById('ipMainContent');
+            main.classList.add('ip-main--preview');
+            document.getElementById('ipPdfPreview').classList.add('active');
+            document.getElementById('ipPdfFrame').src = pdfUrl;
+        }
+
+        function _ipExitPreview() {
+            document.getElementById('ipPdfPreview').classList.remove('active');
+            document.getElementById('ipPdfFrame').src = '';
+            var main = document.getElementById('ipMainContent');
+            main.classList.remove('ip-main--preview');
+            _ipRestoreRightContent();
+        }
+
+        function ipPdfBack() {
+            _ipExitPreview();
+            if (_ipPdfState) {
+                window.scrollTo(0, _ipPdfState.scrollY);
+                if (_ipPdfState.overlayKey && _ipPdfState.overlayKey !== 'glpv') {
+                    ipShowOverlay(_ipPdfState.overlayKey);
+                }
+            }
+        }
+
+        function ipPdfClose() {
+            _ipExitPreview();
+            if (_ipPdfState) {
+                window.scrollTo(0, _ipPdfState.scrollY);
+                _ipPdfState = null;
+            }
         }
 
         function ipActionHandler(label) {
