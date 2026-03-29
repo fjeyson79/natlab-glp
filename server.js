@@ -403,6 +403,18 @@ function requirePI(req, res, next) {
     next();
 }
 
+// CSO MIDDLEWARE - requires workspace_position = CSO (InvestRoom update mode)
+function requireCSO(req, res, next) {
+    if (!req.session.user) {
+        return res.status(401).json({ error: 'Not authenticated' });
+    }
+    const pos = (req.session.user.workspace_position || '').toLowerCase();
+    if (pos !== 'cso') {
+        return res.status(403).json({ error: 'Access denied. CSO role required.' });
+    }
+    next();
+}
+
 // SUPERVISOR MIDDLEWARE - requires user to be a Supervisor
 function requireSupervisor(req, res, next) {
     if (!req.session.user) {

@@ -3604,7 +3604,7 @@
                     <!-- Mode Toggle -->
                     <div class="ir-mode-toggle">
                         <button class="ir-mode-btn active" data-mode="view" onclick="irSetMode('view')">View</button>
-                        <button class="ir-mode-btn" data-mode="update" onclick="irSetMode('update')">Update</button>
+                        <button class="ir-mode-btn" data-mode="update" id="irUpdateBtn" style="display:none;" onclick="irSetMode('update')">Update</button>
                     </div>
 
                     <!-- ====== VIEW MODE ====== -->
@@ -7468,6 +7468,10 @@
             _irHasAccess = (_userPosition === 'ceo' || _userPosition === 'cso' || _userPosition === 'founder' || hasAuthority('is_workspace_master'));
             if (_irHasAccess) {
                 document.getElementById('irTabBtn').style.display = '';
+            }
+            // Update mode: CSO only
+            if (_userPosition === 'cso') {
+                document.getElementById('irUpdateBtn').style.display = '';
             }
         }
 
