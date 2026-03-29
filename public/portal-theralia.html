@@ -1924,6 +1924,189 @@
         .ip-pub-text {
             font-size: 12px; color: #8b8f9a; line-height: 1.55;
         }
+        /* ---- InvestRoom ---- */
+        .ir-shell { display: flex; gap: 0; min-height: 600px; }
+        .ir-sidebar {
+            width: 240px; flex-shrink: 0; background: #111214;
+            border-right: 1px solid #1e2025; padding: 20px 0; overflow-y: auto;
+        }
+        @media (max-width: 900px) { .ir-sidebar { display: none; } .ir-shell { display: block; } }
+        .ir-sidebar-label {
+            font-size: 9px; font-weight: 700; letter-spacing: 1.4px;
+            text-transform: uppercase; color: #55555f; padding: 0 18px; margin-bottom: 10px;
+        }
+        .ir-sidebar-filters { display: flex; gap: 6px; padding: 0 18px; margin-bottom: 16px; }
+        .ir-sidebar-filter {
+            padding: 4px 10px; border-radius: 12px; font-size: 10px; font-weight: 600;
+            background: #1a1b1e; color: #78787f; border: 1px solid #2a2a2e;
+            cursor: pointer; transition: all 0.12s;
+        }
+        .ir-sidebar-filter:hover { color: #c8c8cf; }
+        .ir-sidebar-filter.active { background: rgba(62,207,142,0.08); color: #3ecf8e; border-color: rgba(62,207,142,0.2); }
+        .ir-inv-item {
+            display: flex; flex-direction: column; gap: 2px;
+            padding: 11px 18px; cursor: pointer; border-left: 2px solid transparent;
+            transition: all 0.12s;
+        }
+        .ir-inv-item:hover { background: rgba(255,255,255,0.02); }
+        .ir-inv-item.active {
+            background: rgba(62,207,142,0.05); border-left: 2px solid #3ecf8e;
+            box-shadow: inset 0 0 0 1px rgba(62,207,142,0.06);
+        }
+        .ir-inv-name { font-size: 13px; font-weight: 700; color: #e0e0e6; letter-spacing: -0.1px; }
+        .ir-inv-signal {
+            display: inline-flex; align-items: center; gap: 4px;
+            font-size: 9px; font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase;
+            opacity: 0.8;
+        }
+        .ir-inv-signal.high { color: #3ecf8e; }
+        .ir-inv-signal.medium { color: #b8960e; }
+        .ir-inv-signal.low { color: #5a5a63; }
+        .ir-inv-signal::before {
+            content: ''; width: 4px; height: 4px; border-radius: 50%; background: currentColor;
+        }
+        .ir-inv-summary { font-size: 10px; color: #4a4a52; letter-spacing: 0.1px; }
+        .ir-main { flex: 1; padding: 28px 32px 48px; min-width: 0; }
+        .ir-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; flex-wrap: wrap; gap: 12px; }
+        .ir-header-left { display: flex; flex-direction: column; gap: 2px; }
+        .ir-title { font-size: 20px; font-weight: 700; color: #f0f0f4; letter-spacing: -0.3px; }
+        .ir-subtitle { font-size: 11px; color: #55555f; display: flex; align-items: center; gap: 6px; }
+        .ir-lock-icon { width: 12px; height: 12px; color: #3ecf8e; opacity: 0.6; }
+        .ir-header-right { display: flex; align-items: center; gap: 10px; }
+        .ir-refresh-btn {
+            padding: 5px 12px; border: 1px solid #2a2a2e; border-radius: 6px;
+            background: transparent; color: #78787f; font-size: 11px; font-weight: 600;
+            cursor: pointer; transition: all 0.12s;
+        }
+        .ir-refresh-btn:hover { color: #c8c8cf; border-color: #444; }
+        .ir-refresh-btn.spin { animation: irSpin 0.3s ease; }
+        @keyframes irSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .ir-timestamp { font-size: 10px; color: #444; }
+        .ir-mode-toggle {
+            display: inline-flex; background: #131416; border: 1px solid #1e2025;
+            border-radius: 6px; overflow: hidden; margin-bottom: 26px;
+        }
+        .ir-mode-btn {
+            padding: 6px 20px; font-size: 11px; font-weight: 700;
+            letter-spacing: 0.3px; text-transform: uppercase;
+            color: #55555f; background: transparent; border: none;
+            cursor: pointer; transition: all 0.15s;
+        }
+        .ir-mode-btn.active { background: rgba(62,207,142,0.1); color: #3ecf8e; }
+        .ir-mode-btn:hover:not(.active) { color: #a0a0aa; }
+        /* KPI */
+        .ir-kpi-strip {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(115px, 1fr));
+            gap: 10px; margin-bottom: 32px;
+        }
+        .ir-kpi-card {
+            background: #131416; border: 1px solid #1a1c1f;
+            border-top: 2px solid #1e2025; border-radius: 10px;
+            padding: 20px 16px 18px; text-align: center;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+        }
+        .ir-kpi-value {
+            font-size: 28px; font-weight: 800; color: #f0f0f4;
+            letter-spacing: -0.8px; line-height: 1;
+        }
+        .ir-kpi-label {
+            font-size: 9px; font-weight: 600; letter-spacing: 0.8px;
+            text-transform: uppercase; color: #4a4a52; margin-top: 8px;
+        }
+        .ir-kpi-card:hover { background: #161819; box-shadow: 0 2px 8px rgba(0,0,0,0.14); }
+        .ir-kpi-card:nth-child(3),
+        .ir-kpi-card:nth-child(5) { margin-left: 6px; }
+        .ir-kpi-card.accent { border-top-color: rgba(62,207,142,0.4); }
+        .ir-kpi-card.accent .ir-kpi-value { color: #3ecf8e; }
+        /* Sections */
+        .ir-section-title {
+            font-size: 10px; font-weight: 700; letter-spacing: 1.4px;
+            text-transform: uppercase; color: #4a4a52; margin-bottom: 14px; margin-top: 12px;
+        }
+        /* Signals */
+        .ir-signals-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 28px; }
+        @media (max-width: 700px) { .ir-signals-grid { grid-template-columns: 1fr; } }
+        .ir-signal-card {
+            background: #151618; border: 1px solid #1e2025; border-radius: 10px;
+            padding: 14px 18px; display: flex; align-items: flex-start; gap: 10px;
+        }
+        .ir-signal-icon { width: 16px; height: 16px; color: #3ecf8e; flex-shrink: 0; margin-top: 1px; }
+        .ir-signal-text { font-size: 13px; color: #c8c8cf; line-height: 1.5; }
+        .ir-signal-meta { font-size: 10px; color: #55555f; margin-top: 4px; }
+        /* Activity Feed */
+        .ir-feed { margin-bottom: 28px; }
+        .ir-feed-item {
+            display: flex; align-items: flex-start; gap: 12px;
+            padding: 14px 0; border-bottom: 1px solid rgba(255,255,255,0.03);
+        }
+        .ir-feed-item:last-child { border-bottom: none; }
+        .ir-feed-dot {
+            width: 7px; height: 7px; border-radius: 50%;
+            background: #2a2a2e; flex-shrink: 0; margin-top: 6px;
+        }
+        .ir-feed-dot.doc { background: #3b82f6; opacity: 0.8; }
+        .ir-feed-dot.video { background: #a855f7; }
+        .ir-feed-dot.meeting { background: #3ecf8e; }
+        .ir-feed-dot.visit { background: #ca8a04; opacity: 0.7; }
+        .ir-feed-item:has(.ir-feed-dot.meeting) .ir-feed-text,
+        .ir-feed-item:has(.ir-feed-dot.video) .ir-feed-text { color: #d8d8e0; }
+        .ir-feed-body { flex: 1; min-width: 0; }
+        .ir-feed-text { font-size: 13px; color: #b0b0b8; line-height: 1.45; }
+        .ir-feed-text strong { color: #e0e0e6; font-weight: 600; }
+        .ir-feed-time { font-size: 10px; color: #3a3a42; margin-top: 3px; }
+        /* Content Intel */
+        .ir-content-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 28px; }
+        @media (max-width: 700px) { .ir-content-grid { grid-template-columns: 1fr; } }
+        .ir-content-card {
+            background: #131416; border: 1px solid #1a1c1f; border-radius: 10px;
+            padding: 16px 18px;
+        }
+        .ir-content-rank {
+            font-size: 9px; font-weight: 600; letter-spacing: 0.8px;
+            text-transform: uppercase; color: #3ecf8e; margin-bottom: 5px;
+            opacity: 0.7;
+        }
+        .ir-content-name { font-size: 13px; font-weight: 700; color: #e0e0e6; margin-bottom: 4px; }
+        .ir-content-stat { font-size: 10px; color: #4a4a52; letter-spacing: 0.2px; }
+        /* Update Mode */
+        .ir-update-panel { display: none; }
+        .ir-update-panel.active { display: block; background: rgba(255,255,255,0.008); border-radius: 12px; padding: 4px 0; }
+        .ir-view-panel { display: block; }
+        .ir-view-panel.hide { display: none; }
+        .ir-phase-editor {
+            background: #131416; border: 1px solid #1a1c1f; border-radius: 12px;
+            padding: 24px 26px; margin-bottom: 18px;
+        }
+        .ir-phase-label {
+            font-size: 10px; font-weight: 700; letter-spacing: 1.4px;
+            text-transform: uppercase; color: #3ecf8e; margin-bottom: 12px;
+            opacity: 0.8;
+        }
+        .ir-phase-field { margin-bottom: 14px; }
+        .ir-phase-field label {
+            display: block; font-size: 10px; font-weight: 600;
+            letter-spacing: 0.5px; text-transform: uppercase;
+            color: #4a4a52; margin-bottom: 5px;
+        }
+        .ir-phase-input {
+            width: 100%; padding: 10px 14px; border: 1px solid #222228;
+            border-radius: 7px; background: #0e0f11; color: #e0e0e6;
+            font-size: 13px; font-family: inherit; transition: border-color 0.15s;
+        }
+        .ir-phase-input:focus { outline: none; border-color: #3ecf8e; background: #101114; }
+        textarea.ir-phase-input { resize: vertical; min-height: 88px; line-height: 1.65; }
+        .ir-phase-actions { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+        .ir-phase-save {
+            padding: 7px 18px; background: #3ecf8e; color: #0e0f11;
+            border: none; border-radius: 6px; font-size: 12px; font-weight: 700;
+            cursor: pointer; transition: all 0.12s;
+        }
+        .ir-phase-save:hover { background: #34b87d; }
+        .ir-phase-save:disabled { background: #2a2a2e; color: #55555f; cursor: default; }
+        .ir-phase-saved { font-size: 11px; color: #3ecf8e; opacity: 0; transition: opacity 0.3s; }
+        .ir-phase-saved.show { opacity: 1; }
+        .ir-phase-ts { font-size: 10px; color: #3a3a42; margin-top: 8px; }
+
         /* ---- Meeting Booking Modal ---- */
         .ip-booking-backdrop {
             display: none; position: fixed; inset: 0; z-index: 210;
@@ -2028,6 +2211,7 @@
         <button class="tab-btn" data-tab="training">Training</button>
         <button class="tab-btn" data-tab="finance">Finance</button>
         <button class="tab-btn" data-tab="investors">Investors</button>
+        <button class="tab-btn" data-tab="investroom" id="irTabBtn" style="display:none;">InvestRoom</button>
     </div>
 
     <div class="main">
@@ -3388,6 +3572,72 @@
             </div>
         </div>
 
+        <!-- ============================================== -->
+        <!-- TAB: INVESTROOM                                -->
+        <!-- ============================================== -->
+        <div class="tab-content" id="tab-investroom" style="background:#0e0f11; padding:0; max-width:none;">
+            <div class="ir-shell">
+                <!-- Left Investor Panel -->
+                <div class="ir-sidebar">
+                    <div class="ir-sidebar-label">Investors</div>
+                    <div class="ir-sidebar-filters">
+                        <span class="ir-sidebar-filter active" data-filter="all">All</span>
+                        <span class="ir-sidebar-filter" data-filter="high">High Intent</span>
+                        <span class="ir-sidebar-filter" data-filter="meeting">Meeting</span>
+                    </div>
+                    <div id="irInvestorList"></div>
+                </div>
+
+                <!-- Main Content -->
+                <div class="ir-main">
+                    <!-- Header -->
+                    <div class="ir-header">
+                        <div class="ir-header-left">
+                            <div class="ir-title">InvestRoom</div>
+                            <div class="ir-subtitle">
+                                <svg class="ir-lock-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                                Founder-only investor intelligence
+                            </div>
+                        </div>
+                        <div class="ir-header-right">
+                            <span class="ir-timestamp" id="irLastUpdated"></span>
+                            <button class="ir-refresh-btn" onclick="irRefresh()">Refresh</button>
+                        </div>
+                    </div>
+
+                    <!-- Mode Toggle -->
+                    <div class="ir-mode-toggle">
+                        <button class="ir-mode-btn active" data-mode="view" onclick="irSetMode('view')">View</button>
+                        <button class="ir-mode-btn" data-mode="update" onclick="irSetMode('update')">Update</button>
+                    </div>
+
+                    <!-- ====== VIEW MODE ====== -->
+                    <div class="ir-view-panel" id="irViewPanel">
+                        <!-- KPI Strip -->
+                        <div class="ir-kpi-strip" id="irKpiStrip"></div>
+
+                        <!-- Investor Signals -->
+                        <div class="ir-section-title">Investor Signals</div>
+                        <div class="ir-signals-grid" id="irSignals"></div>
+
+                        <!-- Activity Feed -->
+                        <div class="ir-section-title">Recent Activity</div>
+                        <div class="ir-feed" id="irFeed"></div>
+
+                        <!-- Content Intelligence -->
+                        <div class="ir-section-title">Content Intelligence</div>
+                        <div class="ir-content-grid" id="irContent"></div>
+                    </div>
+
+                    <!-- ====== UPDATE MODE ====== -->
+                    <div class="ir-update-panel" id="irUpdatePanel">
+                        <div class="ir-section-title">Phase Content Editor</div>
+                        <div id="irPhaseEditors"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
     </div><!-- /.main -->
 
     <script>
@@ -3418,6 +3668,8 @@
                 if (user._authority) {
                     _userAuthority = user._authority;
                 }
+                // Show InvestRoom tab if founder/admin
+                if (typeof irCheckAccess === 'function') irCheckAccess();
             } catch (err) {
                 window.location.href = 'access-theralia.html';
             }
@@ -3444,6 +3696,8 @@
             const btn = e.target.closest('.tab-btn');
             if (!btn) return;
             const tab = btn.dataset.tab;
+            // Guard: block InvestRoom access for non-founders
+            if (tab === 'investroom' && !_irHasAccess) return;
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
@@ -7141,6 +7395,272 @@
             ipFigureStep = 0;
             ipFigureRender();
         }
+
+        /* ============================================== */
+        /* INVESTROOM                                    */
+        /* ============================================== */
+
+        // Access flag — used by tab guard and init
+        var _irHasAccess = false;
+
+        function irCheckAccess() {
+            _irHasAccess = (_userPosition === 'ceo' || _userPosition === 'cso' || _userPosition === 'founder' || hasAuthority('is_workspace_master'));
+            if (_irHasAccess) {
+                document.getElementById('irTabBtn').style.display = '';
+            }
+        }
+
+        // Mock data — replace with real API calls later
+        var irMockInvestors = [
+            { id: 'all', name: 'All Investors', signal: null, summary: '' },
+            { id: 'inv1', name: 'Nordic Capital', signal: 'high', summary: '12 min · Viewed full deck', meeting: true },
+            { id: 'inv2', name: 'BioVenture Partners', signal: 'high', summary: '8 min · Requested meeting', meeting: true },
+            { id: 'inv3', name: 'Novartis Venture Fund', signal: 'medium', summary: '5 min · Watched Phase 1 video' },
+            { id: 'inv4', name: 'EQT Life Sciences', signal: 'medium', summary: '4 min · Opened publications' },
+            { id: 'inv5', name: 'Sofinnova Partners', signal: 'low', summary: '2 min · Brief visit' },
+            { id: 'inv6', name: 'HealthCap', signal: 'low', summary: '1 min · Viewed overview' }
+        ];
+
+        var irMockKpis = {
+            all: { views: 47, avgTime: '6.2 min', docs: 28, downloads: 0, meetings: 3, videoPlays: 12, watchTime: '34 min' },
+            inv1: { views: 14, avgTime: '12 min', docs: 8, downloads: 0, meetings: 1, videoPlays: 4, watchTime: '18 min' },
+            inv2: { views: 9, avgTime: '8 min', docs: 6, downloads: 0, meetings: 1, videoPlays: 3, watchTime: '9 min' },
+            inv3: { views: 8, avgTime: '5 min', docs: 5, downloads: 0, meetings: 0, videoPlays: 2, watchTime: '4 min' },
+            inv4: { views: 7, avgTime: '4 min', docs: 4, downloads: 0, meetings: 1, videoPlays: 2, watchTime: '2 min' },
+            inv5: { views: 5, avgTime: '2 min', docs: 3, downloads: 0, meetings: 0, videoPlays: 1, watchTime: '1 min' },
+            inv6: { views: 4, avgTime: '1 min', docs: 2, downloads: 0, meetings: 0, videoPlays: 0, watchTime: '0 min' }
+        };
+
+        var irMockSignals = {
+            all: [
+                { icon: 'doc', text: 'Nordic Capital viewed Pitch Deck and TOUCAN Platform', meta: 'High engagement · 2h ago' },
+                { icon: 'meeting', text: 'BioVenture Partners requested a meeting', meta: 'Investment Discussion · 4h ago' },
+                { icon: 'video', text: 'Novartis Venture Fund watched Phase 1 video to completion', meta: '5h ago' },
+                { icon: 'doc', text: 'EQT Life Sciences opened scientific publications', meta: '1d ago' }
+            ],
+            inv1: [
+                { icon: 'doc', text: 'Viewed Pitch Deck and TOUCAN Platform', meta: '2h ago' },
+                { icon: 'video', text: 'Watched Phase 1 and Phase 2 videos', meta: '2h ago' },
+                { icon: 'doc', text: 'Opened GLP Vision — Figure 5 data', meta: '3h ago' },
+                { icon: 'visit', text: 'Revisited portal twice', meta: '1d ago' }
+            ]
+        };
+
+        var irMockFeed = {
+            all: [
+                { dot: 'meeting', text: '<strong>BioVenture Partners</strong> requested a meeting — Investment Discussion', time: '4 hours ago' },
+                { dot: 'doc', text: '<strong>Nordic Capital</strong> opened GLP Vision — Figure 5 data', time: '2 hours ago' },
+                { dot: 'video', text: '<strong>Novartis Venture Fund</strong> played Phase 1 video (4:12 watched)', time: '5 hours ago' },
+                { dot: 'doc', text: '<strong>EQT Life Sciences</strong> opened TOUCAN paper', time: '1 day ago' },
+                { dot: 'visit', text: '<strong>Nordic Capital</strong> returned to portal', time: '1 day ago' },
+                { dot: 'doc', text: '<strong>Sofinnova Partners</strong> viewed Executive Summary', time: '2 days ago' },
+                { dot: 'meeting', text: '<strong>EQT Life Sciences</strong> requested a meeting — Platform, TOUCAN', time: '3 days ago' }
+            ]
+        };
+
+        var irMockContent = {
+            all: [
+                { rank: 'Most viewed', name: 'Phase 1 — Why & Overview', stat: '32 views · 18 min avg' },
+                { rank: 'Most engaging', name: 'TOUCAN-MRSA Video', stat: '12 plays · 34 min total' },
+                { rank: 'Most opened', name: 'TOUCAN Paper (JCR 2023)', stat: '11 opens' },
+                { rank: 'Low engagement', name: 'Phase 4 — Strategic Value', stat: '4 views · 1.2 min avg' }
+            ],
+            inv1: [
+                { rank: 'Most time', name: 'Phase 2 — Technology', stat: '6 min spent' },
+                { rank: 'Focused on', name: 'GLP Vision — Figure 5', stat: '4 min · Data + SOPs' },
+                { rank: 'Watched', name: 'TOUCAN-MRSA Video', stat: 'Full completion' },
+                { rank: 'Skipped', name: 'Phase 4 — Strategic Value', stat: 'Not visited' }
+            ]
+        };
+
+        var irPhaseData = [
+            { id: 'phase1', label: 'Phase 1 — Why & Overview', title: 'Precision therapeutics begin with biological recognition', body: 'Current therapies often act throughout the body instead of only at the disease site.' },
+            { id: 'phase2', label: 'Phase 2 — Technology', title: 'Localized therapeutic activation in antimicrobial resistance', body: 'Antimicrobial resistance requires more precise therapeutic strategies.' },
+            { id: 'phase3', label: 'Phase 3 — Validation', title: 'In vivo proof of concept and structured experimental validation', body: 'The TOUCAN-MRSA system has been evaluated in vivo.' },
+            { id: 'phase4', label: 'Phase 4 — Strategic Value', title: 'Where antibiotics fall short, precision creates value', body: 'While standard antibiotics remain effective in routine infections, a subset of cases remains unresolved.' }
+        ];
+
+        var irSelectedInvestor = 'all';
+        var irCurrentFilter = 'all';
+
+        function irInit() {
+            irRenderInvestorList();
+            irRenderView();
+            irRenderPhaseEditors();
+            document.getElementById('irLastUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+
+        function irSetMode(mode) {
+            document.querySelectorAll('.ir-mode-btn').forEach(function(b) {
+                b.classList.toggle('active', b.dataset.mode === mode);
+            });
+            document.getElementById('irViewPanel').classList.toggle('hide', mode !== 'view');
+            var up = document.getElementById('irUpdatePanel');
+            up.classList.toggle('active', mode === 'update');
+        }
+
+        function irRefresh() {
+            var btn = document.querySelector('.ir-refresh-btn');
+            if (btn) { btn.classList.remove('spin'); void btn.offsetWidth; btn.classList.add('spin'); }
+            document.getElementById('irLastUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            irRenderView();
+        }
+
+        function irSelectInvestor(id) {
+            irSelectedInvestor = id;
+            document.querySelectorAll('.ir-inv-item').forEach(function(el) {
+                el.classList.toggle('active', el.dataset.id === id);
+            });
+            irRenderView();
+        }
+
+        function irFilterInvestors(filter) {
+            irCurrentFilter = filter;
+            document.querySelectorAll('.ir-sidebar-filter').forEach(function(f) {
+                f.classList.toggle('active', f.dataset.filter === filter);
+            });
+            irRenderInvestorList();
+        }
+
+        // Sidebar filter clicks
+        (function() {
+            var sidebar = document.querySelector('.ir-sidebar');
+            if (!sidebar) return;
+            sidebar.addEventListener('click', function(e) {
+                var f = e.target.closest('.ir-sidebar-filter');
+                if (f) { irFilterInvestors(f.dataset.filter); return; }
+                var item = e.target.closest('.ir-inv-item');
+                if (item) irSelectInvestor(item.dataset.id);
+            });
+        })();
+
+        function irRenderInvestorList() {
+            var list = document.getElementById('irInvestorList');
+            if (!list) return;
+            var filtered = irMockInvestors.filter(function(inv) {
+                if (irCurrentFilter === 'all') return true;
+                if (irCurrentFilter === 'high') return inv.signal === 'high';
+                if (irCurrentFilter === 'meeting') return inv.meeting;
+                return true;
+            });
+            list.innerHTML = filtered.map(function(inv) {
+                var active = inv.id === irSelectedInvestor ? ' active' : '';
+                if (inv.id === 'all') {
+                    return '<div class="ir-inv-item' + active + '" data-id="all"><div class="ir-inv-name">All Investors</div></div>';
+                }
+                return '<div class="ir-inv-item' + active + '" data-id="' + inv.id + '">' +
+                    '<div class="ir-inv-name">' + inv.name + '</div>' +
+                    '<div class="ir-inv-signal ' + inv.signal + '">' + (inv.signal === 'high' ? 'High Intent' : inv.signal === 'medium' ? 'Medium Interest' : 'Low Engagement') + '</div>' +
+                    '<div class="ir-inv-summary">' + inv.summary + '</div>' +
+                '</div>';
+            }).join('');
+        }
+
+        function irRenderView() {
+            var id = irSelectedInvestor;
+            // KPIs
+            var kpi = irMockKpis[id] || irMockKpis.all;
+            var strip = document.getElementById('irKpiStrip');
+            strip.innerHTML = [
+                { v: kpi.views, l: 'Total Views' },
+                { v: kpi.avgTime, l: 'Avg Time / Session' },
+                { v: kpi.docs, l: 'Docs Opened' },
+                { v: kpi.downloads, l: 'Downloads', a: true },
+                { v: kpi.meetings, l: 'Meeting Requests', a: kpi.meetings > 0 },
+                { v: kpi.videoPlays, l: 'Video Plays' },
+                { v: kpi.watchTime, l: 'Watch Time' }
+            ].map(function(k) {
+                return '<div class="ir-kpi-card' + (k.a ? ' accent' : '') + '">' +
+                    '<div class="ir-kpi-value">' + k.v + '</div>' +
+                    '<div class="ir-kpi-label">' + k.l + '</div></div>';
+            }).join('');
+
+            // Signals
+            var signals = irMockSignals[id] || irMockSignals.all;
+            var sigEl = document.getElementById('irSignals');
+            var sigIcon = '<svg class="ir-signal-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l2 2"/></svg>';
+            sigEl.innerHTML = signals.map(function(s) {
+                return '<div class="ir-signal-card">' + sigIcon +
+                    '<div><div class="ir-signal-text">' + s.text + '</div>' +
+                    '<div class="ir-signal-meta">' + s.meta + '</div></div></div>';
+            }).join('');
+
+            // Feed
+            var feed = irMockFeed[id] || irMockFeed.all;
+            var feedEl = document.getElementById('irFeed');
+            feedEl.innerHTML = feed.map(function(f) {
+                return '<div class="ir-feed-item">' +
+                    '<div class="ir-feed-dot ' + f.dot + '"></div>' +
+                    '<div class="ir-feed-body"><div class="ir-feed-text">' + f.text + '</div>' +
+                    '<div class="ir-feed-time">' + f.time + '</div></div></div>';
+            }).join('');
+
+            // Content Intelligence
+            var content = irMockContent[id] || irMockContent.all;
+            var cEl = document.getElementById('irContent');
+            cEl.innerHTML = content.map(function(c) {
+                return '<div class="ir-content-card">' +
+                    '<div class="ir-content-rank">' + c.rank + '</div>' +
+                    '<div class="ir-content-name">' + c.name + '</div>' +
+                    '<div class="ir-content-stat">' + c.stat + '</div></div>';
+            }).join('');
+        }
+
+        function irRenderPhaseEditors() {
+            var el = document.getElementById('irPhaseEditors');
+            if (!el) return;
+            el.innerHTML = irPhaseData.map(function(p) {
+                return '<div class="ir-phase-editor" data-editor="' + p.id + '">' +
+                    '<div class="ir-phase-label">' + p.label + '</div>' +
+                    '<div class="ir-phase-field"><label>Title</label>' +
+                    '<input class="ir-phase-input" type="text" value="' + p.title.replace(/"/g, '&quot;') + '" data-phase="' + p.id + '" data-field="title" data-orig="' + p.title.replace(/"/g, '&quot;') + '"></div>' +
+                    '<div class="ir-phase-field"><label>Body</label>' +
+                    '<textarea class="ir-phase-input" data-phase="' + p.id + '" data-field="body" data-orig="' + p.body.replace(/"/g, '&quot;') + '">' + p.body + '</textarea></div>' +
+                    '<div class="ir-phase-actions">' +
+                    '<button class="ir-phase-save" disabled onclick="irSavePhase(\'' + p.id + '\', this)">Save</button>' +
+                    '<span class="ir-phase-saved">Saved</span></div>' +
+                    '<div class="ir-phase-ts"></div></div>';
+            }).join('');
+            // Dirty tracking — enable save only when content changes
+            el.addEventListener('input', function(e) {
+                var input = e.target.closest('.ir-phase-input');
+                if (!input) return;
+                var editor = input.closest('.ir-phase-editor');
+                var inputs = editor.querySelectorAll('.ir-phase-input');
+                var dirty = false;
+                inputs.forEach(function(inp) {
+                    var orig = inp.dataset.orig || '';
+                    var val = inp.value;
+                    if (val !== orig) dirty = true;
+                });
+                var saveBtn = editor.querySelector('.ir-phase-save');
+                if (saveBtn) saveBtn.disabled = !dirty;
+            });
+        }
+
+        function irSavePhase(phaseId, btn) {
+            // Placeholder — future: POST to backend
+            btn.disabled = true;
+            var saved = btn.nextElementSibling;
+            saved.classList.add('show');
+            var ts = btn.parentElement.nextElementSibling;
+            ts.textContent = 'Last saved ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            // Update orig values so dirty tracking resets
+            var editor = btn.closest('.ir-phase-editor');
+            editor.querySelectorAll('.ir-phase-input').forEach(function(inp) {
+                inp.dataset.orig = inp.value;
+            });
+            setTimeout(function() { saved.classList.remove('show'); }, 1500);
+        }
+
+        // Init InvestRoom — deferred until access confirmed
+        // irCheckAccess() is called from loadUser(); irInit runs only if access granted
+        var _irInitDone = false;
+        var _origIrCheckAccess = irCheckAccess;
+        irCheckAccess = function() {
+            _origIrCheckAccess();
+            if (_irHasAccess && !_irInitDone) { _irInitDone = true; irInit(); }
+        };
 
     </script>
 </body>
