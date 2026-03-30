@@ -1021,17 +1021,29 @@ app.post('/api/di/access-check', async (req, res) => {
 
         // Workspace-scoped access check: if ?ws= is provided, verify membership
         const wsSlug = req.query.ws || req.headers['x-workspace-slug'] || '';
+        let wsRole = null;
         if (wsSlug && wsSlug !== 'natlab') {
             const hasWu = await checkWuTable();
             if (hasWu) {
                 const wsMemberCheck = await pool.query(
-                    `SELECT wu.role FROM workspace_users wu
+                    `SELECT wu.role, wu.workspace_position FROM workspace_users wu
                      JOIN workspaces w ON w.id = wu.workspace_id
                      WHERE wu.user_id = $1 AND w.slug = $2 AND wu.is_active = true`,
                     [allowlistEntry.researcher_id, wsSlug]
                 );
                 if (wsMemberCheck.rows.length === 0) {
                     return res.json({ allowed: false, message: 'You do not have access to this workspace' });
+                }
+                wsRole = wsMemberCheck.rows[0].role;
+                const wsPos = (wsMemberCheck.rows[0].workspace_position || '').toLowerCase();
+                // Investor users in Theralia should use the investor access flow, not standard login/register
+                if (wsRole === 'investor' || wsPos === 'investor') {
+                    return res.json({
+                        allowed: true,
+                        investor_redirect: 'access-investor.html',
+                        name: allowlistEntry.name,
+                        role: allowlistEntry.role
+                    });
                 }
             }
         }

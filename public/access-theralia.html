@@ -175,6 +175,9 @@
                 if (!data.allowed) {
                     messageDiv.textContent = data.message || 'Access denied. Your email is not in the allowlist.';
                     messageDiv.className = 'message error';
+                } else if (data.investor_redirect) {
+                    // Investor users use the dedicated investor access flow
+                    window.location.href = data.investor_redirect;
                 } else {
                     sessionStorage.setItem('di_email', email);
                     sessionStorage.setItem('di_name', data.name || '');
