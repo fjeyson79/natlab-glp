@@ -290,6 +290,36 @@
         .uc-btn-danger:hover { background: #b91c1c; }
         .uc-btn-danger:disabled { background: #999; cursor: not-allowed; }
 
+        /* ---- Clearance panel ---- */
+        .clr-row {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 8px 0; border-bottom: 1px solid rgba(0,0,0,0.05);
+        }
+        .clr-row:last-child { border-bottom: none; }
+        .clr-label { font-size: 13px; font-weight: 600; color: #1a1c22; min-width: 120px; }
+        .clr-seg {
+            display: flex; border: 1px solid #d1d5db; border-radius: 6px; overflow: hidden;
+        }
+        .clr-seg-btn {
+            padding: 4px 12px; font-size: 11px; font-weight: 600; cursor: pointer;
+            background: #fff; border: none; color: #6b7280; transition: all 0.12s;
+            border-right: 1px solid #d1d5db;
+        }
+        .clr-seg-btn:last-child { border-right: none; }
+        .clr-seg-btn.active { background: #1a1c22; color: #fff; }
+        .clr-seg-btn:hover:not(.active) { background: #f3f4f6; }
+        .clr-seg-btn.disabled { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
+        /* ---- SOP/GLP approval stamps ---- */
+        .glp-coo-stamp {
+            font-size: 11px; color: #6b7280; margin-top: 4px; font-style: italic;
+        }
+        .glp-cso-stamp {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 6px 14px; margin-top: 6px;
+            background: rgba(22,163,74,0.08); border: 1px solid rgba(22,163,74,0.15);
+            border-radius: 6px; font-size: 12px; font-weight: 600; color: #16a34a;
+        }
+
         /* ---- Light Content Surface ---- */
         .main {
             max-width: 1440px;
@@ -2433,6 +2463,7 @@
         <button class="tab-btn" data-tab="investors">Investors</button>
         <button class="tab-btn" data-tab="investroom" id="irTabBtn" style="display:none;">InvestRoom</button>
         <button class="tab-btn" data-tab="user-control" id="ucTabBtn" style="display:none;">User Control</button>
+        <button class="tab-btn" data-tab="audit" id="auditTabBtn" style="display:none;">Audit Trail</button>
     </div>
 
     <div class="main">
@@ -4058,6 +4089,79 @@
             </div>
         </div>
 
+        <!-- ============================================== -->
+        <!-- AUDIT TRAIL TAB (CSO ONLY)                   -->
+        <!-- ============================================== -->
+        <div class="tab-content" id="tab-audit">
+            <div class="uc-header">
+                <div class="uc-title">Audit Trail</div>
+                <div class="uc-subtitle">Central log of governance actions across the Theralia platform</div>
+            </div>
+
+            <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
+                <select id="auditFilterAction" onchange="auditLoad()" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;background:#fff;">
+                    <option value="">All actions</option>
+                    <option value="glp_approve">GLP Approve</option>
+                    <option value="glp_revise">GLP Revise</option>
+                    <option value="glp_discard">GLP Discard</option>
+                    <option value="glp_seal_toggle">GLP Seal</option>
+                    <option value="sop_coo_review">SOP COO Review</option>
+                    <option value="user_create">User Create</option>
+                    <option value="user_remove">User Remove</option>
+                    <option value="user_reinstate">User Reinstate</option>
+                    <option value="user_delete_permanently">User Delete</option>
+                    <option value="user_password_reset">Password Reset</option>
+                    <option value="investor_code_reset">Code Reset</option>
+                    <option value="investor_upgrade_to_password">Upgrade to Password</option>
+                    <option value="investor_permissions_update">Investor Permissions</option>
+                    <option value="clearance_update">Clearance Update</option>
+                </select>
+                <input type="text" id="auditFilterActor" placeholder="Filter by user ID..." oninput="auditLoadDebounced()" style="padding:6px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;width:160px;">
+                <button onclick="auditLoad()" style="padding:6px 14px;background:#1a1c22;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;">Refresh</button>
+            </div>
+
+            <div style="overflow-x:auto;">
+                <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                    <thead>
+                        <tr style="border-bottom:2px solid #e5e7eb;text-align:left;">
+                            <th style="padding:8px 10px;color:#6b7280;font-weight:600;">Time</th>
+                            <th style="padding:8px 10px;color:#6b7280;font-weight:600;">User</th>
+                            <th style="padding:8px 10px;color:#6b7280;font-weight:600;">Position</th>
+                            <th style="padding:8px 10px;color:#6b7280;font-weight:600;">Action</th>
+                            <th style="padding:8px 10px;color:#6b7280;font-weight:600;">Target</th>
+                            <th style="padding:8px 10px;color:#6b7280;font-weight:600;">Detail</th>
+                        </tr>
+                    </thead>
+                    <tbody id="auditBody">
+                        <tr><td colspan="6" style="text-align:center;color:#9ca3af;padding:32px;">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;font-size:12px;color:#6b7280;">
+                <span id="auditPagInfo">-</span>
+                <div style="display:flex;gap:6px;">
+                    <button id="auditPrevBtn" onclick="auditPrev()" disabled style="padding:4px 10px;border:1px solid #d1d5db;border-radius:4px;background:#fff;font-size:11px;cursor:pointer;">Prev</button>
+                    <button id="auditNextBtn" onclick="auditNext()" disabled style="padding:4px 10px;border:1px solid #d1d5db;border-radius:4px;background:#fff;font-size:11px;cursor:pointer;">Next</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Clearance editor panel (CSO only, overlay) -->
+        <div class="uc-confirm-overlay" id="ucClearanceModal">
+            <div class="uc-confirm-box" style="max-width:520px;width:520px;">
+                <div class="uc-confirm-title" style="display:flex;justify-content:space-between;align-items:center;">
+                    <span>Clearance: <span id="clrUserName"></span></span>
+                    <span id="clrUserPos" style="font-size:11px;color:#6b7280;font-weight:400;text-transform:uppercase;"></span>
+                </div>
+                <div style="font-size:11px;color:#6b7280;margin-bottom:14px;">Module-level access control. Changes take effect immediately.</div>
+                <div id="clrModuleRows" style="display:flex;flex-direction:column;gap:6px;"></div>
+                <div class="uc-confirm-actions" style="margin-top:16px;">
+                    <button class="uc-btn-cancel" onclick="clrClose()">Cancel</button>
+                    <button class="uc-btn-submit" onclick="clrSave()" style="background:#1a1c22;color:#fff;border:none;padding:8px 20px;border-radius:6px;font-size:13px;cursor:pointer;">Save Clearance</button>
+                </div>
+            </div>
+        </div>
+
     </div><!-- /.main -->
 
     <script>
@@ -4066,6 +4170,7 @@
         /* ============================================== */
         let _userAuthority = {};
         let _userPosition = '';
+        let _userClearance = {};
 
         async function loadUser() {
             try {
@@ -4096,11 +4201,19 @@
                 if (user._authority) {
                     _userAuthority = user._authority;
                 }
+                // Store governance clearance config
+                _userClearance = user.clearance_config || {};
+
                 // Show InvestRoom tab if founder/admin
                 if (typeof irCheckAccess === 'function') irCheckAccess();
 
-                // Investor role: restrict visible tabs
+                // Apply clearance-based tab visibility for non-investors
                 var userRole = (user.role || '').toLowerCase();
+                if (_userPosition !== 'investor' && userRole !== 'investor') {
+                    _applyTabClearance();
+                }
+
+                // Investor role: restrict visible tabs
                 if (_userPosition === 'investor' || userRole === 'investor') {
                     _setupInvestorAccess(user.investor_tab_permissions || {});
                     // Record investor visit (fire-and-forget)
@@ -4119,6 +4232,26 @@
 
         function hasAuthority(flag) {
             return !!_userAuthority[flag];
+        }
+
+        // Governance: hide tabs based on clearance_config for non-investor internal users
+        function _applyTabClearance() {
+            // Map tab data-tab values to clearance_config keys
+            var tabToKey = { dashboard:'dashboard', company:'company', rnd:'rnd', glp:'glp', inventory:'inventory', training:'training', finance:'finance', investors:'investors' };
+            Object.keys(tabToKey).forEach(function(tab) {
+                var key = tabToKey[tab];
+                var level = _userClearance[key];
+                if (level === 'hidden') {
+                    var btn = document.querySelector('.tab-btn[data-tab="' + tab + '"]');
+                    if (btn) btn.style.display = 'none';
+                }
+            });
+        }
+
+        // Governance: check if current user has edit access for a module (intersection of hard rule + clearance)
+        function _canEdit(module) {
+            var level = _userClearance[module];
+            return level === 'edit';
         }
 
         // Investor tab access: hide non-investor tabs, lock/unlock optional tabs based on per-investor permissions
@@ -4183,8 +4316,11 @@
             const tab = btn.dataset.tab;
             // Guard: block InvestRoom access for non-founders
             if (tab === 'investroom' && !_irHasAccess) return;
-            // Guard: block User Control access for non-CSO
-            if (tab === 'user-control' && _userPosition !== 'cso') return;
+            // Guard: block User Control access — CSO full, founders investors_only
+            if (tab === 'user-control' && !_userClearance.user_control) return;
+            if (tab === 'user-control' && _userClearance.user_control === 'hidden') return;
+            // Guard: block Audit Trail for non-CSO
+            if (tab === 'audit' && _userPosition !== 'cso') return;
             // Handle locked tabs — show message instead of loading content
             if (_lockedTabs[tab]) {
                 document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -5022,10 +5158,16 @@
             }
         });
 
+        var _rdReadOnly = false;
         async function rdInit() {
+            _rdReadOnly = !_canEdit('rnd');
             await rdLoadAll();
             rdRenderNav();
             rdRenderSection();
+            // Enforce read-only: hide all write controls in R&D tab
+            if (_rdReadOnly) {
+                document.querySelectorAll('#tab-rnd .di-edit-btn, #tab-rnd .rd-upload-area').forEach(function(el) { el.style.display = 'none'; });
+            }
         }
 
         async function rdLoadAll() {
@@ -5727,6 +5869,7 @@
 
         // ---- PROJECT FORM ----
         function rdShowProjectForm(preType, editId) {
+            if (_rdReadOnly) return;
             const p = editId ? rdCache.projects.find(x => x.id === editId) : null;
             rdOpenModal(`
                 <div class="rd-modal-title">${p ? 'Edit Project' : 'Add Project'}</div>
@@ -5786,6 +5929,7 @@
 
         // ---- PARTNER FORM ----
         function rdShowPartnerForm(editId) {
+            if (_rdReadOnly) return;
             const p = editId ? rdCache.partners.find(x => x.id === editId) : null;
             rdOpenModal(`
                 <div class="rd-modal-title">${p ? 'Edit Partner' : 'Add Partner'}</div>
@@ -5831,6 +5975,7 @@
 
         // ---- GRANT FORM ----
         function rdShowGrantForm(editId) {
+            if (_rdReadOnly) return;
             const g = editId ? rdCache.grants.find(x => x.id === editId) : null;
             rdOpenModal(`
                 <div class="rd-modal-title">${g ? 'Edit Grant' : 'Add Grant'}</div>
@@ -6373,6 +6518,8 @@
                     ${f.revision_comments ? '<div style="font-size:11px;color:#2563eb;margin-top:6px">Revision: ' + rdEsc(f.revision_comments) + '</div>' : ''}
                     ${f.discard_reason ? '<div style="font-size:11px;color:#dc2626;margin-top:6px">Discarded: ' + rdEsc(f.discard_reason) + (f.discard_note ? ' — ' + rdEsc(f.discard_note) : '') + '</div>' : ''}
                     ${f.approval_comment ? '<div style="font-size:11px;color:#16a34a;margin-top:6px">Comment: ' + rdEsc(f.approval_comment) + '</div>' : ''}
+                    ${f.sop_reviewed_by ? '<div class="glp-coo-stamp">&#10004; Reviewed &middot; ' + rdEsc(f.sop_reviewed_by) + ' (COO)</div>' : ''}
+                    ${f.status === 'APPROVED' && f.signer_name ? '<div class="glp-cso-stamp">Approved by ' + rdEsc(f.signer_name) + '</div>' : ''}
                     <div class="glp-viewer-actions">
                         ${previewUrl ? '<button class="glp-toolbar-icon" onclick="glpPresentation()" title="Presentation Mode" aria-label="Presentation Mode"><span class="glp-emoji-icon" aria-hidden="true">🎬</span></button>' : ''}
                         ${previewUrl ? '<a class="glp-toolbar-icon" href="/api/di/download/' + f.submission_id + '" target="_blank" title="Download" aria-label="Download"><svg viewBox="0 0 20 20" fill="none"><path d="M10 3v10M10 13l-3.5-3.5M10 13l3.5-3.5M4 16h12" stroke="#111827" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></a>' : ''}
@@ -6404,6 +6551,9 @@
                     <button class="glp-toolbar-btn revise" onclick="glpOpenReviseModal('${f.submission_id}')">Revise</button>
                     <button class="glp-toolbar-btn discard" onclick="glpOpenDiscardModal('${f.submission_id}')">Discard</button>
                 ` : ''}
+                ${(f.status === 'PENDING' && !f.sop_reviewed_by && (_userPosition === 'coo' || _userPosition === 'cso')) ? `
+                    <button class="glp-toolbar-btn" style="background:rgba(124,58,237,0.08);color:#7c3aed;border-color:rgba(124,58,237,0.2);" onclick="glpCooReview('${f.submission_id}')">COO Review</button>
+                ` : ''}
                 <button class="glp-toolbar-seal${f.pi_dragon_seal ? ' sealed' : ''}" onclick="glpToggleSeal('${f.submission_id}')" title="Toucan Seal" aria-label="Toggle Toucan Seal">🦜</button>
                 ${previewUrl ? `
                     <button class="glp-toolbar-icon" onclick="glpPresentation()" title="Presentation Mode" aria-label="Presentation Mode"><span class="glp-emoji-icon" aria-hidden="true">🎬</span></button>
@@ -6419,6 +6569,10 @@
             if (f.revision_comments) detailHtml += `<span class="detail-revision">Revision: ${rdEsc(f.revision_comments)}</span>`;
             if (f.discard_reason) detailHtml += `<span class="detail-discard">Discarded: ${rdEsc(f.discard_reason)}${f.discard_note ? ' — ' + rdEsc(f.discard_note) : ''}</span>`;
             if (f.approval_comment) detailHtml += `<span class="detail-approval">Comment: ${rdEsc(f.approval_comment)}</span>`;
+            // COO review stamp
+            if (f.sop_reviewed_by) detailHtml += `<span class="glp-coo-stamp" style="display:block;">&#10004; Reviewed &middot; ${rdEsc(f.sop_reviewed_by)} (COO)</span>`;
+            // CSO approval stamp
+            if (f.status === 'APPROVED' && f.signer_name) detailHtml += `<span class="glp-cso-stamp" style="display:inline-flex;">Approved by ${rdEsc(f.signer_name)}</span>`;
             detailEl.innerHTML = detailHtml;
             detailEl.style.display = detailHtml ? '' : 'none';
 
@@ -6558,6 +6712,21 @@
         }
 
         // ---- Toucan Seal toggle (reuses pi_dragon_seal column) ----
+        async function glpCooReview(id) {
+            if (!confirm('Mark this document as COO-reviewed?')) return;
+            try {
+                const res = await glpFetch('/api/rd/glp/coo-review/' + id, { method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}' });
+                const data = await res.json();
+                if (data.success) {
+                    var f = glpAllFiles.find(x => x.submission_id === id);
+                    if (f) f.sop_reviewed_by = 'COO';
+                    glpSelectFile(id);
+                } else {
+                    alert(data.error || 'Review failed');
+                }
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
         async function glpToggleSeal(id) {
             const f = glpAllFiles.find(x => x.submission_id === id);
             if (!f) return;
@@ -8337,11 +8506,32 @@
         // irCheckAccess() is called from loadUser(); irInit runs only if access granted
         var _irInitDone = false;
         var _ucInitDone = false;
+        var _auditInitDone = false;
         var _origIrCheckAccess = irCheckAccess;
         irCheckAccess = function() {
             _origIrCheckAccess();
             if (_irHasAccess && !_irInitDone) { _irInitDone = true; irInit(); }
-            if (_userPosition === 'cso' && !_ucInitDone) { _ucInitDone = true; ucLoadUsers(); }
+            // User Control: CSO gets full, founders get investors_only if clearance allows
+            var ucLevel = _userClearance.user_control;
+            if (ucLevel && ucLevel !== 'hidden') {
+                document.getElementById('ucTabBtn').style.display = '';
+                if (!_ucInitDone) { _ucInitDone = true; ucLoadUsers(); }
+                // Founders with investors_only: hide internal section, show only investors
+                if (ucLevel === 'investors_only') {
+                    document.getElementById('ucSectionInternal').style.display = 'none';
+                    document.getElementById('ucSectionInvestors').style.display = '';
+                    // Hide internal toggle button
+                    var intBtn = document.querySelector('.uc-toggle-btn[data-uc-section="internal"]');
+                    if (intBtn) intBtn.style.display = 'none';
+                    // Hide + Add Member button
+                    var addMemberBtn = document.querySelector('.uc-add-btn');
+                    if (addMemberBtn && addMemberBtn.textContent.includes('Add Member')) addMemberBtn.style.display = 'none';
+                }
+            }
+            // Audit Trail: CSO only
+            if (_userPosition === 'cso') {
+                document.getElementById('auditTabBtn').style.display = '';
+            }
         };
 
         /* ============================================== */
@@ -8423,6 +8613,9 @@
 
                 let actions = '<div class="uc-actions-group">';
                 actions += `<button class="uc-act-btn" onclick="ucShowEditModal('${esc(u.researcher_id)}','internal')">Edit</button>`;
+                if (_userPosition === 'cso') {
+                    actions += `<button class="uc-act-btn" style="color:#7c3aed;" onclick="clrOpen('${esc(u.researcher_id)}')">Clearance</button>`;
+                }
                 if (isActive) {
                     if (u.last_login) {
                         actions += `<button class="uc-act-btn info" onclick="ucResetPassword('${esc(u.researcher_id)}','${esc(u.name)}')">Reset Pwd</button>`;
@@ -8816,6 +9009,174 @@
                 alert(data.message || 'Upgraded to password access.');
                 await ucLoadUsers();
             } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        /* ============================================== */
+        /* AUDIT TRAIL (CSO ONLY)                         */
+        /* ============================================== */
+        var _auditOffset = 0;
+        var _auditLimit = 50;
+        var _auditTotal = 0;
+        var _auditDebounceTimer = null;
+
+        function auditLoadDebounced() {
+            clearTimeout(_auditDebounceTimer);
+            _auditDebounceTimer = setTimeout(auditLoad, 400);
+        }
+
+        async function auditLoad() {
+            try {
+                var action = document.getElementById('auditFilterAction').value;
+                var actor = document.getElementById('auditFilterActor').value.trim();
+                var params = new URLSearchParams({ limit: _auditLimit, offset: _auditOffset });
+                if (action) params.set('action', action);
+                if (actor) params.set('actor', actor);
+                var resp = await fetch('/api/theralia/audit-log?' + params.toString(), { credentials: 'include' });
+                if (!resp.ok) throw new Error('Failed');
+                var data = await resp.json();
+                _auditTotal = data.total || 0;
+                var tbody = document.getElementById('auditBody');
+                if (!data.entries || data.entries.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#9ca3af;padding:32px;">No audit entries found.</td></tr>';
+                } else {
+                    tbody.innerHTML = data.entries.map(function(e) {
+                        var time = new Date(e.created_at).toLocaleString([], { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+                        var detail = '';
+                        if (e.detail) {
+                            try {
+                                var d = typeof e.detail === 'string' ? JSON.parse(e.detail) : e.detail;
+                                var parts = [];
+                                Object.keys(d).forEach(function(k) {
+                                    var v = d[k];
+                                    if (v !== null && v !== undefined && v !== '') parts.push(k + ': ' + (typeof v === 'object' ? JSON.stringify(v) : v));
+                                });
+                                detail = parts.join('; ');
+                            } catch(_) { detail = String(e.detail); }
+                        }
+                        var actionLabel = (e.action || '').replace(/_/g, ' ');
+                        return '<tr style="border-bottom:1px solid #f3f4f6;">' +
+                            '<td style="padding:6px 10px;white-space:nowrap;color:#6b7280;">' + time + '</td>' +
+                            '<td style="padding:6px 10px;font-weight:500;">' + (e.actor_id || '') + '</td>' +
+                            '<td style="padding:6px 10px;text-transform:uppercase;font-size:10px;color:#6b7280;">' + (e.actor_position || '') + '</td>' +
+                            '<td style="padding:6px 10px;"><span style="background:rgba(0,0,0,0.04);padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;">' + actionLabel + '</span></td>' +
+                            '<td style="padding:6px 10px;font-size:11px;color:#6b7280;">' + (e.target_type ? e.target_type + ': ' + (e.target_id || '') : '') + '</td>' +
+                            '<td style="padding:6px 10px;font-size:11px;color:#6b7280;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + detail.replace(/"/g,'&quot;') + '">' + detail + '</td>' +
+                            '</tr>';
+                    }).join('');
+                }
+                // Pagination
+                var showing = Math.min(_auditOffset + _auditLimit, _auditTotal);
+                document.getElementById('auditPagInfo').textContent = _auditTotal === 0 ? 'No entries' : 'Showing ' + (_auditOffset + 1) + '-' + showing + ' of ' + _auditTotal;
+                document.getElementById('auditPrevBtn').disabled = _auditOffset === 0;
+                document.getElementById('auditNextBtn').disabled = _auditOffset + _auditLimit >= _auditTotal;
+            } catch (err) {
+                console.error('[AUDIT] Load error:', err);
+                document.getElementById('auditBody').innerHTML = '<tr><td colspan="6" style="text-align:center;color:#dc2626;padding:32px;">Failed to load audit log.</td></tr>';
+            }
+        }
+
+        function auditPrev() { _auditOffset = Math.max(0, _auditOffset - _auditLimit); auditLoad(); }
+        function auditNext() { _auditOffset += _auditLimit; auditLoad(); }
+
+        // Lazy-load audit on first tab view
+        document.getElementById('tabNav').addEventListener('click', function(e) {
+            var btn = e.target.closest('.tab-btn');
+            if (btn && btn.dataset.tab === 'audit' && !_auditInitDone) {
+                _auditInitDone = true;
+                auditLoad();
+            }
+        });
+
+        /* ============================================== */
+        /* CLEARANCE PANEL (CSO ONLY)                     */
+        /* ============================================== */
+        var _clrUserId = null;
+
+        var CLR_MODULES = [
+            { key: 'dashboard', label: 'Dashboard' },
+            { key: 'company', label: 'Company' },
+            { key: 'rnd', label: 'R&D' },
+            { key: 'sop', label: 'SOP' },
+            { key: 'glp', label: 'GLP Vision' },
+            { key: 'inventory', label: 'Inventory' },
+            { key: 'training', label: 'Training' },
+            { key: 'finance', label: 'Finance' },
+            { key: 'investors', label: 'Investors' },
+            { key: 'investroom', label: 'InvestRoom' },
+            { key: 'user_control', label: 'User Control', special: 'uc' },
+        ];
+
+        function clrOpen(userId) {
+            _clrUserId = userId;
+            var user = _ucInternalUsers.find(function(u) { return u.researcher_id === userId; });
+            document.getElementById('clrUserName').textContent = user ? user.name : userId;
+            document.getElementById('clrUserPos').textContent = (user ? (user.workspace_position || user.ws_role || '') : '').toUpperCase();
+
+            // Fetch clearance
+            fetch('/api/theralia/users/' + userId + '/clearance', { credentials: 'include' })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (!data.success) { alert(data.error || 'Error'); return; }
+                    clrRender(data.effective, data.defaults);
+                    document.getElementById('ucClearanceModal').classList.add('open');
+                })
+                .catch(function(err) { alert('Error loading clearance: ' + err.message); });
+        }
+
+        function clrRender(effective, defaults) {
+            var container = document.getElementById('clrModuleRows');
+            container.innerHTML = CLR_MODULES.map(function(mod) {
+                var val = effective[mod.key] || defaults[mod.key] || 'hidden';
+                if (mod.special === 'uc') {
+                    // User Control uses hidden/investors_only/full
+                    return '<div class="clr-row">' +
+                        '<span class="clr-label">' + mod.label + '</span>' +
+                        '<div class="clr-seg" data-clr-key="' + mod.key + '">' +
+                            '<button class="clr-seg-btn' + (val === 'hidden' ? ' active' : '') + '" data-val="hidden" onclick="clrSelect(this)">Hidden</button>' +
+                            '<button class="clr-seg-btn' + (val === 'investors_only' ? ' active' : '') + '" data-val="investors_only" onclick="clrSelect(this)">Investors Only</button>' +
+                            '<button class="clr-seg-btn' + (val === 'full' ? ' active' : '') + '" data-val="full" onclick="clrSelect(this)">Full</button>' +
+                        '</div></div>';
+                }
+                return '<div class="clr-row">' +
+                    '<span class="clr-label">' + mod.label + '</span>' +
+                    '<div class="clr-seg" data-clr-key="' + mod.key + '">' +
+                        '<button class="clr-seg-btn' + (val === 'hidden' ? ' active' : '') + '" data-val="hidden" onclick="clrSelect(this)">Hidden</button>' +
+                        '<button class="clr-seg-btn' + (val === 'view' ? ' active' : '') + '" data-val="view" onclick="clrSelect(this)">View</button>' +
+                        '<button class="clr-seg-btn' + (val === 'edit' ? ' active' : '') + '" data-val="edit" onclick="clrSelect(this)">Edit</button>' +
+                    '</div></div>';
+            }).join('');
+        }
+
+        function clrSelect(btn) {
+            var seg = btn.closest('.clr-seg');
+            seg.querySelectorAll('.clr-seg-btn').forEach(function(b) { b.classList.remove('active'); });
+            btn.classList.add('active');
+        }
+
+        function clrClose() {
+            _clrUserId = null;
+            document.getElementById('ucClearanceModal').classList.remove('open');
+        }
+
+        async function clrSave() {
+            if (!_clrUserId) return;
+            var config = {};
+            document.querySelectorAll('#clrModuleRows .clr-seg').forEach(function(seg) {
+                var key = seg.dataset.clrKey;
+                var active = seg.querySelector('.clr-seg-btn.active');
+                if (active) config[key] = active.dataset.val;
+            });
+            try {
+                var resp = await fetch('/api/theralia/users/' + _clrUserId + '/clearance', {
+                    method: 'PUT', credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ clearance_config: config })
+                });
+                var data = await resp.json();
+                if (!resp.ok) { alert(data.error || 'Error'); return; }
+                clrClose();
+                ucLoadUsers();
+            } catch (err) { alert('Error saving clearance: ' + err.message); }
         }
 
     </script>

@@ -827,6 +827,106 @@ function denyInvestors(req, res, next) {
     return next();
 }
 
+// =====================================================
+// THERALIA GOVERNANCE HELPERS
+// =====================================================
+
+// Default clearance templates per workspace_position
+const GOVERNANCE_DEFAULTS = {
+    cso:     { dashboard:'edit', company:'edit', rnd:'edit', sop:'edit', glp:'edit', inventory:'edit', training:'edit', finance:'edit', investors:'edit', investroom:'edit', user_control:'full', audit:'view' },
+    ceo:     { dashboard:'edit', company:'edit', rnd:'view', sop:'view', glp:'view', inventory:'view', training:'view', finance:'edit', investors:'edit', investroom:'view', user_control:'investors_only', audit:'hidden' },
+    cto:     { dashboard:'edit', company:'view', rnd:'edit', sop:'edit', glp:'view', inventory:'view', training:'view', finance:'hidden', investors:'hidden', investroom:'view', user_control:'investors_only', audit:'hidden' },
+    coo:     { dashboard:'edit', company:'view', rnd:'edit', sop:'edit', glp:'edit', inventory:'view', training:'view', finance:'view', investors:'view', investroom:'view', user_control:'investors_only', audit:'hidden' },
+    advisor: { dashboard:'view', company:'view', rnd:'view', sop:'view', glp:'view', inventory:'hidden', training:'hidden', finance:'hidden', investors:'hidden', investroom:'view', user_control:'hidden', audit:'hidden' },
+    r_and_d: { dashboard:'edit', company:'hidden', rnd:'edit', sop:'view', glp:'view', inventory:'view', training:'view', finance:'hidden', investors:'hidden', investroom:'hidden', user_control:'hidden', audit:'hidden' },
+};
+
+// Resolve workspace_position for current request (cached on req)
+async function getPositionForReq(req) {
+    if (req._govPosition !== undefined) return req._govPosition;
+    if (!req.session?.user) { req._govPosition = ''; return ''; }
+    try {
+        const hasWu = await checkWuTable();
+        const hasPos = hasWu && await checkStartupPositionCols();
+        if (!hasPos) { req._govPosition = ''; return ''; }
+        const r = await pool.query(
+            `SELECT wu.workspace_position FROM workspace_users wu
+             JOIN workspaces w ON w.id = wu.workspace_id
+             WHERE wu.user_id = $1 AND w.slug = 'theralia' AND wu.is_active = TRUE LIMIT 1`,
+            [req.session.user.researcher_id]);
+        req._govPosition = (r.rows[0]?.workspace_position || '').toLowerCase();
+    } catch { req._govPosition = ''; }
+    return req._govPosition;
+}
+
+// Resolve merged clearance config for current request (cached on req)
+async function getClearanceForReq(req) {
+    if (req._govClearance !== undefined) return req._govClearance;
+    const pos = await getPositionForReq(req);
+    const defaults = GOVERNANCE_DEFAULTS[pos] || {};
+    try {
+        const r = await pool.query(
+            `SELECT wu.clearance_config FROM workspace_users wu
+             JOIN workspaces w ON w.id = wu.workspace_id
+             WHERE wu.user_id = $1 AND w.slug = 'theralia' AND wu.is_active = TRUE LIMIT 1`,
+            [req.session.user.researcher_id]);
+        const stored = r.rows[0]?.clearance_config || {};
+        req._govClearance = { ...defaults, ...stored };
+    } catch { req._govClearance = defaults; }
+    return req._govClearance;
+}
+
+// Hard rule: can write R&D (CSO, CTO, COO, R&D users only — CEO/Advisor cannot)
+async function canWriteRD(req) {
+    const pos = await getPositionForReq(req);
+    if (['cso', 'cto', 'coo'].includes(pos)) return true;
+    // R&D users (role = r_and_d in workspace)
+    try {
+        const r = await pool.query(
+            `SELECT wu.role FROM workspace_users wu JOIN workspaces w ON w.id = wu.workspace_id
+             WHERE wu.user_id = $1 AND w.slug = 'theralia' AND wu.is_active = TRUE LIMIT 1`,
+            [req.session.user.researcher_id]);
+        if (r.rows[0]?.role === 'r_and_d') return true;
+    } catch {}
+    return false;
+}
+
+// Hard rule: can approve/revise/discard GLP (CSO master + COO)
+async function canDecideGLP(req) {
+    if (await isWorkspaceMaster(req)) return true;
+    const pos = await getPositionForReq(req);
+    return pos === 'coo' || pos === 'cso';
+}
+
+// Middleware: require R&D write access (hard rule)
+async function requireRDWrite(req, res, next) {
+    if (!req.session?.user) return res.status(401).json({ error: 'Not authenticated' });
+    if (await canWriteRD(req)) return next();
+    return res.status(403).json({ error: 'R&D write access required (CSO/CTO/COO/R&D only)' });
+}
+
+// Middleware: require User Control access (CSO = full, founders = investors_only)
+async function requireUserControl(req, res, next) {
+    if (!req.session?.user) return res.status(401).json({ error: 'Not authenticated' });
+    const pos = await getPositionForReq(req);
+    if (pos === 'cso') { req._ucLevel = 'full'; return next(); }
+    const cc = await getClearanceForReq(req);
+    if (cc.user_control === 'full') { req._ucLevel = 'full'; return next(); }
+    if (cc.user_control === 'investors_only') { req._ucLevel = 'investors_only'; return next(); }
+    return res.status(403).json({ error: 'User Control access required' });
+}
+
+// Audit log helper (fire-and-forget, never blocks caller)
+async function logAudit({ actor_id, actor_position, action, target_type, target_id, detail }) {
+    try {
+        await pool.query(
+            `INSERT INTO theralia_audit_log (actor_id, actor_position, action, target_type, target_id, detail)
+             VALUES ($1, $2, $3, $4, $5, $6)`,
+            [actor_id, actor_position || null, action, target_type || null, target_id || null, detail ? JSON.stringify(detail) : null]
+        );
+    } catch (err) { console.error('[AUDIT] Log error:', err.message); }
+}
+
 // Phase 1.4: Compute effective access flags for a user in a workspace
 // Combines role, affiliation, clearance_profile, membership_class, and manual module selections.
 // Returns an object with boolean flags for each module/surface.
@@ -1357,8 +1457,14 @@ app.get('/api/di/me', requireAuth, async (req, res) => {
             const hasPos = hasWu && await checkStartupPositionCols();
             if (hasWu) {
                 const posCols = hasPos ? ', wu.workspace_position, wu.is_workspace_master, wu.can_manage_users, wu.can_manage_workspace, wu.can_manage_portal, wu.view_management_tab' : '';
+                // Check if clearance_config column exists (added by governance migration)
+                let ccCol = '';
+                try {
+                    const ccCheck = await pool.query(`SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='workspace_users' AND column_name='clearance_config') AS ok`);
+                    if (ccCheck.rows[0]?.ok) ccCol = ', wu.clearance_config';
+                } catch {}
                 const result = await pool.query(
-                    `SELECT wu.role${posCols}, wu.investor_tab_permissions, wu.custom_position_title
+                    `SELECT wu.role${posCols}, wu.investor_tab_permissions, wu.custom_position_title${ccCol}
                      FROM workspace_users wu
                      JOIN workspaces w ON w.id = wu.workspace_id
                      WHERE wu.user_id = $1 AND w.slug = $2 AND wu.is_active = TRUE`,
@@ -1383,6 +1489,12 @@ app.get('/api/di/me', requireAuth, async (req, res) => {
                     if (row.investor_tab_permissions) {
                         base.investor_tab_permissions = row.investor_tab_permissions;
                     }
+                    // Governance clearance config — merge stored overrides with position defaults
+                    const pos = (row.workspace_position || '').toLowerCase();
+                    const defaults = GOVERNANCE_DEFAULTS[pos] || {};
+                    base.clearance_config = { ...defaults, ...(row.clearance_config || {}) };
+                    // CSO always gets full clearance regardless of stored config
+                    if (pos === 'cso') base.clearance_config = GOVERNANCE_DEFAULTS.cso;
                 }
             }
         } catch (err) {
@@ -18431,7 +18543,7 @@ app.get('/api/rd/programs', requireAuth, requireInvestorTab('rnd'), async (req, 
     } catch (err) { console.error('[RD] programs error:', err.message); res.status(500).json({ error: 'Failed' }); }
 });
 
-app.post('/api/rd/programs', requireAuth, requireInvestorTab('rnd'), async (req, res) => {
+app.post('/api/rd/programs', requireAuth, requireInvestorTab('rnd'), requireRDWrite, async (req, res) => {
     try {
         if (!(await checkRdTables())) return res.status(503).json({ error: 'Not ready' });
         const { program_name, description, status, strategic_goal, upcoming_deliverable } = req.body;
@@ -18444,7 +18556,7 @@ app.post('/api/rd/programs', requireAuth, requireInvestorTab('rnd'), async (req,
     } catch (err) { console.error('[RD] create program error:', err.message); res.status(500).json({ error: 'Failed' }); }
 });
 
-app.patch('/api/rd/programs/:id', requireAuth, requireInvestorTab('rnd'), async (req, res) => {
+app.patch('/api/rd/programs/:id', requireAuth, requireInvestorTab('rnd'), requireRDWrite, async (req, res) => {
     try {
         if (!(await checkRdTables())) return res.status(503).json({ error: 'Not ready' });
         const { program_name, description, status, strategic_goal, upcoming_deliverable } = req.body;
@@ -18486,7 +18598,7 @@ app.get('/api/rd/projects/:id', requireAuth, requireInvestorTab('rnd'), async (r
     } catch (err) { console.error('[RD] project detail error:', err.message); res.status(500).json({ error: 'Failed' }); }
 });
 
-app.post('/api/rd/projects', requireAuth, requireInvestorTab('rnd'), async (req, res) => {
+app.post('/api/rd/projects', requireAuth, requireInvestorTab('rnd'), requireRDWrite, async (req, res) => {
     try {
         if (!(await checkRdTables())) return res.status(503).json({ error: 'Not ready' });
         const b = req.body;
@@ -18502,7 +18614,7 @@ app.post('/api/rd/projects', requireAuth, requireInvestorTab('rnd'), async (req,
     } catch (err) { console.error('[RD] create project error:', err.message); res.status(500).json({ error: 'Failed' }); }
 });
 
-app.patch('/api/rd/projects/:id', requireAuth, requireInvestorTab('rnd'), async (req, res) => {
+app.patch('/api/rd/projects/:id', requireAuth, requireInvestorTab('rnd'), requireRDWrite, async (req, res) => {
     try {
         if (!(await checkRdTables())) return res.status(503).json({ error: 'Not ready' });
         const b = req.body;
@@ -18533,7 +18645,7 @@ app.get('/api/rd/partners', requireAuth, requireInvestorTab('rnd'), async (req, 
     } catch (err) { console.error('[RD] partners error:', err.message); res.status(500).json({ error: 'Failed' }); }
 });
 
-app.post('/api/rd/partners', requireAuth, requireInvestorTab('rnd'), async (req, res) => {
+app.post('/api/rd/partners', requireAuth, requireInvestorTab('rnd'), requireRDWrite, async (req, res) => {
     try {
         if (!(await checkRdTables())) return res.status(503).json({ error: 'Not ready' });
         const b = req.body;
@@ -18546,7 +18658,7 @@ app.post('/api/rd/partners', requireAuth, requireInvestorTab('rnd'), async (req,
     } catch (err) { console.error('[RD] create partner error:', err.message); res.status(500).json({ error: 'Failed' }); }
 });
 
-app.patch('/api/rd/partners/:id', requireAuth, requireInvestorTab('rnd'), async (req, res) => {
+app.patch('/api/rd/partners/:id', requireAuth, requireInvestorTab('rnd'), requireRDWrite, async (req, res) => {
     try {
         if (!(await checkRdTables())) return res.status(503).json({ error: 'Not ready' });
         const b = req.body;
@@ -18574,7 +18686,7 @@ app.get('/api/rd/grants', requireAuth, requireInvestorTab('rnd'), async (req, re
     } catch (err) { console.error('[RD] grants error:', err.message); res.status(500).json({ error: 'Failed' }); }
 });
 
-app.post('/api/rd/grants', requireAuth, requireInvestorTab('rnd'), async (req, res) => {
+app.post('/api/rd/grants', requireAuth, requireInvestorTab('rnd'), requireRDWrite, async (req, res) => {
     try {
         if (!(await checkRdTables())) return res.status(503).json({ error: 'Not ready' });
         const b = req.body;
@@ -18588,7 +18700,7 @@ app.post('/api/rd/grants', requireAuth, requireInvestorTab('rnd'), async (req, r
     } catch (err) { console.error('[RD] create grant error:', err.message); res.status(500).json({ error: 'Failed' }); }
 });
 
-app.patch('/api/rd/grants/:id', requireAuth, requireInvestorTab('rnd'), async (req, res) => {
+app.patch('/api/rd/grants/:id', requireAuth, requireInvestorTab('rnd'), requireRDWrite, async (req, res) => {
     try {
         if (!(await checkRdTables())) return res.status(503).json({ error: 'Not ready' });
         const b = req.body;
@@ -18682,7 +18794,7 @@ app.get('/api/rd/projects/:projectId/documents', requireAuth, requireInvestorTab
     } catch (err) { console.error('[RD] docs error:', err.message); res.status(500).json({ error: 'Failed to load documents' }); }
 });
 
-app.post('/api/rd/projects/:projectId/documents', requireAuth, requireInvestorTab('rnd'), rdDocUpload.single('file'), async (req, res) => {
+app.post('/api/rd/projects/:projectId/documents', requireAuth, requireInvestorTab('rnd'), requireRDWrite, rdDocUpload.single('file'), async (req, res) => {
     try {
         if (!(await checkRdTables())) return res.status(503).json({ error: 'Not ready' });
         await ensureDiSubmissionsConstraints();
@@ -18768,7 +18880,7 @@ app.get('/api/rd/documents/:id/download', requireAuth, requireInvestorTab('rnd')
     } catch (err) { console.error('[RD] download error:', err.message); res.status(500).json({ error: 'Failed' }); }
 });
 
-app.delete('/api/rd/documents/:id', requireAuth, requireInvestorTab('rnd'), async (req, res) => {
+app.delete('/api/rd/documents/:id', requireAuth, requireInvestorTab('rnd'), requireRDWrite, async (req, res) => {
     try {
         if (!(await checkRdTables())) return res.status(404).json({ error: 'Not found' });
         const doc = await pool.query(`SELECT r2_key FROM rd_documents WHERE id=$1 AND workspace_id=$2`, [req.params.id, req.workspace_id]);
@@ -18798,20 +18910,33 @@ async function hasRdProjectIdCol() {
     return _rdProjectIdColChecked;
 }
 
+// Cached check for sop_reviewed_by column
+let _hasSopReviewedCol = null;
+async function hasSopReviewedCol() {
+    if (_hasSopReviewedCol !== null) return _hasSopReviewedCol;
+    try {
+        const r = await pool.query(`SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='di_submissions' AND column_name='sop_reviewed_by') AS ok`);
+        _hasSopReviewedCol = r.rows[0]?.ok === true;
+    } catch { _hasSopReviewedCol = false; }
+    return _hasSopReviewedCol;
+}
+
 // GET /api/rd/glp/files — List GLP submissions for Theralia workspace
 // Supports: researcher_id, rd_project_id, status filters
 app.get('/api/rd/glp/files', requireAuth, requireInvestorTabAny('rnd', 'glp_vision'), async (req, res) => {
     try {
         const ws = req.workspace_id;
         const hasProjectCol = await hasRdProjectIdCol();
+        const hasSopReview = await hasSopReviewedCol();
         const projectColSelect = hasProjectCol ? ', s.rd_project_id' : ", NULL as rd_project_id";
         const projectJoin = hasProjectCol && (await checkRdTables()) ? ' LEFT JOIN rd_projects rp ON s.rd_project_id = rp.id' : '';
         const projectNameCol = hasProjectCol && (await checkRdTables()) ? ', rp.title as project_title' : ", NULL as project_title";
+        const sopReviewCols = hasSopReview ? ', s.sop_reviewed_by, s.sop_reviewed_at' : ", NULL as sop_reviewed_by, NULL as sop_reviewed_at";
 
         let q = `SELECT s.submission_id, s.researcher_id, s.original_filename, s.file_type,
                         s.status, s.created_at, s.signed_at, s.r2_object_key,
                         s.revision_comments, s.approval_comment, s.discard_reason, s.discard_note,
-                        s.pi_dragon_seal,
+                        s.pi_dragon_seal, s.signer_name${sopReviewCols},
                         a.name as researcher_name, a.affiliation
                         ${projectColSelect}${projectNameCol}
                  FROM di_submissions s
@@ -18913,13 +19038,15 @@ async function isWorkspaceMaster(req) {
     } catch { return false; }
 }
 
-// POST /api/rd/glp/approve/:id — Master Founder / CSO approve
+// POST /api/rd/glp/approve/:id — CSO / COO approve
 app.post('/api/rd/glp/approve/:id', requireAuth, denyInvestors, async (req, res) => {
     try {
-        if (!(await isWorkspaceMaster(req))) return res.status(403).json({ error: 'Master authority required' });
-        // Delegate to performApproval
+        if (!(await canDecideGLP(req))) return res.status(403).json({ error: 'CSO or COO authority required' });
         const comment = req.body.approval_comment || null;
         await performApproval(req.params.id, comment);
+        const actorId = req.session.user?.researcher_id;
+        const pos = await getPositionForReq(req);
+        logAudit({ actor_id: actorId, actor_position: pos, action: 'glp_approve', target_type: 'submission', target_id: req.params.id, detail: { comment } });
         res.json({ success: true });
     } catch (err) {
         console.error('[RD-GLP] approve error:', err.message);
@@ -18927,13 +19054,16 @@ app.post('/api/rd/glp/approve/:id', requireAuth, denyInvestors, async (req, res)
     }
 });
 
-// POST /api/rd/glp/revise/:id — Master Founder / CSO revise
+// POST /api/rd/glp/revise/:id — CSO / COO revise
 app.post('/api/rd/glp/revise/:id', requireAuth, denyInvestors, async (req, res) => {
     try {
-        if (!(await isWorkspaceMaster(req))) return res.status(403).json({ error: 'Master authority required' });
+        if (!(await canDecideGLP(req))) return res.status(403).json({ error: 'CSO or COO authority required' });
         const comments = req.body.comments;
         if (!comments) return res.status(400).json({ error: 'Comments required' });
         await performRevision(req.params.id, comments);
+        const actorId = req.session.user?.researcher_id;
+        const pos = await getPositionForReq(req);
+        logAudit({ actor_id: actorId, actor_position: pos, action: 'glp_revise', target_type: 'submission', target_id: req.params.id, detail: { comments } });
         res.json({ success: true });
     } catch (err) {
         console.error('[RD-GLP] revise error:', err.message);
@@ -18941,10 +19071,10 @@ app.post('/api/rd/glp/revise/:id', requireAuth, denyInvestors, async (req, res) 
     }
 });
 
-// POST /api/rd/glp/discard/:id — Master Founder / CSO discard
+// POST /api/rd/glp/discard/:id — CSO / COO discard
 app.post('/api/rd/glp/discard/:id', requireAuth, denyInvestors, async (req, res) => {
     try {
-        if (!(await isWorkspaceMaster(req))) return res.status(403).json({ error: 'Master authority required' });
+        if (!(await canDecideGLP(req))) return res.status(403).json({ error: 'CSO or COO authority required' });
         const { reason, note } = req.body || {};
         const validReasons = ['Mistaken upload', 'Wrong category', 'Duplicate', 'Not admissible for GLP records', 'Other'];
         if (!reason || !validReasons.includes(reason)) return res.status(400).json({ error: 'Valid discard reason required' });
@@ -18954,7 +19084,6 @@ app.post('/api/rd/glp/discard/:id', requireAuth, denyInvestors, async (req, res)
         if (result.rows[0].status === 'DISCARDED') return res.status(409).json({ error: 'Already discarded' });
         if (result.rows[0].status === 'APPROVED') return res.status(409).json({ error: 'Cannot discard approved submission' });
 
-        // Delete R2 file (keep metadata for audit trail)
         const r2Key = result.rows[0].r2_object_key;
         if (r2Key) {
             try { await deleteFromR2(r2Key); } catch (e) { console.warn('[DISCARD] R2 delete warning:', e.message); }
@@ -18964,6 +19093,8 @@ app.post('/api/rd/glp/discard/:id', requireAuth, denyInvestors, async (req, res)
         await pool.query(
             `UPDATE di_submissions SET status='DISCARDED', r2_object_key=NULL, discarded_by=$1, discarded_at=NOW(), discard_reason=$2, discard_note=$3 WHERE submission_id=$4`,
             [piId, reason, note || null, req.params.id]);
+        const pos = await getPositionForReq(req);
+        logAudit({ actor_id: piId, actor_position: pos, action: 'glp_discard', target_type: 'submission', target_id: req.params.id, detail: { reason, note } });
         res.json({ success: true });
     } catch (err) {
         console.error('[RD-GLP] discard error:', err.message);
@@ -18971,7 +19102,7 @@ app.post('/api/rd/glp/discard/:id', requireAuth, denyInvestors, async (req, res)
     }
 });
 
-// POST /api/rd/glp/seal/:id — Toggle Toucan Seal (workspace master only)
+// POST /api/rd/glp/seal/:id — Toggle Toucan Seal (CSO / workspace master only)
 app.post('/api/rd/glp/seal/:id', requireAuth, denyInvestors, async (req, res) => {
     try {
         if (!(await isWorkspaceMaster(req))) return res.status(403).json({ error: 'Master authority required' });
@@ -18981,10 +19112,33 @@ app.post('/api/rd/glp/seal/:id', requireAuth, denyInvestors, async (req, res) =>
             'UPDATE di_submissions SET pi_dragon_seal = $1 WHERE submission_id = $2 AND workspace_id = $3 RETURNING submission_id, pi_dragon_seal',
             [enabled, req.params.id, req.workspace_id]);
         if (result.rows.length === 0) return res.status(404).json({ error: 'File not found' });
+        const actorId = req.session.user?.researcher_id;
+        logAudit({ actor_id: actorId, actor_position: await getPositionForReq(req), action: 'glp_seal_toggle', target_type: 'submission', target_id: req.params.id, detail: { enabled } });
         res.json({ success: true, pi_dragon_seal: result.rows[0].pi_dragon_seal });
     } catch (err) {
         console.error('[RD-GLP] seal toggle error:', err.message);
         res.status(500).json({ error: 'Failed to toggle seal' });
+    }
+});
+
+// POST /api/rd/glp/coo-review/:id — COO marks submission as reviewed (SOP governance stamp)
+app.post('/api/rd/glp/coo-review/:id', requireAuth, denyInvestors, async (req, res) => {
+    try {
+        const pos = await getPositionForReq(req);
+        if (pos !== 'coo' && !(await isWorkspaceMaster(req))) {
+            return res.status(403).json({ error: 'COO or CSO authority required' });
+        }
+        const actorId = req.session.user?.researcher_id;
+        const r = await pool.query(
+            `UPDATE di_submissions SET sop_reviewed_by = $1, sop_reviewed_at = NOW()
+             WHERE submission_id = $2 AND workspace_id = $3 RETURNING submission_id`,
+            [actorId, req.params.id, req.workspace_id]);
+        if (r.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+        logAudit({ actor_id: actorId, actor_position: pos, action: 'sop_coo_review', target_type: 'submission', target_id: req.params.id });
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[RD-GLP] COO review error:', err.message);
+        res.status(500).json({ error: err.message || 'Failed' });
     }
 });
 
@@ -19312,6 +19466,7 @@ app.post('/api/theralia/users', requireCSO, async (req, res) => {
         }
 
         console.log(`[THERALIA-UC] User ${researcher_id} created by CSO ${req.session.user.researcher_id}`);
+        logAudit({ actor_id: req.session.user.researcher_id, actor_position: 'cso', action: 'user_create', target_type: 'user', target_id: researcher_id, detail: { name, role: wsRole } });
         res.json({ success: true, researcher_id, name, role: wsRole });
     } catch (err) {
         console.error('[THERALIA-UC] Create user error:', err);
@@ -19478,6 +19633,7 @@ app.post('/api/theralia/users/:id/reset-password', requireCSO, async (req, res) 
             [id]
         );
 
+        logAudit({ actor_id: req.session.user.researcher_id, actor_position: 'cso', action: 'user_password_reset', target_type: 'user', target_id: id });
         console.log(`[THERALIA-UC] Password reset for ${id} by CSO ${req.session.user.researcher_id}`);
         res.json({ success: true, message: `Password reset required for ${userResult.rows[0].name} on next login` });
     } catch (err) {
@@ -19523,6 +19679,7 @@ app.put('/api/theralia/users/:id/remove', requireCSO, async (req, res) => {
             );
         }
         await logLifecycleEvent(null, { researcher_id: id, action: 'REMOVED', performed_by: actor });
+        logAudit({ actor_id: actor, actor_position: 'cso', action: 'user_remove', target_type: 'user', target_id: id });
         console.log(`[THERALIA-UC] User ${id} removed by ${actor}`);
         res.json({ success: true });
     } catch (err) {
@@ -19558,6 +19715,7 @@ app.put('/api/theralia/users/:id/reinstate', requireCSO, async (req, res) => {
         ).catch(() => {});
 
         await logLifecycleEvent(null, { researcher_id: id, action: 'REINSTATED', performed_by: actor });
+        logAudit({ actor_id: actor, actor_position: 'cso', action: 'user_reinstate', target_type: 'user', target_id: id });
         console.log(`[THERALIA-UC] User ${id} reinstated by ${actor}`);
         res.json({ success: true });
     } catch (err) {
@@ -19634,6 +19792,7 @@ app.delete('/api/theralia/users/:id/delete-permanently', requireCSO, async (req,
         );
 
         await client.query('COMMIT');
+        logAudit({ actor_id: actor, actor_position: 'cso', action: 'user_delete_permanently', target_type: 'user', target_id: id, detail: { reason: reason.trim() } });
         console.log(`[THERALIA-UC] User ${id} permanently deleted by ${actor}: ${reason.trim()}`);
         res.json({ success: true });
     } catch (err) {
@@ -19661,6 +19820,7 @@ app.post('/api/theralia/users/:id/reset-code', requireCSO, async (req, res) => {
             [id]
         );
         await logLifecycleEvent(null, { researcher_id: id, action: 'CODE_RESET', performed_by: actor });
+        logAudit({ actor_id: actor, actor_position: 'cso', action: 'investor_code_reset', target_type: 'user', target_id: id });
         console.log(`[THERALIA-UC] Code reset for ${id} by ${actor}`);
         res.json({ success: true, message: 'Access code reset. A new code will be generated on the next investor access flow.' });
     } catch (err) {
@@ -19697,6 +19857,7 @@ app.put('/api/theralia/users/:id/upgrade-to-password', requireCSO, async (req, r
         ).catch(() => {}); // no-op if no di_users row
 
         await logLifecycleEvent(null, { researcher_id: id, action: 'UPGRADED_TO_PASSWORD', performed_by: actor });
+        logAudit({ actor_id: actor, actor_position: 'cso', action: 'investor_upgrade_to_password', target_type: 'user', target_id: id });
         console.log(`[THERALIA-UC] ${id} upgraded to PASSWORD mode by ${actor}`);
         res.json({ success: true, message: 'Investor upgraded to password access. They will be prompted to set a password on next login.' });
     } catch (err) {
@@ -19741,6 +19902,7 @@ app.put('/api/theralia/users/:id/investor-permissions', requireCSO, async (req, 
             return res.status(404).json({ error: 'User not found in Theralia workspace' });
         }
 
+        logAudit({ actor_id: actorId, actor_position: 'cso', action: 'investor_permissions_update', target_type: 'user', target_id: id, detail: sanitized });
         console.log(`[THERALIA-UC] Investor permissions updated for ${id} by CSO ${actorId}: ${JSON.stringify(sanitized)}`);
         res.json({ success: true, investor_tab_permissions: result.rows[0].investor_tab_permissions });
     } catch (err) {
@@ -19752,6 +19914,106 @@ app.put('/api/theralia/users/:id/investor-permissions', requireCSO, async (req, 
 // GET /api/theralia/investor-optional-tabs — List optional investor tabs (dynamic discovery)
 app.get('/api/theralia/investor-optional-tabs', requireCSO, async (req, res) => {
     res.json({ success: true, tabs: INVESTOR_TABS });
+});
+
+// =====================================================
+// THERALIA GOVERNANCE — CLEARANCE & AUDIT
+// =====================================================
+
+// GET /api/theralia/users/:id/clearance — Read clearance config (CSO only)
+app.get('/api/theralia/users/:id/clearance', requireCSO, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const wsRes = await pool.query("SELECT id FROM workspaces WHERE slug = 'theralia'");
+        if (wsRes.rows.length === 0) return res.status(500).json({ error: 'Workspace not found' });
+        const r = await pool.query(
+            `SELECT wu.clearance_config, wu.workspace_position, wu.role
+             FROM workspace_users wu WHERE wu.workspace_id = $1 AND wu.user_id = $2`,
+            [wsRes.rows[0].id, id]);
+        if (r.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+        const pos = (r.rows[0].workspace_position || '').toLowerCase();
+        const defaults = GOVERNANCE_DEFAULTS[pos] || {};
+        const stored = r.rows[0].clearance_config || {};
+        res.json({ success: true, position: pos, defaults, stored, effective: { ...defaults, ...stored } });
+    } catch (err) {
+        console.error('[GOVERNANCE] Clearance read error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// PUT /api/theralia/users/:id/clearance — Update clearance config (CSO only)
+app.put('/api/theralia/users/:id/clearance', requireCSO, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { clearance_config } = req.body;
+        if (!clearance_config || typeof clearance_config !== 'object') {
+            return res.status(400).json({ error: 'clearance_config object required' });
+        }
+        // Validate keys and values
+        const VALID_MODULES = ['dashboard','company','rnd','sop','glp','inventory','training','finance','investors','investroom','user_control','audit'];
+        const VALID_LEVELS = ['hidden','view','edit'];
+        const VALID_UC = ['hidden','investors_only','full'];
+        const sanitized = {};
+        for (const key of VALID_MODULES) {
+            if (clearance_config[key] !== undefined) {
+                if (key === 'user_control') {
+                    if (VALID_UC.includes(clearance_config[key])) sanitized[key] = clearance_config[key];
+                } else {
+                    if (VALID_LEVELS.includes(clearance_config[key])) sanitized[key] = clearance_config[key];
+                }
+            }
+        }
+        const wsRes = await pool.query("SELECT id FROM workspaces WHERE slug = 'theralia'");
+        if (wsRes.rows.length === 0) return res.status(500).json({ error: 'Workspace not found' });
+        const r = await pool.query(
+            `UPDATE workspace_users SET clearance_config = $1, updated_at = NOW()
+             WHERE workspace_id = $2 AND user_id = $3
+             RETURNING user_id, clearance_config`,
+            [JSON.stringify(sanitized), wsRes.rows[0].id, id]);
+        if (r.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+        const actorId = req.session.user.researcher_id;
+        logAudit({ actor_id: actorId, actor_position: 'cso', action: 'clearance_update', target_type: 'user', target_id: id, detail: sanitized });
+        console.log(`[GOVERNANCE] Clearance updated for ${id} by CSO ${actorId}`);
+        res.json({ success: true, clearance_config: r.rows[0].clearance_config });
+    } catch (err) {
+        console.error('[GOVERNANCE] Clearance update error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/theralia/governance-defaults — Return default clearance templates per position
+app.get('/api/theralia/governance-defaults', requireCSO, async (req, res) => {
+    res.json({ success: true, defaults: GOVERNANCE_DEFAULTS });
+});
+
+// GET /api/theralia/audit-log — CSO-only audit trail viewer
+app.get('/api/theralia/audit-log', requireCSO, async (req, res) => {
+    try {
+        const { action, actor, module: mod, limit: lim, offset: off } = req.query;
+        let q = `SELECT * FROM theralia_audit_log WHERE 1=1`;
+        const params = [];
+        let pIdx = 0;
+        if (action) { pIdx++; params.push(action); q += ` AND action = $${pIdx}`; }
+        if (actor) { pIdx++; params.push(actor); q += ` AND actor_id = $${pIdx}`; }
+        if (mod) { pIdx++; params.push(mod); q += ` AND (action LIKE $${pIdx} || '_%' OR detail->>'module' = $${pIdx})`; }
+        pIdx++; params.push(parseInt(lim) || 100);
+        q += ` ORDER BY created_at DESC LIMIT $${pIdx}`;
+        pIdx++; params.push(parseInt(off) || 0);
+        q += ` OFFSET $${pIdx}`;
+        const r = await pool.query(q, params);
+        // Also get total count for pagination
+        let countQ = `SELECT COUNT(*) FROM theralia_audit_log WHERE 1=1`;
+        const countParams = [];
+        let cpIdx = 0;
+        if (action) { cpIdx++; countParams.push(action); countQ += ` AND action = $${cpIdx}`; }
+        if (actor) { cpIdx++; countParams.push(actor); countQ += ` AND actor_id = $${cpIdx}`; }
+        if (mod) { cpIdx++; countParams.push(mod); countQ += ` AND (action LIKE $${cpIdx} || '_%' OR detail->>'module' = $${cpIdx})`; }
+        const countR = await pool.query(countQ, countParams);
+        res.json({ success: true, entries: r.rows, total: parseInt(countR.rows[0].count) });
+    } catch (err) {
+        console.error('[GOVERNANCE] Audit log error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
 });
 
 // POST /api/investor/log-tab-access — Lightweight tab access tracking for investors

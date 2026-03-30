@@ -1118,6 +1118,31 @@ async function migrate() {
             // Backfill: set approved_at from updated_at for already-approved requests
             `UPDATE di_purchase_requests SET approved_at = updated_at WHERE status = 'APPROVED' AND approved_at IS NULL`,
 
+            // ==================== GOVERNANCE & CLEARANCE ====================
+
+            // Per-user Theralia module clearance config (CSO-managed)
+            `ALTER TABLE workspace_users ADD COLUMN IF NOT EXISTS clearance_config JSONB DEFAULT '{}'::jsonb`,
+
+            // COO review stamps on submissions (SOP governance)
+            `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS sop_reviewed_by VARCHAR(50)`,
+            `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS sop_reviewed_at TIMESTAMPTZ`,
+
+            // Theralia audit trail table
+            `CREATE TABLE IF NOT EXISTS theralia_audit_log (
+                id BIGSERIAL PRIMARY KEY,
+                workspace_id VARCHAR(30) NOT NULL DEFAULT 'theralia',
+                actor_id VARCHAR(50) NOT NULL,
+                actor_position VARCHAR(30),
+                action TEXT NOT NULL,
+                target_type VARCHAR(30),
+                target_id TEXT,
+                detail JSONB,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )`,
+            `CREATE INDEX IF NOT EXISTS idx_theralia_audit_actor ON theralia_audit_log(actor_id)`,
+            `CREATE INDEX IF NOT EXISTS idx_theralia_audit_action ON theralia_audit_log(action)`,
+            `CREATE INDEX IF NOT EXISTS idx_theralia_audit_created ON theralia_audit_log(created_at)`,
+
         ];
 
         for (const sql of migrations) {
