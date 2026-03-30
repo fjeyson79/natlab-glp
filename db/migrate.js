@@ -1017,6 +1017,33 @@ async function migrate() {
             `CREATE INDEX IF NOT EXISTS idx_ips_user ON investor_portal_sessions(workspace_id, researcher_id)`,
             `CREATE INDEX IF NOT EXISTS idx_ips_active ON investor_portal_sessions(ended_at) WHERE ended_at IS NULL`,
 
+            // ==================== PURCHASE ORDER BATCHES ====================
+
+            // Snapshot table for consolidated purchase order batches
+            `CREATE TABLE IF NOT EXISTS di_purchase_batches (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                affiliation VARCHAR(10) NOT NULL CHECK (affiliation IN ('LiU', 'UNAV')),
+                created_by VARCHAR(50) NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                status VARCHAR(20) NOT NULL DEFAULT 'CREATED' CHECK (status IN ('CREATED', 'SENT', 'COMPLETED')),
+                subject TEXT,
+                email_body TEXT,
+                item_count INTEGER NOT NULL DEFAULT 0,
+                total_amount NUMERIC(12,2) NOT NULL DEFAULT 0,
+                currency VARCHAR(10)
+            )`,
+            `CREATE INDEX IF NOT EXISTS idx_di_purchase_batches_aff ON di_purchase_batches(affiliation)`,
+            `CREATE INDEX IF NOT EXISTS idx_di_purchase_batches_created ON di_purchase_batches(created_at)`,
+
+            // Link items to their batch snapshot (NULL = still pending for next batch)
+            `ALTER TABLE di_purchase_items ADD COLUMN IF NOT EXISTS purchase_batch_id UUID REFERENCES di_purchase_batches(id)`,
+            `CREATE INDEX IF NOT EXISTS idx_di_purchase_items_batch ON di_purchase_items(purchase_batch_id)`,
+
+            // Approval timestamp on requests (for accepted item search)
+            `ALTER TABLE di_purchase_requests ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ`,
+            // Backfill: set approved_at from updated_at for already-approved requests
+            `UPDATE di_purchase_requests SET approved_at = updated_at WHERE status = 'APPROVED' AND approved_at IS NULL`,
+
         ];
 
         for (const sql of migrations) {

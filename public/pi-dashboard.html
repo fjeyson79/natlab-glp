@@ -3386,9 +3386,12 @@
                 <h2>Consolidated Purchase Email</h2>
             </div>
             <div class="panel-content">
-                <div style="display:flex;gap:10px;margin-bottom:10px;">
-                    <button class="btn btn-sm btn-primary" onclick="loadConsolidatedEmail('LiU')">Load LiU</button>
-                    <button class="btn btn-sm btn-primary" onclick="loadConsolidatedEmail('UNAV')">Load UNAV</button>
+                <div style="display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
+                    <button class="btn btn-sm btn-primary" onclick="createOrderBatch('LiU')">Load LiU</button>
+                    <button class="btn btn-sm btn-primary" onclick="createOrderBatch('UNAV')">Load UNAV</button>
+                    <span style="border-left:1px solid #ddd;margin:0 4px;"></span>
+                    <button class="btn btn-sm" style="background:#f0f0f0;color:#555;border:1px solid #ccc;" onclick="searchAcceptedItems('LiU')">Search LiU Accepted</button>
+                    <button class="btn btn-sm" style="background:#f0f0f0;color:#555;border:1px solid #ccc;" onclick="searchAcceptedItems('UNAV')">Search UNAV Accepted</button>
                 </div>
                 <div id="prConsolidatedArea" style="display:none;">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
@@ -3397,7 +3400,15 @@
                     </div>
                     <pre id="prConsolidatedText" style="background:#f8f9fa;padding:12px;border-radius:4px;font-size:12px;white-space:pre-wrap;max-height:400px;overflow-y:auto;border:1px solid #ddd;"></pre>
                 </div>
-                <div id="prConsolidatedEmpty" style="display:none;text-align:center;color:#999;padding:10px;">No approved items to order for this affiliation.</div>
+                <div id="prConsolidatedEmpty" style="display:none;text-align:center;color:#999;padding:10px;"></div>
+                <!-- Accepted items search results (read-only) -->
+                <div id="prAcceptedArea" style="display:none;margin-top:12px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                        <strong id="prAcceptedTitle"></strong>
+                        <button class="btn btn-sm" style="background:#f0f0f0;color:#555;border:1px solid #ccc;" onclick="document.getElementById('prAcceptedArea').style.display='none';">Close</button>
+                    </div>
+                    <div id="prAcceptedList" style="max-height:400px;overflow-y:auto;"></div>
+                </div>
             </div>
         </div>
 
@@ -11339,46 +11350,35 @@ function dicBuildPdfViewerSrc(fileUrl) {
 
         let consolidatedEmailText = '';
 
-        async function loadConsolidatedEmail(affiliation) {
+        async function createOrderBatch(affiliation) {
             const area = document.getElementById('prConsolidatedArea');
             const emptyEl = document.getElementById('prConsolidatedEmpty');
             area.style.display = 'none';
             emptyEl.style.display = 'none';
 
             try {
-                const resp = await fetch(`/api/di/purchases/consolidated?affiliation=${affiliation}`, { credentials: 'include' });
+                const resp = await fetch('/api/di/purchases/consolidated/create-batch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ affiliation })
+                });
                 if (!resp.ok) throw new Error('Failed');
                 const data = await resp.json();
-                const items = data.items || [];
 
-                if (items.length === 0) {
+                if (data.empty) {
+                    emptyEl.textContent = 'No approved items pending for ' + affiliation + '.';
                     emptyEl.style.display = 'block';
                     return;
                 }
 
-                const subject = `NATLAB purchase request (${affiliation})`;
-                let body = `Hi,\n\nPlease find below the products that have been approved and need to be ordered as soon as possible.\n\nThank you,\nBest,\nFrank\n\n`;
-
-                items.forEach(i => {
-                    body += `- Vendor: ${i.vendor_company}\n`;
-                    body += `  Product name: ${i.product_name}\n`;
-                    body += `  Catalog ID: ${i.catalog_id}\n`;
-                    body += `  Quantity: ${i.quantity}\n`;
-                    body += `  Unit price: ${Number(i.unit_price).toFixed(2)} ${i.currency}\n`;
-                    body += `  Item total: ${Number(i.item_total).toFixed(2)} ${i.currency}\n`;
-                    body += `  Product link: ${i.product_link}\n`;
-                    body += `  Requested by: ${i.requester_name || i.requester_id}\n`;
-                    body += `  Request ID: ${i.request_id.substring(0, 8)}\n\n`;
-                });
-
-                body += `---\nTotal: ${data.total.toFixed(2)} ${data.currency}`;
-
-                consolidatedEmailText = `Subject: ${subject}\n\n${body}`;
-                document.getElementById('prConsolidatedTitle').textContent = subject;
+                consolidatedEmailText = data.email_text;
+                document.getElementById('prConsolidatedTitle').textContent =
+                    `Order batch created — ${data.items.length} items (${affiliation})`;
                 document.getElementById('prConsolidatedText').textContent = consolidatedEmailText;
                 area.style.display = 'block';
             } catch (err) {
-                alert('Error loading consolidated data: ' + err.message);
+                alert('Error creating order batch: ' + err.message);
             }
         }
 
@@ -11389,13 +11389,66 @@ function dicBuildPdfViewerSrc(fileUrl) {
                 btn.textContent = 'Copied!';
                 setTimeout(() => btn.textContent = orig, 2000);
             }).catch(() => {
-                // Fallback: select text
                 const pre = document.getElementById('prConsolidatedText');
                 const range = document.createRange();
                 range.selectNodeContents(pre);
                 window.getSelection().removeAllRanges();
                 window.getSelection().addRange(range);
             });
+        }
+
+        async function searchAcceptedItems(affiliation) {
+            const daysStr = prompt(`Search ${affiliation} accepted items — how many days back? (minimum 1)`);
+            if (daysStr === null) return;
+            const days = parseInt(daysStr, 10);
+            if (!days || days < 1) {
+                alert('Please enter a valid number of days (minimum 1).');
+                return;
+            }
+
+            const acceptedArea = document.getElementById('prAcceptedArea');
+            const acceptedList = document.getElementById('prAcceptedList');
+            acceptedArea.style.display = 'none';
+            acceptedList.innerHTML = '<div style="text-align:center;padding:10px;"><div class="spinner"></div></div>';
+
+            try {
+                const resp = await fetch(`/api/di/purchases/consolidated/search-accepted?affiliation=${affiliation}&days=${days}`, { credentials: 'include' });
+                if (!resp.ok) throw new Error('Failed');
+                const data = await resp.json();
+                const items = data.items || [];
+
+                document.getElementById('prAcceptedTitle').textContent =
+                    `${affiliation} accepted items — last ${days} day${days > 1 ? 's' : ''} (${items.length} found)`;
+
+                if (items.length === 0) {
+                    acceptedList.innerHTML = '<div style="text-align:center;color:#999;padding:10px;">No accepted items found in this period.</div>';
+                } else {
+                    let html = '<table class="data-table" style="font-size:12px;width:100%;"><thead><tr>' +
+                        '<th>Product</th><th>Vendor</th><th>Qty</th><th>Total</th><th>Requester</th><th>Approved</th><th>Status</th>' +
+                        '</tr></thead><tbody>';
+                    items.forEach(i => {
+                        const approvedDate = i.approved_at ? new Date(i.approved_at).toLocaleDateString() : '—';
+                        const statusLabel = i.batched
+                            ? '<span style="color:#28a745;font-weight:600;">Batched</span>' + (i.batch_date ? ' (' + new Date(i.batch_date).toLocaleDateString() + ')' : '')
+                            : '<span style="color:#e67e22;font-weight:600;">Pending</span>';
+                        html += `<tr>
+                            <td title="${(i.catalog_id || '').replace(/"/g, '&quot;')}">${i.product_name}</td>
+                            <td>${i.vendor_company}</td>
+                            <td>${i.quantity}</td>
+                            <td>${Number(i.item_total).toFixed(2)} ${i.currency}</td>
+                            <td>${i.requester_name || i.requester_id}</td>
+                            <td>${approvedDate}</td>
+                            <td>${statusLabel}</td>
+                        </tr>`;
+                    });
+                    html += '</tbody></table>';
+                    acceptedList.innerHTML = html;
+                }
+
+                acceptedArea.style.display = 'block';
+            } catch (err) {
+                alert('Error searching accepted items: ' + err.message);
+            }
         }
 
         // =====================================================

@@ -7215,7 +7215,7 @@ app.post('/api/di/purchases/:id/approve', requirePI, async (req, res) => {
     try {
         const { id } = req.params;
         const result = await pool.query(
-            `UPDATE di_purchase_requests SET status = 'APPROVED', updated_at = CURRENT_TIMESTAMP
+            `UPDATE di_purchase_requests SET status = 'APPROVED', updated_at = CURRENT_TIMESTAMP, approved_at = CURRENT_TIMESTAMP
              WHERE id = $1 AND status = 'SUBMITTED' RETURNING id`,
             [id]
         );
@@ -7640,6 +7640,7 @@ app.get('/api/di/purchases/consolidated', requirePI, async (req, res) => {
              LEFT JOIN di_allowlist a ON a.researcher_id = r.requester_id
              WHERE r.status = 'APPROVED' AND r.affiliation = $1 AND i.ordered_at IS NULL
                AND (i.item_status = 'Active' OR i.item_status IS NULL)
+               AND i.purchase_batch_id IS NULL
              ORDER BY r.created_at, i.created_at`,
             [affiliation]
         );
@@ -7652,6 +7653,140 @@ app.get('/api/di/purchases/consolidated', requirePI, async (req, res) => {
         res.json({ success: true, affiliation, items, total, currency });
     } catch (err) {
         console.error('[PURCHASES] Consolidated error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/di/purchases/consolidated/create-batch — PI creates an order snapshot from pending approved items
+app.post('/api/di/purchases/consolidated/create-batch', requirePI, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { affiliation } = req.body;
+        if (!affiliation || !['LiU', 'UNAV'].includes(affiliation)) {
+            return res.status(400).json({ error: 'affiliation must be LiU or UNAV' });
+        }
+
+        await client.query('BEGIN');
+
+        // Select and lock approved unbatched items for this site
+        const itemsResult = await client.query(
+            `SELECT i.id, i.vendor_company, i.product_name, i.catalog_id, i.product_link,
+                    i.quantity, i.unit_price, i.item_total, i.currency, i.internal_order_number,
+                    r.id AS request_id, r.requester_id,
+                    a.name AS requester_name
+             FROM di_purchase_items i
+             JOIN di_purchase_requests r ON r.id = i.request_id
+             LEFT JOIN di_allowlist a ON a.researcher_id = r.requester_id
+             WHERE r.status = 'APPROVED' AND r.affiliation = $1 AND i.ordered_at IS NULL
+               AND (i.item_status = 'Active' OR i.item_status IS NULL)
+               AND i.purchase_batch_id IS NULL
+             ORDER BY r.created_at, i.created_at
+             FOR UPDATE OF i`,
+            [affiliation]
+        );
+
+        const items = itemsResult.rows;
+        if (items.length === 0) {
+            await client.query('ROLLBACK');
+            return res.json({ success: true, empty: true, message: 'No approved items pending for ' + affiliation });
+        }
+
+        // Build email text
+        const subject = `NATLAB purchase request (${affiliation})`;
+        let body = `Hi,\n\nPlease find below the products that have been approved and need to be ordered as soon as possible.\n\nThank you,\nBest,\nFrank\n\n`;
+        items.forEach(i => {
+            body += `- Vendor: ${i.vendor_company}\n`;
+            body += `  Product name: ${i.product_name}\n`;
+            body += `  Catalog ID: ${i.catalog_id}\n`;
+            body += `  Quantity: ${i.quantity}\n`;
+            body += `  Unit price: ${Number(i.unit_price).toFixed(2)} ${i.currency}\n`;
+            body += `  Item total: ${Number(i.item_total).toFixed(2)} ${i.currency}\n`;
+            body += `  Product link: ${i.product_link}\n`;
+            body += `  Requested by: ${i.requester_name || i.requester_id}\n`;
+            body += `  Request ID: ${i.request_id.substring(0, 8)}\n\n`;
+        });
+        const total = Math.round(items.reduce((s, i) => s + Number(i.item_total), 0) * 100) / 100;
+        const currency = items[0].currency;
+        body += `---\nTotal: ${total.toFixed(2)} ${currency}`;
+        const emailText = `Subject: ${subject}\n\n${body}`;
+
+        // Create batch row
+        const actorId = req.session.user.researcher_id || req.session.user.name || 'PI';
+        const batchResult = await client.query(
+            `INSERT INTO di_purchase_batches (affiliation, created_by, subject, email_body, item_count, total_amount, currency)
+             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, created_at`,
+            [affiliation, actorId, subject, emailText, items.length, total, currency]
+        );
+        const batch = batchResult.rows[0];
+
+        // Assign items to this batch
+        const itemIds = items.map(i => i.id);
+        await client.query(
+            `UPDATE di_purchase_items SET purchase_batch_id = $1 WHERE id = ANY($2)`,
+            [batch.id, itemIds]
+        );
+
+        await client.query('COMMIT');
+        console.log(`[PURCHASES] Batch ${batch.id} created for ${affiliation}: ${items.length} items, total ${total} ${currency}`);
+
+        res.json({
+            success: true,
+            batch_id: batch.id,
+            created_at: batch.created_at,
+            affiliation,
+            items,
+            total,
+            currency,
+            email_text: emailText
+        });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('[PURCHASES] Create batch error:', err);
+        res.status(500).json({ error: 'Server error' });
+    } finally {
+        client.release();
+    }
+});
+
+// GET /api/di/purchases/consolidated/search-accepted — PI searches accepted items within N days
+app.get('/api/di/purchases/consolidated/search-accepted', requirePI, async (req, res) => {
+    try {
+        const { affiliation, days } = req.query;
+        if (!affiliation || !['LiU', 'UNAV'].includes(affiliation)) {
+            return res.status(400).json({ error: 'affiliation must be LiU or UNAV' });
+        }
+        const daysBack = parseInt(days, 10);
+        if (!daysBack || daysBack < 1) {
+            return res.status(400).json({ error: 'days must be a positive integer (minimum 1)' });
+        }
+
+        const result = await pool.query(
+            `SELECT i.id, i.vendor_company, i.product_name, i.catalog_id, i.product_link,
+                    i.quantity, i.unit_price, i.item_total, i.currency,
+                    i.internal_order_number, i.ordered_at, i.purchase_batch_id,
+                    r.id AS request_id, r.requester_id, r.approved_at,
+                    a.name AS requester_name,
+                    b.created_at AS batch_created_at
+             FROM di_purchase_items i
+             JOIN di_purchase_requests r ON r.id = i.request_id
+             LEFT JOIN di_allowlist a ON a.researcher_id = r.requester_id
+             LEFT JOIN di_purchase_batches b ON b.id = i.purchase_batch_id
+             WHERE r.status = 'APPROVED' AND r.affiliation = $1
+               AND (i.item_status = 'Active' OR i.item_status IS NULL)
+               AND COALESCE(r.approved_at, r.updated_at) >= NOW() - ($2 || ' days')::INTERVAL
+             ORDER BY COALESCE(r.approved_at, r.updated_at) DESC, i.created_at`,
+            [affiliation, String(daysBack)]
+        );
+
+        const items = result.rows.map(row => ({
+            ...row,
+            batched: row.purchase_batch_id !== null,
+            batch_date: row.batch_created_at || null
+        }));
+
+        res.json({ success: true, affiliation, days: daysBack, items });
+    } catch (err) {
+        console.error('[PURCHASES] Search accepted error:', err);
         res.status(500).json({ error: 'Server error' });
     }
 });
