@@ -19174,10 +19174,14 @@ app.post('/api/investor/request-meeting', async (req, res) => {
 // GET /api/theralia/users — List all Theralia workspace users (internal + investors)
 app.get('/api/theralia/users', requireCSO, async (req, res) => {
     try {
+        const hasClearance = await checkWuClearanceCols();
+        const statusCol = hasClearance
+            ? `wu.status as ws_status`
+            : `CASE WHEN wu.is_active THEN 'active' ELSE 'removed' END as ws_status`;
         const result = await pool.query(
             `SELECT a.researcher_id, a.name, a.institution_email, a.affiliation,
-                    COALESCE(a.role, 'researcher') as base_role, a.active,
-                    wu.role as ws_role, wu.is_active as ws_active, wu.status as ws_status,
+                    COALESCE(a.role, 'researcher') as base_role, COALESCE(a.active, true) as active,
+                    wu.role as ws_role, wu.is_active as ws_active, ${statusCol},
                     wu.workspace_position, wu.custom_position_title,
                     wu.investor_tab_permissions, wu.security_mode,
                     wu.investor_organization, wu.investor_notes, wu.investor_interest_level,
@@ -19255,12 +19259,22 @@ app.post('/api/theralia/users', requireCSO, async (req, res) => {
         const wsId = wsRes.rows[0].id;
 
         // Create workspace membership
-        await pool.query(
-            `INSERT INTO workspace_users (workspace_id, user_id, role, is_active, status, membership_class, clearance_profile)
-             VALUES ($1, $2, $3, true, 'active', 'core', 'standard')
-             ON CONFLICT (workspace_id, user_id) DO NOTHING`,
-            [wsId, researcher_id, wsRole]
-        );
+        const hasClearance = await checkWuClearanceCols();
+        if (hasClearance) {
+            await pool.query(
+                `INSERT INTO workspace_users (workspace_id, user_id, role, is_active, status, membership_class, clearance_profile)
+                 VALUES ($1, $2, $3, true, 'active', 'core', 'standard')
+                 ON CONFLICT (workspace_id, user_id) DO NOTHING`,
+                [wsId, researcher_id, wsRole]
+            );
+        } else {
+            await pool.query(
+                `INSERT INTO workspace_users (workspace_id, user_id, role, is_active)
+                 VALUES ($1, $2, $3, true)
+                 ON CONFLICT (workspace_id, user_id) DO NOTHING`,
+                [wsId, researcher_id, wsRole]
+            );
+        }
 
         // Set position if founder role
         if (wsRole === 'founder' && workspace_position) {

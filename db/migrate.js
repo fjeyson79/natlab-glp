@@ -1046,6 +1046,33 @@ async function migrate() {
             `CREATE INDEX IF NOT EXISTS idx_inv_tab_log_user ON investor_tab_access_log(researcher_id, accessed_at)`,
             `CREATE INDEX IF NOT EXISTS idx_inv_tab_log_tab ON investor_tab_access_log(tab_key, accessed_at)`,
 
+            // ==================== USER CLEARANCE & LIFECYCLE ====================
+
+            // Governance columns from migration 041 (membership_class, clearance_profile, status, etc.)
+            `ALTER TABLE workspace_users ADD COLUMN IF NOT EXISTS membership_class TEXT DEFAULT 'core'`,
+            `ALTER TABLE workspace_users ADD COLUMN IF NOT EXISTS clearance_profile TEXT DEFAULT 'standard'`,
+            `ALTER TABLE workspace_users ADD COLUMN IF NOT EXISTS scientific_access BOOLEAN DEFAULT TRUE`,
+            `ALTER TABLE workspace_users ADD COLUMN IF NOT EXISTS operational_access BOOLEAN DEFAULT TRUE`,
+            `ALTER TABLE workspace_users ADD COLUMN IF NOT EXISTS administrative_access BOOLEAN DEFAULT FALSE`,
+            `ALTER TABLE workspace_users ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active'`,
+            `ALTER TABLE workspace_users ADD COLUMN IF NOT EXISTS notes TEXT`,
+
+            // Security mode for investor access (CODE = 4-digit code, PASSWORD = full password)
+            `ALTER TABLE workspace_users ADD COLUMN IF NOT EXISTS security_mode TEXT NOT NULL DEFAULT 'CODE' CHECK (security_mode IN ('CODE', 'PASSWORD'))`,
+
+            // Lifecycle audit log for user removal/deletion events
+            `CREATE TABLE IF NOT EXISTS user_lifecycle_log (
+                id BIGSERIAL PRIMARY KEY,
+                researcher_id VARCHAR(50) NOT NULL,
+                workspace_id VARCHAR(30) NOT NULL DEFAULT 'theralia',
+                action TEXT NOT NULL,
+                reason TEXT,
+                performed_by VARCHAR(50) NOT NULL,
+                performed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                snapshot_json JSONB
+            )`,
+            `CREATE INDEX IF NOT EXISTS idx_user_lifecycle_log_user ON user_lifecycle_log(researcher_id)`,
+
             // ==================== INVESTOR ACCESS CODES ====================
 
             `CREATE TABLE IF NOT EXISTS investor_access_codes (

@@ -8400,7 +8400,7 @@
         function ucRenderInternal() {
             const tbody = document.getElementById('ucInternalBody');
             const filtered = _ucInternalUsers.filter(u => {
-                const isActive = u.active && u.ws_active;
+                const isActive = u.active !== false && u.ws_active !== false && (u.ws_status || 'active') !== 'removed';
                 return _ucInternalFilter === 'active' ? isActive : !isActive;
             });
             document.getElementById('ucInternalCount').textContent = filtered.length;
@@ -8410,7 +8410,7 @@
                 return;
             }
             tbody.innerHTML = filtered.map(u => {
-                const isActive = u.active && u.ws_active;
+                const isActive = u.active !== false && u.ws_active !== false && (u.ws_status || 'active') !== 'removed';
                 const role = u.ws_role || u.base_role || 'custom';
                 let posLabel = '';
                 if (u.workspace_position && u.workspace_position.toLowerCase() !== 'investor') {
@@ -8449,7 +8449,7 @@
         function ucRenderInvestors() {
             const container = document.getElementById('ucInvestorCards');
             const filtered = _ucInvestors.filter(inv => {
-                const isActive = inv.active && inv.ws_active;
+                const isActive = inv.active !== false && inv.ws_active !== false && (inv.ws_status || 'active') !== 'removed';
                 return _ucInvestorFilter === 'active' ? isActive : !isActive;
             });
             document.getElementById('ucInvestorCount').textContent = filtered.length;
@@ -8459,7 +8459,7 @@
                 return;
             }
             container.innerHTML = filtered.map(inv => {
-                const isActive = inv.active && inv.ws_active;
+                const isActive = inv.active !== false && inv.ws_active !== false && (inv.ws_status || 'active') !== 'removed';
                 const perms = inv.investor_tab_permissions || {};
                 const secMode = (inv.security_mode || 'CODE').toUpperCase();
                 const esc = s => (s || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
