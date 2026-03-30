@@ -404,15 +404,34 @@ function requirePI(req, res, next) {
 }
 
 // CSO MIDDLEWARE - requires workspace_position = CSO (InvestRoom update mode)
-function requireCSO(req, res, next) {
+async function requireCSO(req, res, next) {
     if (!req.session.user) {
         return res.status(401).json({ error: 'Not authenticated' });
     }
-    const pos = (req.session.user.workspace_position || '').toLowerCase();
-    if (pos !== 'cso') {
-        return res.status(403).json({ error: 'Access denied. CSO role required.' });
+    try {
+        const hasWu = await checkWuTable();
+        const hasPos = hasWu && await checkStartupPositionCols();
+        if (!hasWu || !hasPos) {
+            return res.status(403).json({ error: 'Access denied. CSO role required.' });
+        }
+        const wsSlug = req.query.workspace || req.headers['x-workspace-slug'] || 'theralia';
+        const result = await pool.query(
+            `SELECT wu.workspace_position
+             FROM workspace_users wu
+             JOIN workspaces w ON w.id = wu.workspace_id
+             WHERE wu.user_id = $1 AND w.slug = $2 AND wu.is_active = TRUE
+             LIMIT 1`,
+            [req.session.user.researcher_id, wsSlug]
+        );
+        const pos = (result.rows[0]?.workspace_position || '' ).toLowerCase();
+        if (pos !== 'cso') {
+            return res.status(403).json({ error: 'Access denied. CSO role required.' });
+        }
+        next();
+    } catch (err) {
+        console.error('[requireCSO] Workspace lookup error:', err.message);
+        return res.status(500).json({ error: 'Server error' });
     }
-    next();
 }
 
 // SUPERVISOR MIDDLEWARE - requires user to be a Supervisor
