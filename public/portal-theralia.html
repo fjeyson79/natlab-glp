@@ -4088,7 +4088,7 @@
 
                 _userPosition = (user.workspace_position || '').toLowerCase();
                 let roleText = (user.role || '').toUpperCase();
-                if (user.workspace_position) {
+                if (user.workspace_position && user.workspace_position.toLowerCase() !== (user.role || '').toLowerCase()) {
                     roleText += ' \u00B7 ' + user.workspace_position.toUpperCase();
                 }
                 document.getElementById('roleBadge').textContent = roleText;
