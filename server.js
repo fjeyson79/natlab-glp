@@ -737,7 +737,76 @@ async function checkStartupPositionCols() {
 }
 
 // Valid startup positions (COMPANY workspaces only)
-const VALID_STARTUP_POSITIONS = ['CEO', 'CSO', 'CTO', 'COO', 'Advisor'];
+const VALID_STARTUP_POSITIONS = ['CEO', 'CSO', 'CTO', 'COO', 'Advisor', 'Custom'];
+
+// Canonical investor optional tab definitions — single source of truth
+const INVESTOR_TABS = [
+    { key: 'company', label: 'Company' },
+    { key: 'rnd', label: 'R&D' },
+    { key: 'glp_vision', label: 'GLP Vision' }
+];
+const INVESTOR_TAB_KEYS = INVESTOR_TABS.map(t => t.key);
+const DEFAULT_INVESTOR_PERMISSIONS = Object.fromEntries(INVESTOR_TAB_KEYS.map(k => [k, false]));
+
+// Middleware: enforce investor tab permission for a specific tab key
+// Usage: requireInvestorTab('company') — blocks investor-role users who lack that tab permission
+function requireInvestorTab(tabKey) {
+    return async (req, res, next) => {
+        if (!req.session.user) return res.status(401).json({ error: 'Not authenticated' });
+        const userRole = (req.session.user.role || '').toLowerCase();
+        const wsPos = (req.session.user.workspace_position || '').toLowerCase();
+        // Only enforce for investor-role users; founders/admins pass through
+        if (userRole !== 'investor' && wsPos !== 'investor') return next();
+        try {
+            const result = await pool.query(
+                `SELECT wu.investor_tab_permissions
+                 FROM workspace_users wu JOIN workspaces w ON w.id = wu.workspace_id
+                 WHERE wu.user_id = $1 AND w.slug = 'theralia' AND wu.is_active = TRUE`,
+                [req.session.user.researcher_id]
+            );
+            const perms = result.rows[0]?.investor_tab_permissions || {};
+            if (perms[tabKey] === true) return next();
+        } catch (err) {
+            console.error('[INV-TAB-GUARD] Error:', err.message);
+        }
+        return res.status(403).json({ error: 'Access denied — tab not activated for your account' });
+    };
+}
+
+// Middleware: allow if ANY of the listed tab keys is granted
+// Usage: requireInvestorTabAny('rnd', 'glp_vision') — for endpoints shared between tabs
+function requireInvestorTabAny(...tabKeys) {
+    return async (req, res, next) => {
+        if (!req.session.user) return res.status(401).json({ error: 'Not authenticated' });
+        const userRole = (req.session.user.role || '').toLowerCase();
+        const wsPos = (req.session.user.workspace_position || '').toLowerCase();
+        if (userRole !== 'investor' && wsPos !== 'investor') return next();
+        try {
+            const result = await pool.query(
+                `SELECT wu.investor_tab_permissions
+                 FROM workspace_users wu JOIN workspaces w ON w.id = wu.workspace_id
+                 WHERE wu.user_id = $1 AND w.slug = 'theralia' AND wu.is_active = TRUE`,
+                [req.session.user.researcher_id]
+            );
+            const perms = result.rows[0]?.investor_tab_permissions || {};
+            if (tabKeys.some(k => perms[k] === true)) return next();
+        } catch (err) {
+            console.error('[INV-TAB-GUARD] Error:', err.message);
+        }
+        return res.status(403).json({ error: 'Access denied — tab not activated for your account' });
+    };
+}
+
+// Middleware: block all investor-role users unconditionally (for internal-only write actions)
+function denyInvestors(req, res, next) {
+    if (!req.session.user) return res.status(401).json({ error: 'Not authenticated' });
+    const userRole = (req.session.user.role || '').toLowerCase();
+    const wsPos = (req.session.user.workspace_position || '').toLowerCase();
+    if (userRole === 'investor' || wsPos === 'investor') {
+        return res.status(403).json({ error: 'Access denied — investors cannot perform workflow actions' });
+    }
+    return next();
+}
 
 // Phase 1.4: Compute effective access flags for a user in a workspace
 // Combines role, affiliation, clearance_profile, membership_class, and manual module selections.
@@ -1254,7 +1323,7 @@ app.get('/api/di/me', requireAuth, async (req, res) => {
             if (hasWu) {
                 const posCols = hasPos ? ', wu.workspace_position, wu.is_workspace_master, wu.can_manage_users, wu.can_manage_workspace, wu.can_manage_portal, wu.view_management_tab' : '';
                 const result = await pool.query(
-                    `SELECT wu.role${posCols}
+                    `SELECT wu.role${posCols}, wu.investor_tab_permissions, wu.custom_position_title
                      FROM workspace_users wu
                      JOIN workspaces w ON w.id = wu.workspace_id
                      WHERE wu.user_id = $1 AND w.slug = $2 AND wu.is_active = TRUE`,
@@ -1265,6 +1334,7 @@ app.get('/api/di/me', requireAuth, async (req, res) => {
                     base.role = row.role || base.role;
                     if (hasPos) {
                         base.workspace_position = row.workspace_position || null;
+                        base.custom_position_title = row.custom_position_title || null;
                         // Authority flags — internal, never shown in role display
                         base._authority = {
                             is_workspace_master: row.is_workspace_master || false,
@@ -1273,6 +1343,10 @@ app.get('/api/di/me', requireAuth, async (req, res) => {
                             can_manage_portal: row.can_manage_portal || false,
                             view_management_tab: row.view_management_tab || false
                         };
+                    }
+                    // Investor tab permissions (for investor-role users)
+                    if (row.investor_tab_permissions) {
+                        base.investor_tab_permissions = row.investor_tab_permissions;
                     }
                 }
             }
@@ -17960,7 +18034,7 @@ const companyDocUpload = multer({
 });
 
 // GET current statement for a section
-app.get('/api/company/statements/:sectionKey', requireAuth, async (req, res) => {
+app.get('/api/company/statements/:sectionKey', requireAuth, requireInvestorTab('company'), async (req, res) => {
     try {
         if (!(await checkCompanyTables())) return res.json({ statement: null });
         const ws = req.query.ws || 'theralia';
@@ -17978,7 +18052,7 @@ app.get('/api/company/statements/:sectionKey', requireAuth, async (req, res) => 
 });
 
 // GET archived versions for a section
-app.get('/api/company/statements/:sectionKey/history', requireAuth, async (req, res) => {
+app.get('/api/company/statements/:sectionKey/history', requireAuth, requireInvestorTab('company'), async (req, res) => {
     try {
         if (!(await checkCompanyTables())) return res.json({ history: [] });
         const ws = req.query.ws || 'theralia';
@@ -17997,7 +18071,7 @@ app.get('/api/company/statements/:sectionKey/history', requireAuth, async (req, 
 });
 
 // POST save new statement (archives existing current)
-app.post('/api/company/statements/:sectionKey', requireAuth, async (req, res) => {
+app.post('/api/company/statements/:sectionKey', requireAuth, requireInvestorTab('company'), async (req, res) => {
     try {
         if (!(await checkCompanyTables())) return res.status(503).json({ error: 'Company tables not ready' });
         const ws = req.query.ws || 'theralia';
@@ -18036,7 +18110,7 @@ app.post('/api/company/statements/:sectionKey', requireAuth, async (req, res) =>
 });
 
 // POST restore an archived version as current
-app.post('/api/company/statements/:sectionKey/restore/:id', requireAuth, async (req, res) => {
+app.post('/api/company/statements/:sectionKey/restore/:id', requireAuth, requireInvestorTab('company'), async (req, res) => {
     try {
         if (!(await checkCompanyTables())) return res.status(503).json({ error: 'Company tables not ready' });
         const ws = req.query.ws || 'theralia';
@@ -18082,7 +18156,7 @@ app.post('/api/company/statements/:sectionKey/restore/:id', requireAuth, async (
 });
 
 // GET documents for a section
-app.get('/api/company/documents/:sectionKey', requireAuth, async (req, res) => {
+app.get('/api/company/documents/:sectionKey', requireAuth, requireInvestorTab('company'), async (req, res) => {
     try {
         if (!(await checkCompanyTables())) return res.json({ documents: [] });
         const ws = req.query.ws || 'theralia';
@@ -18101,7 +18175,7 @@ app.get('/api/company/documents/:sectionKey', requireAuth, async (req, res) => {
 });
 
 // POST upload document
-app.post('/api/company/documents/:sectionKey/upload', requireAuth, companyDocUpload.single('file'), async (req, res) => {
+app.post('/api/company/documents/:sectionKey/upload', requireAuth, requireInvestorTab('company'), companyDocUpload.single('file'), async (req, res) => {
     try {
         if (!(await checkCompanyTables())) return res.status(503).json({ error: 'Company tables not ready' });
         if (!req.file) return res.status(400).json({ error: 'No file provided' });
@@ -18128,7 +18202,7 @@ app.post('/api/company/documents/:sectionKey/upload', requireAuth, companyDocUpl
 });
 
 // GET download document
-app.get('/api/company/documents/:id/download', requireAuth, async (req, res) => {
+app.get('/api/company/documents/:id/download', requireAuth, requireInvestorTab('company'), async (req, res) => {
     try {
         if (!(await checkCompanyTables())) return res.status(503).json({ error: 'Not available' });
         const doc = await pool.query(
@@ -18148,7 +18222,7 @@ app.get('/api/company/documents/:id/download', requireAuth, async (req, res) => 
 });
 
 // DELETE document
-app.delete('/api/company/documents/:id', requireAuth, async (req, res) => {
+app.delete('/api/company/documents/:id', requireAuth, requireInvestorTab('company'), async (req, res) => {
     try {
         if (!(await checkCompanyTables())) return res.status(503).json({ error: 'Not available' });
         const doc = await pool.query(
@@ -18180,7 +18254,7 @@ async function checkCompanySectionDefs() {
 }
 
 // GET custom sections
-app.get('/api/company/sections', requireAuth, async (req, res) => {
+app.get('/api/company/sections', requireAuth, requireInvestorTab('company'), async (req, res) => {
     try {
         if (!(await checkCompanySectionDefs())) return res.json({ sections: [] });
         const ws = req.query.ws || 'theralia';
@@ -18197,7 +18271,7 @@ app.get('/api/company/sections', requireAuth, async (req, res) => {
 });
 
 // POST create custom section
-app.post('/api/company/sections', requireAuth, async (req, res) => {
+app.post('/api/company/sections', requireAuth, requireInvestorTab('company'), async (req, res) => {
     try {
         if (!(await checkCompanySectionDefs())) return res.status(503).json({ error: 'Section definitions table not ready' });
         const ws = req.query.ws || 'theralia';
@@ -18290,7 +18364,7 @@ const rdDocUpload = multer({
 });
 
 // ---- Overview counts ----
-app.get('/api/rd/overview', requireAuth, async (req, res) => {
+app.get('/api/rd/overview', requireAuth, requireInvestorTab('rnd'), async (req, res) => {
     try {
         if (!(await checkRdTables())) return res.json({ projects: 0, co_development: 0, collaborations: 0, partners: 0, grants: 0, upcoming: 0, programs: 0 });
         const ws = req.workspace_id;
@@ -18311,7 +18385,7 @@ app.get('/api/rd/overview', requireAuth, async (req, res) => {
 });
 
 // ---- Programs CRUD ----
-app.get('/api/rd/programs', requireAuth, async (req, res) => {
+app.get('/api/rd/programs', requireAuth, requireInvestorTab('rnd'), async (req, res) => {
     try {
         if (!(await checkRdTables())) return res.json({ programs: [] });
         const r = await pool.query(
@@ -18322,7 +18396,7 @@ app.get('/api/rd/programs', requireAuth, async (req, res) => {
     } catch (err) { console.error('[RD] programs error:', err.message); res.status(500).json({ error: 'Failed' }); }
 });
 
-app.post('/api/rd/programs', requireAuth, async (req, res) => {
+app.post('/api/rd/programs', requireAuth, requireInvestorTab('rnd'), async (req, res) => {
     try {
         if (!(await checkRdTables())) return res.status(503).json({ error: 'Not ready' });
         const { program_name, description, status, strategic_goal, upcoming_deliverable } = req.body;
@@ -18335,7 +18409,7 @@ app.post('/api/rd/programs', requireAuth, async (req, res) => {
     } catch (err) { console.error('[RD] create program error:', err.message); res.status(500).json({ error: 'Failed' }); }
 });
 
-app.patch('/api/rd/programs/:id', requireAuth, async (req, res) => {
+app.patch('/api/rd/programs/:id', requireAuth, requireInvestorTab('rnd'), async (req, res) => {
     try {
         if (!(await checkRdTables())) return res.status(503).json({ error: 'Not ready' });
         const { program_name, description, status, strategic_goal, upcoming_deliverable } = req.body;
@@ -18351,7 +18425,7 @@ app.patch('/api/rd/programs/:id', requireAuth, async (req, res) => {
 });
 
 // ---- Projects CRUD ----
-app.get('/api/rd/projects', requireAuth, async (req, res) => {
+app.get('/api/rd/projects', requireAuth, requireInvestorTab('rnd'), async (req, res) => {
     try {
         if (!(await checkRdTables())) return res.json({ projects: [] });
         const typeFilter = req.query.type;
@@ -18366,7 +18440,7 @@ app.get('/api/rd/projects', requireAuth, async (req, res) => {
     } catch (err) { console.error('[RD] projects error:', err.message); res.status(500).json({ error: 'Failed' }); }
 });
 
-app.get('/api/rd/projects/:id', requireAuth, async (req, res) => {
+app.get('/api/rd/projects/:id', requireAuth, requireInvestorTab('rnd'), async (req, res) => {
     try {
         if (!(await checkRdTables())) return res.status(404).json({ error: 'Not found' });
         const r = await pool.query(
@@ -18377,7 +18451,7 @@ app.get('/api/rd/projects/:id', requireAuth, async (req, res) => {
     } catch (err) { console.error('[RD] project detail error:', err.message); res.status(500).json({ error: 'Failed' }); }
 });
 
-app.post('/api/rd/projects', requireAuth, async (req, res) => {
+app.post('/api/rd/projects', requireAuth, requireInvestorTab('rnd'), async (req, res) => {
     try {
         if (!(await checkRdTables())) return res.status(503).json({ error: 'Not ready' });
         const b = req.body;
@@ -18393,7 +18467,7 @@ app.post('/api/rd/projects', requireAuth, async (req, res) => {
     } catch (err) { console.error('[RD] create project error:', err.message); res.status(500).json({ error: 'Failed' }); }
 });
 
-app.patch('/api/rd/projects/:id', requireAuth, async (req, res) => {
+app.patch('/api/rd/projects/:id', requireAuth, requireInvestorTab('rnd'), async (req, res) => {
     try {
         if (!(await checkRdTables())) return res.status(503).json({ error: 'Not ready' });
         const b = req.body;
@@ -18414,7 +18488,7 @@ app.patch('/api/rd/projects/:id', requireAuth, async (req, res) => {
 });
 
 // ---- Partners CRUD ----
-app.get('/api/rd/partners', requireAuth, async (req, res) => {
+app.get('/api/rd/partners', requireAuth, requireInvestorTab('rnd'), async (req, res) => {
     try {
         if (!(await checkRdTables())) return res.json({ partners: [] });
         const r = await pool.query(
@@ -18424,7 +18498,7 @@ app.get('/api/rd/partners', requireAuth, async (req, res) => {
     } catch (err) { console.error('[RD] partners error:', err.message); res.status(500).json({ error: 'Failed' }); }
 });
 
-app.post('/api/rd/partners', requireAuth, async (req, res) => {
+app.post('/api/rd/partners', requireAuth, requireInvestorTab('rnd'), async (req, res) => {
     try {
         if (!(await checkRdTables())) return res.status(503).json({ error: 'Not ready' });
         const b = req.body;
@@ -18437,7 +18511,7 @@ app.post('/api/rd/partners', requireAuth, async (req, res) => {
     } catch (err) { console.error('[RD] create partner error:', err.message); res.status(500).json({ error: 'Failed' }); }
 });
 
-app.patch('/api/rd/partners/:id', requireAuth, async (req, res) => {
+app.patch('/api/rd/partners/:id', requireAuth, requireInvestorTab('rnd'), async (req, res) => {
     try {
         if (!(await checkRdTables())) return res.status(503).json({ error: 'Not ready' });
         const b = req.body;
@@ -18454,7 +18528,7 @@ app.patch('/api/rd/partners/:id', requireAuth, async (req, res) => {
 });
 
 // ---- Grants CRUD ----
-app.get('/api/rd/grants', requireAuth, async (req, res) => {
+app.get('/api/rd/grants', requireAuth, requireInvestorTab('rnd'), async (req, res) => {
     try {
         if (!(await checkRdTables())) return res.json({ grants: [] });
         const r = await pool.query(
@@ -18465,7 +18539,7 @@ app.get('/api/rd/grants', requireAuth, async (req, res) => {
     } catch (err) { console.error('[RD] grants error:', err.message); res.status(500).json({ error: 'Failed' }); }
 });
 
-app.post('/api/rd/grants', requireAuth, async (req, res) => {
+app.post('/api/rd/grants', requireAuth, requireInvestorTab('rnd'), async (req, res) => {
     try {
         if (!(await checkRdTables())) return res.status(503).json({ error: 'Not ready' });
         const b = req.body;
@@ -18479,7 +18553,7 @@ app.post('/api/rd/grants', requireAuth, async (req, res) => {
     } catch (err) { console.error('[RD] create grant error:', err.message); res.status(500).json({ error: 'Failed' }); }
 });
 
-app.patch('/api/rd/grants/:id', requireAuth, async (req, res) => {
+app.patch('/api/rd/grants/:id', requireAuth, requireInvestorTab('rnd'), async (req, res) => {
     try {
         if (!(await checkRdTables())) return res.status(503).json({ error: 'Not ready' });
         const b = req.body;
@@ -18566,14 +18640,14 @@ async function resolveProjectDocuments(workspace_id, project_id) {
 }
 
 // ---- Project Documents ----
-app.get('/api/rd/projects/:projectId/documents', requireAuth, async (req, res) => {
+app.get('/api/rd/projects/:projectId/documents', requireAuth, requireInvestorTab('rnd'), async (req, res) => {
     try {
         const docs = await resolveProjectDocuments(req.workspace_id, req.params.projectId);
         res.json({ documents: docs });
     } catch (err) { console.error('[RD] docs error:', err.message); res.status(500).json({ error: 'Failed to load documents' }); }
 });
 
-app.post('/api/rd/projects/:projectId/documents', requireAuth, rdDocUpload.single('file'), async (req, res) => {
+app.post('/api/rd/projects/:projectId/documents', requireAuth, requireInvestorTab('rnd'), rdDocUpload.single('file'), async (req, res) => {
     try {
         if (!(await checkRdTables())) return res.status(503).json({ error: 'Not ready' });
         await ensureDiSubmissionsConstraints();
@@ -18646,7 +18720,7 @@ app.post('/api/rd/projects/:projectId/documents', requireAuth, rdDocUpload.singl
     }
 });
 
-app.get('/api/rd/documents/:id/download', requireAuth, async (req, res) => {
+app.get('/api/rd/documents/:id/download', requireAuth, requireInvestorTab('rnd'), async (req, res) => {
     try {
         if (!(await checkRdTables())) return res.status(404).json({ error: 'Not found' });
         const doc = await pool.query(`SELECT r2_key, filename, file_type FROM rd_documents WHERE id=$1`, [req.params.id]);
@@ -18659,7 +18733,7 @@ app.get('/api/rd/documents/:id/download', requireAuth, async (req, res) => {
     } catch (err) { console.error('[RD] download error:', err.message); res.status(500).json({ error: 'Failed' }); }
 });
 
-app.delete('/api/rd/documents/:id', requireAuth, async (req, res) => {
+app.delete('/api/rd/documents/:id', requireAuth, requireInvestorTab('rnd'), async (req, res) => {
     try {
         if (!(await checkRdTables())) return res.status(404).json({ error: 'Not found' });
         const doc = await pool.query(`SELECT r2_key FROM rd_documents WHERE id=$1 AND workspace_id=$2`, [req.params.id, req.workspace_id]);
@@ -18691,7 +18765,7 @@ async function hasRdProjectIdCol() {
 
 // GET /api/rd/glp/files — List GLP submissions for Theralia workspace
 // Supports: researcher_id, rd_project_id, status filters
-app.get('/api/rd/glp/files', requireAuth, async (req, res) => {
+app.get('/api/rd/glp/files', requireAuth, requireInvestorTabAny('rnd', 'glp_vision'), async (req, res) => {
     try {
         const ws = req.workspace_id;
         const hasProjectCol = await hasRdProjectIdCol();
@@ -18739,7 +18813,7 @@ app.get('/api/rd/glp/files', requireAuth, async (req, res) => {
 });
 
 // GET /api/rd/glp/researchers — List researchers with submissions in this workspace
-app.get('/api/rd/glp/researchers', requireAuth, async (req, res) => {
+app.get('/api/rd/glp/researchers', requireAuth, requireInvestorTabAny('rnd', 'glp_vision'), async (req, res) => {
     try {
         const ws = req.workspace_id;
         // Only show researchers who are members of this workspace AND have submissions in it
@@ -18771,7 +18845,7 @@ app.get('/api/rd/glp/researchers', requireAuth, async (req, res) => {
 });
 
 // GET /api/rd/glp/projects — List R&D projects with GLP file counts
-app.get('/api/rd/glp/projects', requireAuth, async (req, res) => {
+app.get('/api/rd/glp/projects', requireAuth, requireInvestorTabAny('rnd', 'glp_vision'), async (req, res) => {
     try {
         if (!(await checkRdTables()) || !(await hasRdProjectIdCol())) return res.json({ projects: [] });
         const ws = req.workspace_id;
@@ -18805,7 +18879,7 @@ async function isWorkspaceMaster(req) {
 }
 
 // POST /api/rd/glp/approve/:id — Master Founder / CSO approve
-app.post('/api/rd/glp/approve/:id', requireAuth, async (req, res) => {
+app.post('/api/rd/glp/approve/:id', requireAuth, denyInvestors, async (req, res) => {
     try {
         if (!(await isWorkspaceMaster(req))) return res.status(403).json({ error: 'Master authority required' });
         // Delegate to performApproval
@@ -18819,7 +18893,7 @@ app.post('/api/rd/glp/approve/:id', requireAuth, async (req, res) => {
 });
 
 // POST /api/rd/glp/revise/:id — Master Founder / CSO revise
-app.post('/api/rd/glp/revise/:id', requireAuth, async (req, res) => {
+app.post('/api/rd/glp/revise/:id', requireAuth, denyInvestors, async (req, res) => {
     try {
         if (!(await isWorkspaceMaster(req))) return res.status(403).json({ error: 'Master authority required' });
         const comments = req.body.comments;
@@ -18833,7 +18907,7 @@ app.post('/api/rd/glp/revise/:id', requireAuth, async (req, res) => {
 });
 
 // POST /api/rd/glp/discard/:id — Master Founder / CSO discard
-app.post('/api/rd/glp/discard/:id', requireAuth, async (req, res) => {
+app.post('/api/rd/glp/discard/:id', requireAuth, denyInvestors, async (req, res) => {
     try {
         if (!(await isWorkspaceMaster(req))) return res.status(403).json({ error: 'Master authority required' });
         const { reason, note } = req.body || {};
@@ -18863,7 +18937,7 @@ app.post('/api/rd/glp/discard/:id', requireAuth, async (req, res) => {
 });
 
 // POST /api/rd/glp/seal/:id — Toggle Toucan Seal (workspace master only)
-app.post('/api/rd/glp/seal/:id', requireAuth, async (req, res) => {
+app.post('/api/rd/glp/seal/:id', requireAuth, denyInvestors, async (req, res) => {
     try {
         if (!(await isWorkspaceMaster(req))) return res.status(403).json({ error: 'Master authority required' });
         const { enabled } = req.body;
@@ -18880,7 +18954,7 @@ app.post('/api/rd/glp/seal/:id', requireAuth, async (req, res) => {
 });
 
 // GET /api/rd/glp/my-revision-items — Files under revision for the current researcher
-app.get('/api/rd/glp/my-revision-items', requireAuth, async (req, res) => {
+app.get('/api/rd/glp/my-revision-items', requireAuth, requireInvestorTabAny('rnd', 'glp_vision'), async (req, res) => {
     try {
         const userId = req.session.user?.researcher_id;
         if (!userId) return res.json({ items: [] });
@@ -19056,6 +19130,381 @@ app.post('/api/investor/request-meeting', async (req, res) => {
 
 // =====================================================
 // END INVESTOR MEETING BOOKING
+// =====================================================
+
+// =====================================================
+// THERALIA USER CONTROL (CSO-ONLY)
+// =====================================================
+
+// GET /api/theralia/users — List all Theralia workspace users (internal + investors)
+app.get('/api/theralia/users', requireCSO, async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT a.researcher_id, a.name, a.institution_email, a.affiliation,
+                    COALESCE(a.role, 'researcher') as base_role, a.active,
+                    wu.role as ws_role, wu.is_active as ws_active, wu.status as ws_status,
+                    wu.workspace_position, wu.custom_position_title,
+                    wu.investor_tab_permissions,
+                    wu.investor_organization, wu.investor_notes, wu.investor_interest_level,
+                    wu.investor_permissions_updated_at, wu.investor_permissions_updated_by,
+                    u.last_login
+             FROM workspace_users wu
+             JOIN workspaces w ON w.id = wu.workspace_id
+             JOIN di_allowlist a ON a.researcher_id = wu.user_id
+             LEFT JOIN di_users u ON a.researcher_id = u.researcher_id
+             WHERE w.slug = 'theralia'
+             ORDER BY wu.role, a.name`
+        );
+
+        // Split into internal vs investors
+        const internal = [];
+        const investors = [];
+        for (const row of result.rows) {
+            if (row.ws_role === 'investor') {
+                investors.push(row);
+            } else {
+                internal.push(row);
+            }
+        }
+
+        res.json({ success: true, internal, investors });
+    } catch (err) {
+        console.error('[THERALIA-UC] List users error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/theralia/users — Create a new Theralia user (internal or investor)
+app.post('/api/theralia/users', requireCSO, async (req, res) => {
+    try {
+        const { name, institution_email, researcher_id: rawId, role, workspace_position, custom_position_title } = req.body;
+
+        if (!name || !institution_email || !rawId) {
+            return res.status(400).json({ error: 'Name, email, and researcher ID are required' });
+        }
+
+        const researcher_id = rawId.trim();
+        if (!/^[A-Za-z0-9_]{2,12}$/.test(researcher_id)) {
+            return res.status(400).json({ error: 'Researcher ID must be 2-12 characters (letters, numbers, underscore)' });
+        }
+
+        const emailLower = institution_email.toLowerCase().trim();
+
+        const VALID_ROLES = ['founder', 'admin', 'r_and_d', 'advisor', 'investor', 'custom'];
+        const wsRole = role || 'r_and_d';
+        if (!VALID_ROLES.includes(wsRole)) {
+            return res.status(400).json({ error: 'Invalid role' });
+        }
+
+        // Check uniqueness
+        const dup = await pool.query(
+            'SELECT researcher_id FROM di_allowlist WHERE LOWER(researcher_id) = LOWER($1) OR LOWER(institution_email) = $2',
+            [researcher_id, emailLower]
+        );
+        if (dup.rows.length > 0) {
+            return res.status(409).json({ error: 'User with this ID or email already exists' });
+        }
+
+        // Insert into allowlist
+        await pool.query(
+            `INSERT INTO di_allowlist (researcher_id, name, institution_email, affiliation, role, active, created_at)
+             VALUES ($1, $2, $3, 'EXTERNAL', $4, true, CURRENT_TIMESTAMP)`,
+            [researcher_id, name, emailLower, wsRole]
+        );
+
+        // Get Theralia workspace ID
+        const wsRes = await pool.query("SELECT id FROM workspaces WHERE slug = 'theralia'");
+        if (wsRes.rows.length === 0) {
+            return res.status(500).json({ error: 'Theralia workspace not found' });
+        }
+        const wsId = wsRes.rows[0].id;
+
+        // Create workspace membership
+        await pool.query(
+            `INSERT INTO workspace_users (workspace_id, user_id, role, is_active, status, membership_class, clearance_profile)
+             VALUES ($1, $2, $3, true, 'active', 'core', 'standard')
+             ON CONFLICT (workspace_id, user_id) DO NOTHING`,
+            [wsId, researcher_id, wsRole]
+        );
+
+        // Set position if founder role
+        if (wsRole === 'founder' && workspace_position) {
+            const posUpper = workspace_position.toUpperCase();
+            if (VALID_STARTUP_POSITIONS.map(p => p.toUpperCase()).includes(posUpper)) {
+                await pool.query(
+                    `UPDATE workspace_users SET workspace_position = $1 WHERE workspace_id = $2 AND user_id = $3`,
+                    [workspace_position, wsId, researcher_id]
+                );
+                if (posUpper === 'CUSTOM' && custom_position_title) {
+                    await pool.query(
+                        `UPDATE workspace_users SET custom_position_title = $1 WHERE workspace_id = $2 AND user_id = $3`,
+                        [custom_position_title, wsId, researcher_id]
+                    );
+                }
+            }
+        }
+
+        // Set investor as workspace_position + initialize permissions
+        if (wsRole === 'investor') {
+            await pool.query(
+                `UPDATE workspace_users
+                 SET workspace_position = 'investor',
+                     investor_tab_permissions = $3,
+                     investor_organization = $4,
+                     investor_notes = $5,
+                     investor_interest_level = $6
+                 WHERE workspace_id = $1 AND user_id = $2`,
+                [wsId, researcher_id,
+                 JSON.stringify(DEFAULT_INVESTOR_PERMISSIONS),
+                 req.body.organization || null,
+                 req.body.notes || null,
+                 ['low', 'medium', 'high'].includes(req.body.interest_level) ? req.body.interest_level : null]
+            );
+        }
+
+        console.log(`[THERALIA-UC] User ${researcher_id} created by CSO ${req.session.user.researcher_id}`);
+        res.json({ success: true, researcher_id, name, role: wsRole });
+    } catch (err) {
+        console.error('[THERALIA-UC] Create user error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// PUT /api/theralia/users/:id — Edit a Theralia user
+app.put('/api/theralia/users/:id', requireCSO, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name, institution_email, role, workspace_position, custom_position_title,
+                organization, notes, interest_level } = req.body;
+
+        // Update allowlist fields
+        const updates = [];
+        const vals = [];
+        let idx = 1;
+        if (name) { updates.push(`name = $${idx++}`); vals.push(name); }
+        if (institution_email) { updates.push(`institution_email = $${idx++}`); vals.push(institution_email.toLowerCase().trim()); }
+        if (role) { updates.push(`role = $${idx++}`); vals.push(role); }
+
+        if (updates.length > 0) {
+            vals.push(id);
+            await pool.query(
+                `UPDATE di_allowlist SET ${updates.join(', ')} WHERE researcher_id = $${idx}`,
+                vals
+            );
+        }
+
+        // Update workspace role & position
+        const wsRes = await pool.query("SELECT id FROM workspaces WHERE slug = 'theralia'");
+        if (wsRes.rows.length > 0) {
+            const wsId = wsRes.rows[0].id;
+            if (role) {
+                await pool.query(
+                    `UPDATE workspace_users SET role = $1 WHERE workspace_id = $2 AND user_id = $3`,
+                    [role, wsId, id]
+                );
+                // Set investor position marker
+                if (role === 'investor') {
+                    await pool.query(
+                        `UPDATE workspace_users SET workspace_position = 'investor' WHERE workspace_id = $1 AND user_id = $2`,
+                        [wsId, id]
+                    );
+                }
+            }
+            if (workspace_position !== undefined) {
+                await pool.query(
+                    `UPDATE workspace_users SET workspace_position = $1 WHERE workspace_id = $2 AND user_id = $3`,
+                    [workspace_position || null, wsId, id]
+                );
+            }
+            if (custom_position_title !== undefined) {
+                await pool.query(
+                    `UPDATE workspace_users SET custom_position_title = $1 WHERE workspace_id = $2 AND user_id = $3`,
+                    [custom_position_title || null, wsId, id]
+                );
+            }
+            // Investor profile fields
+            if (organization !== undefined || notes !== undefined || interest_level !== undefined) {
+                await pool.query(
+                    `UPDATE workspace_users
+                     SET investor_organization = COALESCE($1, investor_organization),
+                         investor_notes = COALESCE($2, investor_notes),
+                         investor_interest_level = CASE WHEN $3::text IS NOT NULL THEN $3 ELSE investor_interest_level END
+                     WHERE workspace_id = $4 AND user_id = $5`,
+                    [organization !== undefined ? (organization || null) : null,
+                     notes !== undefined ? (notes || null) : null,
+                     interest_level !== undefined ? (['low', 'medium', 'high'].includes(interest_level) ? interest_level : null) : null,
+                     wsId, id]
+                );
+            }
+        }
+
+        console.log(`[THERALIA-UC] User ${id} updated by CSO ${req.session.user.researcher_id}`);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[THERALIA-UC] Edit user error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// PUT /api/theralia/users/:id/deactivate — Deactivate a Theralia user
+app.put('/api/theralia/users/:id/deactivate', requireCSO, async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (id === req.session.user.researcher_id) {
+            return res.status(400).json({ error: 'Cannot deactivate yourself' });
+        }
+
+        await pool.query(
+            `UPDATE di_allowlist SET active = false, deactivated_at = CURRENT_TIMESTAMP, deactivated_by = $1
+             WHERE researcher_id = $2`,
+            [req.session.user.researcher_id, id]
+        );
+
+        const wsRes = await pool.query("SELECT id FROM workspaces WHERE slug = 'theralia'");
+        if (wsRes.rows.length > 0) {
+            await pool.query(
+                `UPDATE workspace_users SET is_active = false, status = 'suspended'
+                 WHERE workspace_id = $1 AND user_id = $2`,
+                [wsRes.rows[0].id, id]
+            );
+        }
+
+        console.log(`[THERALIA-UC] User ${id} deactivated by CSO ${req.session.user.researcher_id}`);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[THERALIA-UC] Deactivate error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// PUT /api/theralia/users/:id/reactivate — Reactivate a Theralia user
+app.put('/api/theralia/users/:id/reactivate', requireCSO, async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        await pool.query(
+            `UPDATE di_allowlist SET active = true, deactivated_at = NULL, deactivated_by = NULL
+             WHERE researcher_id = $1`,
+            [id]
+        );
+
+        const wsRes = await pool.query("SELECT id FROM workspaces WHERE slug = 'theralia'");
+        if (wsRes.rows.length > 0) {
+            await pool.query(
+                `UPDATE workspace_users SET is_active = true, status = 'active'
+                 WHERE workspace_id = $1 AND user_id = $2`,
+                [wsRes.rows[0].id, id]
+            );
+        }
+
+        console.log(`[THERALIA-UC] User ${id} reactivated by CSO ${req.session.user.researcher_id}`);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[THERALIA-UC] Reactivate error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/theralia/users/:id/reset-password — Force password reset for Theralia user
+app.post('/api/theralia/users/:id/reset-password', requireCSO, async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const userResult = await pool.query(
+            `SELECT a.researcher_id, a.name, u.institution_email
+             FROM di_allowlist a
+             LEFT JOIN di_users u ON a.researcher_id = u.researcher_id
+             WHERE a.researcher_id = $1 AND a.active = true`,
+            [id]
+        );
+        if (userResult.rows.length === 0) {
+            return res.status(404).json({ error: 'User not found or inactive' });
+        }
+        if (!userResult.rows[0].institution_email) {
+            return res.status(400).json({ error: 'User has not registered yet' });
+        }
+
+        await pool.query(
+            `UPDATE di_users SET force_password_reset = true WHERE researcher_id = $1`,
+            [id]
+        );
+
+        console.log(`[THERALIA-UC] Password reset for ${id} by CSO ${req.session.user.researcher_id}`);
+        res.json({ success: true, message: `Password reset required for ${userResult.rows[0].name} on next login` });
+    } catch (err) {
+        console.error('[THERALIA-UC] Reset password error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// PUT /api/theralia/users/:id/investor-permissions — Set investor tab permissions
+app.put('/api/theralia/users/:id/investor-permissions', requireCSO, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { permissions } = req.body; // e.g. { company: true, rnd: false, glp_vision: true }
+
+        if (!permissions || typeof permissions !== 'object') {
+            return res.status(400).json({ error: 'permissions object required' });
+        }
+
+        // Sanitize: only allow known tab keys, coerce to boolean, fill missing with false
+        const sanitized = {};
+        for (const key of INVESTOR_TAB_KEYS) {
+            sanitized[key] = permissions[key] === true;
+        }
+
+        const wsRes = await pool.query("SELECT id FROM workspaces WHERE slug = 'theralia'");
+        if (wsRes.rows.length === 0) {
+            return res.status(500).json({ error: 'Theralia workspace not found' });
+        }
+
+        const actorId = req.session.user.researcher_id || 'CSO';
+        const result = await pool.query(
+            `UPDATE workspace_users
+             SET investor_tab_permissions = $1,
+                 investor_permissions_updated_at = NOW(),
+                 investor_permissions_updated_by = $4
+             WHERE workspace_id = $2 AND user_id = $3
+             RETURNING user_id, investor_tab_permissions`,
+            [JSON.stringify(sanitized), wsRes.rows[0].id, id, actorId]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'User not found in Theralia workspace' });
+        }
+
+        console.log(`[THERALIA-UC] Investor permissions updated for ${id} by CSO ${actorId}: ${JSON.stringify(sanitized)}`);
+        res.json({ success: true, investor_tab_permissions: result.rows[0].investor_tab_permissions });
+    } catch (err) {
+        console.error('[THERALIA-UC] Investor permissions error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/theralia/investor-optional-tabs — List optional investor tabs (dynamic discovery)
+app.get('/api/theralia/investor-optional-tabs', requireCSO, async (req, res) => {
+    res.json({ success: true, tabs: INVESTOR_TABS });
+});
+
+// POST /api/investor/log-tab-access — Lightweight tab access tracking for investors
+app.post('/api/investor/log-tab-access', requireAuth, async (req, res) => {
+    try {
+        const user = req.session.user;
+        const { tab_key } = req.body;
+        if (!tab_key || typeof tab_key !== 'string') return res.json({ ok: true, recorded: false });
+        await pool.query(
+            `INSERT INTO investor_tab_access_log (workspace_id, researcher_id, tab_key) VALUES ('theralia', $1, $2)`,
+            [user.researcher_id, tab_key]
+        );
+        res.json({ ok: true, recorded: true });
+    } catch (err) {
+        // Non-blocking — don't fail if table doesn't exist yet
+        res.json({ ok: true, recorded: false });
+    }
+});
+
+// =====================================================
+// END THERALIA USER CONTROL
 // =====================================================
 
 // =====================================================

@@ -57,6 +57,7 @@
         .tab-btn:hover { color: #c8c8cf; }
         .tab-btn.active { color: #ffffff; border-bottom-color: #ffffff; }
         .tab-btn.locked { color: #55555f; cursor: default; opacity: 0.5; }
+        .tab-btn.locked::after { content: '\1F512'; font-size: 10px; margin-left: 4px; }
         .tab-btn.locked:hover { color: #55555f; }
         .ir-locked-msg {
             max-width: 480px; margin: 80px auto; text-align: center; padding: 48px 32px;
@@ -2209,6 +2210,7 @@
         <button class="tab-btn" data-tab="finance">Finance</button>
         <button class="tab-btn" data-tab="investors">Investors</button>
         <button class="tab-btn" data-tab="investroom" id="irTabBtn" style="display:none;">InvestRoom</button>
+        <button class="tab-btn" data-tab="user-control" id="ucTabBtn" style="display:none;">User Control</button>
     </div>
 
     <div class="main">
@@ -3651,6 +3653,135 @@
             </div>
         </div>
 
+        <!-- ============================================== -->
+        <!-- USER CONTROL TAB (CSO ONLY)                   -->
+        <!-- ============================================== -->
+        <div class="tab-content" id="tab-user-control">
+            <div style="max-width:1100px;">
+                <!-- Internal Users Section -->
+                <div class="panel" style="margin-bottom:24px;">
+                    <div class="panel-header" style="display:flex;justify-content:space-between;align-items:center;">
+                        <h2 style="margin:0;">Internal Users</h2>
+                        <button class="btn btn-sm btn-primary" onclick="ucShowCreateModal('internal')">+ New Internal User</button>
+                    </div>
+                    <div class="panel-content">
+                        <table class="data-table" style="font-size:13px;width:100%;">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Email</th>
+                                    <th>Role</th>
+                                    <th>Position</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ucInternalBody">
+                                <tr><td colspan="6" style="text-align:center;color:#999;padding:16px;">Loading...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Investors Section -->
+                <div class="panel">
+                    <div class="panel-header" style="display:flex;justify-content:space-between;align-items:center;">
+                        <h2 style="margin:0;">Investors</h2>
+                        <button class="btn btn-sm btn-primary" onclick="ucShowCreateModal('investor')">+ New Investor</button>
+                    </div>
+                    <div class="panel-content">
+                        <div id="ucInvestorCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px;">
+                            <div style="text-align:center;color:#999;padding:16px;grid-column:1/-1;">Loading...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- User Control Create/Edit Modal -->
+        <div id="ucModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;display:none;align-items:center;justify-content:center;">
+            <div style="background:#fff;border-radius:8px;padding:24px;width:460px;max-width:95vw;max-height:90vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,0.2);">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                    <h3 id="ucModalTitle" style="margin:0;">New User</h3>
+                    <button onclick="ucCloseModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#666;">&times;</button>
+                </div>
+                <form id="ucForm" onsubmit="ucSubmitForm(event)">
+                    <input type="hidden" id="ucEditId" value="">
+                    <input type="hidden" id="ucUserType" value="internal">
+
+                    <div style="margin-bottom:12px;">
+                        <label style="display:block;font-weight:600;margin-bottom:4px;font-size:13px;">Full Name *</label>
+                        <input type="text" id="ucName" required style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;box-sizing:border-box;">
+                    </div>
+                    <div style="margin-bottom:12px;">
+                        <label style="display:block;font-weight:600;margin-bottom:4px;font-size:13px;">Email *</label>
+                        <input type="email" id="ucEmail" required style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;box-sizing:border-box;">
+                    </div>
+                    <div style="margin-bottom:12px;" id="ucIdRow">
+                        <label style="display:block;font-weight:600;margin-bottom:4px;font-size:13px;">Researcher ID *</label>
+                        <input type="text" id="ucResearcherId" pattern="[A-Za-z0-9_]{2,12}" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;box-sizing:border-box;">
+                        <small style="color:#888;">2-12 chars, letters/numbers/underscore</small>
+                    </div>
+
+                    <!-- Internal user fields -->
+                    <div id="ucInternalFields">
+                        <div style="margin-bottom:12px;">
+                            <label style="display:block;font-weight:600;margin-bottom:4px;font-size:13px;">Role *</label>
+                            <select id="ucRole" onchange="ucRoleChanged()" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;">
+                                <option value="founder">Founder</option>
+                                <option value="r_and_d">R&D</option>
+                                <option value="advisor">Advisor</option>
+                                <option value="admin">Admin</option>
+                                <option value="custom">Custom</option>
+                            </select>
+                        </div>
+                        <div id="ucPositionRow" style="margin-bottom:12px;display:none;">
+                            <label style="display:block;font-weight:600;margin-bottom:4px;font-size:13px;">Founder Position</label>
+                            <select id="ucPosition" onchange="ucPositionChanged()" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;">
+                                <option value="">-- Select --</option>
+                                <option value="CEO">CEO</option>
+                                <option value="CTO">CTO</option>
+                                <option value="COO">COO</option>
+                                <option value="CSO">CSO</option>
+                                <option value="Advisor">Advisor</option>
+                                <option value="Custom">Custom</option>
+                            </select>
+                        </div>
+                        <div id="ucCustomPositionRow" style="margin-bottom:12px;display:none;">
+                            <label style="display:block;font-weight:600;margin-bottom:4px;font-size:13px;">Custom Position Title</label>
+                            <input type="text" id="ucCustomPosition" placeholder="e.g. VP of Engineering" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;box-sizing:border-box;">
+                        </div>
+                    </div>
+
+                    <!-- Investor profile fields -->
+                    <div id="ucInvestorFields" style="display:none;">
+                        <div style="margin-bottom:12px;">
+                            <label style="display:block;font-weight:600;margin-bottom:4px;font-size:13px;">Organization</label>
+                            <input type="text" id="ucOrganization" placeholder="e.g. Nordic Ventures" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;box-sizing:border-box;">
+                        </div>
+                        <div style="margin-bottom:12px;">
+                            <label style="display:block;font-weight:600;margin-bottom:4px;font-size:13px;">Interest Level</label>
+                            <select id="ucInterestLevel" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;">
+                                <option value="">-- Not set --</option>
+                                <option value="low">Low</option>
+                                <option value="medium">Medium</option>
+                                <option value="high">High</option>
+                            </select>
+                        </div>
+                        <div style="margin-bottom:12px;">
+                            <label style="display:block;font-weight:600;margin-bottom:4px;font-size:13px;">Notes</label>
+                            <textarea id="ucNotes" rows="2" placeholder="Internal notes about this investor..." style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;box-sizing:border-box;resize:vertical;"></textarea>
+                        </div>
+                    </div>
+
+                    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px;">
+                        <button type="button" class="btn btn-sm" onclick="ucCloseModal()" style="background:#f0f0f0;color:#555;border:1px solid #ccc;">Cancel</button>
+                        <button type="submit" class="btn btn-sm btn-primary" id="ucSubmitBtn">Create User</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
     </div><!-- /.main -->
 
     <script>
@@ -3687,7 +3818,7 @@
                 // Investor role: restrict visible tabs
                 var userRole = (user.role || '').toLowerCase();
                 if (_userPosition === 'investor' || userRole === 'investor') {
-                    _setupInvestorAccess(_userPosition === 'investor_due_diligence' || userRole === 'investor_due_diligence');
+                    _setupInvestorAccess(user.investor_tab_permissions || {});
                     // Record investor visit (fire-and-forget)
                     fetch('/api/investor/record-visit?workspace=theralia', {
                         method: 'POST', credentials: 'include',
@@ -3706,23 +3837,31 @@
             return !!_userAuthority[flag];
         }
 
-        // Investor tab access: hide non-investor tabs, lock due-diligence tabs
-        function _setupInvestorAccess(isDueDiligence) {
+        // Investor tab access: hide non-investor tabs, lock/unlock optional tabs based on per-investor permissions
+        // tabPerms = { company: true/false, rnd: true/false, glp: true/false, ... }
+        // Map: HTML data-tab name → canonical permission key
+        var _tabToPermKey = { company: 'company', rnd: 'rnd', glp: 'glp_vision' };
+        var _permKeyToTab = { company: 'company', rnd: 'rnd', glp_vision: 'glp' };
+
+        function _setupInvestorAccess(tabPerms) {
             var allTabs = ['dashboard', 'company', 'rnd', 'glp', 'inventory', 'training', 'finance', 'investors', 'investroom'];
-            // Tabs visible to investor (always)
+            // Tabs always visible to investors
             var investorVisible = { investors: true };
-            // Tabs visible but locked (unless due diligence)
-            var investorLocked = { company: true, rnd: true, glp: true };
+            // Optional tabs (visible but locked unless permission granted)
+            var investorOptional = { company: true, rnd: true, glp: true };
 
             allTabs.forEach(function(tab) {
                 var btn = document.querySelector('.tab-btn[data-tab="' + tab + '"]');
                 if (!btn) return;
                 if (investorVisible[tab]) {
                     btn.style.display = '';
-                } else if (investorLocked[tab]) {
+                } else if (investorOptional[tab]) {
                     btn.style.display = '';
-                    if (!isDueDiligence) {
+                    var permKey = _tabToPermKey[tab] || tab;
+                    // Lock unless specifically granted (strict === true check)
+                    if (tabPerms[permKey] !== true) {
                         btn.classList.add('locked');
+                        btn.title = 'Access restricted';
                         _lockedTabs[tab] = true;
                     }
                 } else {
@@ -3760,6 +3899,8 @@
             const tab = btn.dataset.tab;
             // Guard: block InvestRoom access for non-founders
             if (tab === 'investroom' && !_irHasAccess) return;
+            // Guard: block User Control access for non-CSO
+            if (tab === 'user-control' && _userPosition !== 'cso') return;
             // Handle locked tabs — show message instead of loading content
             if (_lockedTabs[tab]) {
                 document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -3774,6 +3915,15 @@
             document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
             const target = document.getElementById('tab-' + tab);
             if (target) target.classList.add('active');
+            // Lightweight tab access logging for investors
+            var permKey = _tabToPermKey[tab];
+            if (permKey && (_userPosition === 'investor' || (window._currentUser && (window._currentUser.role || '').toLowerCase() === 'investor'))) {
+                fetch('/api/investor/log-tab-access', {
+                    method: 'POST', credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tab_key: permKey })
+                }).catch(function() {});
+            }
         });
 
         /* ============================================== */
@@ -7576,6 +7726,10 @@
             if (_userPosition === 'cso') {
                 document.getElementById('irUpdateBtn').style.display = '';
             }
+            // User Control tab: CSO only
+            if (_userPosition === 'cso') {
+                document.getElementById('ucTabBtn').style.display = '';
+            }
         }
 
         // Investor data — loaded from backend
@@ -7888,11 +8042,374 @@
         // Init InvestRoom — deferred until access confirmed
         // irCheckAccess() is called from loadUser(); irInit runs only if access granted
         var _irInitDone = false;
+        var _ucInitDone = false;
         var _origIrCheckAccess = irCheckAccess;
         irCheckAccess = function() {
             _origIrCheckAccess();
             if (_irHasAccess && !_irInitDone) { _irInitDone = true; irInit(); }
+            if (_userPosition === 'cso' && !_ucInitDone) { _ucInitDone = true; ucLoadUsers(); }
         };
+
+        /* ============================================== */
+        /* USER CONTROL TAB (CSO ONLY)                    */
+        /* ============================================== */
+
+        var _ucInternalUsers = [];
+        var _ucInvestors = [];
+        var _ucOptionalTabs = [];
+
+        async function ucLoadUsers() {
+            try {
+                const [usersResp, tabsResp] = await Promise.all([
+                    fetch('/api/theralia/users', { credentials: 'include' }),
+                    fetch('/api/theralia/investor-optional-tabs', { credentials: 'include' })
+                ]);
+                if (!usersResp.ok || !tabsResp.ok) throw new Error('Failed to load');
+                const usersData = await usersResp.json();
+                const tabsData = await tabsResp.json();
+
+                _ucInternalUsers = usersData.internal || [];
+                _ucInvestors = usersData.investors || [];
+                _ucOptionalTabs = tabsData.tabs || [];
+
+                ucRenderInternal();
+                ucRenderInvestors();
+            } catch (err) {
+                console.error('[UC] Load error:', err);
+            }
+        }
+
+        function ucRenderInternal() {
+            const tbody = document.getElementById('ucInternalBody');
+            if (_ucInternalUsers.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;padding:16px;">No internal users found.</td></tr>';
+                return;
+            }
+            tbody.innerHTML = _ucInternalUsers.map(u => {
+                const isActive = u.active && u.ws_active;
+                const statusBadge = isActive
+                    ? '<span style="color:#28a745;font-weight:600;">Active</span>'
+                    : '<span style="color:#dc3545;font-weight:600;">Inactive</span>';
+                const roleLabel = (u.ws_role || u.base_role || '').replace('_', ' ');
+                let posLabel = '';
+                if (u.workspace_position && u.workspace_position.toLowerCase() !== 'investor') {
+                    posLabel = u.workspace_position;
+                    if (u.workspace_position.toLowerCase() === 'custom' && u.custom_position_title) {
+                        posLabel = u.custom_position_title;
+                    }
+                }
+                const esc = s => (s || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+
+                let actions = '';
+                actions += `<button class="btn btn-sm" style="font-size:11px;padding:2px 8px;background:#f0f0f0;border:1px solid #ccc;" onclick="ucShowEditModal('${esc(u.researcher_id)}','internal')">Edit</button> `;
+                if (isActive) {
+                    actions += `<button class="btn btn-sm" style="font-size:11px;padding:2px 8px;background:#fff3cd;border:1px solid #e0c36a;color:#856404;" onclick="ucDeactivate('${esc(u.researcher_id)}','${esc(u.name)}')">Deactivate</button> `;
+                    if (u.last_login) {
+                        actions += `<button class="btn btn-sm" style="font-size:11px;padding:2px 8px;background:#e8f4fd;border:1px solid #b8daff;color:#004085;" onclick="ucResetPassword('${esc(u.researcher_id)}','${esc(u.name)}')">Reset Pwd</button>`;
+                    }
+                } else {
+                    actions += `<button class="btn btn-sm" style="font-size:11px;padding:2px 8px;background:#d4edda;border:1px solid #a3d9a5;color:#155724;" onclick="ucReactivate('${esc(u.researcher_id)}','${esc(u.name)}')">Reactivate</button>`;
+                }
+
+                return `<tr>
+                    <td>${u.name || ''}</td>
+                    <td style="font-size:12px;">${u.institution_email || ''}</td>
+                    <td style="text-transform:capitalize;">${roleLabel}</td>
+                    <td>${posLabel}</td>
+                    <td>${statusBadge}</td>
+                    <td style="white-space:nowrap;">${actions}</td>
+                </tr>`;
+            }).join('');
+        }
+
+        function ucRenderInvestors() {
+            const container = document.getElementById('ucInvestorCards');
+            if (_ucInvestors.length === 0) {
+                container.innerHTML = '<div style="text-align:center;color:#999;padding:16px;grid-column:1/-1;">No investors yet.</div>';
+                return;
+            }
+            container.innerHTML = _ucInvestors.map(inv => {
+                const isActive = inv.active && inv.ws_active;
+                const statusBadge = isActive
+                    ? '<span style="color:#28a745;font-weight:600;">Active</span>'
+                    : '<span style="color:#dc3545;font-weight:600;">Inactive</span>';
+                const perms = inv.investor_tab_permissions || {};
+                const esc = s => (s || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+
+                // Interest level badge
+                const interestColors = { low: '#6c757d', medium: '#e67e22', high: '#28a745' };
+                const interestLabel = inv.investor_interest_level
+                    ? `<span style="font-size:11px;padding:1px 6px;border-radius:3px;background:${interestColors[inv.investor_interest_level] || '#999'};color:#fff;margin-left:6px;">${inv.investor_interest_level}</span>`
+                    : '';
+
+                let permHtml = _ucOptionalTabs.map(tab => {
+                    const checked = perms[tab.key] === true ? 'checked' : '';
+                    return `<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+                        <input type="checkbox" ${checked} onchange="ucToggleInvestorTab('${esc(inv.researcher_id)}','${tab.key}',this.checked)">
+                        ${tab.label}
+                    </label>`;
+                }).join('');
+
+                // Tier preset buttons
+                const tierHtml = `<div style="display:flex;gap:4px;margin-top:6px;">
+                    <button class="btn btn-sm" style="font-size:10px;padding:1px 6px;background:#f8f9fa;border:1px solid #ccc;" onclick="ucSetTier('${esc(inv.researcher_id)}',1)" title="All locked">T1</button>
+                    <button class="btn btn-sm" style="font-size:10px;padding:1px 6px;background:#f8f9fa;border:1px solid #ccc;" onclick="ucSetTier('${esc(inv.researcher_id)}',2)" title="Company only">T2</button>
+                    <button class="btn btn-sm" style="font-size:10px;padding:1px 6px;background:#f8f9fa;border:1px solid #ccc;" onclick="ucSetTier('${esc(inv.researcher_id)}',3)" title="All active">T3</button>
+                </div>`;
+
+                let actions = '';
+                actions += `<button class="btn btn-sm" style="font-size:11px;padding:2px 8px;background:#f0f0f0;border:1px solid #ccc;" onclick="ucShowEditModal('${esc(inv.researcher_id)}','investor')">Edit</button> `;
+                if (isActive) {
+                    actions += `<button class="btn btn-sm" style="font-size:11px;padding:2px 8px;background:#fff3cd;border:1px solid #e0c36a;color:#856404;" onclick="ucDeactivate('${esc(inv.researcher_id)}','${esc(inv.name)}')">Deactivate</button> `;
+                    if (inv.last_login) {
+                        actions += `<button class="btn btn-sm" style="font-size:11px;padding:2px 8px;background:#e8f4fd;border:1px solid #b8daff;color:#004085;" onclick="ucResetPassword('${esc(inv.researcher_id)}','${esc(inv.name)}')">Reset Pwd</button>`;
+                    }
+                } else {
+                    actions += `<button class="btn btn-sm" style="font-size:11px;padding:2px 8px;background:#d4edda;border:1px solid #a3d9a5;color:#155724;" onclick="ucReactivate('${esc(inv.researcher_id)}','${esc(inv.name)}')">Reactivate</button>`;
+                }
+
+                // Profile info line
+                const orgLine = inv.investor_organization ? `<div style="font-size:11px;color:#888;margin-top:2px;">${inv.investor_organization}</div>` : '';
+
+                return `<div style="background:#f8f9fa;border:1px solid #e0e0e0;border-radius:8px;padding:16px;">
+                    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
+                        <div>
+                            <div style="font-weight:700;font-size:14px;">${inv.name || ''}${interestLabel}</div>
+                            <div style="font-size:12px;color:#666;">${inv.institution_email || ''}</div>
+                            ${orgLine}
+                        </div>
+                        <div>${statusBadge}</div>
+                    </div>
+                    <div style="margin-bottom:10px;">
+                        <div style="font-weight:600;font-size:12px;color:#555;margin-bottom:6px;">Optional Investor Tabs:</div>
+                        <div style="display:flex;flex-direction:column;gap:4px;">${permHtml}</div>
+                        ${tierHtml}
+                    </div>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;">${actions}</div>
+                </div>`;
+            }).join('');
+        }
+
+        async function ucSetTier(userId, tier) {
+            var perms = {};
+            _ucOptionalTabs.forEach(function(tab) { perms[tab.key] = false; });
+            if (tier >= 2) perms.company = true;
+            if (tier >= 3) { perms.rnd = true; perms.glp_vision = true; }
+            try {
+                const resp = await fetch('/api/theralia/users/' + userId + '/investor-permissions', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ permissions: perms })
+                });
+                if (!resp.ok) throw new Error('Failed');
+                const data = await resp.json();
+                var inv = _ucInvestors.find(function(i) { return i.researcher_id === userId; });
+                if (inv) inv.investor_tab_permissions = data.investor_tab_permissions || perms;
+                ucRenderInvestors();
+            } catch (err) {
+                alert('Error setting tier: ' + err.message);
+                ucLoadUsers();
+            }
+        }
+
+        async function ucToggleInvestorTab(userId, tabKey, enabled) {
+            try {
+                // Find current permissions for this investor
+                const inv = _ucInvestors.find(i => i.researcher_id === userId);
+                const perms = Object.assign({}, (inv && inv.investor_tab_permissions) || {});
+                perms[tabKey] = enabled;
+
+                const resp = await fetch(`/api/theralia/users/${userId}/investor-permissions`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ permissions: perms })
+                });
+                if (!resp.ok) throw new Error('Failed');
+                const data = await resp.json();
+                // Update local state
+                if (inv) inv.investor_tab_permissions = data.investor_tab_permissions || perms;
+            } catch (err) {
+                alert('Error updating investor permissions: ' + err.message);
+                ucLoadUsers(); // Reload to reset checkbox state
+            }
+        }
+
+        function ucShowCreateModal(type) {
+            document.getElementById('ucEditId').value = '';
+            document.getElementById('ucUserType').value = type;
+            document.getElementById('ucName').value = '';
+            document.getElementById('ucEmail').value = '';
+            document.getElementById('ucResearcherId').value = '';
+            document.getElementById('ucResearcherId').disabled = false;
+            document.getElementById('ucIdRow').style.display = '';
+            document.getElementById('ucOrganization').value = '';
+            document.getElementById('ucInterestLevel').value = '';
+            document.getElementById('ucNotes').value = '';
+
+            if (type === 'investor') {
+                document.getElementById('ucInternalFields').style.display = 'none';
+                document.getElementById('ucInvestorFields').style.display = '';
+                document.getElementById('ucModalTitle').textContent = 'New Investor';
+            } else {
+                document.getElementById('ucInternalFields').style.display = '';
+                document.getElementById('ucInvestorFields').style.display = 'none';
+                document.getElementById('ucRole').value = 'r_and_d';
+                document.getElementById('ucModalTitle').textContent = 'New Internal User';
+                ucRoleChanged();
+            }
+            document.getElementById('ucSubmitBtn').textContent = 'Create User';
+            document.getElementById('ucModal').style.display = 'flex';
+        }
+
+        function ucShowEditModal(userId, type) {
+            const list = type === 'investor' ? _ucInvestors : _ucInternalUsers;
+            const user = list.find(u => u.researcher_id === userId);
+            if (!user) return;
+
+            document.getElementById('ucEditId').value = userId;
+            document.getElementById('ucUserType').value = type;
+            document.getElementById('ucName').value = user.name || '';
+            document.getElementById('ucEmail').value = user.institution_email || '';
+            document.getElementById('ucResearcherId').value = userId;
+            document.getElementById('ucResearcherId').disabled = true;
+            document.getElementById('ucIdRow').style.display = 'none';
+
+            if (type === 'investor') {
+                document.getElementById('ucInternalFields').style.display = 'none';
+                document.getElementById('ucInvestorFields').style.display = '';
+                document.getElementById('ucOrganization').value = user.investor_organization || '';
+                document.getElementById('ucInterestLevel').value = user.investor_interest_level || '';
+                document.getElementById('ucNotes').value = user.investor_notes || '';
+                document.getElementById('ucModalTitle').textContent = 'Edit Investor';
+            } else {
+                document.getElementById('ucInternalFields').style.display = '';
+                document.getElementById('ucInvestorFields').style.display = 'none';
+                document.getElementById('ucRole').value = user.ws_role || 'r_and_d';
+                document.getElementById('ucModalTitle').textContent = 'Edit Internal User';
+                ucRoleChanged();
+                if (user.workspace_position) {
+                    document.getElementById('ucPosition').value = user.workspace_position;
+                    ucPositionChanged();
+                    if (user.custom_position_title) {
+                        document.getElementById('ucCustomPosition').value = user.custom_position_title;
+                    }
+                }
+            }
+            document.getElementById('ucSubmitBtn').textContent = 'Save Changes';
+            document.getElementById('ucModal').style.display = 'flex';
+        }
+
+        function ucCloseModal() {
+            document.getElementById('ucModal').style.display = 'none';
+        }
+
+        function ucRoleChanged() {
+            const role = document.getElementById('ucRole').value;
+            document.getElementById('ucPositionRow').style.display = role === 'founder' ? '' : 'none';
+            if (role !== 'founder') {
+                document.getElementById('ucCustomPositionRow').style.display = 'none';
+            }
+        }
+
+        function ucPositionChanged() {
+            const pos = document.getElementById('ucPosition').value;
+            document.getElementById('ucCustomPositionRow').style.display = pos === 'Custom' ? '' : 'none';
+        }
+
+        async function ucSubmitForm(e) {
+            e.preventDefault();
+            const editId = document.getElementById('ucEditId').value;
+            const type = document.getElementById('ucUserType').value;
+            const name = document.getElementById('ucName').value.trim();
+            const email = document.getElementById('ucEmail').value.trim();
+            const researcherId = document.getElementById('ucResearcherId').value.trim();
+
+            const payload = { name, institution_email: email };
+
+            if (!editId) {
+                payload.researcher_id = researcherId;
+            }
+
+            if (type === 'investor') {
+                payload.role = 'investor';
+                payload.organization = document.getElementById('ucOrganization').value.trim();
+                payload.interest_level = document.getElementById('ucInterestLevel').value || undefined;
+                payload.notes = document.getElementById('ucNotes').value.trim();
+            } else {
+                payload.role = document.getElementById('ucRole').value;
+                if (payload.role === 'founder') {
+                    const pos = document.getElementById('ucPosition').value;
+                    if (pos) payload.workspace_position = pos;
+                    if (pos === 'Custom') {
+                        payload.custom_position_title = document.getElementById('ucCustomPosition').value.trim();
+                    }
+                }
+            }
+
+            try {
+                let resp;
+                if (editId) {
+                    resp = await fetch(`/api/theralia/users/${editId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'include',
+                        body: JSON.stringify(payload)
+                    });
+                } else {
+                    resp = await fetch('/api/theralia/users', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'include',
+                        body: JSON.stringify(payload)
+                    });
+                }
+                const data = await resp.json();
+                if (!resp.ok) {
+                    alert(data.error || 'Error saving user');
+                    return;
+                }
+                ucCloseModal();
+                await ucLoadUsers();
+            } catch (err) {
+                alert('Error: ' + err.message);
+            }
+        }
+
+        async function ucDeactivate(id, name) {
+            if (!confirm(`Deactivate ${name}? They will no longer be able to log in.`)) return;
+            try {
+                const resp = await fetch(`/api/theralia/users/${id}/deactivate`, {
+                    method: 'PUT', credentials: 'include'
+                });
+                if (!resp.ok) { const d = await resp.json(); alert(d.error || 'Error'); return; }
+                await ucLoadUsers();
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        async function ucReactivate(id, name) {
+            if (!confirm(`Reactivate ${name}?`)) return;
+            try {
+                const resp = await fetch(`/api/theralia/users/${id}/reactivate`, {
+                    method: 'PUT', credentials: 'include'
+                });
+                if (!resp.ok) { const d = await resp.json(); alert(d.error || 'Error'); return; }
+                await ucLoadUsers();
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        async function ucResetPassword(id, name) {
+            if (!confirm(`Force password reset for ${name}? They will need to set a new password on next login.`)) return;
+            try {
+                const resp = await fetch(`/api/theralia/users/${id}/reset-password`, {
+                    method: 'POST', credentials: 'include'
+                });
+                const data = await resp.json();
+                if (!resp.ok) { alert(data.error || 'Error'); return; }
+                alert(data.message || 'Password reset scheduled.');
+            } catch (err) { alert('Error: ' + err.message); }
+        }
 
     </script>
 </body>

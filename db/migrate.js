@@ -1017,6 +1017,35 @@ async function migrate() {
             `CREATE INDEX IF NOT EXISTS idx_ips_user ON investor_portal_sessions(workspace_id, researcher_id)`,
             `CREATE INDEX IF NOT EXISTS idx_ips_active ON investor_portal_sessions(ended_at) WHERE ended_at IS NULL`,
 
+            // ==================== THERALIA USER CONTROL ====================
+
+            // Investor tab permissions: JSON object storing which optional tabs are activated per investor
+            // e.g. {"company":false,"rnd":false,"glp_vision":false}
+            `ALTER TABLE workspace_users ADD COLUMN IF NOT EXISTS investor_tab_permissions JSONB DEFAULT '{}'::jsonb`,
+
+            // Custom position title (for workspace_position = 'Custom')
+            `ALTER TABLE workspace_users ADD COLUMN IF NOT EXISTS custom_position_title TEXT`,
+
+            // Audit fields for investor permission changes
+            `ALTER TABLE workspace_users ADD COLUMN IF NOT EXISTS investor_permissions_updated_at TIMESTAMPTZ`,
+            `ALTER TABLE workspace_users ADD COLUMN IF NOT EXISTS investor_permissions_updated_by TEXT`,
+
+            // Investor profile extension fields
+            `ALTER TABLE workspace_users ADD COLUMN IF NOT EXISTS investor_organization TEXT`,
+            `ALTER TABLE workspace_users ADD COLUMN IF NOT EXISTS investor_notes TEXT`,
+            `ALTER TABLE workspace_users ADD COLUMN IF NOT EXISTS investor_interest_level TEXT CHECK (investor_interest_level IS NULL OR investor_interest_level IN ('low', 'medium', 'high'))`,
+
+            // Lightweight investor tab access log
+            `CREATE TABLE IF NOT EXISTS investor_tab_access_log (
+                id BIGSERIAL PRIMARY KEY,
+                workspace_id VARCHAR(30) NOT NULL DEFAULT 'theralia',
+                researcher_id VARCHAR(50) NOT NULL,
+                tab_key TEXT NOT NULL,
+                accessed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )`,
+            `CREATE INDEX IF NOT EXISTS idx_inv_tab_log_user ON investor_tab_access_log(researcher_id, accessed_at)`,
+            `CREATE INDEX IF NOT EXISTS idx_inv_tab_log_tab ON investor_tab_access_log(tab_key, accessed_at)`,
+
             // ==================== PURCHASE ORDER BATCHES ====================
 
             // Snapshot table for consolidated purchase order batches
