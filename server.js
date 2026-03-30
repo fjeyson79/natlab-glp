@@ -19179,7 +19179,7 @@ app.get('/api/theralia/users', requireCSO, async (req, res) => {
                     COALESCE(a.role, 'researcher') as base_role, a.active,
                     wu.role as ws_role, wu.is_active as ws_active, wu.status as ws_status,
                     wu.workspace_position, wu.custom_position_title,
-                    wu.investor_tab_permissions,
+                    wu.investor_tab_permissions, wu.security_mode,
                     wu.investor_organization, wu.investor_notes, wu.investor_interest_level,
                     wu.investor_permissions_updated_at, wu.investor_permissions_updated_by,
                     u.last_login
@@ -19472,6 +19472,225 @@ app.post('/api/theralia/users/:id/reset-password', requireCSO, async (req, res) 
     }
 });
 
+// Helper: log user lifecycle events
+async function logLifecycleEvent(client, { researcher_id, action, reason, performed_by, snapshot_json }) {
+    const q = client || pool;
+    await q.query(
+        `INSERT INTO user_lifecycle_log (researcher_id, workspace_id, action, reason, performed_by, snapshot_json)
+         VALUES ($1, 'theralia', $2, $3, $4, $5)`,
+        [researcher_id, action, reason || null, performed_by, snapshot_json ? JSON.stringify(snapshot_json) : null]
+    ).catch(err => console.error('[LIFECYCLE-LOG] Error:', err.message));
+}
+
+// Helper: get theralia workspace id
+async function getTheraliaWsId() {
+    const r = await pool.query("SELECT id FROM workspaces WHERE slug = 'theralia'");
+    return r.rows[0]?.id || null;
+}
+
+// PUT /api/theralia/users/:id/remove — Soft remove from platform (non-destructive)
+app.put('/api/theralia/users/:id/remove', requireCSO, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const actor = req.session.user.researcher_id;
+        if (id === actor) return res.status(400).json({ error: 'Cannot remove yourself' });
+
+        await pool.query(
+            `UPDATE di_allowlist SET active = false, deactivated_at = CURRENT_TIMESTAMP, deactivated_by = $1
+             WHERE researcher_id = $2`,
+            [actor, id]
+        );
+        const wsId = await getTheraliaWsId();
+        if (wsId) {
+            await pool.query(
+                `UPDATE workspace_users SET is_active = false, status = 'removed'
+                 WHERE workspace_id = $1 AND user_id = $2`,
+                [wsId, id]
+            );
+        }
+        await logLifecycleEvent(null, { researcher_id: id, action: 'REMOVED', performed_by: actor });
+        console.log(`[THERALIA-UC] User ${id} removed by ${actor}`);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[THERALIA-UC] Remove error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// PUT /api/theralia/users/:id/reinstate — Restore a removed user
+app.put('/api/theralia/users/:id/reinstate', requireCSO, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const actor = req.session.user.researcher_id;
+
+        await pool.query(
+            `UPDATE di_allowlist SET active = true, deactivated_at = NULL, deactivated_by = NULL
+             WHERE researcher_id = $1`,
+            [id]
+        );
+        const wsId = await getTheraliaWsId();
+        if (wsId) {
+            await pool.query(
+                `UPDATE workspace_users SET is_active = true, status = 'active'
+                 WHERE workspace_id = $1 AND user_id = $2`,
+                [wsId, id]
+            );
+        }
+        // Invalidate any stale investor portal sessions from before removal
+        await pool.query(
+            `UPDATE investor_portal_sessions SET ended_at = NOW(), end_reason = 'reinstate'
+             WHERE researcher_id = $1 AND ended_at IS NULL`,
+            [id]
+        ).catch(() => {});
+
+        await logLifecycleEvent(null, { researcher_id: id, action: 'REINSTATED', performed_by: actor });
+        console.log(`[THERALIA-UC] User ${id} reinstated by ${actor}`);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[THERALIA-UC] Reinstate error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// DELETE /api/theralia/users/:id/delete-permanently — Hard delete with required reason
+app.delete('/api/theralia/users/:id/delete-permanently', requireCSO, async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { id } = req.params;
+        const { reason } = req.body;
+        const actor = req.session.user.researcher_id;
+
+        if (id === actor) return res.status(400).json({ error: 'Cannot delete yourself' });
+        if (!reason || reason.trim().length < 10) {
+            return res.status(400).json({ error: 'Reason is required (minimum 10 characters)' });
+        }
+
+        // Guard: reject hard delete if user has recent activity (last 14 days)
+        const recentCheck = await client.query(
+            `SELECT 1 FROM investor_portal_visits WHERE researcher_id = $1
+               AND last_seen_at > NOW() - INTERVAL '14 days'
+             UNION ALL
+             SELECT 1 FROM investor_portal_sessions WHERE researcher_id = $1
+               AND started_at > NOW() - INTERVAL '14 days'
+             LIMIT 1`,
+            [id]
+        ).catch(() => ({ rows: [] }));
+        if (recentCheck.rows.length > 0) {
+            return res.status(409).json({ error: 'This user has recent activity and cannot be permanently deleted. Use Remove from platform instead.' });
+        }
+
+        await client.query('BEGIN');
+
+        // Snapshot user data before deletion
+        const snap = await client.query(
+            `SELECT a.researcher_id, a.name, a.institution_email, a.affiliation, a.role,
+                    wu.role as ws_role, wu.workspace_position, wu.security_mode
+             FROM di_allowlist a
+             LEFT JOIN workspace_users wu ON wu.user_id = a.researcher_id
+             LEFT JOIN workspaces w ON w.id = wu.workspace_id AND w.slug = 'theralia'
+             WHERE a.researcher_id = $1`, [id]
+        );
+        const snapshot = snap.rows[0] || { researcher_id: id };
+
+        // Detach references: set researcher_id references to placeholder where safe
+        // investor_portal_visits — keep but will naturally become orphaned
+        // investor_portal_activity — keep records
+        // investor_portal_sessions — keep records
+        // investor_tab_access_log — keep records
+        // investor_access_codes — delete (no need to keep auth data)
+        await client.query(`DELETE FROM investor_access_codes WHERE researcher_id = $1 AND workspace_id = 'theralia'`, [id]);
+
+        // Remove workspace membership
+        const wsId = await getTheraliaWsId();
+        if (wsId) {
+            await client.query(`DELETE FROM workspace_users WHERE workspace_id = $1 AND user_id = $2`, [wsId, id]);
+        }
+
+        // Remove di_users row if exists (login credentials)
+        await client.query(`DELETE FROM di_users WHERE researcher_id = $1`, [id]);
+
+        // Remove allowlist entry
+        await client.query(`DELETE FROM di_allowlist WHERE researcher_id = $1`, [id]);
+
+        // Log deletion with snapshot
+        await client.query(
+            `INSERT INTO user_lifecycle_log (researcher_id, workspace_id, action, reason, performed_by, snapshot_json)
+             VALUES ($1, 'theralia', 'DELETED_PERMANENTLY', $2, $3, $4)`,
+            [id, reason.trim(), actor, JSON.stringify(snapshot)]
+        );
+
+        await client.query('COMMIT');
+        console.log(`[THERALIA-UC] User ${id} permanently deleted by ${actor}: ${reason.trim()}`);
+        res.json({ success: true });
+    } catch (err) {
+        await client.query('ROLLBACK');
+        // If FK violation, the user has critical dependencies
+        if (err.code === '23503') {
+            return res.status(409).json({ error: 'Cannot delete: user has linked records that prevent removal. Remove from platform instead.' });
+        }
+        console.error('[THERALIA-UC] Delete permanently error:', err);
+        res.status(500).json({ error: 'Server error' });
+    } finally {
+        client.release();
+    }
+});
+
+// POST /api/theralia/users/:id/reset-code — Reset investor access code (invalidates existing)
+app.post('/api/theralia/users/:id/reset-code', requireCSO, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const actor = req.session.user.researcher_id;
+
+        // Delete existing code — investor will need to set a new one on next access
+        await pool.query(
+            `DELETE FROM investor_access_codes WHERE researcher_id = $1 AND workspace_id = 'theralia'`,
+            [id]
+        );
+        await logLifecycleEvent(null, { researcher_id: id, action: 'CODE_RESET', performed_by: actor });
+        console.log(`[THERALIA-UC] Code reset for ${id} by ${actor}`);
+        res.json({ success: true, message: 'Access code reset. A new code will be generated on the next investor access flow.' });
+    } catch (err) {
+        console.error('[THERALIA-UC] Reset code error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// PUT /api/theralia/users/:id/upgrade-to-password — Switch investor from CODE to PASSWORD mode
+app.put('/api/theralia/users/:id/upgrade-to-password', requireCSO, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const actor = req.session.user.researcher_id;
+        const wsId = await getTheraliaWsId();
+        if (!wsId) return res.status(500).json({ error: 'Workspace not found' });
+
+        await pool.query(
+            `UPDATE workspace_users SET security_mode = 'PASSWORD' WHERE workspace_id = $1 AND user_id = $2`,
+            [wsId, id]
+        );
+
+        // Delete access code — password is now required
+        await pool.query(
+            `DELETE FROM investor_access_codes WHERE researcher_id = $1 AND workspace_id = 'theralia'`,
+            [id]
+        );
+
+        // Ensure investor has a valid password-setup path:
+        // If they already have a di_users row, set force_password_reset so they must set a new password.
+        // If no di_users row exists, they'll go through the standard register flow on next access.
+        await pool.query(
+            `UPDATE di_users SET force_password_reset = true WHERE researcher_id = $1`,
+            [id]
+        ).catch(() => {}); // no-op if no di_users row
+
+        await logLifecycleEvent(null, { researcher_id: id, action: 'UPGRADED_TO_PASSWORD', performed_by: actor });
+        console.log(`[THERALIA-UC] ${id} upgraded to PASSWORD mode by ${actor}`);
+        res.json({ success: true, message: 'Investor upgraded to password access. They will be prompted to set a password on next login.' });
+    } catch (err) {
+        console.error('[THERALIA-UC] Upgrade to password error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
 // PUT /api/theralia/users/:id/investor-permissions — Set investor tab permissions
 app.put('/api/theralia/users/:id/investor-permissions', requireCSO, async (req, res) => {
     try {
@@ -19580,7 +19799,7 @@ app.post('/api/investor-auth/check', async (req, res) => {
 
         // Check allowlist + workspace membership as investor
         const result = await pool.query(
-            `SELECT a.researcher_id, a.name, a.active, wu.role, wu.workspace_position
+            `SELECT a.researcher_id, a.name, a.active, wu.role, wu.workspace_position, wu.security_mode
              FROM di_allowlist a
              JOIN workspace_users wu ON wu.user_id = a.researcher_id
              JOIN workspaces w ON w.id = wu.workspace_id
@@ -19594,7 +19813,18 @@ app.post('/api/investor-auth/check', async (req, res) => {
         }
 
         const user = result.rows[0];
+        const securityMode = user.security_mode || 'CODE';
         const firstName = (user.name || '').split(' ')[0] || 'Investor';
+
+        // PASSWORD mode: investor must use standard login, not code flow
+        if (securityMode === 'PASSWORD') {
+            return res.json({
+                found: true,
+                password_required: true,
+                first_name: firstName,
+                redirect: 'access-theralia.html'
+            });
+        }
 
         // Check if access code already exists
         let hasCode = false;

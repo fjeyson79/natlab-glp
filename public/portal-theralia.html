@@ -235,6 +235,60 @@
             cursor: pointer; transition: background 0.12s; font-family: inherit;
         }
         .uc-btn-submit:hover { background: #15803d; }
+        .uc-act-btn.danger { color: #dc2626; border-color: rgba(220,38,38,0.25); }
+        .uc-act-btn.danger:hover { background: rgba(220,38,38,0.04); }
+        .uc-actions-group { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
+        .uc-actions-sep { width: 1px; height: 16px; background: rgba(0,0,0,0.08); margin: 0 2px; }
+        .uc-security-badge {
+            display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px;
+            border-radius: 10px; font-size: 9px; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.3px;
+        }
+        .uc-security-badge.code { background: rgba(37,99,235,0.08); color: #2563eb; }
+        .uc-security-badge.password { background: rgba(124,58,237,0.08); color: #7c3aed; }
+        .uc-security-badge.removed { background: rgba(220,38,38,0.06); color: #dc2626; }
+        .uc-filter-bar {
+            display: flex; gap: 6px; margin-bottom: 14px; padding: 0 16px;
+        }
+        .uc-filter-pill {
+            padding: 4px 14px; border-radius: 14px; font-size: 11px; font-weight: 600;
+            background: #f0f1f4; color: #8b8f9a; border: 1px solid transparent;
+            cursor: pointer; transition: all 0.12s; font-family: inherit;
+        }
+        .uc-filter-pill.active { background: rgba(22,163,74,0.06); color: #16a34a; border-color: rgba(22,163,74,0.2); }
+        .uc-filter-pill:hover:not(.active) { color: #3a3d45; }
+        /* Confirm modals */
+        .uc-confirm-overlay {
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+            z-index: 1001; align-items: center; justify-content: center;
+        }
+        .uc-confirm-overlay.open { display: flex; }
+        .uc-confirm-box {
+            background: #fff; border-radius: 12px; padding: 28px; width: 440px;
+            max-width: 95vw; box-shadow: 0 12px 48px rgba(0,0,0,0.15); border: 1px solid rgba(0,0,0,0.06);
+        }
+        .uc-confirm-title { font-size: 16px; font-weight: 700; color: #1a1c22; margin-bottom: 12px; }
+        .uc-confirm-body { font-size: 13px; color: #5a5d66; line-height: 1.65; margin-bottom: 16px; }
+        .uc-confirm-body strong { color: #1a1c22; }
+        .uc-confirm-warning { color: #dc2626; font-weight: 600; }
+        .uc-confirm-field { margin-bottom: 14px; }
+        .uc-confirm-field label {
+            display: block; font-size: 11px; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.5px; color: #8b8f9a; margin-bottom: 6px;
+        }
+        .uc-confirm-field textarea {
+            width: 100%; padding: 10px 14px; border: 1px solid #e0e2e6; border-radius: 7px;
+            background: #fafbfc; color: #1a1c22; font-size: 13px; font-family: inherit;
+            box-sizing: border-box; resize: vertical;
+        }
+        .uc-confirm-field textarea:focus { outline: none; border-color: #dc2626; }
+        .uc-confirm-actions { display: flex; gap: 10px; justify-content: flex-end; }
+        .uc-btn-danger {
+            padding: 8px 20px; background: #dc2626; color: #fff; border: none; border-radius: 7px;
+            font-size: 13px; font-weight: 600; cursor: pointer; transition: background 0.12s; font-family: inherit;
+        }
+        .uc-btn-danger:hover { background: #b91c1c; }
+        .uc-btn-danger:disabled { background: #999; cursor: not-allowed; }
 
         /* ---- Light Content Surface ---- */
         .main {
@@ -3846,6 +3900,10 @@
                         </div>
                         <button class="uc-add-btn" onclick="ucShowCreateModal('internal')">+ Add Member</button>
                     </div>
+                    <div class="uc-filter-bar" id="ucInternalFilter">
+                        <button class="uc-filter-pill active" data-filter="active" onclick="ucSetFilter('internal','active',this)">Active</button>
+                        <button class="uc-filter-pill" data-filter="removed" onclick="ucSetFilter('internal','removed',this)">Removed</button>
+                    </div>
                     <table class="uc-table">
                         <thead>
                             <tr><th>Member</th><th>Role</th><th>Position</th><th>Status</th><th style="text-align:right;">Actions</th></tr>
@@ -3866,6 +3924,10 @@
                             <span class="uc-panel-count" id="ucInvestorCount">0</span>
                         </div>
                         <button class="uc-add-btn" onclick="ucShowCreateModal('investor')">+ Add Investor</button>
+                    </div>
+                    <div class="uc-filter-bar" id="ucInvestorFilter">
+                        <button class="uc-filter-pill active" data-filter="active" onclick="ucSetFilter('investor','active',this)">Active</button>
+                        <button class="uc-filter-pill" data-filter="removed" onclick="ucSetFilter('investor','removed',this)">Removed</button>
                     </div>
                     <div class="uc-inv-grid" id="ucInvestorCards">
                         <div style="text-align:center;color:#8b8f9a;padding:32px;grid-column:1/-1;">Loading...</div>
@@ -3956,6 +4018,43 @@
                         <button type="submit" class="uc-btn-submit" id="ucSubmitBtn">Create User</button>
                     </div>
                 </form>
+            </div>
+        </div>
+
+        <!-- Remove from platform modal -->
+        <div class="uc-confirm-overlay" id="ucRemoveModal">
+            <div class="uc-confirm-box">
+                <div class="uc-confirm-title">Remove from platform</div>
+                <div class="uc-confirm-body">
+                    This will remove <strong id="ucRemoveName"></strong> from active access.<br>
+                    All associated historical records will remain preserved.
+                </div>
+                <div class="uc-confirm-actions">
+                    <button class="uc-btn-cancel" onclick="document.getElementById('ucRemoveModal').classList.remove('open')">Cancel</button>
+                    <button class="uc-btn-danger" id="ucRemoveConfirmBtn" style="background:#ca8a04;" onclick="ucDoRemove()">Remove</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Delete permanently modal -->
+        <div class="uc-confirm-overlay" id="ucDeleteModal">
+            <div class="uc-confirm-box">
+                <div class="uc-confirm-title">Permanent deletion</div>
+                <div class="uc-confirm-body">
+                    This will permanently delete <strong id="ucDeleteName"></strong> from the platform.<br><br>
+                    <span class="uc-confirm-warning">This action is irreversible.</span><br>
+                    Historical records may remain but will be anonymized or detached where necessary.<br><br>
+                    Use this only for training accounts, duplicates, or erroneous entries.<br><br>
+                    You must provide a reason for this action.
+                </div>
+                <div class="uc-confirm-field">
+                    <label>Reason for deletion (required)</label>
+                    <textarea id="ucDeleteReason" rows="3" placeholder="Provide a reason (minimum 10 characters)..." oninput="document.getElementById('ucDeleteConfirmBtn').disabled=this.value.trim().length<10"></textarea>
+                </div>
+                <div class="uc-confirm-actions">
+                    <button class="uc-btn-cancel" onclick="document.getElementById('ucDeleteModal').classList.remove('open')">Cancel</button>
+                    <button class="uc-btn-danger" id="ucDeleteConfirmBtn" disabled onclick="ucDoDelete()">Delete permanently</button>
+                </div>
             </div>
         </div>
 
@@ -8051,7 +8150,7 @@
                         }
                         return {
                             id: v.researcher_id,
-                            name: v.investor_name || v.investor_email || v.researcher_id,
+                            name: v.investor_name || v.investor_email || v.researcher_id || 'Deleted User',
                             signal: v.visit_count >= 3 ? 'high' : v.visit_count >= 2 ? 'medium' : 'low',
                             summary: v.visit_count + ' visit' + (v.visit_count !== 1 ? 's' : '') + (timeAgo ? ' \u00B7 ' + timeAgo : ''),
                             email: v.investor_email,
@@ -8252,6 +8351,9 @@
         var _ucInternalUsers = [];
         var _ucInvestors = [];
         var _ucOptionalTabs = [];
+        var _ucInternalFilter = 'active';
+        var _ucInvestorFilter = 'active';
+        var _ucActionTarget = null; // { id, name, type } for modal actions
 
         // Segmented toggle handler
         document.getElementById('ucToggle').addEventListener('click', function(e) {
@@ -8285,14 +8387,29 @@
             }
         }
 
+        function ucSetFilter(type, filter, btn) {
+            if (type === 'internal') _ucInternalFilter = filter;
+            else _ucInvestorFilter = filter;
+            var bar = btn.closest('.uc-filter-bar');
+            bar.querySelectorAll('.uc-filter-pill').forEach(function(p) { p.classList.remove('active'); });
+            btn.classList.add('active');
+            if (type === 'internal') ucRenderInternal();
+            else ucRenderInvestors();
+        }
+
         function ucRenderInternal() {
             const tbody = document.getElementById('ucInternalBody');
-            document.getElementById('ucInternalCount').textContent = _ucInternalUsers.length;
-            if (_ucInternalUsers.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#8b8f9a;padding:32px;">No internal users found.</td></tr>';
+            const filtered = _ucInternalUsers.filter(u => {
+                const isActive = u.active && u.ws_active;
+                return _ucInternalFilter === 'active' ? isActive : !isActive;
+            });
+            document.getElementById('ucInternalCount').textContent = filtered.length;
+            if (filtered.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#8b8f9a;padding:32px;">' +
+                    (_ucInternalFilter === 'removed' ? 'No removed users.' : 'No active users found.') + '</td></tr>';
                 return;
             }
-            tbody.innerHTML = _ucInternalUsers.map(u => {
+            tbody.innerHTML = filtered.map(u => {
                 const isActive = u.active && u.ws_active;
                 const role = u.ws_role || u.base_role || 'custom';
                 let posLabel = '';
@@ -8304,82 +8421,117 @@
                 }
                 const esc = s => (s || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
 
-                let actions = `<button class="uc-act-btn" onclick="ucShowEditModal('${esc(u.researcher_id)}','internal')">Edit</button>`;
+                let actions = '<div class="uc-actions-group">';
+                actions += `<button class="uc-act-btn" onclick="ucShowEditModal('${esc(u.researcher_id)}','internal')">Edit</button>`;
                 if (isActive) {
-                    actions += `<button class="uc-act-btn warn" onclick="ucDeactivate('${esc(u.researcher_id)}','${esc(u.name)}')">Deactivate</button>`;
                     if (u.last_login) {
                         actions += `<button class="uc-act-btn info" onclick="ucResetPassword('${esc(u.researcher_id)}','${esc(u.name)}')">Reset Pwd</button>`;
                     }
+                    actions += `<span class="uc-actions-sep"></span>`;
+                    actions += `<button class="uc-act-btn warn" onclick="ucShowRemoveModal('${esc(u.researcher_id)}','${esc(u.name)}')">Remove</button>`;
                 } else {
-                    actions += `<button class="uc-act-btn good" onclick="ucReactivate('${esc(u.researcher_id)}','${esc(u.name)}')">Reactivate</button>`;
+                    actions += `<button class="uc-act-btn good" onclick="ucReinstate('${esc(u.researcher_id)}','${esc(u.name)}')">Reinstate</button>`;
+                    actions += `<span class="uc-actions-sep"></span>`;
+                    actions += `<button class="uc-act-btn danger" onclick="ucShowDeleteModal('${esc(u.researcher_id)}','${esc(u.name)}')">Delete</button>`;
                 }
+                actions += '</div>';
 
                 return `<tr>
-                    <td><div class="uc-name">${u.name || ''}</div><div class="uc-email">${u.institution_email || ''}</div></td>
+                    <td><div class="uc-name">${u.name || 'Deleted User'}</div><div class="uc-email">${u.institution_email || ''}</div></td>
                     <td><span class="uc-role-tag ${role}">${role.replace('_', ' ')}</span></td>
                     <td style="font-size:12px;color:#5a5d66;">${posLabel || '<span style="color:#c8cacd;">\u2014</span>'}</td>
-                    <td><span class="uc-status ${isActive ? 'active' : 'inactive'}">${isActive ? 'Active' : 'Inactive'}</span></td>
-                    <td style="text-align:right;white-space:nowrap;"><div style="display:flex;gap:5px;justify-content:flex-end;">${actions}</div></td>
+                    <td><span class="uc-status ${isActive ? 'active' : 'inactive'}">${isActive ? 'Active' : 'Removed'}</span></td>
+                    <td style="text-align:right;white-space:nowrap;">${actions}</td>
                 </tr>`;
             }).join('');
         }
 
         function ucRenderInvestors() {
             const container = document.getElementById('ucInvestorCards');
-            if (_ucInvestors.length === 0) {
-                container.innerHTML = '<div style="text-align:center;color:#999;padding:16px;grid-column:1/-1;">No investors yet.</div>';
+            const filtered = _ucInvestors.filter(inv => {
+                const isActive = inv.active && inv.ws_active;
+                return _ucInvestorFilter === 'active' ? isActive : !isActive;
+            });
+            document.getElementById('ucInvestorCount').textContent = filtered.length;
+            if (filtered.length === 0) {
+                container.innerHTML = '<div style="text-align:center;color:#8b8f9a;padding:32px;grid-column:1/-1;">' +
+                    (_ucInvestorFilter === 'removed' ? 'No removed investors.' : 'No active investors.') + '</div>';
                 return;
             }
-            document.getElementById('ucInvestorCount').textContent = _ucInvestors.length;
-            container.innerHTML = _ucInvestors.map(inv => {
+            container.innerHTML = filtered.map(inv => {
                 const isActive = inv.active && inv.ws_active;
                 const perms = inv.investor_tab_permissions || {};
+                const secMode = (inv.security_mode || 'CODE').toUpperCase();
                 const esc = s => (s || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
 
                 const interestHtml = inv.investor_interest_level
                     ? `<span class="uc-inv-interest ${inv.investor_interest_level}">${inv.investor_interest_level}</span>`
                     : '';
 
+                const secBadge = !isActive
+                    ? '<span class="uc-security-badge removed">Removed</span>'
+                    : secMode === 'PASSWORD'
+                    ? '<span class="uc-security-badge password">Password</span>'
+                    : '<span class="uc-security-badge code">Code</span>';
+
                 let permHtml = _ucOptionalTabs.map(tab => {
                     const checked = perms[tab.key] === true ? 'checked' : '';
                     return `<div class="uc-perm-row">
-                        <input type="checkbox" ${checked} onchange="ucToggleInvestorTab('${esc(inv.researcher_id)}','${tab.key}',this.checked)">
+                        <input type="checkbox" ${checked} ${isActive ? '' : 'disabled'} onchange="ucToggleInvestorTab('${esc(inv.researcher_id)}','${tab.key}',this.checked)">
                         <span>${tab.label}</span>
                     </div>`;
                 }).join('');
 
-                let actions = `<button class="uc-act-btn" onclick="ucShowEditModal('${esc(inv.researcher_id)}','investor')">Edit</button>`;
-                if (isActive) {
-                    actions += `<button class="uc-act-btn warn" onclick="ucDeactivate('${esc(inv.researcher_id)}','${esc(inv.name)}')">Deactivate</button>`;
-                    if (inv.last_login) {
-                        actions += `<button class="uc-act-btn info" onclick="ucResetPassword('${esc(inv.researcher_id)}','${esc(inv.name)}')">Reset Pwd</button>`;
-                    }
-                } else {
-                    actions += `<button class="uc-act-btn good" onclick="ucReactivate('${esc(inv.researcher_id)}','${esc(inv.name)}')">Reactivate</button>`;
+                // Access actions
+                let accessActions = '';
+                if (isActive && secMode === 'CODE') {
+                    accessActions += `<button class="uc-act-btn info" onclick="ucResetCode('${esc(inv.researcher_id)}','${esc(inv.name)}')">Reset Code</button>`;
+                    accessActions += `<button class="uc-act-btn" onclick="ucUpgradeToPassword('${esc(inv.researcher_id)}','${esc(inv.name)}')">Upgrade to Password</button>`;
                 }
+                if (isActive && secMode === 'PASSWORD') {
+                    accessActions += `<button class="uc-act-btn info" onclick="ucResetPassword('${esc(inv.researcher_id)}','${esc(inv.name)}')">Reset Password</button>`;
+                }
+
+                // Lifecycle actions
+                let lifecycleActions = '';
+                if (isActive) {
+                    lifecycleActions += `<button class="uc-act-btn warn" onclick="ucShowRemoveModal('${esc(inv.researcher_id)}','${esc(inv.name)}')">Remove</button>`;
+                } else {
+                    lifecycleActions += `<button class="uc-act-btn good" onclick="ucReinstate('${esc(inv.researcher_id)}','${esc(inv.name)}')">Reinstate</button>`;
+                }
+
+                // Danger action
+                let dangerActions = `<button class="uc-act-btn danger" onclick="ucShowDeleteModal('${esc(inv.researcher_id)}','${esc(inv.name)}')">Delete</button>`;
 
                 return `<div class="uc-inv-card">
                     <div class="uc-inv-head">
                         <div>
-                            <div class="uc-inv-name">${inv.name || ''}</div>
+                            <div class="uc-inv-name">${inv.name || 'Deleted User'}</div>
                             <div class="uc-inv-email">${inv.institution_email || ''}</div>
                             ${inv.investor_organization ? '<div class="uc-inv-org">' + inv.investor_organization + '</div>' : ''}
                         </div>
                         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
-                            <span class="uc-status ${isActive ? 'active' : 'inactive'}">${isActive ? 'Active' : 'Inactive'}</span>
+                            ${secBadge}
                             ${interestHtml}
                         </div>
                     </div>
                     <div class="uc-perm-section">
                         <div class="uc-perm-label">Portal Tab Access</div>
                         ${permHtml}
-                        <div class="uc-tier-strip">
-                            <button class="uc-tier-btn" onclick="ucSetTier('${esc(inv.researcher_id)}',1)" title="All locked">T1 Locked</button>
-                            <button class="uc-tier-btn" onclick="ucSetTier('${esc(inv.researcher_id)}',2)" title="Company only">T2 Company</button>
-                            <button class="uc-tier-btn" onclick="ucSetTier('${esc(inv.researcher_id)}',3)" title="Full access">T3 Full</button>
+                        ${isActive ? '<div class="uc-tier-strip">' +
+                            '<button class="uc-tier-btn" onclick="ucSetTier(\'' + esc(inv.researcher_id) + '\',1)" title="All locked">T1 Locked</button>' +
+                            '<button class="uc-tier-btn" onclick="ucSetTier(\'' + esc(inv.researcher_id) + '\',2)" title="Company only">T2 Company</button>' +
+                            '<button class="uc-tier-btn" onclick="ucSetTier(\'' + esc(inv.researcher_id) + '\',3)" title="Full access">T3 Full</button>' +
+                        '</div>' : ''}
+                    </div>
+                    <div class="uc-inv-actions">
+                        <div class="uc-actions-group">
+                            <button class="uc-act-btn" onclick="ucShowEditModal('${esc(inv.researcher_id)}','investor')">Edit</button>
+                            ${accessActions}
+                            ${lifecycleActions ? '<span class="uc-actions-sep"></span>' + lifecycleActions : ''}
+                            ${!isActive ? '<span class="uc-actions-sep"></span>' + dangerActions : ''}
                         </div>
                     </div>
-                    <div class="uc-inv-actions">${actions}</div>
                 </div>`;
             }).join('');
         }
@@ -8571,10 +8723,29 @@
             }
         }
 
-        async function ucDeactivate(id, name) {
-            if (!confirm(`Deactivate ${name}? They will no longer be able to log in.`)) return;
+        // --- Remove from platform (modal-based) ---
+        function ucShowRemoveModal(id, name) {
+            _ucActionTarget = { id: id, name: name };
+            document.getElementById('ucRemoveName').textContent = name;
+            document.getElementById('ucRemoveModal').classList.add('open');
+        }
+        async function ucDoRemove() {
+            if (!_ucActionTarget) return;
             try {
-                const resp = await fetch(`/api/theralia/users/${id}/deactivate`, {
+                const resp = await fetch('/api/theralia/users/' + _ucActionTarget.id + '/remove', {
+                    method: 'PUT', credentials: 'include'
+                });
+                if (!resp.ok) { const d = await resp.json(); alert(d.error || 'Error'); return; }
+                document.getElementById('ucRemoveModal').classList.remove('open');
+                await ucLoadUsers();
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        // --- Reinstate ---
+        async function ucReinstate(id, name) {
+            if (!confirm('Reinstate ' + name + '?')) return;
+            try {
+                const resp = await fetch('/api/theralia/users/' + id + '/reinstate', {
                     method: 'PUT', credentials: 'include'
                 });
                 if (!resp.ok) { const d = await resp.json(); alert(d.error || 'Error'); return; }
@@ -8582,26 +8753,68 @@
             } catch (err) { alert('Error: ' + err.message); }
         }
 
-        async function ucReactivate(id, name) {
-            if (!confirm(`Reactivate ${name}?`)) return;
+        // --- Delete permanently (modal-based with reason) ---
+        function ucShowDeleteModal(id, name) {
+            _ucActionTarget = { id: id, name: name };
+            document.getElementById('ucDeleteName').textContent = name;
+            document.getElementById('ucDeleteReason').value = '';
+            document.getElementById('ucDeleteConfirmBtn').disabled = true;
+            document.getElementById('ucDeleteModal').classList.add('open');
+        }
+        async function ucDoDelete() {
+            if (!_ucActionTarget) return;
+            var reason = document.getElementById('ucDeleteReason').value.trim();
+            if (reason.length < 10) { alert('Reason must be at least 10 characters.'); return; }
             try {
-                const resp = await fetch(`/api/theralia/users/${id}/reactivate`, {
-                    method: 'PUT', credentials: 'include'
+                const resp = await fetch('/api/theralia/users/' + _ucActionTarget.id + '/delete-permanently', {
+                    method: 'DELETE', credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reason: reason })
                 });
-                if (!resp.ok) { const d = await resp.json(); alert(d.error || 'Error'); return; }
+                const data = await resp.json();
+                if (!resp.ok) { alert(data.error || 'Error'); return; }
+                document.getElementById('ucDeleteModal').classList.remove('open');
                 await ucLoadUsers();
             } catch (err) { alert('Error: ' + err.message); }
         }
 
+        // --- Reset password ---
         async function ucResetPassword(id, name) {
-            if (!confirm(`Force password reset for ${name}? They will need to set a new password on next login.`)) return;
+            if (!confirm('Force password reset for ' + name + '?')) return;
             try {
-                const resp = await fetch(`/api/theralia/users/${id}/reset-password`, {
+                const resp = await fetch('/api/theralia/users/' + id + '/reset-password', {
                     method: 'POST', credentials: 'include'
                 });
                 const data = await resp.json();
                 if (!resp.ok) { alert(data.error || 'Error'); return; }
                 alert(data.message || 'Password reset scheduled.');
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        // --- Reset investor code ---
+        async function ucResetCode(id, name) {
+            if (!confirm('Reset access code for ' + name + '? They will need to set a new code on next access.')) return;
+            try {
+                const resp = await fetch('/api/theralia/users/' + id + '/reset-code', {
+                    method: 'POST', credentials: 'include'
+                });
+                const data = await resp.json();
+                if (!resp.ok) { alert(data.error || 'Error'); return; }
+                alert(data.message || 'Code reset.');
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        // --- Upgrade investor to password ---
+        async function ucUpgradeToPassword(id, name) {
+            if (!confirm('Upgrade ' + name + ' to password access? Code login will be disabled and they must use a password.')) return;
+            try {
+                const resp = await fetch('/api/theralia/users/' + id + '/upgrade-to-password', {
+                    method: 'PUT', credentials: 'include'
+                });
+                const data = await resp.json();
+                if (!resp.ok) { alert(data.error || 'Error'); return; }
+                alert(data.message || 'Upgraded to password access.');
+                await ucLoadUsers();
             } catch (err) { alert('Error: ' + err.message); }
         }
 
