@@ -78,7 +78,7 @@
             width: 100%; padding: 10px; background: transparent; color: #78787f;
             border: 1px solid #333340; border-radius: 8px; font-size: 13px;
             font-weight: 500; cursor: pointer; transition: all 0.2s;
-            margin-top: 12px; font-family: inherit;
+            margin-top: 24px; font-family: inherit;
         }
         .btn-secondary:hover { color: #c8c8cf; border-color: #55555f; }
         .message {
@@ -214,7 +214,7 @@
         <!-- SECTION: First access — set code -->
         <div class="section" id="sectionSetCode">
             <div class="welcome-name" id="welcomeNameSet"></div>
-            <p class="welcome-sub">This private portal has been prepared for invited investors</p>
+            <p class="welcome-sub">Your email has been recognized. Please continue to access your private investor portal.</p>
             <p class="tagline">Create your personal access code</p>
             <form onsubmit="setCode(event)">
                 <label>Personal access code</label>
@@ -239,7 +239,7 @@
         <!-- SECTION: Returning — enter code -->
         <div class="section" id="sectionLogin">
             <div class="welcome-name" id="welcomeNameLogin"></div>
-            <p class="welcome-sub">This private portal has been prepared for invited investors</p>
+            <p class="welcome-sub">Your email has been recognized. Please continue to access your private investor portal.</p>
             <form onsubmit="loginCode(event)">
                 <label>Personal access code</label>
                 <div class="code-digits" data-code-group="loginCode">
@@ -284,7 +284,7 @@
             <p class="tagline">For expired access or if you no longer remember your code</p>
             <form onsubmit="requestNewCode(event)">
                 <label>Email address</label>
-                <input type="email" id="reqEmail" placeholder="your@email.com" required>
+                <input type="email" id="reqEmail" placeholder="your@email.com" required style="opacity:0.7;">
                 <label>Current personal access code</label>
                 <div class="code-digits" data-code-group="reqCurrentCode">
                     <input type="password" inputmode="numeric" maxlength="1" class="code-digit" data-idx="0" placeholder="-">
@@ -401,6 +401,12 @@
             var el = document.getElementById(id);
             if (el) el.classList.add('active');
             clearMessage();
+            // Prefill and lock email in request-new-code if investor email is known
+            if (id === 'sectionRequestNew' && _email) {
+                var reqEl = document.getElementById('reqEmail');
+                reqEl.value = _email;
+                reqEl.readOnly = true;
+            }
             // Auto-focus first digit box in new section
             setTimeout(function() {
                 var firstDigit = el && el.querySelector('.code-digit');
@@ -464,6 +470,11 @@
                 _email = email;
                 _researcherId = data.researcher_id;
                 _firstName = data.first_name || 'Investor';
+
+                // Clean email from URL if it was passed as query param
+                if (window.location.search) {
+                    history.replaceState(null, '', window.location.pathname);
+                }
 
                 if (!data.has_code) {
                     // First access
@@ -618,6 +629,17 @@
                 btn.disabled = false; btn.textContent = 'Set new code';
             }
         }
+
+        // Auto-check: if email passed via query param (from access-theralia.html redirect), skip email entry
+        (function() {
+            var params = new URLSearchParams(window.location.search);
+            var passedEmail = params.get('email');
+            if (passedEmail) {
+                document.getElementById('emailInput').value = passedEmail;
+                // Auto-submit the email check
+                checkEmail(new Event('submit'));
+            }
+        })();
     </script>
 </body>
 </html>
