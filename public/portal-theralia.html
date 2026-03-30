@@ -3972,11 +3972,19 @@
             try {
                 const response = await fetch('/api/di/me?workspace=theralia', { credentials: 'include' });
                 if (response.status === 401) {
-                    window.location.href = 'access-theralia.html';
+                    // Route back to appropriate access page based on prior session origin.
+                    // Note: sessionStorage is used ONLY for frontend routing convenience.
+                    // It is not trusted for security — backend session validation is the source of truth.
+                    var wasInvestor = sessionStorage.getItem('theralia_session_origin') === 'investor_access';
+                    window.location.href = wasInvestor ? 'access-investor.html' : 'access-theralia.html';
                     return;
                 }
                 const data = await response.json();
                 const user = data.user || data;
+                // Track session origin for correct redirect on expiry
+                if (user.user_type === 'investor') {
+                    sessionStorage.setItem('theralia_session_origin', 'investor_access');
+                }
                 document.getElementById('userName').textContent = user.name || user.researcher_id || '';
 
                 _userPosition = (user.workspace_position || '').toLowerCase();
@@ -8034,6 +8042,13 @@
                     irMockInvestors = visitors.map(function(v) {
                         var mins = v.last_seen_at ? Math.round((Date.now() - new Date(v.last_seen_at).getTime()) / 60000) : null;
                         var timeAgo = mins === null ? '' : mins < 60 ? mins + ' min ago' : mins < 1440 ? Math.round(mins / 60) + 'h ago' : Math.round(mins / 1440) + 'd ago';
+                        // Renewal indicator: check if renewed today
+                        var renewedToday = false;
+                        if (v.last_renewed_at) {
+                            var rDate = new Date(v.last_renewed_at);
+                            var now = new Date();
+                            renewedToday = rDate.toDateString() === now.toDateString();
+                        }
                         return {
                             id: v.researcher_id,
                             name: v.investor_name || v.investor_email || v.researcher_id,
@@ -8041,7 +8056,9 @@
                             summary: v.visit_count + ' visit' + (v.visit_count !== 1 ? 's' : '') + (timeAgo ? ' \u00B7 ' + timeAgo : ''),
                             email: v.investor_email,
                             company: v.investor_company,
-                            visit_count: v.visit_count
+                            visit_count: v.visit_count,
+                            renewed_today: renewedToday,
+                            renewal_count: v.renewal_count || 0
                         };
                     });
                     // Show sidebar if we have visitors
@@ -8117,8 +8134,9 @@
                 if (inv.id === 'all') {
                     return '<div class="ir-inv-item' + active + '" data-id="all"><div class="ir-inv-name">All Investors</div></div>';
                 }
+                var renewBadge = inv.renewed_today ? '<span style="font-size:9px;font-weight:600;color:#16a34a;background:rgba(22,163,74,0.08);padding:1px 6px;border-radius:8px;margin-left:4px;">Renewed</span>' : '';
                 return '<div class="ir-inv-item' + active + '" data-id="' + inv.id + '">' +
-                    '<div class="ir-inv-name">' + inv.name + '</div>' +
+                    '<div class="ir-inv-name">' + inv.name + renewBadge + '</div>' +
                     '<div class="ir-inv-signal ' + inv.signal + '">' + (inv.signal === 'high' ? 'High Intent' : inv.signal === 'medium' ? 'Medium Interest' : 'Low Engagement') + '</div>' +
                     '<div class="ir-inv-summary">' + inv.summary + '</div>' +
                 '</div>';

@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Theralia – Private Investor Access</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: linear-gradient(135deg, #1a1a1f 0%, #2a2a32 50%, #1e1e26 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .container {
+            background: #111114;
+            padding: 44px 40px;
+            border-radius: 14px;
+            box-shadow: 0 16px 56px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.06);
+            max-width: 450px;
+            width: 100%;
+            position: relative;
+        }
+        .logo { text-align: center; margin-bottom: 24px; }
+        .logo img { display: block; margin: 0 auto 20px; max-width: 240px; height: auto; }
+        .divider {
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+            border: none; margin: 0 0 28px;
+        }
+        h1 {
+            color: #ffffff; margin-bottom: 6px; font-size: 22px;
+            line-height: 1.3; text-align: center; letter-spacing: 1px;
+        }
+        .tagline {
+            color: #78787f; margin-bottom: 30px; font-size: 13px;
+            line-height: 1.6; text-align: center;
+        }
+        .welcome-name {
+            color: #ffffff; font-size: 20px; font-weight: 600;
+            text-align: center; margin-bottom: 4px; letter-spacing: 0.5px;
+        }
+        .welcome-sub {
+            color: #6a6a74; font-size: 12px; text-align: center;
+            margin-bottom: 28px; line-height: 1.5;
+        }
+        label {
+            display: block; margin-bottom: 8px; color: #c8c8cf;
+            font-weight: 600; font-size: 14px;
+        }
+        input {
+            width: 100%; padding: 13px 14px; border: 2px solid #333340;
+            border-radius: 8px; font-size: 15px; margin-bottom: 16px;
+            transition: border-color 0.3s, box-shadow 0.3s;
+            background: #1a1a20; color: #e8e8ef; font-family: inherit;
+        }
+        input::placeholder { color: #55555f; }
+        input:focus {
+            outline: none; border-color: #ffffff;
+            box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.08); background: #1e1e26;
+        }
+        input.code-input {
+            text-align: center; letter-spacing: 12px; font-size: 22px;
+            font-weight: 700; padding: 14px;
+        }
+        .btn-primary {
+            width: 100%; padding: 14px; background: #ffffff; color: #111114;
+            border: none; border-radius: 8px; font-size: 14px; font-weight: 600;
+            cursor: pointer; transition: background 0.3s, box-shadow 0.3s;
+            letter-spacing: 0.3px; font-family: inherit;
+        }
+        .btn-primary:hover { background: #e0e0e8; box-shadow: 0 4px 18px rgba(255,255,255,0.12); }
+        .btn-primary:disabled { background: #444450; color: #777; cursor: not-allowed; box-shadow: none; }
+        .btn-secondary {
+            width: 100%; padding: 10px; background: transparent; color: #78787f;
+            border: 1px solid #333340; border-radius: 8px; font-size: 13px;
+            font-weight: 500; cursor: pointer; transition: all 0.2s;
+            margin-top: 12px; font-family: inherit;
+        }
+        .btn-secondary:hover { color: #c8c8cf; border-color: #55555f; }
+        .message {
+            margin-top: 16px; padding: 12px; border-radius: 8px;
+            font-size: 13px; display: none; text-align: center; line-height: 1.5;
+        }
+        .message.error { background: #2a1515; color: #ff6b6b; border: 1px solid #4a2020; display: block; }
+        .message.info { background: #15202a; color: #6bb8ff; border: 1px solid #203a4a; display: block; }
+        .message.success { background: #152a15; color: #6bff6b; border: 1px solid #204a20; display: block; }
+        .help-section {
+            margin-top: 28px; padding-top: 20px;
+            border-top: 1px solid rgba(255,255,255,0.06);
+            text-align: center;
+        }
+        .help-section p { font-size: 12px; color: #55555f; line-height: 1.7; }
+        .help-section a { color: #78787f; text-decoration: none; transition: color 0.2s; }
+        .help-section a:hover { color: #c8c8cf; }
+        .hint {
+            font-size: 11px; color: #55555f; text-align: center;
+            margin-top: -8px; margin-bottom: 16px;
+        }
+        .section { display: none; }
+        .section.active { display: block; }
+        /* Help icon */
+        .help-icon {
+            position: absolute; top: 18px; right: 18px;
+            width: 28px; height: 28px; border-radius: 50%;
+            border: 1px solid #333340; background: transparent;
+            color: #55555f; font-size: 13px; font-weight: 700;
+            cursor: pointer; display: flex; align-items: center;
+            justify-content: center; transition: all 0.2s;
+        }
+        .help-icon:hover { color: #c8c8cf; border-color: #55555f; }
+        /* Help modal */
+        .help-overlay {
+            display: none; position: fixed; inset: 0;
+            background: rgba(0,0,0,0.6); z-index: 100;
+            align-items: center; justify-content: center;
+        }
+        .help-overlay.open { display: flex; }
+        .help-modal {
+            background: #1a1a20; border: 1px solid #333340;
+            border-radius: 12px; padding: 28px 32px; max-width: 400px;
+            width: 90%; box-shadow: 0 16px 48px rgba(0,0,0,0.5);
+        }
+        .help-modal h3 { color: #ffffff; font-size: 15px; margin-bottom: 14px; letter-spacing: 0.3px; }
+        .help-modal ul { list-style: none; padding: 0; }
+        .help-modal li {
+            color: #8a8a94; font-size: 13px; line-height: 1.7;
+            padding: 4px 0; padding-left: 14px; position: relative;
+        }
+        .help-modal li::before {
+            content: ''; position: absolute; left: 0; top: 11px;
+            width: 4px; height: 4px; border-radius: 50%; background: #444450;
+        }
+        .help-modal-close {
+            margin-top: 18px; text-align: right;
+        }
+        .help-modal-close button {
+            background: transparent; border: 1px solid #333340;
+            color: #78787f; padding: 6px 16px; border-radius: 6px;
+            font-size: 12px; cursor: pointer; transition: all 0.2s; font-family: inherit;
+        }
+        .help-modal-close button:hover { color: #c8c8cf; border-color: #55555f; }
+        /* Transition screen */
+        .transition-overlay {
+            display: none; position: fixed; inset: 0;
+            background: #111114; z-index: 200;
+            align-items: center; justify-content: center; flex-direction: column;
+            opacity: 0; transition: opacity 0.3s ease;
+        }
+        .transition-overlay.show { opacity: 1; }
+        .transition-overlay.fade-out { opacity: 0; }
+        .transition-check {
+            width: 48px; height: 48px; border-radius: 50%;
+            border: 2px solid rgba(255,255,255,0.15); display: flex;
+            align-items: center; justify-content: center; margin-bottom: 20px;
+            opacity: 0; transform: scale(0.8); transition: all 0.35s ease 0.1s;
+        }
+        .transition-overlay.show .transition-check { opacity: 1; transform: scale(1); }
+        .transition-check svg { width: 22px; height: 22px; }
+        .transition-title {
+            color: #ffffff; font-size: 17px; font-weight: 600; letter-spacing: 0.5px;
+            opacity: 0; transform: translateY(6px); transition: all 0.3s ease 0.2s;
+        }
+        .transition-overlay.show .transition-title { opacity: 1; transform: translateY(0); }
+        .transition-sub {
+            color: #55555f; font-size: 13px; margin-top: 8px;
+            opacity: 0; transition: opacity 0.3s ease 0.35s;
+        }
+        .transition-overlay.show .transition-sub { opacity: 1; }
+        /* Code digit boxes */
+        .code-digits {
+            display: flex; gap: 10px; justify-content: center; margin-bottom: 16px;
+        }
+        .code-digit {
+            width: 52px; height: 56px; text-align: center; font-size: 22px; font-weight: 700;
+            border: 2px solid #333340; border-radius: 8px; background: #1a1a20; color: #e8e8ef;
+            font-family: inherit; transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .code-digit:focus {
+            outline: none; border-color: #ffffff;
+            box-shadow: 0 0 0 3px rgba(255,255,255,0.08); background: #1e1e26;
+        }
+        .code-digit::placeholder { color: #333340; }
+        @media (max-width: 480px) {
+            .container { padding: 32px 24px; }
+            input.code-input { letter-spacing: 8px; font-size: 20px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <button class="help-icon" onclick="toggleHelp()" title="About your access">?</button>
+
+        <div class="logo">
+            <img src="assets/logos/theralia_logo.png" alt="Theralia" onerror="this.style.display='none'">
+        </div>
+        <hr class="divider">
+
+        <!-- SECTION: Email entry -->
+        <div class="section active" id="sectionEmail">
+            <h1>Private access to Theralia</h1>
+            <p class="tagline">Access is reserved for invited investors</p>
+            <form onsubmit="checkEmail(event)">
+                <label>Email address</label>
+                <input type="email" id="emailInput" placeholder="your@email.com" required>
+                <button type="submit" class="btn-primary" id="emailBtn">Continue</button>
+            </form>
+        </div>
+
+        <!-- SECTION: First access — set code -->
+        <div class="section" id="sectionSetCode">
+            <div class="welcome-name" id="welcomeNameSet"></div>
+            <p class="welcome-sub">This private portal has been prepared for invited investors</p>
+            <p class="tagline">Create your personal access code</p>
+            <form onsubmit="setCode(event)">
+                <label>Personal access code</label>
+                <div class="code-digits" data-code-group="newCode1">
+                    <input type="password" inputmode="numeric" maxlength="1" class="code-digit" data-idx="0" placeholder="-">
+                    <input type="password" inputmode="numeric" maxlength="1" class="code-digit" data-idx="1" placeholder="-">
+                    <input type="password" inputmode="numeric" maxlength="1" class="code-digit" data-idx="2" placeholder="-">
+                    <input type="password" inputmode="numeric" maxlength="1" class="code-digit" data-idx="3" placeholder="-">
+                </div>
+                <label>Confirm access code</label>
+                <div class="code-digits" data-code-group="newCode2">
+                    <input type="password" inputmode="numeric" maxlength="1" class="code-digit" data-idx="0" placeholder="-">
+                    <input type="password" inputmode="numeric" maxlength="1" class="code-digit" data-idx="1" placeholder="-">
+                    <input type="password" inputmode="numeric" maxlength="1" class="code-digit" data-idx="2" placeholder="-">
+                    <input type="password" inputmode="numeric" maxlength="1" class="code-digit" data-idx="3" placeholder="-">
+                </div>
+                <p class="hint">Exactly 4 digits</p>
+                <button type="submit" class="btn-primary" id="setCodeBtn">Set access code</button>
+            </form>
+        </div>
+
+        <!-- SECTION: Returning — enter code -->
+        <div class="section" id="sectionLogin">
+            <div class="welcome-name" id="welcomeNameLogin"></div>
+            <p class="welcome-sub">This private portal has been prepared for invited investors</p>
+            <form onsubmit="loginCode(event)">
+                <label>Personal access code</label>
+                <div class="code-digits" data-code-group="loginCode">
+                    <input type="password" inputmode="numeric" maxlength="1" class="code-digit" data-idx="0" placeholder="-">
+                    <input type="password" inputmode="numeric" maxlength="1" class="code-digit" data-idx="1" placeholder="-">
+                    <input type="password" inputmode="numeric" maxlength="1" class="code-digit" data-idx="2" placeholder="-">
+                    <input type="password" inputmode="numeric" maxlength="1" class="code-digit" data-idx="3" placeholder="-">
+                </div>
+                <button type="submit" class="btn-primary" id="loginBtn">Access portal</button>
+            </form>
+            <button class="btn-secondary" onclick="showSection('sectionRequestNew')">Request new access code</button>
+        </div>
+
+        <!-- SECTION: Expired — set new code -->
+        <div class="section" id="sectionExpired">
+            <div class="welcome-name" id="welcomeNameExpired"></div>
+            <p class="tagline" style="color:#ff6b6b;margin-bottom:12px;">Your access period has ended</p>
+            <p class="welcome-sub">Set a new personal access code to continue</p>
+            <form onsubmit="renewCode(event)">
+                <label>New personal access code</label>
+                <div class="code-digits" data-code-group="renewCode1">
+                    <input type="password" inputmode="numeric" maxlength="1" class="code-digit" data-idx="0" placeholder="-">
+                    <input type="password" inputmode="numeric" maxlength="1" class="code-digit" data-idx="1" placeholder="-">
+                    <input type="password" inputmode="numeric" maxlength="1" class="code-digit" data-idx="2" placeholder="-">
+                    <input type="password" inputmode="numeric" maxlength="1" class="code-digit" data-idx="3" placeholder="-">
+                </div>
+                <label>Confirm new code</label>
+                <div class="code-digits" data-code-group="renewCode2">
+                    <input type="password" inputmode="numeric" maxlength="1" class="code-digit" data-idx="0" placeholder="-">
+                    <input type="password" inputmode="numeric" maxlength="1" class="code-digit" data-idx="1" placeholder="-">
+                    <input type="password" inputmode="numeric" maxlength="1" class="code-digit" data-idx="2" placeholder="-">
+                    <input type="password" inputmode="numeric" maxlength="1" class="code-digit" data-idx="3" placeholder="-">
+                </div>
+                <p class="hint">Exactly 4 digits</p>
+                <button type="submit" class="btn-primary" id="renewBtn">Continue</button>
+            </form>
+        </div>
+
+        <!-- SECTION: Request new code -->
+        <div class="section" id="sectionRequestNew">
+            <h1 style="font-size:18px;margin-bottom:12px;">Request new access code</h1>
+            <p class="tagline">For expired access or if you no longer remember your code</p>
+            <form onsubmit="requestNewCode(event)">
+                <label>Email address</label>
+                <input type="email" id="reqEmail" placeholder="your@email.com" required>
+                <label>Current personal access code</label>
+                <div class="code-digits" data-code-group="reqCurrentCode">
+                    <input type="password" inputmode="numeric" maxlength="1" class="code-digit" data-idx="0" placeholder="-">
+                    <input type="password" inputmode="numeric" maxlength="1" class="code-digit" data-idx="1" placeholder="-">
+                    <input type="password" inputmode="numeric" maxlength="1" class="code-digit" data-idx="2" placeholder="-">
+                    <input type="password" inputmode="numeric" maxlength="1" class="code-digit" data-idx="3" placeholder="-">
+                </div>
+                <label>New personal access code</label>
+                <div class="code-digits" data-code-group="reqNewCode1">
+                    <input type="password" inputmode="numeric" maxlength="1" class="code-digit" data-idx="0" placeholder="-">
+                    <input type="password" inputmode="numeric" maxlength="1" class="code-digit" data-idx="1" placeholder="-">
+                    <input type="password" inputmode="numeric" maxlength="1" class="code-digit" data-idx="2" placeholder="-">
+                    <input type="password" inputmode="numeric" maxlength="1" class="code-digit" data-idx="3" placeholder="-">
+                </div>
+                <label>Confirm new code</label>
+                <div class="code-digits" data-code-group="reqNewCode2">
+                    <input type="password" inputmode="numeric" maxlength="1" class="code-digit" data-idx="0" placeholder="-">
+                    <input type="password" inputmode="numeric" maxlength="1" class="code-digit" data-idx="1" placeholder="-">
+                    <input type="password" inputmode="numeric" maxlength="1" class="code-digit" data-idx="2" placeholder="-">
+                    <input type="password" inputmode="numeric" maxlength="1" class="code-digit" data-idx="3" placeholder="-">
+                </div>
+                <button type="submit" class="btn-primary" id="reqBtn">Set new code</button>
+            </form>
+            <button class="btn-secondary" onclick="showSection('sectionEmail')">Back</button>
+        </div>
+
+        <div id="message" class="message"></div>
+
+        <div class="help-section">
+            <p>Need help accessing the portal?</p>
+            <p style="margin-top:6px;">If you are unable to access your account, please contact us directly:<br>
+            <a href="mailto:frank.hernandez@theralia.com">frank.hernandez@theralia.com</a></p>
+        </div>
+    </div>
+
+    <!-- Help modal -->
+    <div class="help-overlay" id="helpOverlay" onclick="if(event.target===this)toggleHelp()">
+        <div class="help-modal">
+            <h3>About your access</h3>
+            <ul>
+                <li>Access is provided to selected investors</li>
+                <li>Your personal access code is valid for 30 days</li>
+                <li>You can request a new code if access expires</li>
+                <li>Extended access may require additional verification</li>
+            </ul>
+            <div class="help-modal-close">
+                <button onclick="toggleHelp()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Transition screen -->
+    <div class="transition-overlay" id="transitionOverlay">
+        <div class="transition-check">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"/>
+            </svg>
+        </div>
+        <div class="transition-title">Access confirmed</div>
+        <div class="transition-sub">Preparing your investor view...</div>
+    </div>
+
+    <script>
+        var _email = '';
+        var _researcherId = '';
+        var _firstName = '';
+        var _verifiedCode = ''; // Stores code after successful login verify, used for renewal
+
+        // --- Code digit box logic ---
+        function getCode(groupName) {
+            var el = document.querySelector('[data-code-group="' + groupName + '"]');
+            if (!el) return '';
+            var digits = el.querySelectorAll('.code-digit');
+            var val = '';
+            digits.forEach(function(d) { val += d.value; });
+            return val;
+        }
+        function clearCode(groupName) {
+            var el = document.querySelector('[data-code-group="' + groupName + '"]');
+            if (!el) return;
+            el.querySelectorAll('.code-digit').forEach(function(d) { d.value = ''; });
+        }
+        document.addEventListener('input', function(e) {
+            if (!e.target.classList.contains('code-digit')) return;
+            var v = e.target.value.replace(/\D/g, '');
+            e.target.value = v.charAt(0) || '';
+            if (v.length >= 1) {
+                var next = e.target.nextElementSibling;
+                if (next && next.classList.contains('code-digit')) next.focus();
+            }
+        });
+        document.addEventListener('keydown', function(e) {
+            if (!e.target.classList.contains('code-digit')) return;
+            if (e.key === 'Backspace' && !e.target.value) {
+                var prev = e.target.previousElementSibling;
+                if (prev && prev.classList.contains('code-digit')) { prev.focus(); prev.value = ''; }
+            }
+        });
+        document.addEventListener('paste', function(e) {
+            if (!e.target.classList.contains('code-digit')) return;
+            var paste = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '').slice(0, 4);
+            if (paste.length === 4) {
+                e.preventDefault();
+                var group = e.target.closest('.code-digits');
+                if (!group) return;
+                var digits = group.querySelectorAll('.code-digit');
+                for (var i = 0; i < 4; i++) { if (digits[i]) digits[i].value = paste[i]; }
+                if (digits[3]) digits[3].focus();
+            }
+        });
+
+        function showSection(id) {
+            document.querySelectorAll('.section').forEach(function(s) { s.classList.remove('active'); });
+            var el = document.getElementById(id);
+            if (el) el.classList.add('active');
+            clearMessage();
+            // Auto-focus first digit box in new section
+            setTimeout(function() {
+                var firstDigit = el && el.querySelector('.code-digit');
+                if (firstDigit) firstDigit.focus();
+            }, 50);
+        }
+
+        function showMessage(text, type) {
+            var m = document.getElementById('message');
+            m.textContent = text;
+            m.className = 'message ' + (type || 'error');
+        }
+
+        function clearMessage() {
+            var m = document.getElementById('message');
+            m.className = 'message';
+            m.style.display = 'none';
+            m.textContent = '';
+        }
+
+        function toggleHelp() {
+            document.getElementById('helpOverlay').classList.toggle('open');
+        }
+
+        function showTransition(redirect) {
+            var overlay = document.getElementById('transitionOverlay');
+            overlay.style.display = 'flex';
+            // Force reflow so transition from opacity 0→1 animates
+            overlay.offsetHeight;
+            overlay.classList.add('show');
+            setTimeout(function() {
+                overlay.classList.add('fade-out');
+                setTimeout(function() {
+                    window.location.href = redirect;
+                }, 300);
+            }, 600);
+        }
+
+        async function checkEmail(e) {
+            e.preventDefault();
+            var email = document.getElementById('emailInput').value.trim();
+            if (!email) return;
+            var btn = document.getElementById('emailBtn');
+            btn.disabled = true; btn.textContent = 'Checking...';
+            clearMessage();
+
+            try {
+                var resp = await fetch('/api/investor-auth/check', {
+                    method: 'POST', credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: email })
+                });
+                var data = await resp.json();
+
+                if (!data.found) {
+                    showMessage('Access is restricted to invited investors', 'info');
+                    btn.disabled = false; btn.textContent = 'Continue';
+                    return;
+                }
+
+                _email = email;
+                _researcherId = data.researcher_id;
+                _firstName = data.first_name || 'Investor';
+
+                if (!data.has_code) {
+                    // First access
+                    document.getElementById('welcomeNameSet').textContent = 'Welcome, ' + _firstName;
+                    showSection('sectionSetCode');
+                } else if (data.is_expired) {
+                    // Has code but expired — still need to enter code first via login
+                    document.getElementById('welcomeNameLogin').textContent = 'Welcome, ' + _firstName;
+                    showSection('sectionLogin');
+                } else {
+                    // Returning user
+                    document.getElementById('welcomeNameLogin').textContent = 'Welcome, ' + _firstName;
+                    showSection('sectionLogin');
+                }
+            } catch (err) {
+                showMessage('Connection error. Please try again.', 'error');
+            } finally {
+                btn.disabled = false; btn.textContent = 'Continue';
+            }
+        }
+
+        async function setCode(e) {
+            e.preventDefault();
+            var c1 = getCode('newCode1');
+            var c2 = getCode('newCode2');
+            if (!/^\d{4}$/.test(c1)) { showMessage('Code must be exactly 4 digits', 'error'); return; }
+            if (c1 !== c2) { showMessage('Codes do not match', 'error'); return; }
+
+            var btn = document.getElementById('setCodeBtn');
+            btn.disabled = true; btn.textContent = 'Setting up...';
+            clearMessage();
+
+            try {
+                var resp = await fetch('/api/investor-auth/set-code', {
+                    method: 'POST', credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: _email, code: c1 })
+                });
+                var data = await resp.json();
+                if (data.success) {
+                    showTransition(data.redirect);
+                } else {
+                    showMessage(data.error || 'Failed to set code', 'error');
+                }
+            } catch (err) {
+                showMessage('Connection error', 'error');
+            } finally {
+                btn.disabled = false; btn.textContent = 'Set access code';
+            }
+        }
+
+        async function loginCode(e) {
+            e.preventDefault();
+            var code = getCode('loginCode');
+            if (!/^\d{4}$/.test(code)) { showMessage('Code must be exactly 4 digits', 'error'); return; }
+
+            var btn = document.getElementById('loginBtn');
+            btn.disabled = true; btn.textContent = 'Verifying...';
+            clearMessage();
+
+            try {
+                var resp = await fetch('/api/investor-auth/login', {
+                    method: 'POST', credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: _email, code: code })
+                });
+                var data = await resp.json();
+
+                if (data.locked) {
+                    showMessage(data.error, 'error');
+                } else if (data.success && data.expired) {
+                    // Code was correct but access expired — store verified code for renewal
+                    _verifiedCode = code;
+                    _firstName = data.first_name || _firstName;
+                    document.getElementById('welcomeNameExpired').textContent = 'Welcome, ' + _firstName;
+                    showSection('sectionExpired');
+                } else if (data.success) {
+                    showTransition(data.redirect);
+                } else {
+                    showMessage(data.error || 'Incorrect access code', 'error');
+                }
+            } catch (err) {
+                showMessage('Connection error', 'error');
+            } finally {
+                btn.disabled = false; btn.textContent = 'Access portal';
+            }
+        }
+
+        async function renewCode(e) {
+            e.preventDefault();
+            var c1 = getCode('renewCode1');
+            var c2 = getCode('renewCode2');
+            if (!/^\d{4}$/.test(c1)) { showMessage('Code must be exactly 4 digits', 'error'); return; }
+            if (c1 !== c2) { showMessage('Codes do not match', 'error'); return; }
+
+            var btn = document.getElementById('renewBtn');
+            btn.disabled = true; btn.textContent = 'Renewing...';
+            clearMessage();
+
+            try {
+                var resp = await fetch('/api/investor-auth/renew', {
+                    method: 'POST', credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: _email, old_code: _verifiedCode, new_code: c1 })
+                });
+                var data = await resp.json();
+                if (data.success) {
+                    showTransition(data.redirect);
+                } else {
+                    showMessage(data.error || 'Failed to renew', 'error');
+                }
+            } catch (err) {
+                showMessage('Connection error', 'error');
+            } finally {
+                btn.disabled = false; btn.textContent = 'Continue';
+            }
+        }
+
+        async function requestNewCode(e) {
+            e.preventDefault();
+            var email = document.getElementById('reqEmail').value.trim();
+            var currentCode = getCode('reqCurrentCode');
+            var c1 = getCode('reqNewCode1');
+            var c2 = getCode('reqNewCode2');
+
+            if (!/^\d{4}$/.test(currentCode)) { showMessage('Incorrect access details', 'error'); return; }
+            if (!/^\d{4}$/.test(c1)) { showMessage('Code must be exactly 4 digits', 'error'); return; }
+            if (c1 !== c2) { showMessage('Codes do not match', 'error'); return; }
+
+            var btn = document.getElementById('reqBtn');
+            btn.disabled = true; btn.textContent = 'Updating...';
+            clearMessage();
+
+            try {
+                var resp = await fetch('/api/investor-auth/request-new-code', {
+                    method: 'POST', credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: email, current_code: currentCode, new_code: c1 })
+                });
+                var data = await resp.json();
+                if (data.success) {
+                    showMessage('Access code updated. You can now use your new code.', 'success');
+                    setTimeout(function() { showSection('sectionEmail'); }, 1500);
+                } else if (data.still_active) {
+                    showMessage(data.error, 'info');
+                } else {
+                    showMessage(data.error || 'Incorrect access details', 'error');
+                }
+            } catch (err) {
+                showMessage('Connection error', 'error');
+            } finally {
+                btn.disabled = false; btn.textContent = 'Set new code';
+            }
+        }
+    </script>
+</body>
+</html>

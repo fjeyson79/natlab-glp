@@ -1046,6 +1046,24 @@ async function migrate() {
             `CREATE INDEX IF NOT EXISTS idx_inv_tab_log_user ON investor_tab_access_log(researcher_id, accessed_at)`,
             `CREATE INDEX IF NOT EXISTS idx_inv_tab_log_tab ON investor_tab_access_log(tab_key, accessed_at)`,
 
+            // ==================== INVESTOR ACCESS CODES ====================
+
+            `CREATE TABLE IF NOT EXISTS investor_access_codes (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                researcher_id VARCHAR(50) NOT NULL REFERENCES di_allowlist(researcher_id),
+                workspace_id VARCHAR(30) NOT NULL DEFAULT 'theralia',
+                code_hash TEXT NOT NULL,
+                access_code_set_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                access_expires_at TIMESTAMPTZ NOT NULL,
+                last_login_at TIMESTAMPTZ,
+                last_renewed_at TIMESTAMPTZ,
+                renewal_count INTEGER NOT NULL DEFAULT 0,
+                failed_attempts INTEGER NOT NULL DEFAULT 0,
+                locked_until TIMESTAMPTZ,
+                UNIQUE(researcher_id, workspace_id)
+            )`,
+            `CREATE INDEX IF NOT EXISTS idx_inv_access_codes_user ON investor_access_codes(researcher_id, workspace_id)`,
+
             // ==================== PURCHASE ORDER BATCHES ====================
 
             // Snapshot table for consolidated purchase order batches

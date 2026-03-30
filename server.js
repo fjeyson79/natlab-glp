@@ -1333,6 +1333,10 @@ app.get('/api/di/me', requireAuth, async (req, res) => {
         institution_email: req.session.user.institution_email
     };
 
+    // Pass through investor session markers if present
+    if (req.session.user.user_type) base.user_type = req.session.user.user_type;
+    if (req.session.user.access_tier) base.access_tier = req.session.user.access_tier;
+
     // Enrich with startup position if requesting from a COMPANY workspace
     const wsSlug = req.query.workspace || req.headers['x-workspace-slug'] || '';
     if (wsSlug && wsSlug !== 'natlab') {
@@ -19527,6 +19531,381 @@ app.post('/api/investor/log-tab-access', requireAuth, async (req, res) => {
 // =====================================================
 
 // =====================================================
+// INVESTOR ACCESS CODE AUTHENTICATION
+// =====================================================
+
+const INVESTOR_CODE_EXPIRY_DAYS = 30;
+const INVESTOR_MAX_FAILED_ATTEMPTS = 5;
+const INVESTOR_LOCKOUT_MINUTES = 15;
+
+// Lightweight audit: log investor auth events (fire-and-forget, non-blocking)
+function invAuthLog(researcherId, event) {
+    pool.query(
+        `INSERT INTO investor_tab_access_log (workspace_id, researcher_id, tab_key) VALUES ('theralia', $1, $2)`,
+        [researcherId, 'auth:' + event]
+    ).catch(function() {});
+}
+
+// Helper: check investor_access_codes table
+let _invCodeTableExists = null;
+async function checkInvCodeTable() {
+    if (_invCodeTableExists !== null) return _invCodeTableExists;
+    try {
+        const r = await pool.query(`SELECT to_regclass('public.investor_access_codes') AS t`);
+        _invCodeTableExists = !!r.rows[0]?.t;
+    } catch { _invCodeTableExists = false; }
+    return _invCodeTableExists;
+}
+
+// POST /api/investor-auth/check — Check if email belongs to an investor
+// Investor identity note: investors are mapped through di_allowlist + workspace_users with role='investor'.
+// This is intentional — investors share the same identity backbone as internal users, scoped by workspace role.
+app.post('/api/investor-auth/check', async (req, res) => {
+    try {
+        const { email } = req.body;
+        if (!email) return res.status(400).json({ error: 'Email required' });
+        const emailLower = email.toLowerCase().trim();
+
+        // Check allowlist + workspace membership as investor
+        const result = await pool.query(
+            `SELECT a.researcher_id, a.name, a.active, wu.role, wu.workspace_position
+             FROM di_allowlist a
+             JOIN workspace_users wu ON wu.user_id = a.researcher_id
+             JOIN workspaces w ON w.id = wu.workspace_id
+             WHERE LOWER(a.institution_email) = $1 AND w.slug = 'theralia'
+               AND wu.is_active = TRUE AND (wu.role = 'investor' OR wu.workspace_position = 'investor')`,
+            [emailLower]
+        );
+
+        if (result.rows.length === 0 || !result.rows[0].active) {
+            return res.json({ found: false });
+        }
+
+        const user = result.rows[0];
+        const firstName = (user.name || '').split(' ')[0] || 'Investor';
+
+        // Check if access code already exists
+        let hasCode = false;
+        let isExpired = false;
+        if (await checkInvCodeTable()) {
+            const codeRow = await pool.query(
+                `SELECT access_code_set_at, access_expires_at FROM investor_access_codes
+                 WHERE researcher_id = $1 AND workspace_id = 'theralia'`,
+                [user.researcher_id]
+            );
+            if (codeRow.rows.length > 0) {
+                hasCode = true;
+                isExpired = new Date(codeRow.rows[0].access_expires_at) < new Date();
+            }
+        }
+
+        res.json({
+            found: true,
+            researcher_id: user.researcher_id,
+            first_name: firstName,
+            has_code: hasCode,
+            is_expired: isExpired
+        });
+    } catch (err) {
+        console.error('[INV-AUTH] Check error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/investor-auth/set-code — Set initial access code (first access)
+// Investor lookup: re-verifies investor role via allowlist + workspace_users join (same as /check)
+app.post('/api/investor-auth/set-code', async (req, res) => {
+    try {
+        const { email, code } = req.body;
+        if (!email || !code) return res.status(400).json({ error: 'Email and code required' });
+        if (!/^\d{4}$/.test(code)) return res.status(400).json({ error: 'Code must be exactly 4 digits' });
+
+        const emailLower = email.toLowerCase().trim();
+
+        // Verify investor
+        const inv = await pool.query(
+            `SELECT a.researcher_id, a.name, a.affiliation, a.role
+             FROM di_allowlist a
+             JOIN workspace_users wu ON wu.user_id = a.researcher_id
+             JOIN workspaces w ON w.id = wu.workspace_id
+             WHERE LOWER(a.institution_email) = $1 AND w.slug = 'theralia'
+               AND wu.is_active = TRUE AND (wu.role = 'investor' OR wu.workspace_position = 'investor')
+               AND a.active = TRUE`,
+            [emailLower]
+        );
+        if (inv.rows.length === 0) return res.status(403).json({ error: 'Access denied' });
+
+        const user = inv.rows[0];
+        if (!(await checkInvCodeTable())) return res.status(500).json({ error: 'System not ready' });
+
+        // Check if code already exists (should not — this is first access)
+        const existing = await pool.query(
+            `SELECT 1 FROM investor_access_codes WHERE researcher_id = $1 AND workspace_id = 'theralia'`,
+            [user.researcher_id]
+        );
+        if (existing.rows.length > 0) {
+            return res.status(409).json({ error: 'Access code already set. Use login or renewal.' });
+        }
+
+        const codeHash = await bcrypt.hash(code, 10);
+        const expiresAt = new Date(Date.now() + INVESTOR_CODE_EXPIRY_DAYS * 86400000);
+
+        await pool.query(
+            `INSERT INTO investor_access_codes (researcher_id, workspace_id, code_hash, access_code_set_at, access_expires_at)
+             VALUES ($1, 'theralia', $2, NOW(), $3)`,
+            [user.researcher_id, codeHash, expiresAt]
+        );
+
+        // Create investor-scoped session (distinct from internal/researcher sessions)
+        req.session.user = {
+            institution_email: emailLower,
+            researcher_id: user.researcher_id,
+            name: user.name,
+            affiliation: user.affiliation || 'EXTERNAL',
+            role: user.role || 'investor',
+            user_type: 'investor',
+            investor_session: true,
+            session_origin: 'investor_access',
+            workspace: 'theralia',
+            access_tier: 'investor_preview'
+        };
+
+        // Update last login
+        await pool.query(
+            `UPDATE investor_access_codes SET last_login_at = NOW() WHERE researcher_id = $1 AND workspace_id = 'theralia'`,
+            [user.researcher_id]
+        );
+
+        invAuthLog(user.researcher_id, 'investor_first_access');
+        console.log(`[INV-AUTH] First access code set for ${user.researcher_id}`);
+        res.json({ success: true, redirect: 'portal-theralia.html' });
+    } catch (err) {
+        console.error('[INV-AUTH] Set code error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/investor-auth/login — Authenticate with existing code
+app.post('/api/investor-auth/login', async (req, res) => {
+    try {
+        const { email, code } = req.body;
+        if (!email || !code) return res.status(400).json({ error: 'Email and code required' });
+
+        const emailLower = email.toLowerCase().trim();
+
+        // Verify investor
+        const inv = await pool.query(
+            `SELECT a.researcher_id, a.name, a.affiliation, a.role
+             FROM di_allowlist a
+             JOIN workspace_users wu ON wu.user_id = a.researcher_id
+             JOIN workspaces w ON w.id = wu.workspace_id
+             WHERE LOWER(a.institution_email) = $1 AND w.slug = 'theralia'
+               AND wu.is_active = TRUE AND (wu.role = 'investor' OR wu.workspace_position = 'investor')
+               AND a.active = TRUE`,
+            [emailLower]
+        );
+        if (inv.rows.length === 0) return res.json({ success: false, error: 'Access denied' });
+        const user = inv.rows[0];
+
+        if (!(await checkInvCodeTable())) return res.status(500).json({ error: 'System not ready' });
+
+        const codeRow = await pool.query(
+            `SELECT code_hash, access_expires_at, failed_attempts, locked_until
+             FROM investor_access_codes WHERE researcher_id = $1 AND workspace_id = 'theralia'`,
+            [user.researcher_id]
+        );
+        if (codeRow.rows.length === 0) return res.json({ success: false, error: 'No access code set' });
+
+        const record = codeRow.rows[0];
+
+        // Check lockout
+        if (record.locked_until && new Date(record.locked_until) > new Date()) {
+            const minsLeft = Math.ceil((new Date(record.locked_until) - new Date()) / 60000);
+            return res.json({ success: false, error: `Too many attempts. Try again in ${minsLeft} minute${minsLeft > 1 ? 's' : ''}.`, locked: true });
+        }
+
+        // Verify code
+        const match = await bcrypt.compare(code, record.code_hash);
+        if (!match) {
+            const newFailed = (record.failed_attempts || 0) + 1;
+            const lockUntil = newFailed >= INVESTOR_MAX_FAILED_ATTEMPTS
+                ? new Date(Date.now() + INVESTOR_LOCKOUT_MINUTES * 60000)
+                : null;
+            await pool.query(
+                `UPDATE investor_access_codes SET failed_attempts = $1, locked_until = $2
+                 WHERE researcher_id = $3 AND workspace_id = 'theralia'`,
+                [newFailed, lockUntil, user.researcher_id]
+            );
+            if (lockUntil) invAuthLog(user.researcher_id, 'investor_lockout');
+            return res.json({ success: false, error: 'Incorrect access code' });
+        }
+
+        // Code correct — reset failed attempts
+        await pool.query(
+            `UPDATE investor_access_codes SET failed_attempts = 0, locked_until = NULL, last_login_at = NOW()
+             WHERE researcher_id = $1 AND workspace_id = 'theralia'`,
+            [user.researcher_id]
+        );
+
+        // Check expiry
+        const isExpired = new Date(record.access_expires_at) < new Date();
+        if (isExpired) {
+            return res.json({ success: true, expired: true, researcher_id: user.researcher_id, first_name: (user.name || '').split(' ')[0] });
+        }
+
+        // Create investor-scoped session (distinct from internal/researcher sessions)
+        req.session.user = {
+            institution_email: emailLower,
+            researcher_id: user.researcher_id,
+            name: user.name,
+            affiliation: user.affiliation || 'EXTERNAL',
+            role: user.role || 'investor',
+            user_type: 'investor',
+            investor_session: true,
+            session_origin: 'investor_access',
+            workspace: 'theralia',
+            access_tier: 'investor_preview'
+        };
+
+        invAuthLog(user.researcher_id, 'investor_login');
+        console.log(`[INV-AUTH] Login for ${user.researcher_id}`);
+        res.json({ success: true, expired: false, redirect: 'portal-theralia.html' });
+    } catch (err) {
+        console.error('[INV-AUTH] Login error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/investor-auth/renew — Set new code after expiry
+// Security: requires old code verification (not just email) to prevent unauthorized code reset
+app.post('/api/investor-auth/renew', async (req, res) => {
+    try {
+        const { email, old_code, new_code } = req.body;
+        if (!email || !old_code || !new_code) return res.status(400).json({ error: 'Email, current code, and new code required' });
+        if (!/^\d{4}$/.test(new_code)) return res.status(400).json({ error: 'Code must be exactly 4 digits' });
+
+        const emailLower = email.toLowerCase().trim();
+        const inv = await pool.query(
+            `SELECT a.researcher_id, a.name, a.affiliation, a.role
+             FROM di_allowlist a
+             JOIN workspace_users wu ON wu.user_id = a.researcher_id
+             JOIN workspaces w ON w.id = wu.workspace_id
+             WHERE LOWER(a.institution_email) = $1 AND w.slug = 'theralia'
+               AND wu.is_active = TRUE AND a.active = TRUE`,
+            [emailLower]
+        );
+        if (inv.rows.length === 0) return res.status(403).json({ error: 'Access denied' });
+        const user = inv.rows[0];
+
+        // Verify old code before allowing renewal
+        const codeRow = await pool.query(
+            `SELECT code_hash FROM investor_access_codes WHERE researcher_id = $1 AND workspace_id = 'theralia'`,
+            [user.researcher_id]
+        );
+        if (codeRow.rows.length === 0) return res.status(403).json({ error: 'Access denied' });
+        const oldMatch = await bcrypt.compare(old_code, codeRow.rows[0].code_hash);
+        if (!oldMatch) return res.json({ success: false, error: 'Incorrect access code' });
+
+        const codeHash = await bcrypt.hash(new_code, 10);
+        const expiresAt = new Date(Date.now() + INVESTOR_CODE_EXPIRY_DAYS * 86400000);
+
+        await pool.query(
+            `UPDATE investor_access_codes
+             SET code_hash = $1, access_code_set_at = NOW(), access_expires_at = $2,
+                 last_renewed_at = NOW(), renewal_count = renewal_count + 1,
+                 failed_attempts = 0, locked_until = NULL, last_login_at = NOW()
+             WHERE researcher_id = $3 AND workspace_id = 'theralia'`,
+            [codeHash, expiresAt, user.researcher_id]
+        );
+
+        // Create investor-scoped session
+        req.session.user = {
+            institution_email: emailLower,
+            researcher_id: user.researcher_id,
+            name: user.name,
+            affiliation: user.affiliation || 'EXTERNAL',
+            role: user.role || 'investor',
+            user_type: 'investor',
+            investor_session: true,
+            session_origin: 'investor_access',
+            workspace: 'theralia',
+            access_tier: 'investor_preview'
+        };
+
+        invAuthLog(user.researcher_id, 'investor_renewal');
+        console.log(`[INV-AUTH] Code renewed for ${user.researcher_id}`);
+        res.json({ success: true, redirect: 'portal-theralia.html' });
+    } catch (err) {
+        console.error('[INV-AUTH] Renew error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/investor-auth/request-new-code — Reset code (requires current code verification)
+app.post('/api/investor-auth/request-new-code', async (req, res) => {
+    try {
+        const { email, current_code, new_code } = req.body;
+        if (!email || !current_code || !new_code) return res.status(400).json({ error: 'All fields required' });
+        if (!/^\d{4}$/.test(new_code)) return res.status(400).json({ error: 'New code must be exactly 4 digits' });
+
+        const emailLower = email.toLowerCase().trim();
+        const inv = await pool.query(
+            `SELECT a.researcher_id FROM di_allowlist a
+             JOIN workspace_users wu ON wu.user_id = a.researcher_id
+             JOIN workspaces w ON w.id = wu.workspace_id
+             WHERE LOWER(a.institution_email) = $1 AND w.slug = 'theralia'
+               AND wu.is_active = TRUE AND a.active = TRUE`,
+            [emailLower]
+        );
+        if (inv.rows.length === 0) return res.json({ success: false, error: 'Incorrect access details' });
+
+        const userId = inv.rows[0].researcher_id;
+        const codeRow = await pool.query(
+            `SELECT code_hash, locked_until, access_expires_at FROM investor_access_codes
+             WHERE researcher_id = $1 AND workspace_id = 'theralia'`,
+            [userId]
+        );
+        if (codeRow.rows.length === 0) return res.json({ success: false, error: 'Incorrect access details' });
+
+        if (codeRow.rows[0].locked_until && new Date(codeRow.rows[0].locked_until) > new Date()) {
+            const minsLeft = Math.ceil((new Date(codeRow.rows[0].locked_until) - new Date()) / 60000);
+            return res.json({ success: false, error: `Too many attempts. Try again in ${minsLeft} minute${minsLeft > 1 ? 's' : ''}.` });
+        }
+
+        const match = await bcrypt.compare(current_code, codeRow.rows[0].code_hash);
+        if (!match) return res.json({ success: false, error: 'Incorrect access details' });
+
+        // If access is still active, inform user — no unnecessary reset
+        const stillActive = codeRow.rows[0].access_expires_at && new Date(codeRow.rows[0].access_expires_at) > new Date();
+        if (stillActive) {
+            return res.json({ success: false, error: 'Your access is still active', still_active: true });
+        }
+
+        const newHash = await bcrypt.hash(new_code, 10);
+        const expiresAt = new Date(Date.now() + INVESTOR_CODE_EXPIRY_DAYS * 86400000);
+
+        await pool.query(
+            `UPDATE investor_access_codes
+             SET code_hash = $1, access_code_set_at = NOW(), access_expires_at = $2,
+                 last_renewed_at = NOW(), renewal_count = renewal_count + 1,
+                 failed_attempts = 0, locked_until = NULL
+             WHERE researcher_id = $3 AND workspace_id = 'theralia'`,
+            [newHash, expiresAt, userId]
+        );
+
+        console.log(`[INV-AUTH] New code requested for ${userId}`);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[INV-AUTH] Request new code error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// =====================================================
+// END INVESTOR ACCESS CODE AUTHENTICATION
+// =====================================================
+
+// =====================================================
 // INVESTOR PORTAL VISIT TRACKING
 // =====================================================
 
@@ -19591,12 +19970,21 @@ app.get('/api/investor/visitors', requireAuth, async (req, res) => {
         if (!tbl.rows[0]?.t) {
             return res.json({ visitors: [] });
         }
+        const hasCodeTable = await checkInvCodeTable();
+        const codeCols = hasCodeTable
+            ? `, iac.last_renewed_at, iac.renewal_count, iac.last_login_at as code_last_login`
+            : `, NULL as last_renewed_at, 0 as renewal_count, NULL as code_last_login`;
+        const codeJoin = hasCodeTable
+            ? `LEFT JOIN investor_access_codes iac ON iac.researcher_id = v.researcher_id AND iac.workspace_id = v.workspace_id`
+            : '';
         const result = await pool.query(
-            `SELECT researcher_id, investor_name, investor_email, investor_company,
-                    last_seen_at, visit_count, created_at
-             FROM investor_portal_visits
-             WHERE workspace_id = $1
-             ORDER BY last_seen_at DESC`,
+            `SELECT v.researcher_id, v.investor_name, v.investor_email, v.investor_company,
+                    v.last_seen_at, v.visit_count, v.created_at
+                    ${codeCols}
+             FROM investor_portal_visits v
+             ${codeJoin}
+             WHERE v.workspace_id = $1
+             ORDER BY v.last_seen_at DESC`,
             [ws]
         );
         res.json({ visitors: result.rows });
