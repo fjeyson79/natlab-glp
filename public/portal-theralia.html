@@ -68,6 +68,174 @@
             font-size: 14px; color: #5a5d66; line-height: 1.7;
         }
 
+        /* ---- User Control (CSO) ---- */
+        .uc-header { margin: 24px 0 28px; }
+        .uc-title { font-size: 22px; font-weight: 700; color: #1a1c22; letter-spacing: -0.3px; }
+        .uc-subtitle { font-size: 12px; color: #8b8f9a; margin-top: 4px; line-height: 1.5; }
+        .uc-toggle {
+            display: inline-flex; background: #ffffff; border: 1px solid #e0e2e6;
+            border-radius: 8px; overflow: hidden; margin-bottom: 24px;
+        }
+        .uc-toggle-btn {
+            padding: 8px 24px; font-size: 12px; font-weight: 700;
+            letter-spacing: 0.3px; text-transform: uppercase;
+            color: #8b8f9a; background: transparent; border: none;
+            cursor: pointer; transition: all 0.15s; font-family: inherit;
+        }
+        .uc-toggle-btn.active { background: rgba(22,163,74,0.06); color: #16a34a; }
+        .uc-toggle-btn:hover:not(.active) { color: #3a3d45; }
+        .uc-panel {
+            background: #ffffff; border: 1px solid rgba(0,0,0,0.06);
+            border-radius: 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.04);
+            overflow: hidden;
+        }
+        .uc-panel-head {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 18px 24px; border-bottom: 1px solid rgba(0,0,0,0.05);
+        }
+        .uc-panel-title { font-size: 14px; font-weight: 700; color: #1a1c22; letter-spacing: -0.1px; }
+        .uc-panel-count {
+            font-size: 11px; font-weight: 600; color: #8b8f9a;
+            background: rgba(0,0,0,0.04); border-radius: 10px; padding: 2px 10px; margin-left: 8px;
+        }
+        .uc-add-btn {
+            display: inline-flex; align-items: center; gap: 5px;
+            padding: 7px 16px; background: #16a34a; color: #ffffff;
+            border: none; border-radius: 7px; font-size: 12px; font-weight: 600;
+            cursor: pointer; transition: background 0.12s; font-family: inherit;
+        }
+        .uc-add-btn:hover { background: #15803d; }
+        .uc-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .uc-table th {
+            text-align: left; padding: 10px 16px; font-size: 10px; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.6px; color: #8b8f9a;
+            background: #fafbfc; border-bottom: 1px solid rgba(0,0,0,0.05);
+        }
+        .uc-table td { padding: 14px 16px; border-bottom: 1px solid rgba(0,0,0,0.03); vertical-align: middle; }
+        .uc-table tr:last-child td { border-bottom: none; }
+        .uc-table tr:hover td { background: rgba(0,0,0,0.01); }
+        .uc-name { font-weight: 600; color: #1a1c22; font-size: 13px; }
+        .uc-email { font-size: 11px; color: #8b8f9a; margin-top: 1px; }
+        .uc-role-tag {
+            display: inline-block; padding: 2px 10px; border-radius: 10px;
+            font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px;
+        }
+        .uc-role-tag.founder { background: rgba(22,163,74,0.08); color: #16a34a; }
+        .uc-role-tag.r_and_d { background: rgba(37,99,235,0.08); color: #2563eb; }
+        .uc-role-tag.advisor { background: rgba(124,58,237,0.08); color: #7c3aed; }
+        .uc-role-tag.admin { background: rgba(202,138,4,0.08); color: #ca8a04; }
+        .uc-role-tag.investor { background: rgba(37,99,235,0.08); color: #2563eb; }
+        .uc-role-tag.custom { background: rgba(0,0,0,0.05); color: #7a7e8a; }
+        .uc-status {
+            display: inline-flex; align-items: center; gap: 5px;
+            font-size: 10px; font-weight: 600; letter-spacing: 0.3px; text-transform: uppercase;
+        }
+        .uc-status::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+        .uc-status.active { color: #16a34a; }
+        .uc-status.inactive { color: #8b8f9a; }
+        .uc-act-btn {
+            padding: 4px 10px; border-radius: 5px; font-size: 11px; font-weight: 600;
+            border: 1px solid #e0e2e6; background: #ffffff; color: #5a5d66;
+            cursor: pointer; transition: all 0.12s; font-family: inherit;
+        }
+        .uc-act-btn:hover { border-color: #c8cacd; color: #1a1c22; background: #fafbfc; }
+        .uc-act-btn.warn { color: #ca8a04; border-color: rgba(202,138,4,0.25); }
+        .uc-act-btn.warn:hover { background: rgba(202,138,4,0.04); }
+        .uc-act-btn.good { color: #16a34a; border-color: rgba(22,163,74,0.25); }
+        .uc-act-btn.good:hover { background: rgba(22,163,74,0.04); }
+        .uc-act-btn.info { color: #2563eb; border-color: rgba(37,99,235,0.25); }
+        .uc-act-btn.info:hover { background: rgba(37,99,235,0.04); }
+        .uc-inv-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+            gap: 16px; padding: 20px 24px;
+        }
+        @media (max-width: 900px) { .uc-inv-grid { grid-template-columns: 1fr; } }
+        .uc-inv-card {
+            background: #fafbfc; border: 1px solid rgba(0,0,0,0.06);
+            border-radius: 10px; padding: 20px 22px; transition: border-color 0.12s;
+        }
+        .uc-inv-card:hover { border-color: rgba(0,0,0,0.12); }
+        .uc-inv-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; }
+        .uc-inv-name { font-size: 14px; font-weight: 700; color: #1a1c22; letter-spacing: -0.1px; }
+        .uc-inv-email { font-size: 11px; color: #8b8f9a; margin-top: 2px; }
+        .uc-inv-org { font-size: 11px; color: #b0b4be; margin-top: 2px; }
+        .uc-inv-interest {
+            display: inline-block; padding: 2px 8px; border-radius: 10px;
+            font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px;
+        }
+        .uc-inv-interest.high { background: rgba(22,163,74,0.08); color: #16a34a; }
+        .uc-inv-interest.medium { background: rgba(202,138,4,0.08); color: #ca8a04; }
+        .uc-inv-interest.low { background: rgba(0,0,0,0.05); color: #8b8f9a; }
+        .uc-perm-section {
+            padding: 14px 0; border-top: 1px solid rgba(0,0,0,0.05); margin-top: 4px;
+        }
+        .uc-perm-label {
+            font-size: 9px; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 1.2px; color: #8b8f9a; margin-bottom: 10px;
+        }
+        .uc-perm-row {
+            display: flex; align-items: center; gap: 8px; padding: 5px 0; font-size: 13px; color: #3a3d45;
+        }
+        .uc-perm-row input[type="checkbox"] {
+            width: 16px; height: 16px; accent-color: #16a34a; cursor: pointer;
+        }
+        .uc-tier-strip { display: flex; gap: 4px; margin-top: 10px; }
+        .uc-tier-btn {
+            padding: 3px 10px; border-radius: 12px; font-size: 10px; font-weight: 600;
+            background: #ffffff; border: 1px solid #e0e2e6; color: #8b8f9a;
+            cursor: pointer; transition: all 0.12s; font-family: inherit;
+        }
+        .uc-tier-btn:hover { color: #16a34a; border-color: rgba(22,163,74,0.3); background: rgba(22,163,74,0.03); }
+        .uc-inv-actions {
+            display: flex; gap: 6px; flex-wrap: wrap; margin-top: 14px; padding-top: 14px;
+            border-top: 1px solid rgba(0,0,0,0.05);
+        }
+        /* Modal */
+        .uc-modal-overlay {
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+            z-index: 1000; align-items: center; justify-content: center;
+        }
+        .uc-modal-overlay.open { display: flex; }
+        .uc-modal {
+            background: #ffffff; border-radius: 12px; padding: 28px; width: 480px;
+            max-width: 95vw; max-height: 90vh; overflow-y: auto;
+            box-shadow: 0 12px 48px rgba(0,0,0,0.15); border: 1px solid rgba(0,0,0,0.06);
+        }
+        .uc-modal-title { font-size: 16px; font-weight: 700; color: #1a1c22; }
+        .uc-modal-close {
+            background: none; border: none; font-size: 18px; cursor: pointer;
+            color: #8b8f9a; transition: color 0.12s; padding: 4px;
+        }
+        .uc-modal-close:hover { color: #1a1c22; }
+        .uc-field { margin-bottom: 16px; }
+        .uc-field label {
+            display: block; font-size: 11px; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.5px; color: #8b8f9a; margin-bottom: 6px;
+        }
+        .uc-field input, .uc-field select, .uc-field textarea {
+            width: 100%; padding: 10px 14px; border: 1px solid #e0e2e6;
+            border-radius: 7px; background: #fafbfc; color: #1a1c22;
+            font-size: 13px; font-family: inherit; box-sizing: border-box;
+            transition: border-color 0.15s;
+        }
+        .uc-field input:focus, .uc-field select:focus, .uc-field textarea:focus {
+            outline: none; border-color: #16a34a; background: #ffffff;
+        }
+        .uc-field small { font-size: 11px; color: #b0b4be; margin-top: 4px; display: block; }
+        .uc-modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+        .uc-btn-cancel {
+            padding: 8px 18px; border: 1px solid #e0e2e6; border-radius: 7px;
+            background: #ffffff; color: #5a5d66; font-size: 13px; font-weight: 600;
+            cursor: pointer; transition: all 0.12s; font-family: inherit;
+        }
+        .uc-btn-cancel:hover { border-color: #c8cacd; color: #1a1c22; }
+        .uc-btn-submit {
+            padding: 8px 22px; background: #16a34a; color: #ffffff; border: none;
+            border-radius: 7px; font-size: 13px; font-weight: 600;
+            cursor: pointer; transition: background 0.12s; font-family: inherit;
+        }
+        .uc-btn-submit:hover { background: #15803d; }
+
         /* ---- Light Content Surface ---- */
         .main {
             max-width: 1440px;
@@ -3657,77 +3825,86 @@
         <!-- USER CONTROL TAB (CSO ONLY)                   -->
         <!-- ============================================== -->
         <div class="tab-content" id="tab-user-control">
-            <div style="max-width:1100px;">
-                <!-- Internal Users Section -->
-                <div class="panel" style="margin-bottom:24px;">
-                    <div class="panel-header" style="display:flex;justify-content:space-between;align-items:center;">
-                        <h2 style="margin:0;">Internal Users</h2>
-                        <button class="btn btn-sm btn-primary" onclick="ucShowCreateModal('internal')">+ New Internal User</button>
-                    </div>
-                    <div class="panel-content">
-                        <table class="data-table" style="font-size:13px;width:100%;">
-                            <thead>
-                                <tr>
-                                    <th>Name</th>
-                                    <th>Email</th>
-                                    <th>Role</th>
-                                    <th>Position</th>
-                                    <th>Status</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody id="ucInternalBody">
-                                <tr><td colspan="6" style="text-align:center;color:#999;padding:16px;">Loading...</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
 
-                <!-- Investors Section -->
-                <div class="panel">
-                    <div class="panel-header" style="display:flex;justify-content:space-between;align-items:center;">
-                        <h2 style="margin:0;">Investors</h2>
-                        <button class="btn btn-sm btn-primary" onclick="ucShowCreateModal('investor')">+ New Investor</button>
-                    </div>
-                    <div class="panel-content">
-                        <div id="ucInvestorCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px;">
-                            <div style="text-align:center;color:#999;padding:16px;grid-column:1/-1;">Loading...</div>
+            <div class="uc-header">
+                <div class="uc-title">User Control</div>
+                <div class="uc-subtitle">Manage internal company access, founder roles, and investor portal activation</div>
+            </div>
+
+            <div class="uc-toggle" id="ucToggle">
+                <button class="uc-toggle-btn active" data-uc-section="internal">Internal Users</button>
+                <button class="uc-toggle-btn" data-uc-section="investors">Investors</button>
+            </div>
+
+            <!-- Internal Users Section -->
+            <div class="uc-section" id="ucSectionInternal">
+                <div class="uc-panel">
+                    <div class="uc-panel-head">
+                        <div style="display:flex;align-items:center;">
+                            <span class="uc-panel-title">Team Members</span>
+                            <span class="uc-panel-count" id="ucInternalCount">0</span>
                         </div>
+                        <button class="uc-add-btn" onclick="ucShowCreateModal('internal')">+ Add Member</button>
+                    </div>
+                    <table class="uc-table">
+                        <thead>
+                            <tr><th>Member</th><th>Role</th><th>Position</th><th>Status</th><th style="text-align:right;">Actions</th></tr>
+                        </thead>
+                        <tbody id="ucInternalBody">
+                            <tr><td colspan="5" style="text-align:center;color:#8b8f9a;padding:32px;">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Investors Section -->
+            <div class="uc-section" id="ucSectionInvestors" style="display:none;">
+                <div class="uc-panel">
+                    <div class="uc-panel-head">
+                        <div style="display:flex;align-items:center;">
+                            <span class="uc-panel-title">Investor Accounts</span>
+                            <span class="uc-panel-count" id="ucInvestorCount">0</span>
+                        </div>
+                        <button class="uc-add-btn" onclick="ucShowCreateModal('investor')">+ Add Investor</button>
+                    </div>
+                    <div class="uc-inv-grid" id="ucInvestorCards">
+                        <div style="text-align:center;color:#8b8f9a;padding:32px;grid-column:1/-1;">Loading...</div>
                     </div>
                 </div>
             </div>
+
         </div>
 
         <!-- User Control Create/Edit Modal -->
-        <div id="ucModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;display:none;align-items:center;justify-content:center;">
-            <div style="background:#fff;border-radius:8px;padding:24px;width:460px;max-width:95vw;max-height:90vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,0.2);">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-                    <h3 id="ucModalTitle" style="margin:0;">New User</h3>
-                    <button onclick="ucCloseModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#666;">&times;</button>
+        <div class="uc-modal-overlay" id="ucModal">
+            <div class="uc-modal">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+                    <span class="uc-modal-title" id="ucModalTitle">New User</span>
+                    <button class="uc-modal-close" onclick="ucCloseModal()">&times;</button>
                 </div>
                 <form id="ucForm" onsubmit="ucSubmitForm(event)">
                     <input type="hidden" id="ucEditId" value="">
                     <input type="hidden" id="ucUserType" value="internal">
 
-                    <div style="margin-bottom:12px;">
-                        <label style="display:block;font-weight:600;margin-bottom:4px;font-size:13px;">Full Name *</label>
-                        <input type="text" id="ucName" required style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;box-sizing:border-box;">
+                    <div class="uc-field">
+                        <label>Full Name *</label>
+                        <input type="text" id="ucName" required>
                     </div>
-                    <div style="margin-bottom:12px;">
-                        <label style="display:block;font-weight:600;margin-bottom:4px;font-size:13px;">Email *</label>
-                        <input type="email" id="ucEmail" required style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;box-sizing:border-box;">
+                    <div class="uc-field">
+                        <label>Email *</label>
+                        <input type="email" id="ucEmail" required>
                     </div>
-                    <div style="margin-bottom:12px;" id="ucIdRow">
-                        <label style="display:block;font-weight:600;margin-bottom:4px;font-size:13px;">Researcher ID *</label>
-                        <input type="text" id="ucResearcherId" pattern="[A-Za-z0-9_]{2,12}" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;box-sizing:border-box;">
-                        <small style="color:#888;">2-12 chars, letters/numbers/underscore</small>
+                    <div class="uc-field" id="ucIdRow">
+                        <label>User ID *</label>
+                        <input type="text" id="ucResearcherId" pattern="[A-Za-z0-9_]{2,12}">
+                        <small>2-12 characters, letters, numbers, or underscore</small>
                     </div>
 
                     <!-- Internal user fields -->
                     <div id="ucInternalFields">
-                        <div style="margin-bottom:12px;">
-                            <label style="display:block;font-weight:600;margin-bottom:4px;font-size:13px;">Role *</label>
-                            <select id="ucRole" onchange="ucRoleChanged()" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;">
+                        <div class="uc-field">
+                            <label>Role *</label>
+                            <select id="ucRole" onchange="ucRoleChanged()">
                                 <option value="founder">Founder</option>
                                 <option value="r_and_d">R&D</option>
                                 <option value="advisor">Advisor</option>
@@ -3735,9 +3912,9 @@
                                 <option value="custom">Custom</option>
                             </select>
                         </div>
-                        <div id="ucPositionRow" style="margin-bottom:12px;display:none;">
-                            <label style="display:block;font-weight:600;margin-bottom:4px;font-size:13px;">Founder Position</label>
-                            <select id="ucPosition" onchange="ucPositionChanged()" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;">
+                        <div class="uc-field" id="ucPositionRow" style="display:none;">
+                            <label>Founder Position</label>
+                            <select id="ucPosition" onchange="ucPositionChanged()">
                                 <option value="">-- Select --</option>
                                 <option value="CEO">CEO</option>
                                 <option value="CTO">CTO</option>
@@ -3747,36 +3924,36 @@
                                 <option value="Custom">Custom</option>
                             </select>
                         </div>
-                        <div id="ucCustomPositionRow" style="margin-bottom:12px;display:none;">
-                            <label style="display:block;font-weight:600;margin-bottom:4px;font-size:13px;">Custom Position Title</label>
-                            <input type="text" id="ucCustomPosition" placeholder="e.g. VP of Engineering" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;box-sizing:border-box;">
+                        <div class="uc-field" id="ucCustomPositionRow" style="display:none;">
+                            <label>Custom Position Title</label>
+                            <input type="text" id="ucCustomPosition" placeholder="e.g. VP of Engineering">
                         </div>
                     </div>
 
                     <!-- Investor profile fields -->
                     <div id="ucInvestorFields" style="display:none;">
-                        <div style="margin-bottom:12px;">
-                            <label style="display:block;font-weight:600;margin-bottom:4px;font-size:13px;">Organization</label>
-                            <input type="text" id="ucOrganization" placeholder="e.g. Nordic Ventures" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;box-sizing:border-box;">
+                        <div class="uc-field">
+                            <label>Organization</label>
+                            <input type="text" id="ucOrganization" placeholder="e.g. Nordic Ventures">
                         </div>
-                        <div style="margin-bottom:12px;">
-                            <label style="display:block;font-weight:600;margin-bottom:4px;font-size:13px;">Interest Level</label>
-                            <select id="ucInterestLevel" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;">
+                        <div class="uc-field">
+                            <label>Interest Level</label>
+                            <select id="ucInterestLevel">
                                 <option value="">-- Not set --</option>
                                 <option value="low">Low</option>
                                 <option value="medium">Medium</option>
                                 <option value="high">High</option>
                             </select>
                         </div>
-                        <div style="margin-bottom:12px;">
-                            <label style="display:block;font-weight:600;margin-bottom:4px;font-size:13px;">Notes</label>
-                            <textarea id="ucNotes" rows="2" placeholder="Internal notes about this investor..." style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;box-sizing:border-box;resize:vertical;"></textarea>
+                        <div class="uc-field">
+                            <label>Notes</label>
+                            <textarea id="ucNotes" rows="2" placeholder="Internal notes about this investor..."></textarea>
                         </div>
                     </div>
 
-                    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px;">
-                        <button type="button" class="btn btn-sm" onclick="ucCloseModal()" style="background:#f0f0f0;color:#555;border:1px solid #ccc;">Cancel</button>
-                        <button type="submit" class="btn btn-sm btn-primary" id="ucSubmitBtn">Create User</button>
+                    <div class="uc-modal-actions">
+                        <button type="button" class="uc-btn-cancel" onclick="ucCloseModal()">Cancel</button>
+                        <button type="submit" class="uc-btn-submit" id="ucSubmitBtn">Create User</button>
                     </div>
                 </form>
             </div>
@@ -8058,6 +8235,17 @@
         var _ucInvestors = [];
         var _ucOptionalTabs = [];
 
+        // Segmented toggle handler
+        document.getElementById('ucToggle').addEventListener('click', function(e) {
+            var btn = e.target.closest('.uc-toggle-btn');
+            if (!btn) return;
+            document.querySelectorAll('.uc-toggle-btn').forEach(function(b) { b.classList.remove('active'); });
+            btn.classList.add('active');
+            var section = btn.dataset.ucSection;
+            document.getElementById('ucSectionInternal').style.display = section === 'internal' ? '' : 'none';
+            document.getElementById('ucSectionInvestors').style.display = section === 'investors' ? '' : 'none';
+        });
+
         async function ucLoadUsers() {
             try {
                 const [usersResp, tabsResp] = await Promise.all([
@@ -8081,16 +8269,14 @@
 
         function ucRenderInternal() {
             const tbody = document.getElementById('ucInternalBody');
+            document.getElementById('ucInternalCount').textContent = _ucInternalUsers.length;
             if (_ucInternalUsers.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;padding:16px;">No internal users found.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#8b8f9a;padding:32px;">No internal users found.</td></tr>';
                 return;
             }
             tbody.innerHTML = _ucInternalUsers.map(u => {
                 const isActive = u.active && u.ws_active;
-                const statusBadge = isActive
-                    ? '<span style="color:#28a745;font-weight:600;">Active</span>'
-                    : '<span style="color:#dc3545;font-weight:600;">Inactive</span>';
-                const roleLabel = (u.ws_role || u.base_role || '').replace('_', ' ');
+                const role = u.ws_role || u.base_role || 'custom';
                 let posLabel = '';
                 if (u.workspace_position && u.workspace_position.toLowerCase() !== 'investor') {
                     posLabel = u.workspace_position;
@@ -8100,24 +8286,22 @@
                 }
                 const esc = s => (s || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
 
-                let actions = '';
-                actions += `<button class="btn btn-sm" style="font-size:11px;padding:2px 8px;background:#f0f0f0;border:1px solid #ccc;" onclick="ucShowEditModal('${esc(u.researcher_id)}','internal')">Edit</button> `;
+                let actions = `<button class="uc-act-btn" onclick="ucShowEditModal('${esc(u.researcher_id)}','internal')">Edit</button>`;
                 if (isActive) {
-                    actions += `<button class="btn btn-sm" style="font-size:11px;padding:2px 8px;background:#fff3cd;border:1px solid #e0c36a;color:#856404;" onclick="ucDeactivate('${esc(u.researcher_id)}','${esc(u.name)}')">Deactivate</button> `;
+                    actions += `<button class="uc-act-btn warn" onclick="ucDeactivate('${esc(u.researcher_id)}','${esc(u.name)}')">Deactivate</button>`;
                     if (u.last_login) {
-                        actions += `<button class="btn btn-sm" style="font-size:11px;padding:2px 8px;background:#e8f4fd;border:1px solid #b8daff;color:#004085;" onclick="ucResetPassword('${esc(u.researcher_id)}','${esc(u.name)}')">Reset Pwd</button>`;
+                        actions += `<button class="uc-act-btn info" onclick="ucResetPassword('${esc(u.researcher_id)}','${esc(u.name)}')">Reset Pwd</button>`;
                     }
                 } else {
-                    actions += `<button class="btn btn-sm" style="font-size:11px;padding:2px 8px;background:#d4edda;border:1px solid #a3d9a5;color:#155724;" onclick="ucReactivate('${esc(u.researcher_id)}','${esc(u.name)}')">Reactivate</button>`;
+                    actions += `<button class="uc-act-btn good" onclick="ucReactivate('${esc(u.researcher_id)}','${esc(u.name)}')">Reactivate</button>`;
                 }
 
                 return `<tr>
-                    <td>${u.name || ''}</td>
-                    <td style="font-size:12px;">${u.institution_email || ''}</td>
-                    <td style="text-transform:capitalize;">${roleLabel}</td>
-                    <td>${posLabel}</td>
-                    <td>${statusBadge}</td>
-                    <td style="white-space:nowrap;">${actions}</td>
+                    <td><div class="uc-name">${u.name || ''}</div><div class="uc-email">${u.institution_email || ''}</div></td>
+                    <td><span class="uc-role-tag ${role}">${role.replace('_', ' ')}</span></td>
+                    <td style="font-size:12px;color:#5a5d66;">${posLabel || '<span style="color:#c8cacd;">\u2014</span>'}</td>
+                    <td><span class="uc-status ${isActive ? 'active' : 'inactive'}">${isActive ? 'Active' : 'Inactive'}</span></td>
+                    <td style="text-align:right;white-space:nowrap;"><div style="display:flex;gap:5px;justify-content:flex-end;">${actions}</div></td>
                 </tr>`;
             }).join('');
         }
@@ -8128,64 +8312,56 @@
                 container.innerHTML = '<div style="text-align:center;color:#999;padding:16px;grid-column:1/-1;">No investors yet.</div>';
                 return;
             }
+            document.getElementById('ucInvestorCount').textContent = _ucInvestors.length;
             container.innerHTML = _ucInvestors.map(inv => {
                 const isActive = inv.active && inv.ws_active;
-                const statusBadge = isActive
-                    ? '<span style="color:#28a745;font-weight:600;">Active</span>'
-                    : '<span style="color:#dc3545;font-weight:600;">Inactive</span>';
                 const perms = inv.investor_tab_permissions || {};
                 const esc = s => (s || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
 
-                // Interest level badge
-                const interestColors = { low: '#6c757d', medium: '#e67e22', high: '#28a745' };
-                const interestLabel = inv.investor_interest_level
-                    ? `<span style="font-size:11px;padding:1px 6px;border-radius:3px;background:${interestColors[inv.investor_interest_level] || '#999'};color:#fff;margin-left:6px;">${inv.investor_interest_level}</span>`
+                const interestHtml = inv.investor_interest_level
+                    ? `<span class="uc-inv-interest ${inv.investor_interest_level}">${inv.investor_interest_level}</span>`
                     : '';
 
                 let permHtml = _ucOptionalTabs.map(tab => {
                     const checked = perms[tab.key] === true ? 'checked' : '';
-                    return `<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+                    return `<div class="uc-perm-row">
                         <input type="checkbox" ${checked} onchange="ucToggleInvestorTab('${esc(inv.researcher_id)}','${tab.key}',this.checked)">
-                        ${tab.label}
-                    </label>`;
+                        <span>${tab.label}</span>
+                    </div>`;
                 }).join('');
 
-                // Tier preset buttons
-                const tierHtml = `<div style="display:flex;gap:4px;margin-top:6px;">
-                    <button class="btn btn-sm" style="font-size:10px;padding:1px 6px;background:#f8f9fa;border:1px solid #ccc;" onclick="ucSetTier('${esc(inv.researcher_id)}',1)" title="All locked">T1</button>
-                    <button class="btn btn-sm" style="font-size:10px;padding:1px 6px;background:#f8f9fa;border:1px solid #ccc;" onclick="ucSetTier('${esc(inv.researcher_id)}',2)" title="Company only">T2</button>
-                    <button class="btn btn-sm" style="font-size:10px;padding:1px 6px;background:#f8f9fa;border:1px solid #ccc;" onclick="ucSetTier('${esc(inv.researcher_id)}',3)" title="All active">T3</button>
-                </div>`;
-
-                let actions = '';
-                actions += `<button class="btn btn-sm" style="font-size:11px;padding:2px 8px;background:#f0f0f0;border:1px solid #ccc;" onclick="ucShowEditModal('${esc(inv.researcher_id)}','investor')">Edit</button> `;
+                let actions = `<button class="uc-act-btn" onclick="ucShowEditModal('${esc(inv.researcher_id)}','investor')">Edit</button>`;
                 if (isActive) {
-                    actions += `<button class="btn btn-sm" style="font-size:11px;padding:2px 8px;background:#fff3cd;border:1px solid #e0c36a;color:#856404;" onclick="ucDeactivate('${esc(inv.researcher_id)}','${esc(inv.name)}')">Deactivate</button> `;
+                    actions += `<button class="uc-act-btn warn" onclick="ucDeactivate('${esc(inv.researcher_id)}','${esc(inv.name)}')">Deactivate</button>`;
                     if (inv.last_login) {
-                        actions += `<button class="btn btn-sm" style="font-size:11px;padding:2px 8px;background:#e8f4fd;border:1px solid #b8daff;color:#004085;" onclick="ucResetPassword('${esc(inv.researcher_id)}','${esc(inv.name)}')">Reset Pwd</button>`;
+                        actions += `<button class="uc-act-btn info" onclick="ucResetPassword('${esc(inv.researcher_id)}','${esc(inv.name)}')">Reset Pwd</button>`;
                     }
                 } else {
-                    actions += `<button class="btn btn-sm" style="font-size:11px;padding:2px 8px;background:#d4edda;border:1px solid #a3d9a5;color:#155724;" onclick="ucReactivate('${esc(inv.researcher_id)}','${esc(inv.name)}')">Reactivate</button>`;
+                    actions += `<button class="uc-act-btn good" onclick="ucReactivate('${esc(inv.researcher_id)}','${esc(inv.name)}')">Reactivate</button>`;
                 }
 
-                // Profile info line
-                const orgLine = inv.investor_organization ? `<div style="font-size:11px;color:#888;margin-top:2px;">${inv.investor_organization}</div>` : '';
-
-                return `<div style="background:#f8f9fa;border:1px solid #e0e0e0;border-radius:8px;padding:16px;">
-                    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
+                return `<div class="uc-inv-card">
+                    <div class="uc-inv-head">
                         <div>
-                            <div style="font-weight:700;font-size:14px;">${inv.name || ''}${interestLabel}</div>
-                            <div style="font-size:12px;color:#666;">${inv.institution_email || ''}</div>
-                            ${orgLine}
+                            <div class="uc-inv-name">${inv.name || ''}</div>
+                            <div class="uc-inv-email">${inv.institution_email || ''}</div>
+                            ${inv.investor_organization ? '<div class="uc-inv-org">' + inv.investor_organization + '</div>' : ''}
                         </div>
-                        <div>${statusBadge}</div>
+                        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
+                            <span class="uc-status ${isActive ? 'active' : 'inactive'}">${isActive ? 'Active' : 'Inactive'}</span>
+                            ${interestHtml}
+                        </div>
                     </div>
-                    <div style="margin-bottom:10px;">
-                        <div style="font-weight:600;font-size:12px;color:#555;margin-bottom:6px;">Optional Investor Tabs:</div>
-                        <div style="display:flex;flex-direction:column;gap:4px;">${permHtml}</div>
-                        ${tierHtml}
+                    <div class="uc-perm-section">
+                        <div class="uc-perm-label">Portal Tab Access</div>
+                        ${permHtml}
+                        <div class="uc-tier-strip">
+                            <button class="uc-tier-btn" onclick="ucSetTier('${esc(inv.researcher_id)}',1)" title="All locked">T1 Locked</button>
+                            <button class="uc-tier-btn" onclick="ucSetTier('${esc(inv.researcher_id)}',2)" title="Company only">T2 Company</button>
+                            <button class="uc-tier-btn" onclick="ucSetTier('${esc(inv.researcher_id)}',3)" title="Full access">T3 Full</button>
+                        </div>
                     </div>
-                    <div style="display:flex;gap:6px;flex-wrap:wrap;">${actions}</div>
+                    <div class="uc-inv-actions">${actions}</div>
                 </div>`;
             }).join('');
         }
@@ -8260,7 +8436,7 @@
                 ucRoleChanged();
             }
             document.getElementById('ucSubmitBtn').textContent = 'Create User';
-            document.getElementById('ucModal').style.display = 'flex';
+            document.getElementById('ucModal').classList.add('open');
         }
 
         function ucShowEditModal(userId, type) {
@@ -8298,11 +8474,11 @@
                 }
             }
             document.getElementById('ucSubmitBtn').textContent = 'Save Changes';
-            document.getElementById('ucModal').style.display = 'flex';
+            document.getElementById('ucModal').classList.add('open');
         }
 
         function ucCloseModal() {
-            document.getElementById('ucModal').style.display = 'none';
+            document.getElementById('ucModal').classList.remove('open');
         }
 
         function ucRoleChanged() {
