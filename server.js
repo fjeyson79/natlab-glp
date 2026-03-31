@@ -1301,12 +1301,14 @@ app.post('/api/di/login', async (req, res) => {
 
         // Check if password reset is required
         if (user.force_password_reset) {
+            const resetWsSlug = req.query.ws || req.headers['x-workspace-slug'] || '';
             // Store info in session for password reset page
             req.session.pendingPasswordReset = {
                 researcher_id: user.researcher_id,
                 institution_email: user.institution_email,
                 name: user.name,
-                affiliation: user.affiliation
+                affiliation: user.affiliation,
+                workspace_slug: resetWsSlug
             };
             return res.json({
                 success: true,
@@ -1393,6 +1395,9 @@ app.post('/api/di/complete-password-reset', async (req, res) => {
         const roleResult = await pool.query(roleQuery, [researcher_id]);
         const role = roleResult.rows[0]?.role || 'researcher';
 
+        // Determine redirect based on role and workspace context
+        const resetWsSlug = req.session.pendingPasswordReset?.workspace_slug || '';
+
         // Clear pending reset and set normal session
         delete req.session.pendingPasswordReset;
         req.session.user = {
@@ -1402,11 +1407,12 @@ app.post('/api/di/complete-password-reset', async (req, res) => {
             affiliation,
             role
         };
-
-        // Determine redirect based on role
-        // Supervisors go to upload.html (same as researchers) but get additional supervision panel
         let redirectPage = 'upload.html';
-        if (role === 'pi') redirectPage = 'pi-dashboard.html';
+        if (resetWsSlug && resetWsSlug !== 'natlab') {
+            redirectPage = `portal-${resetWsSlug}.html`;
+        } else if (role === 'pi') {
+            redirectPage = 'pi-dashboard.html';
+        }
 
         console.log(`Password reset completed for user ${researcher_id}`);
 
@@ -1424,14 +1430,45 @@ app.post('/api/di/complete-password-reset', async (req, res) => {
 
 // GET /api/di/pending-reset-info
 // Get info for pending password reset (for reset-password.html)
-app.get('/api/di/pending-reset-info', (req, res) => {
+app.get('/api/di/pending-reset-info', async (req, res) => {
     if (!req.session.pendingPasswordReset) {
         return res.status(403).json({ error: 'No pending password reset' });
     }
-    res.json({
-        name: req.session.pendingPasswordReset.name,
-        affiliation: req.session.pendingPasswordReset.affiliation
-    });
+    const pending = req.session.pendingPasswordReset;
+    const resp = {
+        name: pending.name,
+        affiliation: pending.affiliation
+    };
+
+    // Enrich with workspace context if available
+    const wsSlug = pending.workspace_slug || '';
+    if (wsSlug) {
+        resp.workspace_slug = wsSlug;
+        try {
+            const wsRow = await pool.query('SELECT name FROM workspaces WHERE slug = $1', [wsSlug]);
+            if (wsRow.rows.length > 0) resp.workspace_name = wsRow.rows[0].name;
+        } catch {}
+
+        // Look up workspace position/role
+        try {
+            const hasWu = await checkWuTable();
+            const hasPos = hasWu && await checkStartupPositionCols();
+            if (hasWu) {
+                const posCols = hasPos ? ', wu.workspace_position' : '';
+                const r = await pool.query(
+                    `SELECT wu.role${posCols} FROM workspace_users wu
+                     JOIN workspaces w ON w.id = wu.workspace_id
+                     WHERE wu.user_id = $1 AND w.slug = $2 AND wu.is_active = TRUE LIMIT 1`,
+                    [pending.researcher_id, wsSlug]);
+                if (r.rows.length > 0) {
+                    resp.workspace_role = r.rows[0].role || null;
+                    if (hasPos) resp.workspace_position = r.rows[0].workspace_position || null;
+                }
+            }
+        } catch {}
+    }
+
+    res.json(resp);
 });
 
 // GET /api/di/me

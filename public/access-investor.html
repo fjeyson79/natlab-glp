@@ -467,6 +467,12 @@
                     return;
                 }
 
+                // PASSWORD mode: redirect to standard login
+                if (data.password_required) {
+                    window.location.href = data.redirect || 'access-theralia.html';
+                    return;
+                }
+
                 _email = email;
                 _researcherId = data.researcher_id;
                 _firstName = data.first_name || 'Investor';
