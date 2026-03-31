@@ -20906,6 +20906,253 @@ app.post('/api/investor/session-end', async (req, res) => {
 // END INVESTOR PORTAL SESSIONS
 // =====================================================
 
+// =====================================================
+// INVESTROOM PHASE UPLOADS (CSO-only)
+// =====================================================
+
+// Cached existence check for investroom tables
+let _irTablesOk = null;
+async function checkIrTables() {
+    if (_irTablesOk !== null) return _irTablesOk;
+    try {
+        const r = await pool.query(
+            `SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name='investroom_phase_boxes') AS ok`
+        );
+        _irTablesOk = r.rows[0]?.ok || false;
+    } catch { _irTablesOk = false; }
+    return _irTablesOk;
+}
+
+// Multer for InvestRoom box file uploads
+const irBoxUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 20 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+        const allowed = ['application/pdf', 'image/png', 'image/jpeg', 'image/gif',
+            'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'];
+        cb(null, allowed.includes(file.mimetype));
+    }
+});
+
+// GET /api/investroom/boxes?phase=1 — List boxes (+ files) for a phase
+app.get('/api/investroom/boxes', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkIrTables())) return res.json({ boxes: [] });
+        const wsId = await getTheraliaWsId();
+        if (!wsId) return res.json({ boxes: [] });
+        const phase = parseInt(req.query.phase, 10);
+        if (!phase || phase < 1 || phase > 4) return res.status(400).json({ error: 'Invalid phase' });
+
+        const boxes = await pool.query(
+            `SELECT b.id, b.phase_number, b.title, b.box_type, b.description, b.order_index, b.created_at,
+                    COALESCE(json_agg(json_build_object(
+                        'id', f.id, 'file_name', f.file_name, 'mime_type', f.mime_type,
+                        'file_size', f.file_size, 'created_at', f.created_at
+                    ) ORDER BY f.created_at) FILTER (WHERE f.id IS NOT NULL), '[]') AS files
+             FROM investroom_phase_boxes b
+             LEFT JOIN investroom_phase_box_files f ON f.box_id = b.id
+             WHERE b.workspace_id = $1 AND b.phase_number = $2
+             GROUP BY b.id
+             ORDER BY b.order_index, b.created_at`,
+            [wsId, phase]
+        );
+        res.json({ boxes: boxes.rows });
+    } catch (err) {
+        console.error('[IR-BOXES] List error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/investroom/boxes — Create a box (CSO only)
+app.post('/api/investroom/boxes', requireCSO, async (req, res) => {
+    try {
+        if (!(await checkIrTables())) return res.status(503).json({ error: 'Migration not applied' });
+        const wsId = await getTheraliaWsId();
+        if (!wsId) return res.status(404).json({ error: 'Workspace not found' });
+        const { phase_number, title, box_type, description } = req.body;
+        if (!phase_number || !title || !box_type) return res.status(400).json({ error: 'Missing required fields' });
+        const validTypes = ['publication','sop','data','figure','deck','document'];
+        if (!validTypes.includes(box_type)) return res.status(400).json({ error: 'Invalid box_type' });
+        const pn = parseInt(phase_number, 10);
+        if (pn < 1 || pn > 4) return res.status(400).json({ error: 'Invalid phase_number' });
+
+        // Get next order_index
+        const maxOrd = await pool.query(
+            `SELECT COALESCE(MAX(order_index), -1) + 1 AS next FROM investroom_phase_boxes WHERE workspace_id = $1 AND phase_number = $2`,
+            [wsId, pn]
+        );
+        const result = await pool.query(
+            `INSERT INTO investroom_phase_boxes (workspace_id, phase_number, title, box_type, description, order_index, created_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+            [wsId, pn, title.trim(), box_type, (description || '').trim() || null, maxOrd.rows[0].next, req.session.user.researcher_id]
+        );
+        console.log(`[IR-BOXES] Box created: ${result.rows[0].id} phase=${pn} by ${req.session.user.researcher_id}`);
+        res.json({ box: result.rows[0] });
+    } catch (err) {
+        console.error('[IR-BOXES] Create error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// PUT /api/investroom/boxes/:id — Update a box (CSO only)
+app.put('/api/investroom/boxes/:id', requireCSO, async (req, res) => {
+    try {
+        if (!(await checkIrTables())) return res.status(503).json({ error: 'Migration not applied' });
+        const wsId = await getTheraliaWsId();
+        if (!wsId) return res.status(404).json({ error: 'Workspace not found' });
+        const { title, box_type, description } = req.body;
+        if (!title && !box_type && description === undefined) return res.status(400).json({ error: 'Nothing to update' });
+        const validTypes = ['publication','sop','data','figure','deck','document'];
+        if (box_type && !validTypes.includes(box_type)) return res.status(400).json({ error: 'Invalid box_type' });
+
+        const sets = [];
+        const vals = [req.params.id, wsId];
+        let idx = 3;
+        if (title) { sets.push(`title = $${idx++}`); vals.push(title.trim()); }
+        if (box_type) { sets.push(`box_type = $${idx++}`); vals.push(box_type); }
+        if (description !== undefined) { sets.push(`description = $${idx++}`); vals.push((description || '').trim() || null); }
+        sets.push('updated_at = NOW()');
+
+        const result = await pool.query(
+            `UPDATE investroom_phase_boxes SET ${sets.join(', ')} WHERE id = $1 AND workspace_id = $2 RETURNING *`,
+            vals
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Box not found' });
+        res.json({ box: result.rows[0] });
+    } catch (err) {
+        console.error('[IR-BOXES] Update error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// DELETE /api/investroom/boxes/:id — Delete a box and its files from R2 (CSO only)
+app.delete('/api/investroom/boxes/:id', requireCSO, async (req, res) => {
+    try {
+        if (!(await checkIrTables())) return res.status(503).json({ error: 'Migration not applied' });
+        const wsId = await getTheraliaWsId();
+        if (!wsId) return res.status(404).json({ error: 'Workspace not found' });
+
+        // Get files to clean up R2
+        const files = await pool.query(
+            `SELECT f.r2_object_key FROM investroom_phase_box_files f
+             JOIN investroom_phase_boxes b ON b.id = f.box_id
+             WHERE b.id = $1 AND b.workspace_id = $2`,
+            [req.params.id, wsId]
+        );
+        // Delete box (CASCADE deletes files rows)
+        const del = await pool.query(
+            `DELETE FROM investroom_phase_boxes WHERE id = $1 AND workspace_id = $2 RETURNING id`,
+            [req.params.id, wsId]
+        );
+        if (del.rows.length === 0) return res.status(404).json({ error: 'Box not found' });
+
+        // Clean up R2 objects in background
+        for (const f of files.rows) {
+            try { if (r2Enabled()) await deleteFromR2(f.r2_object_key); } catch (e) {
+                console.error('[IR-BOXES] R2 cleanup error:', e.message);
+            }
+        }
+        console.log(`[IR-BOXES] Box deleted: ${req.params.id} (${files.rows.length} files) by ${req.session.user.researcher_id}`);
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('[IR-BOXES] Delete error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/investroom/boxes/:id/files — Upload file to a box (CSO only)
+app.post('/api/investroom/boxes/:id/files', requireCSO, irBoxUpload.single('file'), async (req, res) => {
+    try {
+        if (!(await checkIrTables())) return res.status(503).json({ error: 'Migration not applied' });
+        if (!req.file) return res.status(400).json({ error: 'No file provided' });
+        if (!r2Enabled()) return res.status(503).json({ error: 'Storage not configured' });
+        const wsId = await getTheraliaWsId();
+        if (!wsId) return res.status(404).json({ error: 'Workspace not found' });
+
+        // Verify box exists and belongs to workspace
+        const box = await pool.query(
+            `SELECT id, phase_number FROM investroom_phase_boxes WHERE id = $1 AND workspace_id = $2`,
+            [req.params.id, wsId]
+        );
+        if (box.rows.length === 0) return res.status(404).json({ error: 'Box not found' });
+
+        const ts = new Date().toISOString().replace(/[:.]/g, '-');
+        const safeName = req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const r2Key = `theralia/investroom/phase${box.rows[0].phase_number}/${req.params.id}/${ts}_${safeName}`;
+
+        await uploadToR2(req.file.buffer, r2Key, req.file.mimetype);
+
+        const result = await pool.query(
+            `INSERT INTO investroom_phase_box_files (box_id, file_name, r2_object_key, mime_type, file_size, created_by)
+             VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+            [req.params.id, req.file.originalname, r2Key, req.file.mimetype, req.file.size, req.session.user.researcher_id]
+        );
+        console.log(`[IR-BOXES] File uploaded: ${result.rows[0].id} to box ${req.params.id} by ${req.session.user.researcher_id}`);
+        res.json({ file: result.rows[0] });
+    } catch (err) {
+        console.error('[IR-BOXES] File upload error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/investroom/files/:fileId/download — Download a box file (any authenticated user with access)
+app.get('/api/investroom/files/:fileId/download', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkIrTables())) return res.status(503).json({ error: 'Migration not applied' });
+        const result = await pool.query(
+            `SELECT f.file_name, f.r2_object_key, f.mime_type
+             FROM investroom_phase_box_files f
+             JOIN investroom_phase_boxes b ON b.id = f.box_id
+             JOIN workspaces w ON w.id = b.workspace_id AND w.slug = 'theralia'
+             WHERE f.id = $1`,
+            [req.params.fileId]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'File not found' });
+        if (!r2Enabled()) return res.status(503).json({ error: 'Storage not configured' });
+        const { file_name, r2_object_key, mime_type } = result.rows[0];
+        const stream = await downloadFromR2(r2_object_key);
+        res.setHeader('Content-Type', mime_type || 'application/octet-stream');
+        res.setHeader('Content-Disposition', `inline; filename="${file_name}"`);
+        stream.pipe(res);
+    } catch (err) {
+        console.error('[IR-BOXES] File download error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// DELETE /api/investroom/files/:fileId — Delete a file from a box (CSO only)
+app.delete('/api/investroom/files/:fileId', requireCSO, async (req, res) => {
+    try {
+        if (!(await checkIrTables())) return res.status(503).json({ error: 'Migration not applied' });
+        const wsId = await getTheraliaWsId();
+        if (!wsId) return res.status(404).json({ error: 'Workspace not found' });
+
+        const result = await pool.query(
+            `DELETE FROM investroom_phase_box_files f
+             USING investroom_phase_boxes b
+             WHERE f.box_id = b.id AND f.id = $1 AND b.workspace_id = $2
+             RETURNING f.r2_object_key, f.file_name`,
+            [req.params.fileId, wsId]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'File not found' });
+
+        try { if (r2Enabled()) await deleteFromR2(result.rows[0].r2_object_key); } catch (e) {
+            console.error('[IR-BOXES] R2 cleanup error:', e.message);
+        }
+        console.log(`[IR-BOXES] File deleted: ${req.params.fileId} by ${req.session.user.researcher_id}`);
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('[IR-BOXES] File delete error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// =====================================================
+// END INVESTROOM PHASE UPLOADS
+// =====================================================
+
 app.listen(PORT, "0.0.0.0", async () => {
     console.log("[STARTUP] Server listening on port " + PORT);
     // Safety check: warn if any di_submissions row has no r2_object_key
