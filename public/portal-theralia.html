@@ -2437,6 +2437,299 @@
         .ip-booking-success-text {
             font-size: 13px; color: #5a5d66; line-height: 1.6;
         }
+        /* ---- Evidence & Uploads (CSO layer) ---- */
+        .ir-evidence-section {
+            margin-top: 48px;
+            padding-top: 32px;
+            border-top: 1px solid #1e2025;
+        }
+        .ir-evidence-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+        .ir-evidence-title {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 1.6px;
+            text-transform: uppercase;
+            color: #55555f;
+        }
+        .ir-add-box-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            background: transparent;
+            color: #3ecf8e;
+            border: 1px solid rgba(62, 207, 142, 0.25);
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .ir-add-box-btn:hover {
+            background: rgba(62, 207, 142, 0.06);
+            border-color: rgba(62, 207, 142, 0.4);
+        }
+        .ir-boxes-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 16px;
+        }
+        .ir-box-card {
+            background: #151618;
+            border: 1px solid #1e2025;
+            border-radius: 12px;
+            padding: 22px 24px;
+            transition: border-color 0.15s;
+        }
+        .ir-box-card:hover {
+            border-color: #2a2d35;
+        }
+        .ir-box-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        .ir-box-meta {
+            flex: 1;
+            min-width: 0;
+        }
+        .ir-box-type-badge {
+            display: inline-block;
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 1.2px;
+            text-transform: uppercase;
+            color: #3ecf8e;
+            background: rgba(62, 207, 142, 0.08);
+            padding: 3px 8px;
+            border-radius: 4px;
+            margin-bottom: 8px;
+        }
+        .ir-box-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: #e0e0e6;
+            margin-bottom: 4px;
+        }
+        .ir-box-desc {
+            font-size: 12px;
+            color: #78787f;
+            line-height: 1.55;
+        }
+        .ir-box-actions {
+            display: flex;
+            gap: 6px;
+            flex-shrink: 0;
+            margin-left: 12px;
+        }
+        .ir-box-action-btn {
+            background: transparent;
+            border: 1px solid #2a2a2e;
+            color: #78787f;
+            padding: 4px 8px;
+            border-radius: 5px;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .ir-box-action-btn:hover {
+            color: #c8c8cf;
+            border-color: #444;
+        }
+        .ir-box-action-btn.danger:hover {
+            color: #ef4444;
+            border-color: #ef4444;
+        }
+        .ir-box-files {
+            margin-top: 14px;
+            padding-top: 14px;
+            border-top: 1px solid #1e2025;
+        }
+        .ir-box-file-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 0;
+        }
+        .ir-box-file-row + .ir-box-file-row {
+            border-top: 1px solid rgba(30, 32, 37, 0.5);
+        }
+        .ir-file-info {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+            flex: 1;
+        }
+        .ir-file-icon {
+            width: 14px;
+            height: 14px;
+            color: #55555f;
+            flex-shrink: 0;
+        }
+        .ir-file-name {
+            font-size: 12px;
+            color: #a0a0aa;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .ir-file-size {
+            font-size: 11px;
+            color: #55555f;
+            flex-shrink: 0;
+            margin-left: 8px;
+        }
+        .ir-file-actions {
+            display: flex;
+            gap: 4px;
+            flex-shrink: 0;
+            margin-left: 12px;
+        }
+        .ir-file-action {
+            background: transparent;
+            border: none;
+            color: #55555f;
+            cursor: pointer;
+            padding: 4px;
+            border-radius: 4px;
+            transition: color 0.15s;
+            font-size: 11px;
+        }
+        .ir-file-action:hover { color: #c8c8cf; }
+        .ir-file-action.danger:hover { color: #ef4444; }
+        .ir-upload-zone {
+            margin-top: 12px;
+        }
+        .ir-upload-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            background: transparent;
+            color: #78787f;
+            border: 1px dashed #2a2a2e;
+            border-radius: 6px;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .ir-upload-btn:hover {
+            color: #a0a0aa;
+            border-color: #444;
+        }
+        .ir-empty-state {
+            text-align: center;
+            padding: 32px 20px;
+            color: #55555f;
+            font-size: 13px;
+        }
+
+        /* ---- Modal ---- */
+        .ir-modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.65);
+            z-index: 200;
+            align-items: center;
+            justify-content: center;
+        }
+        .ir-modal-overlay.active {
+            display: flex;
+        }
+        .ir-modal {
+            background: #1a1b1e;
+            border: 1px solid #2a2d35;
+            border-radius: 14px;
+            padding: 32px;
+            width: 440px;
+            max-width: 90vw;
+        }
+        .ir-modal h3 {
+            font-size: 16px;
+            font-weight: 600;
+            color: #e0e0e6;
+            margin-bottom: 24px;
+        }
+        .ir-modal label {
+            display: block;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 1.2px;
+            text-transform: uppercase;
+            color: #78787f;
+            margin-bottom: 6px;
+        }
+        .ir-modal input,
+        .ir-modal select,
+        .ir-modal textarea {
+            width: 100%;
+            background: #151618;
+            border: 1px solid #2a2a2e;
+            border-radius: 7px;
+            color: #e0e0e6;
+            font-size: 13px;
+            padding: 10px 14px;
+            margin-bottom: 16px;
+            font-family: inherit;
+            outline: none;
+            transition: border-color 0.15s;
+        }
+        .ir-modal input:focus,
+        .ir-modal select:focus,
+        .ir-modal textarea:focus {
+            border-color: #3ecf8e;
+        }
+        .ir-modal textarea {
+            resize: vertical;
+            min-height: 60px;
+        }
+        .ir-modal-btns {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 8px;
+        }
+        .ir-modal-cancel {
+            padding: 8px 18px;
+            background: transparent;
+            color: #78787f;
+            border: 1px solid #2a2a2e;
+            border-radius: 7px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .ir-modal-cancel:hover {
+            color: #c8c8cf;
+            border-color: #444;
+        }
+        .ir-modal-save {
+            padding: 8px 18px;
+            background: #3ecf8e;
+            color: #0e0f11;
+            border: none;
+            border-radius: 7px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .ir-modal-save:hover {
+            background: #34b87d;
+        }
+        .ir-modal-save:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
     </style>
     <script src="js/presentation-mode.js"></script>
 </head>
@@ -3347,6 +3640,9 @@
                             </div>
                         </div>
 
+                        <!-- Evidence & Uploads (CSO layer, rendered by JS) -->
+                        <div id="irEvidence1" class="ir-evidence-section" style="display:none;"></div>
+
                         <!-- Transition to Phase 2 -->
                         <div class="ip-transition">
                             <div class="ip-transition-label">Next Phase</div>
@@ -3430,6 +3726,9 @@
                             </div>
                         </div>
 
+                        <!-- Evidence & Uploads (CSO layer, rendered by JS) -->
+                        <div id="irEvidence2" class="ir-evidence-section" style="display:none;"></div>
+
                         <!-- Transition to Phase 3 -->
                         <div class="ip-transition">
                             <div class="ip-transition-label">Next Phase</div>
@@ -3486,6 +3785,9 @@
                             <div class="ip-glp-label">GLP Vision</div>
                             <div class="ip-glp-text">Explore validation in GLP Vision &mdash; view figure-by-figure data, linked protocols, and structured experimental context.</div>
                         </div>
+
+                        <!-- Evidence & Uploads (CSO layer, rendered by JS) -->
+                        <div id="irEvidence3" class="ir-evidence-section" style="display:none;"></div>
 
                         <!-- Transition to Phase 4 -->
                         <div class="ip-transition">
@@ -3653,6 +3955,9 @@
                                 <span class="ip-engage-item" onclick="ipActionHandler('Request meeting')"><span class="ip-engage-dot"></span>Request meeting</span>
                             </div>
                         </div>
+
+                        <!-- Evidence & Uploads (CSO layer, rendered by JS) -->
+                        <div id="irEvidence4" class="ir-evidence-section" style="display:none;"></div>
 
                         <!-- Final Statement -->
                         <div class="ip-final-statement ip-emphasis">
@@ -8245,6 +8550,7 @@
             irLoadKpis();
             irLoadActivity();
             irRenderPhaseEditors();
+            irDetectCso();
             document.getElementById('irLastUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         }
 
@@ -8452,7 +8758,236 @@
             }).join('');
         }
 
-        function irRenderPhaseEditors() {
+        /* ============================================== */
+        /* EVIDENCE & UPLOADS (CSO LAYER)                */
+        /* ============================================== */
+        var irIsCso = false;
+        var irBoxesCache = {};
+
+        async function irDetectCso() {
+            try {
+                const res = await fetch('/api/di/me?workspace=theralia', { credentials: 'include' });
+                if (!res.ok) return;
+                const data = await res.json();
+                const user = data.user || data;
+                irIsCso = (user.workspace_position || '').toLowerCase() === 'cso';
+                if (irIsCso) {
+                    irInitEvidenceSections();
+                    for (var p = 1; p <= 4; p++) irLoadBoxes(p);
+                }
+            } catch {}
+        }
+
+        function irInitEvidenceSections() {
+            for (var p = 1; p <= 4; p++) {
+                var el = document.getElementById('irEvidence' + p);
+                if (el) el.style.display = '';
+                irRenderEvidenceSection(p);
+            }
+        }
+
+        function irRenderEvidenceSection(phase) {
+            const el = document.getElementById('irEvidence' + phase);
+            if (!el) return;
+            const boxes = irBoxesCache[phase] || [];
+            let html = `<div class="ir-evidence-header">
+                <span class="ir-evidence-title">Evidence &amp; Uploads</span>
+                <button class="ir-add-box-btn" onclick="irOpenAddBox(${phase})">+ Add Box</button>
+            </div>`;
+            if (boxes.length === 0) {
+                html += `<div class="ir-empty-state">No content added yet</div>`;
+            } else {
+                html += `<div class="ir-boxes-grid">`;
+                for (const box of boxes) {
+                    html += irRenderBox(box);
+                }
+                html += `</div>`;
+            }
+            el.innerHTML = html;
+        }
+
+        function irRenderBox(box) {
+            const files = box.files || [];
+            let filesHtml = '';
+            if (files.length > 0) {
+                filesHtml += `<div class="ir-box-files">`;
+                for (const f of files) {
+                    filesHtml += `<div class="ir-box-file-row">
+                        <div class="ir-file-info">
+                            <svg class="ir-file-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                            <span class="ir-file-name" title="${irEsc(f.file_name)}">${irEsc(f.file_name)}</span>
+                            <span class="ir-file-size">${irFmtSize(f.file_size)}</span>
+                        </div>
+                        <div class="ir-file-actions">
+                            <button class="ir-file-action" onclick="irViewFile('${f.id}')" title="View">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                            </button>
+                            ${irIsCso ? `<button class="ir-file-action danger" onclick="irDeleteFile('${f.id}', '${box.id}', ${box.phase_number})" title="Delete">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+                            </button>` : ''}
+                        </div>
+                    </div>`;
+                }
+                filesHtml += `</div>`;
+            }
+            let uploadZone = '';
+            if (irIsCso) {
+                uploadZone = `<div class="ir-upload-zone">
+                    <button class="ir-upload-btn" onclick="irTriggerUpload('${box.id}', ${box.phase_number})">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                        Upload file
+                    </button>
+                </div>`;
+            }
+            return `<div class="ir-box-card">
+                <div class="ir-box-header">
+                    <div class="ir-box-meta">
+                        <span class="ir-box-type-badge">${irEsc(box.box_type)}</span>
+                        <div class="ir-box-title">${irEsc(box.title)}</div>
+                        ${box.description ? `<div class="ir-box-desc">${irEsc(box.description)}</div>` : ''}
+                    </div>
+                    ${irIsCso ? `<div class="ir-box-actions">
+                        <button class="ir-box-action-btn" onclick="irOpenEditBox('${box.id}', ${box.phase_number})">Edit</button>
+                        <button class="ir-box-action-btn danger" onclick="irDeleteBox('${box.id}', ${box.phase_number})">Delete</button>
+                    </div>` : ''}
+                </div>
+                ${filesHtml}
+                ${uploadZone}
+            </div>`;
+        }
+
+        async function irLoadBoxes(phase) {
+            try {
+                const res = await fetch('/api/investroom/boxes?phase=' + phase + '&workspace=theralia', { credentials: 'include' });
+                if (!res.ok) return;
+                const data = await res.json();
+                irBoxesCache[phase] = data.boxes || [];
+                irRenderEvidenceSection(phase);
+            } catch {}
+        }
+
+        // Modal
+        function irOpenAddBox(phase) {
+            document.getElementById('irModalTitle').textContent = 'Add Box';
+            document.getElementById('irBoxId').value = '';
+            document.getElementById('irBoxPhase').value = phase;
+            document.getElementById('irBoxTitleInput').value = '';
+            document.getElementById('irBoxTypeSelect').value = 'publication';
+            document.getElementById('irBoxDescInput').value = '';
+            document.getElementById('irBoxModal').classList.add('active');
+        }
+        function irOpenEditBox(boxId, phase) {
+            var boxes = irBoxesCache[phase] || [];
+            var box = boxes.find(function(b) { return b.id === boxId; });
+            if (!box) return;
+            document.getElementById('irModalTitle').textContent = 'Edit Box';
+            document.getElementById('irBoxId').value = boxId;
+            document.getElementById('irBoxPhase').value = phase;
+            document.getElementById('irBoxTitleInput').value = box.title;
+            document.getElementById('irBoxTypeSelect').value = box.box_type;
+            document.getElementById('irBoxDescInput').value = box.description || '';
+            document.getElementById('irBoxModal').classList.add('active');
+        }
+        function irCloseModal() {
+            document.getElementById('irBoxModal').classList.remove('active');
+        }
+        async function irSaveBox() {
+            var btn = document.getElementById('irModalSaveBtn');
+            btn.disabled = true;
+            var boxId = document.getElementById('irBoxId').value;
+            var phase = parseInt(document.getElementById('irBoxPhase').value, 10);
+            var title = document.getElementById('irBoxTitleInput').value.trim();
+            var box_type = document.getElementById('irBoxTypeSelect').value;
+            var description = document.getElementById('irBoxDescInput').value.trim();
+            if (!title) { btn.disabled = false; return alert('Title is required'); }
+            try {
+                var isEdit = !!boxId;
+                var url = isEdit ? '/api/investroom/boxes/' + boxId : '/api/investroom/boxes';
+                var method = isEdit ? 'PUT' : 'POST';
+                var body = isEdit ? { title: title, box_type: box_type, description: description }
+                    : { phase_number: phase, title: title, box_type: box_type, description: description };
+                var res = await fetch(url + '?workspace=theralia', {
+                    method: method, credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                if (!res.ok) { var e = await res.json(); throw new Error(e.error || 'Failed'); }
+                irCloseModal();
+                await irLoadBoxes(phase);
+            } catch (err) {
+                alert('Error: ' + err.message);
+            }
+            btn.disabled = false;
+        }
+
+        async function irDeleteBox(boxId, phase) {
+            if (!confirm('Delete this box and all its files?')) return;
+            try {
+                var res = await fetch('/api/investroom/boxes/' + boxId + '?workspace=theralia', {
+                    method: 'DELETE', credentials: 'include'
+                });
+                if (!res.ok) { var e = await res.json(); throw new Error(e.error || 'Failed'); }
+                await irLoadBoxes(phase);
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        function irTriggerUpload(boxId, phase) {
+            var input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.pdf,.png,.jpg,.jpeg,.gif,.pptx,.docx,.xlsx';
+            input.onchange = async function() {
+                if (!input.files.length) return;
+                var file = input.files[0];
+                var fd = new FormData();
+                fd.append('file', file);
+                try {
+                    var res = await fetch('/api/investroom/boxes/' + boxId + '/files?workspace=theralia', {
+                        method: 'POST', credentials: 'include', body: fd
+                    });
+                    if (!res.ok) { var e = await res.json(); throw new Error(e.error || 'Upload failed'); }
+                    await irLoadBoxes(phase);
+                } catch (err) { alert('Upload error: ' + err.message); }
+            };
+            input.click();
+        }
+
+        function irViewFile(fileId) {
+            window.open('/api/investroom/files/' + fileId + '/download', '_blank');
+        }
+
+        async function irDeleteFile(fileId, boxId, phase) {
+            if (!confirm('Delete this file?')) return;
+            try {
+                var res = await fetch('/api/investroom/files/' + fileId + '?workspace=theralia', {
+                    method: 'DELETE', credentials: 'include'
+                });
+                if (!res.ok) { var e = await res.json(); throw new Error(e.error || 'Failed'); }
+                await irLoadBoxes(phase);
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        function irEsc(str) {
+            if (!str) return '';
+            var d = document.createElement('div');
+            d.textContent = str;
+            return d.innerHTML;
+        }
+        function irFmtSize(bytes) {
+            if (!bytes) return '';
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+
+        // Close modal on overlay click
+        (function() {
+            var modal = document.getElementById('irBoxModal');
+            if (modal) modal.addEventListener('click', function(e) {
+                if (e.target === e.currentTarget) irCloseModal();
+            });
+        })();
+
+function irRenderPhaseEditors() {
             var el = document.getElementById('irPhaseEditors');
             if (!el) return;
             el.innerHTML = irPhaseData.map(function(p) {
@@ -9180,5 +9715,31 @@
         }
 
     </script>
+
+    <!-- Box Modal (CSO only, for InvestRoom Evidence & Uploads) -->
+    <div class="ir-modal-overlay" id="irBoxModal">
+        <div class="ir-modal">
+            <h3 id="irModalTitle">Add Box</h3>
+            <input type="hidden" id="irBoxId" value="">
+            <input type="hidden" id="irBoxPhase" value="">
+            <label>Title</label>
+            <input type="text" id="irBoxTitleInput" placeholder="e.g. Published Proof-of-Concept" maxlength="120">
+            <label>Type</label>
+            <select id="irBoxTypeSelect">
+                <option value="publication">Publication</option>
+                <option value="sop">SOP</option>
+                <option value="data">Data</option>
+                <option value="figure">Figure</option>
+                <option value="deck">Deck</option>
+                <option value="document">Document</option>
+            </select>
+            <label>Description (optional)</label>
+            <textarea id="irBoxDescInput" placeholder="Short description of this content..." maxlength="300"></textarea>
+            <div class="ir-modal-btns">
+                <button class="ir-modal-cancel" onclick="irCloseModal()">Cancel</button>
+                <button class="ir-modal-save" id="irModalSaveBtn" onclick="irSaveBox()">Save</button>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
