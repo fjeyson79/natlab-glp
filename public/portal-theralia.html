@@ -8795,17 +8795,27 @@
         var irIsCooLuiza = false;
         var irBoxesCache = {};
 
+        var _irDefaultsEnsured = false;
         async function irDetectCso() {
             try {
-                const res = await fetch('/api/di/me?workspace=theralia', { credentials: 'include' });
+                var res = await fetch('/api/di/me?workspace=theralia', { credentials: 'include' });
                 if (!res.ok) return;
-                const data = await res.json();
-                const user = data.user || data;
+                var data = await res.json();
+                var user = data.user || data;
                 var pos = (user.workspace_position || '').toLowerCase();
                 var normName = (user.name || '').trim().replace(/\s+/g, ' ').toLowerCase();
                 irIsCso = pos === 'cso';
                 irIsCooLuiza = pos === 'coo' && normName === 'luiza i. hernandez';
                 if (irIsCso) {
+                    // Ensure default boxes exist once per session
+                    if (!_irDefaultsEnsured) {
+                        _irDefaultsEnsured = true;
+                        try {
+                            await fetch('/api/investroom/boxes/ensure-defaults?workspace=theralia', {
+                                method: 'POST', credentials: 'include'
+                            });
+                        } catch {}
+                    }
                     for (var p = 1; p <= 4; p++) irLoadBoxes(p);
                 }
             } catch {}
@@ -8816,7 +8826,7 @@
             if (!el) return;
             var boxes = irBoxesCache[phase] || [];
             var html = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">' +
-                '<span style="font-size:11px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;color:#8b8f9a;">Evidence &amp; Uploads</span>' +
+                '<span style="font-size:11px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;color:#8b8f9a;">Documents</span>' +
                 '<button class="ir-add-box-btn" onclick="irOpenAddBox(' + phase + ')">+ Add Box</button>' +
                 '</div>';
             if (boxes.length === 0) {
@@ -8824,67 +8834,81 @@
             } else {
                 html += '<div class="ir-boxes-grid">';
                 for (var i = 0; i < boxes.length; i++) {
-                    html += irRenderBox(boxes[i]);
+                    html += irRenderBox(boxes[i], i, boxes.length);
                 }
                 html += '</div>';
             }
             el.innerHTML = html;
         }
 
-        function irRenderBox(box) {
-            const files = box.files || [];
-            let filesHtml = '';
+        function irRenderBox(box, idx, total) {
+            var files = box.files || [];
+            var filesHtml = '';
             if (files.length > 0) {
-                filesHtml += `<div class="ir-box-files">`;
-                for (const f of files) {
-                    filesHtml += `<div class="ir-box-file-row">
-                        <div class="ir-file-info">
-                            <svg class="ir-file-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                            <span class="ir-file-name" title="${irEsc(f.file_name)}">${irEsc(f.file_name)}</span>
-                            <span class="ir-file-size">${irFmtSize(f.file_size)}</span>
-                        </div>
-                        <div class="ir-file-actions">
-                            <button class="ir-file-action" onclick="irViewFile('${f.id}')" title="View">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                            </button>
-                            ${(irIsCooLuiza && box.box_type === 'sop' && (!f.review_status || f.review_status === 'pending')) ? `
-                                <button class="ir-file-action" style="color:#16a34a;" onclick="irReviewFile('${f.id}','${box.id}',${box.phase_number},'approved')" title="Approve">Approve</button>
-                                <button class="ir-file-action" style="color:#d97706;" onclick="irReviewFile('${f.id}','${box.id}',${box.phase_number},'revision_needed')" title="Revise">Revise</button>
-                                <button class="ir-file-action danger" onclick="irReviewFile('${f.id}','${box.id}',${box.phase_number},'discarded')" title="Discard">Discard</button>
-                            ` : ''}
-                            ${(f.review_status && f.review_status !== 'pending') ? `<span style="font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;color:${f.review_status==='approved'?'#16a34a':f.review_status==='revision_needed'?'#d97706':'#ef4444'};margin-left:4px;">${f.review_status.replace('_',' ')}</span>` : ''}
-                            ${irIsCso ? `<button class="ir-file-action danger" onclick="irDeleteFile('${f.id}', '${box.id}', ${box.phase_number})" title="Delete">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
-                            </button>` : ''}
-                        </div>
-                    </div>`;
+                filesHtml += '<div class="ir-box-files">';
+                for (var fi = 0; fi < files.length; fi++) {
+                    var f = files[fi];
+                    filesHtml += '<div class="ir-box-file-row">' +
+                        '<div class="ir-file-info">' +
+                            '<svg class="ir-file-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>' +
+                            '<span class="ir-file-name" title="' + irEsc(f.file_name) + '">' + irEsc(f.file_name) + '</span>' +
+                            '<span class="ir-file-size">' + irFmtSize(f.file_size) + '</span>' +
+                        '</div>' +
+                        '<div class="ir-file-actions">' +
+                            '<button class="ir-file-action" onclick="irViewFile(\'' + f.id + '\')" title="View">' +
+                                '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>' +
+                            '</button>';
+                    if (irIsCooLuiza && box.box_type === 'sop' && (!f.review_status || f.review_status === 'pending')) {
+                        filesHtml += '<button class="ir-file-action" style="color:#16a34a;" onclick="irReviewFile(\'' + f.id + '\',\'' + box.id + '\',' + box.phase_number + ',\'approved\')" title="Approve">Approve</button>' +
+                            '<button class="ir-file-action" style="color:#d97706;" onclick="irReviewFile(\'' + f.id + '\',\'' + box.id + '\',' + box.phase_number + ',\'revision_needed\')" title="Revise">Revise</button>' +
+                            '<button class="ir-file-action danger" onclick="irReviewFile(\'' + f.id + '\',\'' + box.id + '\',' + box.phase_number + ',\'discarded\')" title="Discard">Discard</button>';
+                    }
+                    if (f.review_status && f.review_status !== 'pending') {
+                        var rc = f.review_status === 'approved' ? '#16a34a' : f.review_status === 'revision_needed' ? '#d97706' : '#ef4444';
+                        filesHtml += '<span style="font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;color:' + rc + ';margin-left:4px;">' + f.review_status.replace('_', ' ') + '</span>';
+                    }
+                    if (irIsCso) {
+                        filesHtml += '<button class="ir-file-action" onclick="irReplaceFile(\'' + f.id + '\',\'' + box.id + '\',' + box.phase_number + ')" title="Replace">Replace</button>';
+                        filesHtml += '<button class="ir-file-action danger" onclick="irDeleteFile(\'' + f.id + '\',\'' + box.id + '\',' + box.phase_number + ')" title="Delete">' +
+                            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>' +
+                            '</button>';
+                    }
+                    filesHtml += '</div></div>';
                 }
-                filesHtml += `</div>`;
+                filesHtml += '</div>';
             }
-            let uploadZone = '';
+            var uploadZone = '';
             if (irIsCso) {
-                uploadZone = `<div class="ir-upload-zone">
-                    <button class="ir-upload-btn" onclick="irTriggerUpload('${box.id}', ${box.phase_number})">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                        Upload file
-                    </button>
-                </div>`;
+                uploadZone = '<div class="ir-upload-zone">' +
+                    '<button class="ir-upload-btn" onclick="irTriggerUpload(\'' + box.id + '\',' + box.phase_number + ')">' +
+                        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>' +
+                        ' Upload file' +
+                    '</button>' +
+                '</div>';
             }
-            return `<div class="ir-box-card">
-                <div class="ir-box-header">
-                    <div class="ir-box-meta">
-                        <span class="ir-box-type-badge">${irEsc(box.box_type)}</span>
-                        <div class="ir-box-title">${irEsc(box.title)}</div>
-                        ${box.description ? `<div class="ir-box-desc">${irEsc(box.description)}</div>` : ''}
-                    </div>
-                    ${irIsCso ? `<div class="ir-box-actions">
-                        <button class="ir-box-action-btn" onclick="irOpenEditBox('${box.id}', ${box.phase_number})">Edit</button>
-                        <button class="ir-box-action-btn danger" onclick="irDeleteBox('${box.id}', ${box.phase_number})">Delete</button>
-                    </div>` : ''}
-                </div>
-                ${filesHtml}
-                ${uploadZone}
-            </div>`;
+            var actionsHtml = '';
+            if (irIsCso) {
+                var upDisabled = idx === 0 ? ' disabled style="opacity:0.3;cursor:default;"' : '';
+                var dnDisabled = idx === total - 1 ? ' disabled style="opacity:0.3;cursor:default;"' : '';
+                actionsHtml = '<div class="ir-box-actions">' +
+                    '<button class="ir-box-action-btn"' + upDisabled + ' onclick="irMoveBox(\'' + box.id + '\',' + box.phase_number + ',\'up\')" title="Move up">\u2191</button>' +
+                    '<button class="ir-box-action-btn"' + dnDisabled + ' onclick="irMoveBox(\'' + box.id + '\',' + box.phase_number + ',\'down\')" title="Move down">\u2193</button>' +
+                    '<button class="ir-box-action-btn" onclick="irOpenEditBox(\'' + box.id + '\',' + box.phase_number + ')">Edit</button>' +
+                    '<button class="ir-box-action-btn danger" onclick="irDeleteBox(\'' + box.id + '\',' + box.phase_number + ')">Delete</button>' +
+                '</div>';
+            }
+            return '<div class="ir-box-card">' +
+                '<div class="ir-box-header">' +
+                    '<div class="ir-box-meta">' +
+                        '<span class="ir-box-type-badge">' + irEsc(box.box_type) + '</span>' +
+                        '<div class="ir-box-title">' + irEsc(box.title) + '</div>' +
+                        (box.description ? '<div class="ir-box-desc">' + irEsc(box.description) + '</div>' : '') +
+                    '</div>' +
+                    actionsHtml +
+                '</div>' +
+                filesHtml +
+                uploadZone +
+            '</div>';
         }
 
         async function irLoadBoxes(phase) {
@@ -8995,6 +9019,43 @@
                 if (!res.ok) { var e = await res.json(); throw new Error(e.error || 'Failed'); }
                 await irLoadBoxes(phase);
             } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        async function irMoveBox(boxId, phase, direction) {
+            try {
+                var res = await fetch('/api/investroom/boxes/' + boxId + '/move?workspace=theralia', {
+                    method: 'POST', credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ direction: direction })
+                });
+                if (!res.ok) { var e = await res.json(); throw new Error(e.error || 'Failed'); }
+                await irLoadBoxes(phase);
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        function irReplaceFile(fileId, boxId, phase) {
+            var input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.pdf,.png,.jpg,.jpeg,.gif,.pptx,.docx,.xlsx';
+            input.onchange = async function() {
+                if (!input.files.length) return;
+                try {
+                    // Delete old file
+                    var delRes = await fetch('/api/investroom/files/' + fileId + '?workspace=theralia', {
+                        method: 'DELETE', credentials: 'include'
+                    });
+                    if (!delRes.ok) { var e = await delRes.json(); throw new Error(e.error || 'Delete failed'); }
+                    // Upload new file
+                    var fd = new FormData();
+                    fd.append('file', input.files[0]);
+                    var upRes = await fetch('/api/investroom/boxes/' + boxId + '/files?workspace=theralia', {
+                        method: 'POST', credentials: 'include', body: fd
+                    });
+                    if (!upRes.ok) { var e2 = await upRes.json(); throw new Error(e2.error || 'Upload failed'); }
+                    await irLoadBoxes(phase);
+                } catch (err) { alert('Replace error: ' + err.message); }
+            };
+            input.click();
         }
 
         async function irReviewFile(fileId, boxId, phase, action) {

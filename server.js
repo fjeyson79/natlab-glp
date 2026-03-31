@@ -21003,6 +21003,53 @@ app.post('/api/investroom/boxes', requireCSO, async (req, res) => {
     }
 });
 
+// POST /api/investroom/boxes/ensure-defaults — Lazy-create default boxes for a workspace (CSO only)
+const IR_DEFAULT_BOXES = [
+    { phase: 1, title: 'Executive Summary', box_type: 'document', description: 'Short introduction to Theralia, its rationale, and translational vision.', order: 0 },
+    { phase: 1, title: 'Pitch Deck', box_type: 'deck', description: 'Company overview, platform logic, and strategic opportunity.', order: 1 },
+    { phase: 1, title: 'Background Papers', box_type: 'publication', description: 'Background literature and foundational papers.', order: 2 },
+    { phase: 2, title: 'Platform Overview', box_type: 'document', description: 'Technical overview of the Theralia platform and delivery approach.', order: 0 },
+    { phase: 2, title: 'Mechanism Figures', box_type: 'figure', description: 'Key figures illustrating the mechanism of action.', order: 1 },
+    { phase: 2, title: 'Supporting Data', box_type: 'data', description: 'Experimental datasets supporting the technology.', order: 2 },
+    { phase: 3, title: 'Publication', box_type: 'publication', description: 'Peer-reviewed publications and proof-of-concept studies.', order: 0 },
+    { phase: 3, title: 'Validation Data', box_type: 'data', description: 'In vivo and in vitro validation datasets.', order: 1 },
+    { phase: 3, title: 'SOP', box_type: 'sop', description: 'Standard operating procedures for experimental workflows.', order: 2 },
+    { phase: 3, title: 'GLP Figures', box_type: 'figure', description: 'GLP-compliant figures and structured data visualizations.', order: 3 },
+    { phase: 4, title: 'IP Material', box_type: 'document', description: 'Patent filings, IP portfolio summaries, and protection strategy.', order: 0 },
+    { phase: 4, title: 'Strategic Documents', box_type: 'document', description: 'Business strategy, market analysis, and positioning materials.', order: 1 },
+    { phase: 4, title: 'Business Materials', box_type: 'deck', description: 'Investor materials, financial projections, and deal-related documents.', order: 2 },
+];
+
+app.post('/api/investroom/boxes/ensure-defaults', requireCSO, async (req, res) => {
+    try {
+        if (!(await checkIrTables())) return res.status(503).json({ error: 'Migration not applied' });
+        const wsId = await getTheraliaWsId();
+        if (!wsId) return res.status(404).json({ error: 'Workspace not found' });
+
+        const existing = await pool.query(
+            `SELECT DISTINCT phase_number FROM investroom_phase_boxes WHERE workspace_id = $1`,
+            [wsId]
+        );
+        const existingPhases = new Set(existing.rows.map(r => r.phase_number));
+
+        let created = 0;
+        for (const def of IR_DEFAULT_BOXES) {
+            if (existingPhases.has(def.phase)) continue;
+            await pool.query(
+                `INSERT INTO investroom_phase_boxes (workspace_id, phase_number, title, box_type, description, order_index, created_by)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+                [wsId, def.phase, def.title, def.box_type, def.description, def.order, 'system']
+            );
+            created++;
+        }
+        if (created > 0) console.log(`[IR-BOXES] Default boxes created: ${created} for workspace ${wsId}`);
+        res.json({ ok: true, created });
+    } catch (err) {
+        console.error('[IR-BOXES] Ensure defaults error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
 // PUT /api/investroom/boxes/:id — Update a box (CSO only)
 app.put('/api/investroom/boxes/:id', requireCSO, async (req, res) => {
     try {
@@ -21208,6 +21255,46 @@ app.patch('/api/investroom/files/:fileId/review', requireAuth, async (req, res) 
         res.json({ file: result.rows[0] });
     } catch (err) {
         console.error('[IR-BOXES] File review error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/investroom/boxes/:id/move — Reorder a box (CSO only)
+app.post('/api/investroom/boxes/:id/move', requireCSO, async (req, res) => {
+    try {
+        if (!(await checkIrTables())) return res.status(503).json({ error: 'Migration not applied' });
+        const wsId = await getTheraliaWsId();
+        if (!wsId) return res.status(404).json({ error: 'Workspace not found' });
+        const { direction } = req.body;
+        if (direction !== 'up' && direction !== 'down') return res.status(400).json({ error: 'direction must be up or down' });
+
+        // Get the box and its siblings
+        const box = await pool.query(
+            `SELECT id, phase_number, order_index FROM investroom_phase_boxes WHERE id = $1 AND workspace_id = $2`,
+            [req.params.id, wsId]
+        );
+        if (box.rows.length === 0) return res.status(404).json({ error: 'Box not found' });
+        const { phase_number, order_index } = box.rows[0];
+
+        // Find the adjacent box to swap with
+        const neighbor = await pool.query(
+            `SELECT id, order_index FROM investroom_phase_boxes
+             WHERE workspace_id = $1 AND phase_number = $2 AND order_index ${direction === 'up' ? '<' : '>'} $3
+             ORDER BY order_index ${direction === 'up' ? 'DESC' : 'ASC'}
+             LIMIT 1`,
+            [wsId, phase_number, order_index]
+        );
+        if (neighbor.rows.length === 0) return res.json({ ok: true, moved: false });
+
+        // Swap order_index values
+        const nId = neighbor.rows[0].id;
+        const nIdx = neighbor.rows[0].order_index;
+        await pool.query(`UPDATE investroom_phase_boxes SET order_index = $1, updated_at = NOW() WHERE id = $2`, [nIdx, req.params.id]);
+        await pool.query(`UPDATE investroom_phase_boxes SET order_index = $1, updated_at = NOW() WHERE id = $2`, [order_index, nId]);
+
+        res.json({ ok: true, moved: true });
+    } catch (err) {
+        console.error('[IR-BOXES] Move error:', err.message);
         res.status(500).json({ error: 'Server error' });
     }
 });
