@@ -2321,8 +2321,36 @@
         /* Update Mode */
         .ir-update-panel { display: none; }
         .ir-update-panel.active { display: block; }
+        .ir-uploads-panel { display: none; }
+        .ir-uploads-panel.active { display: block; }
         .ir-view-panel { display: block; }
         .ir-view-panel.hide { display: none; }
+
+        /* Uploads layer phase sections */
+        .ir-uploads-phase {
+            background: #ffffff;
+            border: 1px solid rgba(0,0,0,0.06);
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+            margin-bottom: 24px;
+            overflow: hidden;
+        }
+        .ir-uploads-phase-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 18px 24px;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+        }
+        .ir-uploads-phase-label {
+            font-size: 13px;
+            font-weight: 700;
+            color: #1a1c22;
+            letter-spacing: -0.1px;
+        }
+        .ir-uploads-phase-body {
+            padding: 20px 24px;
+        }
         .ir-phase-editor {
             background: #ffffff; border: 1px solid #e0e2e6; border-radius: 12px;
             padding: 24px 26px; margin-bottom: 18px;
@@ -2437,33 +2465,15 @@
         .ip-booking-success-text {
             font-size: 13px; color: #5a5d66; line-height: 1.6;
         }
-        /* ---- Evidence & Uploads (CSO layer) ---- */
-        .ir-evidence-section {
-            margin-top: 48px;
-            padding-top: 32px;
-            border-top: 1px solid #1e2025;
-        }
-        .ir-evidence-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 20px;
-        }
-        .ir-evidence-title {
-            font-size: 10px;
-            font-weight: 700;
-            letter-spacing: 1.6px;
-            text-transform: uppercase;
-            color: #55555f;
-        }
+        /* ---- Uploads layer box controls ---- */
         .ir-add-box-btn {
             display: inline-flex;
             align-items: center;
             gap: 6px;
             padding: 6px 14px;
             background: transparent;
-            color: #3ecf8e;
-            border: 1px solid rgba(62, 207, 142, 0.25);
+            color: #16a34a;
+            border: 1px solid rgba(22, 163, 74, 0.25);
             border-radius: 6px;
             font-size: 12px;
             font-weight: 600;
@@ -2471,8 +2481,8 @@
             transition: all 0.15s;
         }
         .ir-add-box-btn:hover {
-            background: rgba(62, 207, 142, 0.06);
-            border-color: rgba(62, 207, 142, 0.4);
+            background: rgba(22, 163, 74, 0.05);
+            border-color: rgba(22, 163, 74, 0.4);
         }
         .ir-boxes-grid {
             display: grid;
@@ -2480,14 +2490,15 @@
             gap: 16px;
         }
         .ir-box-card {
-            background: #151618;
-            border: 1px solid #1e2025;
-            border-radius: 12px;
-            padding: 22px 24px;
-            transition: border-color 0.15s;
+            background: #f9fafb;
+            border: 1px solid #e0e2e6;
+            border-radius: 10px;
+            padding: 20px 22px;
+            transition: border-color 0.15s, box-shadow 0.15s;
         }
         .ir-box-card:hover {
-            border-color: #2a2d35;
+            border-color: #c8cacd;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
         }
         .ir-box-header {
             display: flex;
@@ -2505,8 +2516,8 @@
             font-weight: 700;
             letter-spacing: 1.2px;
             text-transform: uppercase;
-            color: #3ecf8e;
-            background: rgba(62, 207, 142, 0.08);
+            color: #16a34a;
+            background: rgba(22, 163, 74, 0.07);
             padding: 3px 8px;
             border-radius: 4px;
             margin-bottom: 8px;
@@ -2514,12 +2525,12 @@
         .ir-box-title {
             font-size: 15px;
             font-weight: 600;
-            color: #e0e0e6;
+            color: #1a1c22;
             margin-bottom: 4px;
         }
         .ir-box-desc {
             font-size: 12px;
-            color: #78787f;
+            color: #8b8f9a;
             line-height: 1.55;
         }
         .ir-box-actions {
@@ -2530,8 +2541,8 @@
         }
         .ir-box-action-btn {
             background: transparent;
-            border: 1px solid #2a2a2e;
-            color: #78787f;
+            border: 1px solid #e0e2e6;
+            color: #8b8f9a;
             padding: 4px 8px;
             border-radius: 5px;
             font-size: 11px;
@@ -2539,17 +2550,17 @@
             transition: all 0.15s;
         }
         .ir-box-action-btn:hover {
-            color: #c8c8cf;
-            border-color: #444;
+            color: #3a3d45;
+            border-color: #c8cacd;
         }
         .ir-box-action-btn.danger:hover {
             color: #ef4444;
-            border-color: #ef4444;
+            border-color: #fca5a5;
         }
         .ir-box-files {
             margin-top: 14px;
             padding-top: 14px;
-            border-top: 1px solid #1e2025;
+            border-top: 1px solid #e0e2e6;
         }
         .ir-box-file-row {
             display: flex;
@@ -2558,7 +2569,7 @@
             padding: 8px 0;
         }
         .ir-box-file-row + .ir-box-file-row {
-            border-top: 1px solid rgba(30, 32, 37, 0.5);
+            border-top: 1px solid rgba(0, 0, 0, 0.04);
         }
         .ir-file-info {
             display: flex;
@@ -2570,19 +2581,19 @@
         .ir-file-icon {
             width: 14px;
             height: 14px;
-            color: #55555f;
+            color: #8b8f9a;
             flex-shrink: 0;
         }
         .ir-file-name {
             font-size: 12px;
-            color: #a0a0aa;
+            color: #3a3d45;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
         }
         .ir-file-size {
             font-size: 11px;
-            color: #55555f;
+            color: #8b8f9a;
             flex-shrink: 0;
             margin-left: 8px;
         }
@@ -2595,14 +2606,14 @@
         .ir-file-action {
             background: transparent;
             border: none;
-            color: #55555f;
+            color: #8b8f9a;
             cursor: pointer;
             padding: 4px;
             border-radius: 4px;
             transition: color 0.15s;
             font-size: 11px;
         }
-        .ir-file-action:hover { color: #c8c8cf; }
+        .ir-file-action:hover { color: #3a3d45; }
         .ir-file-action.danger:hover { color: #ef4444; }
         .ir-upload-zone {
             margin-top: 12px;
@@ -2613,21 +2624,21 @@
             gap: 6px;
             padding: 6px 12px;
             background: transparent;
-            color: #78787f;
-            border: 1px dashed #2a2a2e;
+            color: #8b8f9a;
+            border: 1px dashed #d0d2d6;
             border-radius: 6px;
             font-size: 11px;
             cursor: pointer;
             transition: all 0.15s;
         }
         .ir-upload-btn:hover {
-            color: #a0a0aa;
-            border-color: #444;
+            color: #3a3d45;
+            border-color: #b0b4be;
         }
         .ir-empty-state {
             text-align: center;
             padding: 32px 20px;
-            color: #55555f;
+            color: #8b8f9a;
             font-size: 13px;
         }
 
@@ -2645,17 +2656,18 @@
             display: flex;
         }
         .ir-modal {
-            background: #1a1b1e;
-            border: 1px solid #2a2d35;
+            background: #ffffff;
+            border: 1px solid #e0e2e6;
             border-radius: 14px;
             padding: 32px;
             width: 440px;
             max-width: 90vw;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.12);
         }
         .ir-modal h3 {
             font-size: 16px;
             font-weight: 600;
-            color: #e0e0e6;
+            color: #1a1c22;
             margin-bottom: 24px;
         }
         .ir-modal label {
@@ -2664,17 +2676,17 @@
             font-weight: 700;
             letter-spacing: 1.2px;
             text-transform: uppercase;
-            color: #78787f;
+            color: #8b8f9a;
             margin-bottom: 6px;
         }
         .ir-modal input,
         .ir-modal select,
         .ir-modal textarea {
             width: 100%;
-            background: #151618;
-            border: 1px solid #2a2a2e;
+            background: #f9fafb;
+            border: 1px solid #e0e2e6;
             border-radius: 7px;
-            color: #e0e0e6;
+            color: #1a1c22;
             font-size: 13px;
             padding: 10px 14px;
             margin-bottom: 16px;
@@ -2685,7 +2697,7 @@
         .ir-modal input:focus,
         .ir-modal select:focus,
         .ir-modal textarea:focus {
-            border-color: #3ecf8e;
+            border-color: #16a34a;
         }
         .ir-modal textarea {
             resize: vertical;
@@ -2700,21 +2712,21 @@
         .ir-modal-cancel {
             padding: 8px 18px;
             background: transparent;
-            color: #78787f;
-            border: 1px solid #2a2a2e;
+            color: #8b8f9a;
+            border: 1px solid #e0e2e6;
             border-radius: 7px;
             font-size: 13px;
             cursor: pointer;
             transition: all 0.15s;
         }
         .ir-modal-cancel:hover {
-            color: #c8c8cf;
-            border-color: #444;
+            color: #3a3d45;
+            border-color: #c8cacd;
         }
         .ir-modal-save {
             padding: 8px 18px;
-            background: #3ecf8e;
-            color: #0e0f11;
+            background: #16a34a;
+            color: #ffffff;
             border: none;
             border-radius: 7px;
             font-size: 13px;
@@ -2723,7 +2735,7 @@
             transition: background 0.15s;
         }
         .ir-modal-save:hover {
-            background: #34b87d;
+            background: #15803d;
         }
         .ir-modal-save:disabled {
             opacity: 0.5;
@@ -3640,9 +3652,6 @@
                             </div>
                         </div>
 
-                        <!-- Evidence & Uploads (CSO layer, rendered by JS) -->
-                        <div id="irEvidence1" class="ir-evidence-section" style="display:none;"></div>
-
                         <!-- Transition to Phase 2 -->
                         <div class="ip-transition">
                             <div class="ip-transition-label">Next Phase</div>
@@ -3726,9 +3735,6 @@
                             </div>
                         </div>
 
-                        <!-- Evidence & Uploads (CSO layer, rendered by JS) -->
-                        <div id="irEvidence2" class="ir-evidence-section" style="display:none;"></div>
-
                         <!-- Transition to Phase 3 -->
                         <div class="ip-transition">
                             <div class="ip-transition-label">Next Phase</div>
@@ -3785,9 +3791,6 @@
                             <div class="ip-glp-label">GLP Vision</div>
                             <div class="ip-glp-text">Explore validation in GLP Vision &mdash; view figure-by-figure data, linked protocols, and structured experimental context.</div>
                         </div>
-
-                        <!-- Evidence & Uploads (CSO layer, rendered by JS) -->
-                        <div id="irEvidence3" class="ir-evidence-section" style="display:none;"></div>
 
                         <!-- Transition to Phase 4 -->
                         <div class="ip-transition">
@@ -3955,9 +3958,6 @@
                                 <span class="ip-engage-item" onclick="ipActionHandler('Request meeting')"><span class="ip-engage-dot"></span>Request meeting</span>
                             </div>
                         </div>
-
-                        <!-- Evidence & Uploads (CSO layer, rendered by JS) -->
-                        <div id="irEvidence4" class="ir-evidence-section" style="display:none;"></div>
 
                         <!-- Final Statement -->
                         <div class="ip-final-statement ip-emphasis">
@@ -4166,6 +4166,7 @@
                     <div class="ir-mode-toggle">
                         <button class="ir-mode-btn active" data-mode="view" onclick="irSetMode('view')">View</button>
                         <button class="ir-mode-btn" data-mode="update" id="irUpdateBtn" style="display:none;" onclick="irSetMode('update')">Update</button>
+                        <button class="ir-mode-btn" data-mode="uploads" id="irUploadsBtn" style="display:none;" onclick="irSetMode('uploads')">Uploads</button>
                     </div>
 
                     <!-- ====== VIEW MODE ====== -->
@@ -4186,6 +4187,34 @@
                     <div class="ir-update-panel" id="irUpdatePanel">
                         <div class="ir-section-title">Phase Content Editor</div>
                         <div id="irPhaseEditors"></div>
+                    </div>
+
+                    <!-- ====== UPLOADS MODE (CSO only) ====== -->
+                    <div class="ir-uploads-panel" id="irUploadsPanel">
+                        <div class="ir-uploads-phase" id="irUploadsPhase1">
+                            <div class="ir-uploads-phase-header">
+                                <span class="ir-uploads-phase-label">Phase 1 — Why &amp; Overview</span>
+                            </div>
+                            <div class="ir-uploads-phase-body" id="irUpBody1"></div>
+                        </div>
+                        <div class="ir-uploads-phase" id="irUploadsPhase2">
+                            <div class="ir-uploads-phase-header">
+                                <span class="ir-uploads-phase-label">Phase 2 — Technology</span>
+                            </div>
+                            <div class="ir-uploads-phase-body" id="irUpBody2"></div>
+                        </div>
+                        <div class="ir-uploads-phase" id="irUploadsPhase3">
+                            <div class="ir-uploads-phase-header">
+                                <span class="ir-uploads-phase-label">Phase 3 — Validation</span>
+                            </div>
+                            <div class="ir-uploads-phase-body" id="irUpBody3"></div>
+                        </div>
+                        <div class="ir-uploads-phase" id="irUploadsPhase4">
+                            <div class="ir-uploads-phase-header">
+                                <span class="ir-uploads-phase-label">Phase 4 — Strategic Value</span>
+                            </div>
+                            <div class="ir-uploads-phase-body" id="irUpBody4"></div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -8480,9 +8509,10 @@
             if (_irHasAccess) {
                 document.getElementById('irTabBtn').style.display = '';
             }
-            // Update mode: CSO only
+            // Update mode + Uploads mode: CSO only
             if (_userPosition === 'cso') {
                 document.getElementById('irUpdateBtn').style.display = '';
+                document.getElementById('irUploadsBtn').style.display = '';
             }
             // User Control tab: CSO only
             if (_userPosition === 'cso') {
@@ -8652,8 +8682,8 @@
                 b.classList.toggle('active', b.dataset.mode === mode);
             });
             document.getElementById('irViewPanel').classList.toggle('hide', mode !== 'view');
-            var up = document.getElementById('irUpdatePanel');
-            up.classList.toggle('active', mode === 'update');
+            document.getElementById('irUpdatePanel').classList.toggle('active', mode === 'update');
+            document.getElementById('irUploadsPanel').classList.toggle('active', mode === 'uploads');
         }
 
         function irRefresh() {
@@ -8775,37 +8805,28 @@
                 var normName = (user.name || '').trim().replace(/\s+/g, ' ').toLowerCase();
                 irIsCso = pos === 'cso';
                 irIsCooLuiza = pos === 'coo' && normName === 'luiza i. hernandez';
-                if (irIsCso || irIsCooLuiza) {
-                    irInitEvidenceSections();
+                if (irIsCso) {
                     for (var p = 1; p <= 4; p++) irLoadBoxes(p);
                 }
             } catch {}
         }
 
-        function irInitEvidenceSections() {
-            for (var p = 1; p <= 4; p++) {
-                var el = document.getElementById('irEvidence' + p);
-                if (el) el.style.display = '';
-                irRenderEvidenceSection(p);
-            }
-        }
-
-        function irRenderEvidenceSection(phase) {
-            const el = document.getElementById('irEvidence' + phase);
+        function irRenderUploadsPhase(phase) {
+            var el = document.getElementById('irUpBody' + phase);
             if (!el) return;
-            const boxes = irBoxesCache[phase] || [];
-            let html = `<div class="ir-evidence-header">
-                <span class="ir-evidence-title">Evidence &amp; Uploads</span>
-                <button class="ir-add-box-btn" onclick="irOpenAddBox(${phase})">+ Add Box</button>
-            </div>`;
+            var boxes = irBoxesCache[phase] || [];
+            var html = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">' +
+                '<span style="font-size:11px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;color:#8b8f9a;">Evidence &amp; Uploads</span>' +
+                '<button class="ir-add-box-btn" onclick="irOpenAddBox(' + phase + ')">+ Add Box</button>' +
+                '</div>';
             if (boxes.length === 0) {
-                html += `<div class="ir-empty-state">No content added yet</div>`;
+                html += '<div class="ir-empty-state">No content added yet</div>';
             } else {
-                html += `<div class="ir-boxes-grid">`;
-                for (const box of boxes) {
-                    html += irRenderBox(box);
+                html += '<div class="ir-boxes-grid">';
+                for (var i = 0; i < boxes.length; i++) {
+                    html += irRenderBox(boxes[i]);
                 }
-                html += `</div>`;
+                html += '</div>';
             }
             el.innerHTML = html;
         }
@@ -8868,11 +8889,11 @@
 
         async function irLoadBoxes(phase) {
             try {
-                const res = await fetch('/api/investroom/boxes?phase=' + phase + '&workspace=theralia', { credentials: 'include' });
+                var res = await fetch('/api/investroom/boxes?phase=' + phase + '&workspace=theralia', { credentials: 'include' });
                 if (!res.ok) return;
-                const data = await res.json();
+                var data = await res.json();
                 irBoxesCache[phase] = data.boxes || [];
-                irRenderEvidenceSection(phase);
+                irRenderUploadsPhase(phase);
             } catch {}
         }
 
