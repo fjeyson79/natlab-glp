@@ -20945,11 +20945,18 @@ app.get('/api/investroom/boxes', requireAuth, async (req, res) => {
         const phase = parseInt(req.query.phase, 10);
         if (!phase || phase < 1 || phase > 4) return res.status(400).json({ error: 'Invalid phase' });
 
+        // Check if review columns exist (migration 056)
+        let reviewCols = '';
+        try {
+            const rc = await pool.query(`SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='investroom_phase_box_files' AND column_name='review_status') AS ok`);
+            if (rc.rows[0]?.ok) reviewCols = ", 'review_status', f.review_status, 'reviewed_by', f.reviewed_by, 'reviewed_at', f.reviewed_at";
+        } catch {}
+
         const boxes = await pool.query(
             `SELECT b.id, b.phase_number, b.title, b.box_type, b.description, b.order_index, b.created_at,
                     COALESCE(json_agg(json_build_object(
                         'id', f.id, 'file_name', f.file_name, 'mime_type', f.mime_type,
-                        'file_size', f.file_size, 'created_at', f.created_at
+                        'file_size', f.file_size, 'created_at', f.created_at${reviewCols}
                     ) ORDER BY f.created_at) FILTER (WHERE f.id IS NOT NULL), '[]') AS files
              FROM investroom_phase_boxes b
              LEFT JOIN investroom_phase_box_files f ON f.box_id = b.id
@@ -21145,6 +21152,62 @@ app.delete('/api/investroom/files/:fileId', requireCSO, async (req, res) => {
         res.json({ ok: true });
     } catch (err) {
         console.error('[IR-BOXES] File delete error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// PATCH /api/investroom/files/:fileId/review — Approve/Revise/Discard a file (COO Luiza + SOP only)
+app.patch('/api/investroom/files/:fileId/review', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkIrTables())) return res.status(503).json({ error: 'Migration not applied' });
+
+        // Enforce: must be COO + name must be "Luiza I. Hernandez"
+        const wsSlug = req.query.workspace || req.headers['x-workspace-slug'] || 'theralia';
+        const wu = await pool.query(
+            `SELECT wu.workspace_position, r.name
+             FROM workspace_users wu
+             JOIN workspaces w ON w.id = wu.workspace_id
+             JOIN researchers r ON r.researcher_id = wu.user_id
+             WHERE wu.user_id = $1 AND w.slug = $2 AND wu.is_active = TRUE
+             LIMIT 1`,
+            [req.session.user.researcher_id, wsSlug]
+        );
+        const pos = (wu.rows[0]?.workspace_position || '').toLowerCase();
+        const rawName = (wu.rows[0]?.name || '').trim().replace(/\s+/g, ' ').toLowerCase();
+        if (pos !== 'coo' || rawName !== 'luiza i. hernandez') {
+            return res.status(403).json({ error: 'Access denied. Only COO Luiza I. Hernandez may review SOP files.' });
+        }
+
+        // Enforce: file must belong to a SOP-type box
+        const wsId = await getTheraliaWsId();
+        if (!wsId) return res.status(404).json({ error: 'Workspace not found' });
+        const file = await pool.query(
+            `SELECT f.id, f.review_status, b.box_type
+             FROM investroom_phase_box_files f
+             JOIN investroom_phase_boxes b ON b.id = f.box_id
+             WHERE f.id = $1 AND b.workspace_id = $2`,
+            [req.params.fileId, wsId]
+        );
+        if (file.rows.length === 0) return res.status(404).json({ error: 'File not found' });
+        if (file.rows[0].box_type !== 'sop') {
+            return res.status(403).json({ error: 'Review actions are only allowed for SOP files.' });
+        }
+
+        const { action, note } = req.body;
+        const validActions = ['approved', 'revision_needed', 'discarded'];
+        if (!validActions.includes(action)) return res.status(400).json({ error: 'Invalid action. Use: approved, revision_needed, discarded' });
+
+        const result = await pool.query(
+            `UPDATE investroom_phase_box_files
+             SET review_status = $1, review_note = $2, reviewed_by = $3, reviewed_at = NOW()
+             WHERE id = $4
+             RETURNING id, review_status, reviewed_by, reviewed_at`,
+            [action, (note || '').trim() || null, req.session.user.name || req.session.user.researcher_id, req.params.fileId]
+        );
+        console.log(`[IR-BOXES] File reviewed: ${req.params.fileId} action=${action} by ${req.session.user.researcher_id}`);
+        res.json({ file: result.rows[0] });
+    } catch (err) {
+        console.error('[IR-BOXES] File review error:', err.message);
         res.status(500).json({ error: 'Server error' });
     }
 });

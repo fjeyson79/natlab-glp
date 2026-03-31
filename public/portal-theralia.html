@@ -8762,6 +8762,7 @@
         /* EVIDENCE & UPLOADS (CSO LAYER)                */
         /* ============================================== */
         var irIsCso = false;
+        var irIsCooLuiza = false;
         var irBoxesCache = {};
 
         async function irDetectCso() {
@@ -8770,8 +8771,11 @@
                 if (!res.ok) return;
                 const data = await res.json();
                 const user = data.user || data;
-                irIsCso = (user.workspace_position || '').toLowerCase() === 'cso';
-                if (irIsCso) {
+                var pos = (user.workspace_position || '').toLowerCase();
+                var normName = (user.name || '').trim().replace(/\s+/g, ' ').toLowerCase();
+                irIsCso = pos === 'cso';
+                irIsCooLuiza = pos === 'coo' && normName === 'luiza i. hernandez';
+                if (irIsCso || irIsCooLuiza) {
                     irInitEvidenceSections();
                     for (var p = 1; p <= 4; p++) irLoadBoxes(p);
                 }
@@ -8822,6 +8826,12 @@
                             <button class="ir-file-action" onclick="irViewFile('${f.id}')" title="View">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                             </button>
+                            ${(irIsCooLuiza && box.box_type === 'sop' && (!f.review_status || f.review_status === 'pending')) ? `
+                                <button class="ir-file-action" style="color:#16a34a;" onclick="irReviewFile('${f.id}','${box.id}',${box.phase_number},'approved')" title="Approve">Approve</button>
+                                <button class="ir-file-action" style="color:#d97706;" onclick="irReviewFile('${f.id}','${box.id}',${box.phase_number},'revision_needed')" title="Revise">Revise</button>
+                                <button class="ir-file-action danger" onclick="irReviewFile('${f.id}','${box.id}',${box.phase_number},'discarded')" title="Discard">Discard</button>
+                            ` : ''}
+                            ${(f.review_status && f.review_status !== 'pending') ? `<span style="font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;color:${f.review_status==='approved'?'#16a34a':f.review_status==='revision_needed'?'#d97706':'#ef4444'};margin-left:4px;">${f.review_status.replace('_',' ')}</span>` : ''}
                             ${irIsCso ? `<button class="ir-file-action danger" onclick="irDeleteFile('${f.id}', '${box.id}', ${box.phase_number})" title="Delete">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
                             </button>` : ''}
@@ -8960,6 +8970,24 @@
             try {
                 var res = await fetch('/api/investroom/files/' + fileId + '?workspace=theralia', {
                     method: 'DELETE', credentials: 'include'
+                });
+                if (!res.ok) { var e = await res.json(); throw new Error(e.error || 'Failed'); }
+                await irLoadBoxes(phase);
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        async function irReviewFile(fileId, boxId, phase, action) {
+            var labels = { approved: 'Approve', revision_needed: 'Revise', discarded: 'Discard' };
+            if (!confirm(labels[action] + ' this file?')) return;
+            var note = '';
+            if (action === 'revision_needed' || action === 'discarded') {
+                note = prompt((action === 'revision_needed' ? 'Revision note:' : 'Discard reason:')) || '';
+            }
+            try {
+                var res = await fetch('/api/investroom/files/' + fileId + '/review?workspace=theralia', {
+                    method: 'PATCH', credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: action, note: note })
                 });
                 if (!res.ok) { var e = await res.json(); throw new Error(e.error || 'Failed'); }
                 await irLoadBoxes(phase);
