@@ -2326,31 +2326,323 @@
         .ir-view-panel { display: block; }
         .ir-view-panel.hide { display: none; }
 
-        /* Uploads layer phase sections */
-        .ir-uploads-phase {
+        /* ---- Phase Mirror Editor ---- */
+        .ir-phase-selector {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 14px;
+        }
+        @media (max-width: 700px) { .ir-phase-selector { grid-template-columns: 1fr; } }
+        .ir-phase-select-card {
             background: #ffffff;
-            border: 1px solid rgba(0,0,0,0.06);
-            border-radius: 12px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.03);
-            margin-bottom: 24px;
+            border: 1px solid #e0e2e6;
+            border-radius: 10px;
+            padding: 24px 22px;
+            cursor: pointer;
+            transition: all 0.18s ease;
+            position: relative;
             overflow: hidden;
         }
-        .ir-uploads-phase-header {
+        .ir-phase-select-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 2px;
+            background: transparent;
+            transition: background 0.18s;
+        }
+        .ir-phase-select-card:hover {
+            border-color: rgba(22,163,74,0.3);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.05);
+            transform: translateY(-1px);
+        }
+        .ir-phase-select-card:hover::before { background: #16a34a; }
+        .ir-phase-select-num {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 1.2px;
+            text-transform: uppercase;
+            color: #16a34a;
+            margin-bottom: 8px;
+        }
+        .ir-phase-select-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #1a1c22;
+            margin-bottom: 4px;
+        }
+        .ir-phase-select-desc {
+            font-size: 12px;
+            color: #8b8f9a;
+            line-height: 1.5;
+        }
+        .ir-phase-select-count {
+            margin-top: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            color: #b0b4be;
+        }
+        .ir-phase-select-count span { color: #1a1c22; }
+
+        /* Phase Detail Editor */
+        .ir-phase-detail-header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 28px;
+        }
+        .ir-phase-detail-back {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 0;
+            background: none;
+            color: #8b8f9a;
+            border: none;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: color 0.12s;
+            flex-shrink: 0;
+        }
+        .ir-phase-detail-back:hover { color: #1a1c22; }
+        .ir-phase-detail-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #1a1c22;
+            letter-spacing: -0.2px;
+        }
+
+        /* Slot-based upload cards (Phase 1/2/4) */
+        .ir-slot-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 14px;
+        }
+        .ir-slot-card {
+            background: #ffffff;
+            border: 1px solid #e0e2e6;
+            border-radius: 10px;
+            padding: 20px 22px;
+            transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+        }
+        .ir-slot-card:hover {
+            border-color: #c8cacd;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.04);
+        }
+        .ir-slot-header {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 18px 24px;
-            border-bottom: 1px solid rgba(0,0,0,0.05);
+            margin-bottom: 4px;
         }
-        .ir-uploads-phase-label {
-            font-size: 13px;
-            font-weight: 700;
+        .ir-slot-title {
+            font-size: 14px;
+            font-weight: 600;
             color: #1a1c22;
-            letter-spacing: -0.1px;
         }
-        .ir-uploads-phase-body {
-            padding: 20px 24px;
+        .ir-slot-desc {
+            font-size: 12px;
+            color: #8b8f9a;
+            line-height: 1.5;
+            margin-bottom: 14px;
         }
+        .ir-slot-chips {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        /* ---- Chip interaction (shared: slots + figure cards) ---- */
+        .ir-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 5px 12px;
+            border: 1px solid #e0e2e6;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            color: #2a2d35;
+            background: #fafbfc;
+            cursor: pointer;
+            text-decoration: none;
+            transition: border-color 0.12s, background 0.12s, box-shadow 0.12s;
+            position: relative;
+        }
+        .ir-chip:hover { border-color: #16a34a; }
+        .ir-chip.empty {
+            border-style: dashed;
+            color: #b0b4be;
+            background: transparent;
+        }
+        .ir-chip.empty:hover {
+            color: #16a34a;
+            border-color: #16a34a;
+            background: rgba(22,163,74,0.02);
+        }
+        .ir-chip.filled {
+            border-color: rgba(22,163,74,0.25);
+            background: rgba(22,163,74,0.04);
+            color: #15803d;
+        }
+        .ir-chip.filled:hover {
+            border-color: #16a34a;
+            background: rgba(22,163,74,0.08);
+        }
+        .ir-chip-dot {
+            width: 6px; height: 6px; border-radius: 50%;
+            background: #16a34a; flex-shrink: 0;
+        }
+        .ir-chip-icon {
+            width: 12px; height: 12px; flex-shrink: 0; opacity: 0.5;
+        }
+
+        /* Chip action popup */
+        .ir-chip-popup {
+            display: none;
+            position: absolute;
+            top: calc(100% + 6px);
+            left: 0;
+            background: #ffffff;
+            border: 1px solid #e0e2e6;
+            border-radius: 8px;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.1);
+            z-index: 50;
+            min-width: 130px;
+            padding: 4px 0;
+            animation: irPopIn 0.12s ease;
+        }
+        .ir-chip-popup.open { display: block; }
+        @keyframes irPopIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+        .ir-chip-popup-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 14px;
+            font-size: 12px;
+            font-weight: 500;
+            color: #3a3d45;
+            cursor: pointer;
+            transition: background 0.1s;
+            border: none;
+            background: none;
+            width: 100%;
+            text-align: left;
+        }
+        .ir-chip-popup-item:hover { background: #f6f7f9; }
+        .ir-chip-popup-item.danger { color: #ef4444; }
+        .ir-chip-popup-item.danger:hover { background: rgba(239,68,68,0.04); }
+        .ir-chip-popup-sep {
+            height: 1px;
+            background: #f0f1f4;
+            margin: 4px 0;
+        }
+
+        /* Figure cards (Phase 3) — mirrors ip-glpv-fig */
+        .ir-fig-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 14px;
+        }
+        @media (max-width: 700px) { .ir-fig-grid { grid-template-columns: 1fr; } }
+        .ir-fig-card {
+            background: #ffffff;
+            border: 1px solid #e0e2e6;
+            border-radius: 10px;
+            padding: 20px 22px;
+            transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+            position: relative;
+        }
+        .ir-fig-card:hover {
+            border-color: #c8cacd;
+            box-shadow: 0 3px 12px rgba(0,0,0,0.05);
+        }
+        .ir-fig-card.full-width {
+            grid-column: 1 / -1;
+        }
+        .ir-fig-head {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+        .ir-fig-head-left { flex: 1; min-width: 0; }
+        .ir-fig-label {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 1.2px;
+            text-transform: uppercase;
+            color: #16a34a;
+            margin-bottom: 6px;
+        }
+        .ir-fig-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #1a1c22;
+            margin-bottom: 4px;
+        }
+        .ir-fig-desc {
+            font-size: 12px;
+            color: #8b8f9a;
+            line-height: 1.5;
+        }
+        .ir-fig-chips {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        /* Card controls — top-right, visible on hover */
+        .ir-fig-controls {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            display: flex;
+            align-items: center;
+            gap: 2px;
+            opacity: 0;
+            transition: opacity 0.15s;
+        }
+        .ir-fig-card:hover .ir-fig-controls { opacity: 1; }
+        .ir-fig-ctrl-btn {
+            width: 26px; height: 26px;
+            display: flex; align-items: center; justify-content: center;
+            background: #ffffff;
+            border: 1px solid #e0e2e6;
+            border-radius: 5px;
+            color: #8b8f9a;
+            cursor: pointer;
+            transition: all 0.12s;
+            padding: 0;
+        }
+        .ir-fig-ctrl-btn:hover { color: #3a3d45; border-color: #c8cacd; }
+        .ir-fig-ctrl-btn.danger:hover { color: #ef4444; border-color: #fca5a5; }
+        .ir-fig-ctrl-btn:disabled { opacity: 0.25; cursor: default; pointer-events: none; }
+        .ir-fig-ctrl-btn svg { width: 13px; height: 13px; }
+        /* Layout toggle — inline in card header */
+        .ir-fig-width-toggle {
+            display: inline-flex;
+            border: 1px solid #e0e2e6;
+            border-radius: 5px;
+            overflow: hidden;
+            margin-left: 6px;
+        }
+        .ir-fig-width-opt {
+            padding: 3px 9px;
+            font-size: 10px;
+            font-weight: 600;
+            color: #b0b4be;
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            transition: all 0.12s;
+        }
+        .ir-fig-width-opt + .ir-fig-width-opt { border-left: 1px solid #e0e2e6; }
+        .ir-fig-width-opt.active {
+            background: rgba(22,163,74,0.06);
+            color: #16a34a;
+        }
+        .ir-fig-width-opt:hover:not(.active) { color: #3a3d45; }
         .ir-phase-editor {
             background: #ffffff; border: 1px solid #e0e2e6; border-radius: 12px;
             padding: 24px 26px; margin-bottom: 18px;
@@ -4189,32 +4481,12 @@
                         <div id="irPhaseEditors"></div>
                     </div>
 
-                    <!-- ====== UPLOADS MODE (CSO only) ====== -->
+                    <!-- ====== UPLOADS MODE (CSO only) — Phase Mirror Editor ====== -->
                     <div class="ir-uploads-panel" id="irUploadsPanel">
-                        <div class="ir-uploads-phase" id="irUploadsPhase1">
-                            <div class="ir-uploads-phase-header">
-                                <span class="ir-uploads-phase-label">Phase 1 — Why &amp; Overview</span>
-                            </div>
-                            <div class="ir-uploads-phase-body" id="irUpBody1"></div>
-                        </div>
-                        <div class="ir-uploads-phase" id="irUploadsPhase2">
-                            <div class="ir-uploads-phase-header">
-                                <span class="ir-uploads-phase-label">Phase 2 — Technology</span>
-                            </div>
-                            <div class="ir-uploads-phase-body" id="irUpBody2"></div>
-                        </div>
-                        <div class="ir-uploads-phase" id="irUploadsPhase3">
-                            <div class="ir-uploads-phase-header">
-                                <span class="ir-uploads-phase-label">Phase 3 — Validation</span>
-                            </div>
-                            <div class="ir-uploads-phase-body" id="irUpBody3"></div>
-                        </div>
-                        <div class="ir-uploads-phase" id="irUploadsPhase4">
-                            <div class="ir-uploads-phase-header">
-                                <span class="ir-uploads-phase-label">Phase 4 — Strategic Value</span>
-                            </div>
-                            <div class="ir-uploads-phase-body" id="irUpBody4"></div>
-                        </div>
+                        <!-- Level 1: Phase Selector -->
+                        <div id="irPhaseSelector" class="ir-phase-selector"></div>
+                        <!-- Level 2: Phase Detail Editor -->
+                        <div id="irPhaseDetail" class="ir-phase-detail" style="display:none;"></div>
                     </div>
                 </div>
             </div>
@@ -8684,6 +8956,14 @@
             document.getElementById('irViewPanel').classList.toggle('hide', mode !== 'view');
             document.getElementById('irUpdatePanel').classList.toggle('active', mode === 'update');
             document.getElementById('irUploadsPanel').classList.toggle('active', mode === 'uploads');
+            if (mode === 'uploads') {
+                // Reset to phase selector view
+                irUploadsMode = 'phases';
+                irSelectedPhase = null;
+                document.getElementById('irPhaseSelector').style.display = '';
+                document.getElementById('irPhaseDetail').style.display = 'none';
+                irRenderPhaseSelector();
+            }
         }
 
         function irRefresh() {
@@ -8794,6 +9074,34 @@
         var irIsCso = false;
         var irIsCooLuiza = false;
         var irBoxesCache = {};
+        var irUploadsMode = 'phases'; // 'phases' | 'phaseDetail'
+        var irSelectedPhase = null;
+
+        var IR_PHASE_META = {
+            1: { num: 'Phase 1', title: 'Why & Overview', desc: 'Executive summary, pitch deck, and background materials.' },
+            2: { num: 'Phase 2', title: 'Technology', desc: 'Platform overview, mechanism figures, and supporting data.' },
+            3: { num: 'Phase 3', title: 'Validation', desc: 'Structured figure cards mirroring GLP Vision with Data + SOP slots.' },
+            4: { num: 'Phase 4', title: 'Strategic Value', desc: 'IP material, strategic documents, and business materials.' }
+        };
+
+        // Slot definitions for Phase 1, 2, 4
+        var IR_PHASE_SLOTS = {
+            1: [
+                { title: 'Executive Summary', type: 'document', desc: 'Short introduction to Theralia, its rationale, and translational vision.', mode: 'single' },
+                { title: 'Pitch Deck', type: 'deck', desc: 'Company overview, platform logic, and strategic opportunity.', mode: 'single' },
+                { title: 'Background Papers', type: 'publication', desc: 'Background literature and foundational papers.', mode: 'multi' }
+            ],
+            2: [
+                { title: 'Platform Overview', type: 'document', desc: 'Technical overview of the Theralia platform and delivery approach.', mode: 'single' },
+                { title: 'Mechanism Figures', type: 'figure', desc: 'Key figures illustrating the mechanism of action.', mode: 'multi' },
+                { title: 'Supporting Data', type: 'data', desc: 'Experimental datasets supporting the technology.', mode: 'multi' }
+            ],
+            4: [
+                { title: 'IP Material', type: 'document', desc: 'Patent filings, IP portfolio summaries, and protection strategy.', mode: 'multi' },
+                { title: 'Strategic Documents', type: 'document', desc: 'Business strategy, market analysis, and positioning materials.', mode: 'multi' },
+                { title: 'Business Materials', type: 'deck', desc: 'Investor materials, financial projections, and deal-related documents.', mode: 'multi' }
+            ]
+        };
 
         var _irDefaultsEnsured = false;
         async function irDetectCso() {
@@ -8807,7 +9115,6 @@
                 irIsCso = pos === 'cso';
                 irIsCooLuiza = pos === 'coo' && normName === 'luiza i. hernandez';
                 if (irIsCso) {
-                    // Ensure default boxes exist once per session
                     if (!_irDefaultsEnsured) {
                         _irDefaultsEnsured = true;
                         try {
@@ -8821,107 +9128,482 @@
             } catch {}
         }
 
-        function irRenderUploadsPhase(phase) {
-            var el = document.getElementById('irUpBody' + phase);
+        // ---- Phase Selector (Level 1) ----
+        function irRenderPhaseSelector() {
+            var el = document.getElementById('irPhaseSelector');
             if (!el) return;
-            var boxes = irBoxesCache[phase] || [];
-            var html = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">' +
-                '<span style="font-size:11px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;color:#8b8f9a;">Documents</span>' +
-                '<button class="ir-add-box-btn" onclick="irOpenAddBox(' + phase + ')">+ Add Box</button>' +
+            var html = '';
+            for (var p = 1; p <= 4; p++) {
+                var meta = IR_PHASE_META[p];
+                var boxes = irBoxesCache[p] || [];
+                var fileCount = 0;
+                for (var i = 0; i < boxes.length; i++) fileCount += (boxes[i].files || []).length;
+                html += '<div class="ir-phase-select-card" onclick="irOpenPhase(' + p + ')">' +
+                    '<div class="ir-phase-select-num">' + irEsc(meta.num) + '</div>' +
+                    '<div class="ir-phase-select-title">' + irEsc(meta.title) + '</div>' +
+                    '<div class="ir-phase-select-desc">' + irEsc(meta.desc) + '</div>' +
+                    '<div class="ir-phase-select-count"><span>' + fileCount + '</span> file' + (fileCount !== 1 ? 's' : '') + ' uploaded</div>' +
                 '</div>';
-            if (boxes.length === 0) {
-                html += '<div class="ir-empty-state">No content added yet</div>';
-            } else {
-                html += '<div class="ir-boxes-grid">';
-                for (var i = 0; i < boxes.length; i++) {
-                    html += irRenderBox(boxes[i], i, boxes.length);
-                }
-                html += '</div>';
             }
             el.innerHTML = html;
         }
 
-        function irRenderBox(box, idx, total) {
-            var files = box.files || [];
-            var filesHtml = '';
-            if (files.length > 0) {
-                filesHtml += '<div class="ir-box-files">';
-                for (var fi = 0; fi < files.length; fi++) {
-                    var f = files[fi];
-                    filesHtml += '<div class="ir-box-file-row">' +
-                        '<div class="ir-file-info">' +
-                            '<svg class="ir-file-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>' +
-                            '<span class="ir-file-name" title="' + irEsc(f.file_name) + '">' + irEsc(f.file_name) + '</span>' +
-                            '<span class="ir-file-size">' + irFmtSize(f.file_size) + '</span>' +
-                        '</div>' +
-                        '<div class="ir-file-actions">' +
-                            '<button class="ir-file-action" onclick="irViewFile(\'' + f.id + '\')" title="View">' +
-                                '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>' +
-                            '</button>';
-                    if (irIsCooLuiza && box.box_type === 'sop' && (!f.review_status || f.review_status === 'pending')) {
-                        filesHtml += '<button class="ir-file-action" style="color:#16a34a;" onclick="irReviewFile(\'' + f.id + '\',\'' + box.id + '\',' + box.phase_number + ',\'approved\')" title="Approve">Approve</button>' +
-                            '<button class="ir-file-action" style="color:#d97706;" onclick="irReviewFile(\'' + f.id + '\',\'' + box.id + '\',' + box.phase_number + ',\'revision_needed\')" title="Revise">Revise</button>' +
-                            '<button class="ir-file-action danger" onclick="irReviewFile(\'' + f.id + '\',\'' + box.id + '\',' + box.phase_number + ',\'discarded\')" title="Discard">Discard</button>';
-                    }
-                    if (f.review_status && f.review_status !== 'pending') {
-                        var rc = f.review_status === 'approved' ? '#16a34a' : f.review_status === 'revision_needed' ? '#d97706' : '#ef4444';
-                        filesHtml += '<span style="font-size:10px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;color:' + rc + ';margin-left:4px;">' + f.review_status.replace('_', ' ') + '</span>';
-                    }
-                    if (irIsCso) {
-                        filesHtml += '<button class="ir-file-action" onclick="irReplaceFile(\'' + f.id + '\',\'' + box.id + '\',' + box.phase_number + ')" title="Replace">Replace</button>';
-                        filesHtml += '<button class="ir-file-action danger" onclick="irDeleteFile(\'' + f.id + '\',\'' + box.id + '\',' + box.phase_number + ')" title="Delete">' +
-                            '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>' +
-                            '</button>';
-                    }
-                    filesHtml += '</div></div>';
+        function irOpenPhase(phase) {
+            irSelectedPhase = phase;
+            irUploadsMode = 'phaseDetail';
+            document.getElementById('irPhaseSelector').style.display = 'none';
+            document.getElementById('irPhaseDetail').style.display = 'block';
+            irRenderPhaseDetail();
+        }
+
+        function irBackToPhases() {
+            irSelectedPhase = null;
+            irUploadsMode = 'phases';
+            document.getElementById('irPhaseSelector').style.display = '';
+            document.getElementById('irPhaseDetail').style.display = 'none';
+            irRenderPhaseSelector();
+        }
+
+        // ---- Phase Detail Editor (Level 2) ----
+        function irRenderPhaseDetail() {
+            var el = document.getElementById('irPhaseDetail');
+            if (!el || !irSelectedPhase) return;
+            var phase = irSelectedPhase;
+            var meta = IR_PHASE_META[phase];
+            var headerHtml = '<div class="ir-phase-detail-header">' +
+                '<button class="ir-phase-detail-back" onclick="irBackToPhases()">' +
+                    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>' +
+                    'Back to Phases' +
+                '</button>' +
+                '<div class="ir-phase-detail-title">' + irEsc(meta.num) + ' — ' + irEsc(meta.title) + '</div>' +
+            '</div>';
+
+            var bodyHtml = '';
+            if (phase === 3) {
+                bodyHtml = irRenderPhase3Editor();
+            } else {
+                bodyHtml = irRenderSlotEditor(phase);
+            }
+            el.innerHTML = headerHtml + bodyHtml;
+        }
+
+        // ---- Slot-Based Renderer (Phases 1, 2, 4) ----
+        function irRenderSlotEditor(phase) {
+            var slots = IR_PHASE_SLOTS[phase] || [];
+            var boxes = irBoxesCache[phase] || [];
+            var html = '<div class="ir-slot-grid">';
+            for (var s = 0; s < slots.length; s++) {
+                var slot = slots[s];
+                // Find matching box by title
+                var box = null;
+                for (var b = 0; b < boxes.length; b++) {
+                    if (boxes[b].title === slot.title) { box = boxes[b]; break; }
                 }
-                filesHtml += '</div>';
+                html += irRenderSlotCard(slot, box, phase);
             }
-            var uploadZone = '';
-            if (irIsCso) {
-                uploadZone = '<div class="ir-upload-zone">' +
-                    '<button class="ir-upload-btn" onclick="irTriggerUpload(\'' + box.id + '\',' + box.phase_number + ')">' +
-                        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>' +
-                        ' Upload file' +
-                    '</button>' +
-                '</div>';
+            html += '</div>';
+            return html;
+        }
+
+        function irRenderSlotCard(slot, box, phase) {
+            var files = box ? (box.files || []) : [];
+            var isSingle = slot.mode === 'single';
+            var boxId = box ? box.id : '';
+
+            // Build chip-based file display
+            var chipsHtml = '<div class="ir-slot-chips">';
+            if (isSingle) {
+                // Single-file slot: one chip
+                if (files.length > 0) {
+                    var f = files[0];
+                    var tipText = irEsc(f.file_name) + (f.file_size ? ' (' + irFmtSize(f.file_size) + ')' : '');
+                    chipsHtml += '<div class="ir-chip filled" title="' + tipText + '" onclick="irToggleChipPopup(this,event)">' +
+                        '<span class="ir-chip-dot"></span>' + irEsc(slot.title) +
+                        '<div class="ir-chip-popup" data-chip-popup>' +
+                            '<div class="ir-chip-popup-item" onclick="event.stopPropagation();irViewFile(\'' + f.id + '\');irCloseAllPopups();">' +
+                                '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> View' +
+                            '</div>' +
+                            (irIsCso ? '<div class="ir-chip-popup-item" onclick="event.stopPropagation();irCloseAllPopups();irReplaceFile(\'' + f.id + '\',\'' + boxId + '\',' + phase + ');">' +
+                                '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Replace' +
+                            '</div>' +
+                            '<div class="ir-chip-popup-sep"></div>' +
+                            '<div class="ir-chip-popup-item danger" onclick="event.stopPropagation();irCloseAllPopups();irDeleteFile(\'' + f.id + '\',\'' + boxId + '\',' + phase + ');">' +
+                                '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg> Remove' +
+                            '</div>' : '') +
+                        '</div>' +
+                    '</div>';
+                } else {
+                    // Empty single slot
+                    if (irIsCso) {
+                        var uploadAction = box
+                            ? 'irTriggerUpload(\'' + boxId + '\',' + phase + ')'
+                            : 'irAutoCreateAndUpload(' + phase + ',\'' + irEsc(slot.title) + '\',\'' + slot.type + '\')';
+                        chipsHtml += '<div class="ir-chip empty" onclick="' + uploadAction + '">' +
+                            '<svg class="ir-chip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>' +
+                            ' Upload' +
+                        '</div>';
+                    } else {
+                        chipsHtml += '<span class="ir-chip empty" style="cursor:default;">No file</span>';
+                    }
+                }
+            } else {
+                // Multi-file slot: one chip per file + upload chip
+                for (var fi = 0; fi < files.length; fi++) {
+                    var mf = files[fi];
+                    var mTip = irEsc(mf.file_name) + (mf.file_size ? ' (' + irFmtSize(mf.file_size) + ')' : '');
+                    chipsHtml += '<div class="ir-chip filled" title="' + mTip + '" onclick="irToggleChipPopup(this,event)">' +
+                        '<span class="ir-chip-dot"></span>' + irEsc(mf.file_name.length > 24 ? mf.file_name.substring(0, 22) + '...' : mf.file_name) +
+                        '<div class="ir-chip-popup" data-chip-popup>' +
+                            '<div class="ir-chip-popup-item" onclick="event.stopPropagation();irViewFile(\'' + mf.id + '\');irCloseAllPopups();">' +
+                                '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> View' +
+                            '</div>' +
+                            (irIsCso ? '<div class="ir-chip-popup-item" onclick="event.stopPropagation();irCloseAllPopups();irReplaceFile(\'' + mf.id + '\',\'' + boxId + '\',' + phase + ');">' +
+                                '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Replace' +
+                            '</div>' +
+                            '<div class="ir-chip-popup-sep"></div>' +
+                            '<div class="ir-chip-popup-item danger" onclick="event.stopPropagation();irCloseAllPopups();irDeleteFile(\'' + mf.id + '\',\'' + boxId + '\',' + phase + ');">' +
+                                '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg> Remove' +
+                            '</div>' : '') +
+                        '</div>' +
+                    '</div>';
+                }
+                // Add upload chip for multi-file
+                if (irIsCso) {
+                    var mUpAction = box
+                        ? 'irTriggerUpload(\'' + boxId + '\',' + phase + ')'
+                        : 'irAutoCreateAndUpload(' + phase + ',\'' + irEsc(slot.title) + '\',\'' + slot.type + '\')';
+                    chipsHtml += '<div class="ir-chip empty" onclick="' + mUpAction + '">' +
+                        '<svg class="ir-chip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>' +
+                        ' Add file' +
+                    '</div>';
+                }
             }
-            var actionsHtml = '';
-            if (irIsCso) {
-                var upDisabled = idx === 0 ? ' disabled style="opacity:0.3;cursor:default;"' : '';
-                var dnDisabled = idx === total - 1 ? ' disabled style="opacity:0.3;cursor:default;"' : '';
-                actionsHtml = '<div class="ir-box-actions">' +
-                    '<button class="ir-box-action-btn"' + upDisabled + ' onclick="irMoveBox(\'' + box.id + '\',' + box.phase_number + ',\'up\')" title="Move up">\u2191</button>' +
-                    '<button class="ir-box-action-btn"' + dnDisabled + ' onclick="irMoveBox(\'' + box.id + '\',' + box.phase_number + ',\'down\')" title="Move down">\u2193</button>' +
-                    '<button class="ir-box-action-btn" onclick="irOpenEditBox(\'' + box.id + '\',' + box.phase_number + ')">Edit</button>' +
-                    '<button class="ir-box-action-btn danger" onclick="irDeleteBox(\'' + box.id + '\',' + box.phase_number + ')">Delete</button>' +
-                '</div>';
-            }
-            return '<div class="ir-box-card">' +
-                '<div class="ir-box-header">' +
-                    '<div class="ir-box-meta">' +
-                        '<span class="ir-box-type-badge">' + irEsc(box.box_type) + '</span>' +
-                        '<div class="ir-box-title">' + irEsc(box.title) + '</div>' +
-                        (box.description ? '<div class="ir-box-desc">' + irEsc(box.description) + '</div>' : '') +
-                    '</div>' +
-                    actionsHtml +
+            chipsHtml += '</div>';
+
+            return '<div class="ir-slot-card">' +
+                '<div class="ir-slot-header">' +
+                    '<div class="ir-slot-title">' + irEsc(slot.title) + '</div>' +
                 '</div>' +
-                filesHtml +
-                uploadZone +
+                '<div class="ir-slot-desc">' + irEsc(slot.desc) + '</div>' +
+                chipsHtml +
             '</div>';
         }
 
+        // Auto-create box then trigger upload (for slots where box doesn't exist yet)
+        async function irAutoCreateAndUpload(phase, title, boxType) {
+            try {
+                var res = await fetch('/api/investroom/boxes?workspace=theralia', {
+                    method: 'POST', credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phase_number: phase, title: title, box_type: boxType, description: '' })
+                });
+                if (!res.ok) { var e = await res.json(); throw new Error(e.error || 'Failed'); }
+                var data = await res.json();
+                await irLoadBoxes(phase);
+                irTriggerUpload(data.box.id, phase);
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        // ---- Phase 3: Figure Card Renderer ----
+        function irRenderPhase3Editor() {
+            var boxes = irBoxesCache[3] || [];
+            // Group boxes into figure groups: boxes with figure_label are figure cards,
+            // boxes with slot_type 'data' or 'sop' are sub-slots of the previous figure.
+            // For backward compat: boxes without figure_label render as standalone figure cards.
+            var figures = irBuildFigureGroups(boxes);
+
+            var html = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">' +
+                '<div>' +
+                    '<div style="font-size:10px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#16a34a;margin-bottom:4px;">GLP Vision</div>' +
+                    '<div style="font-size:12px;color:#8b8f9a;">Figure-by-figure data, linked protocols, and experimental context.</div>' +
+                '</div>' +
+                (irIsCso ? '<button class="ir-add-box-btn" onclick="irOpenAddFigure()">+ Add Figure</button>' : '') +
+            '</div>';
+
+            if (figures.length === 0) {
+                html += '<div class="ir-empty-state">No figures added yet.' + (irIsCso ? ' Click "+ Add Figure" to create your first figure card.' : '') + '</div>';
+            } else {
+                html += '<div class="ir-fig-grid">';
+                for (var i = 0; i < figures.length; i++) {
+                    html += irRenderFigureCard(figures[i], i, figures.length);
+                }
+                html += '</div>';
+            }
+            return html;
+        }
+
+        function irBuildFigureGroups(boxes) {
+            // A "figure group" is a parent box (the figure card) + its data/sop sub-boxes
+            // Parent: figure_label is set, slot_type is null
+            // Sub-box: slot_type is 'data' or 'sop', linked by figure_label
+            // Legacy boxes without figure_label: treat each as its own figure card
+            var groups = [];
+            var parentMap = {};
+            var subBoxes = [];
+            var legacyBoxes = [];
+
+            for (var i = 0; i < boxes.length; i++) {
+                var b = boxes[i];
+                if (b.figure_label && !b.slot_type) {
+                    // Parent figure card
+                    var g = { parent: b, dataBox: null, sopBox: null };
+                    parentMap[b.figure_label] = g;
+                    groups.push(g);
+                } else if (b.slot_type && b.figure_label) {
+                    subBoxes.push(b);
+                } else {
+                    legacyBoxes.push(b);
+                }
+            }
+
+            // Assign sub-boxes to their parent
+            for (var j = 0; j < subBoxes.length; j++) {
+                var sb = subBoxes[j];
+                var pg = parentMap[sb.figure_label];
+                if (pg) {
+                    if (sb.slot_type === 'data') pg.dataBox = sb;
+                    else if (sb.slot_type === 'sop') pg.sopBox = sb;
+                }
+            }
+
+            // Legacy boxes become standalone figure cards
+            for (var k = 0; k < legacyBoxes.length; k++) {
+                var lb = legacyBoxes[k];
+                groups.push({ parent: lb, dataBox: null, sopBox: null, legacy: true });
+            }
+
+            return groups;
+        }
+
+        function irRenderFigureCard(fig, idx, total) {
+            var parent = fig.parent;
+            var label = parent.figure_label || parent.title || ('Figure ' + (idx + 1));
+            var width = parent.layout_width || 'full';
+            var widthClass = width === 'half' ? '' : ' full-width';
+
+            // Data chip
+            var dataFiles = fig.dataBox ? (fig.dataBox.files || []) : [];
+            var dataChip = irRenderFigChip('Data', dataFiles, fig.dataBox, parent);
+
+            // SOP chip
+            var sopFiles = fig.sopBox ? (fig.sopBox.files || []) : [];
+            var sopChip = irRenderFigChip('SOP', sopFiles, fig.sopBox, parent);
+
+            // Legacy files as chips
+            var legacyChips = '';
+            if (fig.legacy) {
+                var parentFiles = parent.files || [];
+                for (var fi = 0; fi < parentFiles.length; fi++) {
+                    var f = parentFiles[fi];
+                    var tip = irEsc(f.file_name) + (f.file_size ? ' (' + irFmtSize(f.file_size) + ')' : '');
+                    legacyChips += '<div class="ir-chip filled" title="' + tip + '" onclick="irToggleChipPopup(this,event)">' +
+                        '<span class="ir-chip-dot"></span>' + irEsc(f.file_name.length > 20 ? f.file_name.substring(0, 18) + '...' : f.file_name) +
+                        '<div class="ir-chip-popup" data-chip-popup>' +
+                            '<div class="ir-chip-popup-item" onclick="event.stopPropagation();irViewFile(\'' + f.id + '\');irCloseAllPopups();">' +
+                                '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> View</div>' +
+                            (irIsCso ? '<div class="ir-chip-popup-item" onclick="event.stopPropagation();irCloseAllPopups();irReplaceFile(\'' + f.id + '\',\'' + parent.id + '\',3);">' +
+                                '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Replace</div>' +
+                            '<div class="ir-chip-popup-sep"></div>' +
+                            '<div class="ir-chip-popup-item danger" onclick="event.stopPropagation();irCloseAllPopups();irDeleteFile(\'' + f.id + '\',\'' + parent.id + '\',3);">' +
+                                '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg> Remove</div>' : '') +
+                        '</div>' +
+                    '</div>';
+                }
+            }
+
+            // Controls (hover-revealed, top-right)
+            var controlsHtml = '';
+            if (irIsCso) {
+                var upDis = idx === 0 ? ' disabled' : '';
+                var dnDis = idx === total - 1 ? ' disabled' : '';
+                controlsHtml = '<div class="ir-fig-controls">' +
+                    '<button class="ir-fig-ctrl-btn"' + upDis + ' onclick="irMoveBox(\'' + parent.id + '\',3,\'up\')" title="Move up"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 15l-6-6-6 6"/></svg></button>' +
+                    '<button class="ir-fig-ctrl-btn"' + dnDis + ' onclick="irMoveBox(\'' + parent.id + '\',3,\'down\')" title="Move down"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button>' +
+                    '<button class="ir-fig-ctrl-btn" onclick="irOpenEditFigure(\'' + parent.id + '\')" title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>' +
+                    '<button class="ir-fig-ctrl-btn danger" onclick="irDeleteFigure(\'' + parent.id + '\')" title="Delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg></button>' +
+                    '<div class="ir-fig-width-toggle">' +
+                        '<button class="ir-fig-width-opt' + (width === 'full' ? ' active' : '') + '" onclick="irSetFigWidth(\'' + parent.id + '\',\'full\')" title="Full width">F</button>' +
+                        '<button class="ir-fig-width-opt' + (width === 'half' ? ' active' : '') + '" onclick="irSetFigWidth(\'' + parent.id + '\',\'half\')" title="Half width">H</button>' +
+                    '</div>' +
+                '</div>';
+            }
+
+            return '<div class="ir-fig-card' + widthClass + '">' +
+                controlsHtml +
+                '<div class="ir-fig-head"><div class="ir-fig-head-left">' +
+                    '<div class="ir-fig-label">' + irEsc(label) + '</div>' +
+                    '<div class="ir-fig-title">' + irEsc(parent.title) + '</div>' +
+                    (parent.description ? '<div class="ir-fig-desc">' + irEsc(parent.description) + '</div>' : '') +
+                '</div></div>' +
+                '<div class="ir-fig-chips">' +
+                    legacyChips +
+                    dataChip +
+                    sopChip +
+                '</div>' +
+            '</div>';
+        }
+
+        function irRenderFigChip(label, files, slotBox, parentBox) {
+            var hasFile = files.length > 0;
+            if (hasFile) {
+                var f = files[0];
+                var tip = irEsc(f.file_name) + (f.file_size ? ' (' + irFmtSize(f.file_size) + ')' : '');
+                return '<div class="ir-chip filled" title="' + tip + '" onclick="irToggleChipPopup(this,event)">' +
+                    '<span class="ir-chip-dot"></span>' + irEsc(label) +
+                    '<div class="ir-chip-popup" data-chip-popup>' +
+                        '<div class="ir-chip-popup-item" onclick="event.stopPropagation();irViewFile(\'' + f.id + '\');irCloseAllPopups();">' +
+                            '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> View</div>' +
+                        (irIsCso ? '<div class="ir-chip-popup-item" onclick="event.stopPropagation();irCloseAllPopups();irReplaceFile(\'' + f.id + '\',\'' + slotBox.id + '\',3);">' +
+                            '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Replace</div>' +
+                        '<div class="ir-chip-popup-sep"></div>' +
+                        '<div class="ir-chip-popup-item danger" onclick="event.stopPropagation();irCloseAllPopups();irDeleteFile(\'' + f.id + '\',\'' + slotBox.id + '\',3);">' +
+                            '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg> Remove</div>' : '') +
+                    '</div>' +
+                '</div>';
+            }
+            // Empty chip
+            if (irIsCso) {
+                var slotType = label === 'SOP' ? 'sop' : 'data';
+                var action = slotBox
+                    ? 'irTriggerUpload(\'' + slotBox.id + '\',3)'
+                    : 'irAutoCreateFigSlot(\'' + irEsc(parentBox.figure_label || parentBox.title) + '\',\'' + slotType + '\')';
+                return '<div class="ir-chip empty" onclick="' + action + '">' +
+                    '<svg class="ir-chip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>' +
+                    ' ' + irEsc(label) +
+                '</div>';
+            }
+            return '<span class="ir-chip empty" style="cursor:default;">' + irEsc(label) + '</span>';
+        }
+
+        // Auto-create a figure sub-box (data or sop) and trigger upload
+        async function irAutoCreateFigSlot(figureLabel, slotType) {
+            try {
+                var slotTitle = figureLabel + ' — ' + (slotType === 'sop' ? 'SOP' : 'Data');
+                var res = await fetch('/api/investroom/boxes?workspace=theralia', {
+                    method: 'POST', credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        phase_number: 3, title: slotTitle,
+                        box_type: slotType, description: '',
+                        figure_label: figureLabel, slot_type: slotType
+                    })
+                });
+                if (!res.ok) { var e = await res.json(); throw new Error(e.error || 'Failed'); }
+                var data = await res.json();
+                await irLoadBoxes(3);
+                irTriggerUpload(data.box.id, 3);
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        // ---- Figure Modal ----
+        function irOpenAddFigure() {
+            document.getElementById('irFigModalTitle').textContent = 'Add Figure';
+            document.getElementById('irFigId').value = '';
+            document.getElementById('irFigLabelInput').value = '';
+            document.getElementById('irFigTitleInput').value = '';
+            document.getElementById('irFigDescInput').value = '';
+            document.getElementById('irFigureModal').classList.add('active');
+        }
+
+        function irOpenEditFigure(boxId) {
+            var boxes = irBoxesCache[3] || [];
+            var box = boxes.find(function(b) { return b.id === boxId; });
+            if (!box) return;
+            document.getElementById('irFigModalTitle').textContent = 'Edit Figure';
+            document.getElementById('irFigId').value = boxId;
+            document.getElementById('irFigLabelInput').value = box.figure_label || '';
+            document.getElementById('irFigTitleInput').value = box.title || '';
+            document.getElementById('irFigDescInput').value = box.description || '';
+            document.getElementById('irFigureModal').classList.add('active');
+        }
+
+        function irCloseFigureModal() {
+            document.getElementById('irFigureModal').classList.remove('active');
+        }
+
+        async function irSaveFigure() {
+            var btn = document.getElementById('irFigModalSaveBtn');
+            btn.disabled = true;
+            var boxId = document.getElementById('irFigId').value;
+            var figLabel = document.getElementById('irFigLabelInput').value.trim();
+            var title = document.getElementById('irFigTitleInput').value.trim();
+            var desc = document.getElementById('irFigDescInput').value.trim();
+            if (!figLabel) { btn.disabled = false; return alert('Figure label is required'); }
+            if (!title) { btn.disabled = false; return alert('Title is required'); }
+            try {
+                var isEdit = !!boxId;
+                var url = isEdit ? '/api/investroom/boxes/' + boxId : '/api/investroom/boxes';
+                var method = isEdit ? 'PUT' : 'POST';
+                var body = isEdit
+                    ? { title: title, description: desc, figure_label: figLabel }
+                    : { phase_number: 3, title: title, box_type: 'figure', description: desc, figure_label: figLabel };
+                var res = await fetch(url + '?workspace=theralia', {
+                    method: method, credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                if (!res.ok) { var e = await res.json(); throw new Error(e.error || 'Failed'); }
+                irCloseFigureModal();
+                await irLoadBoxes(3);
+            } catch (err) { alert('Error: ' + err.message); }
+            btn.disabled = false;
+        }
+
+        async function irDeleteFigure(parentId) {
+            if (!confirm('Delete this figure and all its files (Data + SOP)?')) return;
+            var boxes = irBoxesCache[3] || [];
+            var parent = boxes.find(function(b) { return b.id === parentId; });
+            if (!parent) return;
+            // Delete sub-boxes with matching figure_label first
+            var figLabel = parent.figure_label || parent.title;
+            for (var i = 0; i < boxes.length; i++) {
+                var b = boxes[i];
+                if (b.id !== parentId && b.figure_label === figLabel && b.slot_type) {
+                    try {
+                        await fetch('/api/investroom/boxes/' + b.id + '?workspace=theralia', {
+                            method: 'DELETE', credentials: 'include'
+                        });
+                    } catch {}
+                }
+            }
+            // Delete parent
+            try {
+                await fetch('/api/investroom/boxes/' + parentId + '?workspace=theralia', {
+                    method: 'DELETE', credentials: 'include'
+                });
+            } catch {}
+            await irLoadBoxes(3);
+        }
+
+        async function irSetFigWidth(boxId, width) {
+            try {
+                var res = await fetch('/api/investroom/boxes/' + boxId + '?workspace=theralia', {
+                    method: 'PUT', credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ layout_width: width })
+                });
+                if (!res.ok) { var e = await res.json(); throw new Error(e.error || 'Failed'); }
+                await irLoadBoxes(3);
+            } catch (err) { alert('Error: ' + err.message); }
+        }
+
+        // ---- Shared file operations (unchanged logic) ----
         async function irLoadBoxes(phase) {
             try {
                 var res = await fetch('/api/investroom/boxes?phase=' + phase + '&workspace=theralia', { credentials: 'include' });
                 if (!res.ok) return;
                 var data = await res.json();
                 irBoxesCache[phase] = data.boxes || [];
-                irRenderUploadsPhase(phase);
+                // Re-render appropriate view
+                if (irUploadsMode === 'phases') {
+                    irRenderPhaseSelector();
+                } else if (irUploadsMode === 'phaseDetail' && irSelectedPhase === phase) {
+                    irRenderPhaseDetail();
+                }
             } catch {}
         }
 
-        // Modal
+        // Modal (legacy box modal — kept for any remaining direct box creation)
         function irOpenAddBox(phase) {
             document.getElementById('irModalTitle').textContent = 'Add Box';
             document.getElementById('irBoxId').value = '';
@@ -9040,12 +9722,10 @@
             input.onchange = async function() {
                 if (!input.files.length) return;
                 try {
-                    // Delete old file
                     var delRes = await fetch('/api/investroom/files/' + fileId + '?workspace=theralia', {
                         method: 'DELETE', credentials: 'include'
                     });
                     if (!delRes.ok) { var e = await delRes.json(); throw new Error(e.error || 'Delete failed'); }
-                    // Upload new file
                     var fd = new FormData();
                     fd.append('file', input.files[0]);
                     var upRes = await fetch('/api/investroom/boxes/' + boxId + '/files?workspace=theralia', {
@@ -9089,11 +9769,32 @@
             return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
         }
 
-        // Close modal on overlay click
+        // Chip popup toggle
+        function irToggleChipPopup(chipEl, event) {
+            event.stopPropagation();
+            var popup = chipEl.querySelector('[data-chip-popup]');
+            if (!popup) return;
+            var wasOpen = popup.classList.contains('open');
+            irCloseAllPopups();
+            if (!wasOpen) popup.classList.add('open');
+        }
+        function irCloseAllPopups() {
+            document.querySelectorAll('[data-chip-popup].open').forEach(function(p) {
+                p.classList.remove('open');
+            });
+        }
+        // Close popups on outside click
+        document.addEventListener('click', function() { irCloseAllPopups(); });
+
+        // Close modals on overlay click
         (function() {
             var modal = document.getElementById('irBoxModal');
             if (modal) modal.addEventListener('click', function(e) {
                 if (e.target === e.currentTarget) irCloseModal();
+            });
+            var figModal = document.getElementById('irFigureModal');
+            if (figModal) figModal.addEventListener('click', function(e) {
+                if (e.target === e.currentTarget) irCloseFigureModal();
             });
         })();
 
@@ -9848,6 +10549,24 @@ function irRenderPhaseEditors() {
             <div class="ir-modal-btns">
                 <button class="ir-modal-cancel" onclick="irCloseModal()">Cancel</button>
                 <button class="ir-modal-save" id="irModalSaveBtn" onclick="irSaveBox()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Figure Modal (Phase 3 — Add/Edit Figure Card) -->
+    <div class="ir-modal-overlay" id="irFigureModal">
+        <div class="ir-modal">
+            <h3 id="irFigModalTitle">Add Figure</h3>
+            <input type="hidden" id="irFigId" value="">
+            <label>Figure Label</label>
+            <input type="text" id="irFigLabelInput" placeholder="e.g. Figure 2A" maxlength="40">
+            <label>Title</label>
+            <input type="text" id="irFigTitleInput" placeholder="e.g. In vivo efficacy — Day 14" maxlength="120">
+            <label>Description (optional)</label>
+            <textarea id="irFigDescInput" placeholder="Brief description of this figure..." maxlength="300"></textarea>
+            <div class="ir-modal-btns">
+                <button class="ir-modal-cancel" onclick="irCloseFigureModal()">Cancel</button>
+                <button class="ir-modal-save" id="irFigModalSaveBtn" onclick="irSaveFigure()">Save</button>
             </div>
         </div>
     </div>

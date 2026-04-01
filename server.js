@@ -20923,6 +20923,19 @@ async function checkIrTables() {
     return _irTablesOk;
 }
 
+// Cached existence check for phase mirror columns (migration 057)
+let _irMirrorCols = null;
+async function checkIrMirrorCols() {
+    if (_irMirrorCols !== null) return _irMirrorCols;
+    try {
+        const r = await pool.query(
+            `SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='investroom_phase_boxes' AND column_name='figure_label') AS ok`
+        );
+        _irMirrorCols = r.rows[0]?.ok || false;
+    } catch { _irMirrorCols = false; }
+    return _irMirrorCols;
+}
+
 // Multer for InvestRoom box file uploads
 const irBoxUpload = multer({
     storage: multer.memoryStorage(),
@@ -20952,8 +20965,12 @@ app.get('/api/investroom/boxes', requireAuth, async (req, res) => {
             if (rc.rows[0]?.ok) reviewCols = ", 'review_status', f.review_status, 'reviewed_by', f.reviewed_by, 'reviewed_at', f.reviewed_at";
         } catch {}
 
+        // Check for phase mirror columns (migration 057)
+        const hasMirror = await checkIrMirrorCols();
+        const mirrorSelect = hasMirror ? ', b.figure_label, b.slot_type, b.layout_width' : '';
+
         const boxes = await pool.query(
-            `SELECT b.id, b.phase_number, b.title, b.box_type, b.description, b.order_index, b.created_at,
+            `SELECT b.id, b.phase_number, b.title, b.box_type, b.description, b.order_index, b.created_at${mirrorSelect},
                     COALESCE(json_agg(json_build_object(
                         'id', f.id, 'file_name', f.file_name, 'mime_type', f.mime_type,
                         'file_size', f.file_size, 'created_at', f.created_at${reviewCols}
@@ -20978,7 +20995,7 @@ app.post('/api/investroom/boxes', requireCSO, async (req, res) => {
         if (!(await checkIrTables())) return res.status(503).json({ error: 'Migration not applied' });
         const wsId = await getTheraliaWsId();
         if (!wsId) return res.status(404).json({ error: 'Workspace not found' });
-        const { phase_number, title, box_type, description } = req.body;
+        const { phase_number, title, box_type, description, figure_label, slot_type, layout_width } = req.body;
         if (!phase_number || !title || !box_type) return res.status(400).json({ error: 'Missing required fields' });
         const validTypes = ['publication','sop','data','figure','deck','document'];
         if (!validTypes.includes(box_type)) return res.status(400).json({ error: 'Invalid box_type' });
@@ -20990,10 +21007,20 @@ app.post('/api/investroom/boxes', requireCSO, async (req, res) => {
             `SELECT COALESCE(MAX(order_index), -1) + 1 AS next FROM investroom_phase_boxes WHERE workspace_id = $1 AND phase_number = $2`,
             [wsId, pn]
         );
+
+        const hasMirror = await checkIrMirrorCols();
+        const mirrorCols = hasMirror ? ', figure_label, slot_type, layout_width' : '';
+        const mirrorVals = hasMirror ? ', $8, $9, $10' : '';
+        const params = [wsId, pn, title.trim(), box_type, (description || '').trim() || null, maxOrd.rows[0].next, req.session.user.researcher_id];
+        if (hasMirror) {
+            params.push((figure_label || '').trim() || null);
+            params.push(slot_type === 'data' || slot_type === 'sop' ? slot_type : null);
+            params.push(layout_width === 'half' ? 'half' : 'full');
+        }
         const result = await pool.query(
-            `INSERT INTO investroom_phase_boxes (workspace_id, phase_number, title, box_type, description, order_index, created_by)
-             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-            [wsId, pn, title.trim(), box_type, (description || '').trim() || null, maxOrd.rows[0].next, req.session.user.researcher_id]
+            `INSERT INTO investroom_phase_boxes (workspace_id, phase_number, title, box_type, description, order_index, created_by${mirrorCols})
+             VALUES ($1, $2, $3, $4, $5, $6, $7${mirrorVals}) RETURNING *`,
+            params
         );
         console.log(`[IR-BOXES] Box created: ${result.rows[0].id} phase=${pn} by ${req.session.user.researcher_id}`);
         res.json({ box: result.rows[0] });
@@ -21056,17 +21083,21 @@ app.put('/api/investroom/boxes/:id', requireCSO, async (req, res) => {
         if (!(await checkIrTables())) return res.status(503).json({ error: 'Migration not applied' });
         const wsId = await getTheraliaWsId();
         if (!wsId) return res.status(404).json({ error: 'Workspace not found' });
-        const { title, box_type, description } = req.body;
-        if (!title && !box_type && description === undefined) return res.status(400).json({ error: 'Nothing to update' });
+        const { title, box_type, description, figure_label, slot_type, layout_width } = req.body;
+        if (!title && !box_type && description === undefined && figure_label === undefined && slot_type === undefined && layout_width === undefined) return res.status(400).json({ error: 'Nothing to update' });
         const validTypes = ['publication','sop','data','figure','deck','document'];
         if (box_type && !validTypes.includes(box_type)) return res.status(400).json({ error: 'Invalid box_type' });
 
+        const hasMirror = await checkIrMirrorCols();
         const sets = [];
         const vals = [req.params.id, wsId];
         let idx = 3;
         if (title) { sets.push(`title = $${idx++}`); vals.push(title.trim()); }
         if (box_type) { sets.push(`box_type = $${idx++}`); vals.push(box_type); }
         if (description !== undefined) { sets.push(`description = $${idx++}`); vals.push((description || '').trim() || null); }
+        if (hasMirror && figure_label !== undefined) { sets.push(`figure_label = $${idx++}`); vals.push((figure_label || '').trim() || null); }
+        if (hasMirror && slot_type !== undefined) { sets.push(`slot_type = $${idx++}`); vals.push(slot_type === 'data' || slot_type === 'sop' ? slot_type : null); }
+        if (hasMirror && layout_width !== undefined) { sets.push(`layout_width = $${idx++}`); vals.push(layout_width === 'half' ? 'half' : 'full'); }
         sets.push('updated_at = NOW()');
 
         const result = await pool.query(
