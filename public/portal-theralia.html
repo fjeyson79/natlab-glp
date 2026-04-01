@@ -4274,7 +4274,7 @@
                                 <div class="ip-glpv-fig-desc">Optimization and assay setup for TTprobe-based validation.</div>
                                 <div class="ip-glpv-fig-btns">
                                     <a class="ip-glpv-btn" href="#" onclick="event.preventDefault();ipOpenPdfPreview('/assets/investor/glp/data/data-figure2a-ttprobe-optimization.pdf','glpv')">Data</a>
-                                    <a class="ip-glpv-btn" href="#" onclick="event.preventDefault();ipOpenPdfPreview('/assets/investor/glp/sop/sop-figure2a-naa-bacteria.pdf','glpv')">SOP</a>
+                                    <button class="ip-glpv-btn" onclick="ipShowOverlay('sop-fig2a')">SOPs</button>
                                 </div>
                             </div>
                             <div class="ip-glpv-fig">
@@ -4283,7 +4283,7 @@
                                 <div class="ip-glpv-fig-desc">Functional validation of the active compound in vitro.</div>
                                 <div class="ip-glpv-fig-btns">
                                     <a class="ip-glpv-btn" href="#" onclick="event.preventDefault();ipOpenPdfPreview('/assets/investor/glp/data/data-figure2b-in-vitro-validation-drug-molecule.pdf','glpv')">Data</a>
-                                    <a class="ip-glpv-btn" href="#" onclick="event.preventDefault();ipOpenPdfPreview('/assets/investor/glp/sop/sop-figure2-3-bacterial-culture.pdf','glpv')">SOP</a>
+                                    <button class="ip-glpv-btn" onclick="ipShowOverlay('sop-fig2b')">SOPs</button>
                                 </div>
                             </div>
                             <div class="ip-glpv-fig">
@@ -4292,7 +4292,7 @@
                                 <div class="ip-glpv-fig-desc">Modular design of the activation system.</div>
                                 <div class="ip-glpv-fig-btns">
                                     <a class="ip-glpv-btn" href="#" onclick="event.preventDefault();ipOpenPdfPreview('/assets/investor/glp/data/data-figure3a-modularity.pdf','glpv')">Data</a>
-                                    <a class="ip-glpv-btn" href="#" onclick="event.preventDefault();ipOpenPdfPreview('/assets/investor/glp/sop/sop-figure2-3-bacterial-culture.pdf','glpv')">SOP</a>
+                                    <button class="ip-glpv-btn" onclick="ipShowOverlay('sop-fig3a')">SOPs</button>
                                 </div>
                             </div>
                             <div class="ip-glpv-fig">
@@ -4301,7 +4301,7 @@
                                 <div class="ip-glpv-fig-desc">Selective activation under target conditions.</div>
                                 <div class="ip-glpv-fig-btns">
                                     <a class="ip-glpv-btn" href="#" onclick="event.preventDefault();ipOpenPdfPreview('/assets/investor/glp/data/data-figure3b-specificity.pdf','glpv')">Data</a>
-                                    <a class="ip-glpv-btn" href="#" onclick="event.preventDefault();ipOpenPdfPreview('/assets/investor/glp/sop/sop-figure2-3-bacterial-culture.pdf','glpv')">SOP</a>
+                                    <button class="ip-glpv-btn" onclick="ipShowOverlay('sop-fig3b')">SOPs</button>
                                 </div>
                             </div>
                             <div class="ip-glpv-fig">
@@ -4310,7 +4310,7 @@
                                 <div class="ip-glpv-fig-desc">Dose-dependent activity assessment.</div>
                                 <div class="ip-glpv-fig-btns">
                                     <a class="ip-glpv-btn" href="#" onclick="event.preventDefault();ipOpenPdfPreview('/assets/investor/glp/data/data-figure4-dose-response.pdf','glpv')">Data</a>
-                                    <a class="ip-glpv-btn" href="#" onclick="event.preventDefault();ipOpenPdfPreview('/assets/investor/glp/sop/sop-figure4-mic.pdf','glpv')">SOP</a>
+                                    <button class="ip-glpv-btn" onclick="ipShowOverlay('sop-fig4')">SOPs</button>
                                 </div>
                             </div>
                             <div class="ip-glpv-fig">
@@ -8336,6 +8336,41 @@
                 title: 'Publications',
                 links: [
                     { label: 'TOUCAN paper', href: '/assets/investor/publications/phase2-toucan-paper.pdf' }
+                ]
+            },
+            'sop-fig2a': {
+                title: 'SOPs — Figure 2A',
+                links: [
+                    { label: 'NAA bacteria', href: '/assets/investor/glp/sop/sop-figure2a-naa-bacteria.pdf' },
+                    { label: 'Bacterial culture', href: '/assets/investor/glp/sop/sop-figure2-3-bacterial-culture.pdf' }
+                ]
+            },
+            'sop-fig2b': {
+                title: 'SOPs — Figure 2B',
+                links: [
+                    { label: 'Bacterial culture', href: '/assets/investor/glp/sop/sop-figure2-3-bacterial-culture.pdf' },
+                    { label: 'MIC', href: '/assets/investor/glp/sop/sop-figure4-mic.pdf' }
+                ]
+            },
+            'sop-fig3a': {
+                title: 'SOPs — Figure 3A',
+                links: [
+                    { label: 'Bacterial culture', href: '/assets/investor/glp/sop/sop-figure2-3-bacterial-culture.pdf' },
+                    { label: 'MIC', href: '/assets/investor/glp/sop/sop-figure4-mic.pdf' }
+                ]
+            },
+            'sop-fig3b': {
+                title: 'SOPs — Figure 3B',
+                links: [
+                    { label: 'Bacterial culture', href: '/assets/investor/glp/sop/sop-figure2-3-bacterial-culture.pdf' },
+                    { label: 'MIC', href: '/assets/investor/glp/sop/sop-figure4-mic.pdf' }
+                ]
+            },
+            'sop-fig4': {
+                title: 'SOPs — Figure 4',
+                links: [
+                    { label: 'Bacterial culture', href: '/assets/investor/glp/sop/sop-figure2-3-bacterial-culture.pdf' },
+                    { label: 'MIC', href: '/assets/investor/glp/sop/sop-figure4-mic.pdf' }
                 ]
             },
             'sop-fig5': {
