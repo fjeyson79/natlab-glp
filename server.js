@@ -734,6 +734,27 @@ async function checkModuleAccessCol() {
     return moduleAccessColExists;
 }
 
+// Helper function to check if tab_visibility_json column exists (migration 058)
+let tabVisibilityColExists = null;
+let tabVisibilityColLastCheck = 0;
+
+async function checkTabVisibilityCol() {
+    const now = Date.now();
+    if (tabVisibilityColExists === null || tabVisibilityColExists === false || (now - tabVisibilityColLastCheck > ROLE_COLUMN_CHECK_INTERVAL)) {
+        try {
+            const result = await pool.query(`
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'workspace_users' AND column_name = 'tab_visibility_json'
+            `);
+            tabVisibilityColExists = result.rows.length > 0;
+            tabVisibilityColLastCheck = now;
+        } catch (err) {
+            tabVisibilityColExists = false;
+        }
+    }
+    return tabVisibilityColExists;
+}
+
 // Helper function to check if startup position/authority columns exist (migration 043)
 let startupPositionColsExist = null;
 let startupPositionColsLastCheck = 0;
@@ -5132,11 +5153,13 @@ app.get('/api/di/user-clearance/:id', requirePI, async (req, res) => {
         const hasWu = await checkWuTable();
         const hasClearance = await checkWuClearanceCols();
         const hasModuleAccess = await checkModuleAccessCol();
+        const hasTabVisibility = await checkTabVisibilityCol();
         if (hasWu) {
             const moduleCol = hasModuleAccess ? ', wu.module_access_json' : '';
+            const tabVisCol = hasTabVisibility ? ', wu.tab_visibility_json' : '';
             const clearanceCols = hasClearance
                 ? `, wu.membership_class, wu.clearance_profile, wu.scientific_access,
-                     wu.operational_access, wu.administrative_access, wu.status, wu.notes${moduleCol}`
+                     wu.operational_access, wu.administrative_access, wu.status, wu.notes${moduleCol}${tabVisCol}`
                 : `, 'core' as membership_class, 'standard' as clearance_profile,
                      true as scientific_access, true as operational_access, false as administrative_access,
                      CASE WHEN wu.is_active THEN 'active' ELSE 'suspended' END as status, NULL as notes`;
@@ -5190,6 +5213,7 @@ app.put('/api/di/user-clearance/:id', requirePI, async (req, res) => {
             const hasWu = await checkWuTable();
             const hasClearance = await checkWuClearanceCols();
             const hasModuleAccess = await checkModuleAccessCol();
+            const hasTabVisibility = await checkTabVisibilityCol();
             if (hasWu && Array.isArray(memberships)) {
                 for (const m of memberships) {
                     if (!m.workspace_slug) continue;
@@ -5288,6 +5312,18 @@ app.put('/api/di/user-clearance/:id', requirePI, async (req, res) => {
                         await client.query(
                             'UPDATE di_allowlist SET role = $1 WHERE researcher_id = $2',
                             [role, id]
+                        );
+                    }
+
+                    // Save tab_visibility_json if column exists and data provided
+                    if (hasTabVisibility && m.tab_visibility_json !== undefined) {
+                        const tvJson = typeof m.tab_visibility_json === 'string'
+                            ? m.tab_visibility_json
+                            : JSON.stringify(m.tab_visibility_json);
+                        await client.query(
+                            `UPDATE workspace_users SET tab_visibility_json = $1, updated_at = NOW()
+                             WHERE workspace_id = $2 AND user_id = $3`,
+                            [tvJson, wsId, id]
                         );
                     }
                 }
