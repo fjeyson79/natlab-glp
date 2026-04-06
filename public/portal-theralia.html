@@ -598,6 +598,90 @@
             padding: 3px 8px; font-size: 10px; cursor: pointer; font-family: inherit;
         }
 
+        /* ---- Board Meeting Controls ---- */
+        .bm-status-badge {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 2px 10px; border-radius: 12px; font-size: 10px;
+            font-weight: 600; letter-spacing: 0.3px; text-transform: uppercase;
+            margin-left: 8px; vertical-align: middle;
+        }
+        .bm-status-badge::before { content:''; width:5px; height:5px; border-radius:50%; background:currentColor; }
+        .bm-status-badge.planned    { background:rgba(156,163,175,0.1); color:#6b7280; }
+        .bm-status-badge.confirmed  { background:rgba(37,99,235,0.07); color:#2563eb; }
+        .bm-status-badge.rescheduled{ background:rgba(202,138,4,0.07); color:#ca8a04; }
+        .bm-status-badge.completed  { background:rgba(22,163,74,0.07); color:#16a34a; }
+        .bm-status-badge.cancelled  { background:rgba(220,38,38,0.06); color:#dc2626; }
+        .bm-dropdown-wrap { position: relative; display: inline-block; }
+        .bm-dropdown-btn {
+            background: #1a1c22; color: #fff; border: none; border-radius: 7px;
+            padding: 6px 14px; font-size: 11px; font-weight: 600; cursor: pointer;
+            font-family: inherit; display: flex; align-items: center; gap: 5px;
+        }
+        .bm-dropdown-btn:hover { background: #2e3039; }
+        .bm-dropdown-menu {
+            display: none; position: absolute; top: 100%; right: 0; margin-top: 4px;
+            background: #fff; border: 1px solid rgba(0,0,0,0.08); border-radius: 8px;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.1); min-width: 170px; z-index: 50;
+            overflow: hidden;
+        }
+        .bm-dropdown-menu.open { display: block; }
+        .bm-dropdown-item {
+            display: block; width: 100%; background: none; border: none; text-align: left;
+            padding: 8px 14px; font-size: 12px; color: #3a3d45; cursor: pointer;
+            font-family: inherit; transition: background 0.1s;
+        }
+        .bm-dropdown-item:hover { background: #f5f6f8; }
+        .bm-dropdown-item.danger { color: #dc2626; }
+        .bm-dropdown-item.danger:hover { background: rgba(220,38,38,0.04); }
+        .bm-complete-btn {
+            background: #1a7a4e; color: #fff; border: none; border-radius: 7px;
+            padding: 6px 14px; font-size: 11px; font-weight: 600; cursor: pointer;
+            font-family: inherit; transition: background 0.15s;
+        }
+        .bm-complete-btn:hover { background: #1d8f5a; }
+        .bm-complete-btn:disabled { opacity: 0.4; cursor: default; }
+        .bm-cancelled-notice {
+            background: rgba(220,38,38,0.04); border: 1px solid rgba(220,38,38,0.1);
+            border-radius: 8px; padding: 10px 14px; font-size: 12px; color: #991b1b;
+            margin-bottom: 14px;
+        }
+        .bm-modal-overlay {
+            display: none; position: fixed; inset: 0; z-index: 300;
+            background: rgba(0,0,0,0.25); align-items: center; justify-content: center;
+        }
+        .bm-modal-overlay.open { display: flex; }
+        .bm-modal {
+            background: #fff; border-radius: 12px; padding: 24px 28px;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.15); width: 420px; max-width: 90vw;
+        }
+        .bm-modal-title { font-size: 15px; font-weight: 600; color: #1a1c22; margin-bottom: 16px; }
+        .bm-modal-field { margin-bottom: 12px; }
+        .bm-modal-field label {
+            display: block; font-size: 10px; font-weight: 600; text-transform: uppercase;
+            letter-spacing: 0.6px; color: #9a9ea8; margin-bottom: 4px;
+        }
+        .bm-modal-field input, .bm-modal-field select, .bm-modal-field textarea {
+            width: 100%; background: #f9fafb; border: 1px solid rgba(0,0,0,0.08);
+            border-radius: 6px; color: #2a2d35; font-family: inherit;
+            font-size: 13px; padding: 8px 10px; box-sizing: border-box;
+        }
+        .bm-modal-field textarea { resize: vertical; min-height: 50px; }
+        .bm-modal-field input:focus, .bm-modal-field textarea:focus { outline: none; border-color: rgba(0,0,0,0.16); }
+        .bm-modal-bar { display: flex; align-items: center; gap: 8px; margin-top: 16px; }
+        .bm-modal-btn {
+            background: #e8eaed; color: #3a3d45; border: none; border-radius: 6px;
+            padding: 7px 16px; font-size: 12px; font-weight: 500; cursor: pointer; font-family: inherit;
+        }
+        .bm-modal-btn.primary { background: #1a1c22; color: #fff; }
+        .bm-modal-btn.primary:hover { background: #2e3039; }
+        .bm-modal-btn.danger { background: #dc2626; color: #fff; }
+        .bm-modal-btn.danger:hover { background: #b91c1c; }
+        .bm-modal-warn {
+            background: rgba(202,138,4,0.06); border: 1px solid rgba(202,138,4,0.15);
+            border-radius: 6px; padding: 8px 10px; font-size: 11px; color: #92400e;
+            margin-bottom: 12px;
+        }
+
         /* ---- KV Rows ---- */
         .kv-row {
             display: flex; gap: 6px; margin-bottom: 8px;
@@ -3073,17 +3157,24 @@
             <!-- Control Bar -->
             <div class="dash-control">
                 <div class="dash-control-left">
-                    <div class="dash-title">Board Meeting &mdash; W14 &middot; 2026</div>
-                    <div class="dash-meta">April 3, 2026</div>
+                    <div class="dash-title" id="bmTitle">Board Meeting</div>
+                    <div class="dash-meta"><span id="bmDateLabel"></span><span id="bmStatusBadge"></span></div>
                 </div>
                 <div class="dash-control-right">
-                    <select class="cycle-select" id="cycleSelect">
-                        <option value="2026-w14" selected>W14 &middot; Mar 30 &ndash; Apr 5, 2026</option>
-                    </select>
+                    <select class="cycle-select" id="cycleSelect"></select>
+                    <div class="bm-dropdown-wrap" id="bmDropdownWrap" style="display:none;">
+                        <button class="bm-dropdown-btn" onclick="bmToggleDropdown()">+ Meeting <span style="font-size:9px">&#9662;</span></button>
+                        <div class="bm-dropdown-menu" id="bmDropdownMenu">
+                            <button class="bm-dropdown-item" onclick="bmShowNewModal()">New Meeting</button>
+                            <button class="bm-dropdown-item" onclick="bmShowRescheduleModal()">Reschedule Meeting</button>
+                            <button class="bm-dropdown-item danger" onclick="bmShowCancelModal()">Cancel Meeting</button>
+                        </div>
+                    </div>
                     <div class="mode-toggle" id="modeToggle">
                         <button class="active" data-mode="view">View</button>
-                        <button data-mode="update">Update</button>
+                        <button data-mode="update" id="bmUpdateBtn">Update</button>
                     </div>
+                    <button class="bm-complete-btn" id="bmCompleteBtn" style="display:none;" onclick="bmShowCompleteModal()">Complete</button>
                 </div>
             </div>
 
@@ -3107,12 +3198,17 @@
                 </div>
             </div>
 
+            <!-- Cancelled notice -->
+            <div class="bm-cancelled-notice" id="bmCancelledNotice" style="display:none;">
+                This meeting was cancelled. Existing content has been preserved for record keeping.
+            </div>
+
             <!-- ======== MAIN PANEL: Board Meeting ======== -->
             <div class="card" id="sec-board">
                 <div class="card-header">
                     <div>
                         <span class="card-title">Agenda &amp; Actions</span>
-                        <div class="card-subtitle" style="margin-top:2px">Friday, April 3, 2026</div>
+                        <div class="card-subtitle" id="bmCardSubtitle" style="margin-top:2px"></div>
                     </div>
                 </div>
 
@@ -3173,7 +3269,7 @@
                 </div>
 
                 <div class="card-footer">
-                    <span>W14 &middot; Apr 3, 2026</span>
+                    <span id="bmFooterLabel"></span>
                     <span></span>
                 </div>
             </div>
@@ -3298,6 +3394,59 @@
                                 </div>
                             </div>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Board Meeting Modals -->
+            <div class="bm-modal-overlay" id="bmNewModal">
+                <div class="bm-modal">
+                    <div class="bm-modal-title">New Board Meeting</div>
+                    <div class="bm-modal-field"><label>Title</label><input type="text" id="bmNewTitle" value="Board Meeting"></div>
+                    <div class="bm-modal-field"><label>Date</label><input type="date" id="bmNewDate"></div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                        <div class="bm-modal-field"><label>Time</label><input type="time" id="bmNewTime" value="11:00"></div>
+                        <div class="bm-modal-field"><label>Duration (min)</label><input type="number" id="bmNewDuration" value="60" min="15" step="15"></div>
+                    </div>
+                    <div class="bm-modal-field"><label>Notes (optional)</label><textarea id="bmNewNotes" rows="2"></textarea></div>
+                    <div class="bm-modal-bar">
+                        <button class="bm-modal-btn" onclick="bmCloseModals()">Cancel</button>
+                        <button class="bm-modal-btn primary" onclick="bmCreateMeeting()">Create Meeting</button>
+                    </div>
+                </div>
+            </div>
+            <div class="bm-modal-overlay" id="bmRescheduleModal">
+                <div class="bm-modal">
+                    <div class="bm-modal-title">Reschedule Meeting</div>
+                    <div class="bm-modal-field"><label>New Date</label><input type="date" id="bmRescDate"></div>
+                    <div class="bm-modal-field"><label>New Time</label><input type="time" id="bmRescTime" value="11:00"></div>
+                    <div class="bm-modal-field"><label>Note (optional)</label><textarea id="bmRescNotes" rows="2"></textarea></div>
+                    <div class="bm-modal-bar">
+                        <button class="bm-modal-btn" onclick="bmCloseModals()">Cancel</button>
+                        <button class="bm-modal-btn primary" onclick="bmReschedule()">Reschedule</button>
+                    </div>
+                </div>
+            </div>
+            <div class="bm-modal-overlay" id="bmCancelModal">
+                <div class="bm-modal">
+                    <div class="bm-modal-title">Cancel Meeting</div>
+                    <div class="bm-modal-warn" id="bmCancelWarn" style="display:none;">
+                        This meeting already contains written content. Cancelling it will preserve all content for record keeping and lock the meeting from further edits.
+                    </div>
+                    <p style="font-size:13px;color:#555a66;margin:0 0 12px;">Are you sure you want to cancel this meeting? The record and any content will be preserved.</p>
+                    <div class="bm-modal-bar">
+                        <button class="bm-modal-btn" onclick="bmCloseModals()">Cancel</button>
+                        <button class="bm-modal-btn danger" onclick="bmCancelMeeting()">Confirm Cancellation</button>
+                    </div>
+                </div>
+            </div>
+            <div class="bm-modal-overlay" id="bmCompleteModal">
+                <div class="bm-modal">
+                    <div class="bm-modal-title">Complete Meeting</div>
+                    <p style="font-size:13px;color:#555a66;margin:0 0 12px;">Mark this meeting as completed? The record will be locked from further edits.</p>
+                    <div class="bm-modal-bar">
+                        <button class="bm-modal-btn" onclick="bmCloseModals()">Cancel</button>
+                        <button class="bm-modal-btn primary" onclick="bmCompleteMeeting()">Confirm Complete</button>
                     </div>
                 </div>
             </div>
@@ -5070,52 +5219,154 @@
         function promptAddItem(type) { if (!_isUpdateMode) return; }
 
         /* ============================================== */
-        /* BOARD MEETING INLINE EDITING                   */
+        /* BOARD MEETING — SERVER-PERSISTED               */
         /* ============================================== */
-        const BM_STORAGE_PREFIX = 'theralia_bm_';
         const BM_CEO_SECTIONS = ['agenda', 'action'];
+        let bmMeetings = [];       // all loaded meetings
+        let bmCurrentMeeting = null; // currently selected
+        let bmContentCache = {};   // { agenda:[], topic:[], action:[] }
 
-        function bmIsCeoOrMaster() {
-            return _userPosition === 'ceo' || hasAuthority('is_workspace_master');
+        function bmIsCeoOrCso() {
+            return _userPosition === 'ceo' || _userPosition === 'cso' || hasAuthority('is_workspace_master');
+        }
+        function bmIsLocked() {
+            return bmCurrentMeeting && ['COMPLETED','CANCELLED'].includes(bmCurrentMeeting.status);
         }
 
-        function bmGetKey(section) {
-            const cycle = document.getElementById('cycleSelect')?.value || '2026-w14';
-            return BM_STORAGE_PREFIX + cycle + '_' + section;
+        function dashSubEsc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+        // ---- Date helpers ----
+        function bmWeekNumber(d) {
+            const dt = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+            dt.setUTCDate(dt.getUTCDate() + 4 - (dt.getUTCDay() || 7));
+            const yearStart = new Date(Date.UTC(dt.getUTCFullYear(), 0, 1));
+            return Math.ceil(((dt - yearStart) / 86400000 + 1) / 7);
+        }
+        function bmWeekRange(d) {
+            const dt = new Date(d); const day = dt.getDay() || 7;
+            const mon = new Date(dt); mon.setDate(dt.getDate() - day + 1);
+            const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+            const fmt = (dd) => dd.toLocaleDateString('en-US', { month:'short', day:'numeric' });
+            return fmt(mon) + ' \u2013 ' + fmt(sun) + ', ' + dt.getFullYear();
+        }
+        function bmFmtDate(iso) {
+            const d = new Date(iso);
+            return d.toLocaleDateString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
         }
 
-        function bmGetItems(section) {
-            try { return JSON.parse(localStorage.getItem(bmGetKey(section))) || []; }
-            catch { return []; }
+        // ---- Load meetings ----
+        async function bmLoadMeetings() {
+            try {
+                const r = await fetch('/api/theralia/board-meetings', { credentials:'include' });
+                const d = await r.json();
+                bmMeetings = d.meetings || [];
+            } catch { bmMeetings = []; }
+            bmPopulateSelector();
+            if (bmMeetings.length > 0) {
+                bmSelectMeeting(bmMeetings[0].id);
+            } else {
+                bmCurrentMeeting = null;
+                bmContentCache = {};
+                bmRenderUI();
+            }
+        }
+
+        function bmPopulateSelector() {
+            const sel = document.getElementById('cycleSelect');
+            sel.innerHTML = bmMeetings.map(m => {
+                const dt = new Date(m.scheduled_at);
+                const label = 'W' + m.week_number + ' \u00b7 ' + bmWeekRange(dt);
+                return '<option value="' + m.id + '">' + dashSubEsc(label) + '</option>';
+            }).join('');
+            if (bmMeetings.length === 0) {
+                sel.innerHTML = '<option value="">No meetings</option>';
+            }
+        }
+
+        async function bmSelectMeeting(id) {
+            bmCurrentMeeting = bmMeetings.find(m => m.id === parseInt(id)) || null;
+            if (!bmCurrentMeeting) { bmContentCache = {}; bmRenderUI(); return; }
+            // Load content
+            try {
+                const r = await fetch('/api/theralia/board-meetings/' + id + '/content', { credentials:'include' });
+                const d = await r.json();
+                bmContentCache = d.content || {};
+            } catch { bmContentCache = {}; }
+            bmRenderUI();
+        }
+
+        // ---- Render ----
+        function bmRenderUI() {
+            const m = bmCurrentMeeting;
+            const titleEl = document.getElementById('bmTitle');
+            const dateEl = document.getElementById('bmDateLabel');
+            const badgeEl = document.getElementById('bmStatusBadge');
+            const subEl = document.getElementById('bmCardSubtitle');
+            const footerEl = document.getElementById('bmFooterLabel');
+            const noticeEl = document.getElementById('bmCancelledNotice');
+            const completeBtn = document.getElementById('bmCompleteBtn');
+            const updateBtn = document.getElementById('bmUpdateBtn');
+            const dropWrap = document.getElementById('bmDropdownWrap');
+
+            if (!m) {
+                titleEl.textContent = 'Board Meeting';
+                dateEl.textContent = '';
+                badgeEl.innerHTML = '';
+                subEl.textContent = '';
+                footerEl.textContent = '';
+                noticeEl.style.display = 'none';
+                completeBtn.style.display = 'none';
+                dropWrap.style.display = bmIsCeoOrCso() ? '' : 'none';
+                return;
+            }
+
+            const dt = new Date(m.scheduled_at);
+            titleEl.textContent = (m.title || 'Board Meeting') + ' \u2014 W' + m.week_number + ' \u00b7 ' + m.year;
+            dateEl.textContent = bmFmtDate(m.scheduled_at);
+            const sc = m.status.toLowerCase();
+            badgeEl.innerHTML = '<span class="bm-status-badge ' + sc + '">' + m.status + '</span>';
+            subEl.textContent = bmFmtDate(m.scheduled_at);
+            footerEl.textContent = 'W' + m.week_number + ' \u00b7 ' + dt.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+
+            // Cancelled notice
+            noticeEl.style.display = m.status === 'CANCELLED' ? '' : 'none';
+
+            // Controls visibility (CEO/CSO only)
+            const canManage = bmIsCeoOrCso();
+            dropWrap.style.display = canManage ? '' : 'none';
+            const locked = bmIsLocked();
+            completeBtn.style.display = (canManage && !locked) ? '' : 'none';
+            completeBtn.disabled = locked;
+            // Disable Update mode for locked meetings
+            if (updateBtn) updateBtn.style.display = locked ? 'none' : '';
+
+            // Render content lists
+            bmRenderList('agenda');
+            bmRenderList('topic');
+            bmRenderList('action');
         }
 
         function bmRenderList(section) {
-            const items = bmGetItems(section);
+            const items = bmContentCache[section] || [];
             if (section === 'agenda') {
-                const el = document.getElementById('bmAgendaList');
-                el.innerHTML = items.map(t => '<li>' + dashSubEsc(t) + '</li>').join('');
+                document.getElementById('bmAgendaList').innerHTML = items.map(t => '<li>' + dashSubEsc(t) + '</li>').join('');
             } else if (section === 'topic') {
-                const el = document.getElementById('bmTopicList');
-                el.innerHTML = items.map(t => '<li>' + dashSubEsc(t) + '</li>').join('');
+                document.getElementById('bmTopicList').innerHTML = items.map(t => '<li>' + dashSubEsc(t) + '</li>').join('');
             } else if (section === 'action') {
-                const el = document.getElementById('bmActionList');
-                el.innerHTML = items.map(t =>
+                document.getElementById('bmActionList').innerHTML = items.map(t =>
                     '<div class="action-item"><div class="action-text">' + dashSubEsc(t) + '</div></div>'
                 ).join('');
             }
         }
 
-        function dashSubEsc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
-
+        // ---- Inline editing (server-persisted) ----
         function bmAddInline(section) {
-            if (!_isUpdateMode) return;
-            // CEO-only check for agenda and action
-            if (BM_CEO_SECTIONS.includes(section) && !bmIsCeoOrMaster()) {
+            if (!_isUpdateMode || bmIsLocked()) return;
+            if (BM_CEO_SECTIONS.includes(section) && !bmIsCeoOrCso()) {
                 const restrict = document.getElementById('bmRestrict-' + section);
                 if (restrict) { restrict.style.display = ''; setTimeout(() => { restrict.style.display = 'none'; }, 3000); }
                 return;
             }
-            // Close any other open board meeting inline editor
             document.querySelectorAll('#sec-board .sub-inline-edit.open').forEach(el => el.classList.remove('open'));
             const editor = document.getElementById('bmEdit-' + section);
             const input = document.getElementById('bmInput-' + section);
@@ -5124,14 +5375,25 @@
             input.focus();
         }
 
-        function bmSaveInline(section) {
+        async function bmSaveInline(section) {
             const input = document.getElementById('bmInput-' + section);
             const val = input.value.trim();
-            if (!val) return;
-            const items = bmGetItems(section);
-            items.push(val);
-            localStorage.setItem(bmGetKey(section), JSON.stringify(items));
-            bmRenderList(section);
+            if (!val || !bmCurrentMeeting) return;
+            const items = [...(bmContentCache[section] || []), val];
+            try {
+                const r = await fetch('/api/theralia/board-meetings/' + bmCurrentMeeting.id + '/content', {
+                    method:'PUT', credentials:'include',
+                    headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({ section, items })
+                });
+                if (r.ok) {
+                    bmContentCache[section] = items;
+                    bmRenderList(section);
+                } else {
+                    const d = await r.json();
+                    alert(d.error || 'Failed to save');
+                }
+            } catch { alert('Network error'); }
             document.getElementById('bmEdit-' + section).classList.remove('open');
         }
 
@@ -5139,27 +5401,143 @@
             document.getElementById('bmEdit-' + section).classList.remove('open');
         }
 
-        // Load all board meeting lists on page load
-        function bmLoadAll() {
-            ['agenda', 'topic', 'action'].forEach(s => bmRenderList(s));
+        // ---- Dropdown ----
+        function bmToggleDropdown() {
+            document.getElementById('bmDropdownMenu').classList.toggle('open');
         }
-        bmLoadAll();
+        document.addEventListener('click', (e) => {
+            const wrap = document.getElementById('bmDropdownWrap');
+            if (wrap && !wrap.contains(e.target)) document.getElementById('bmDropdownMenu').classList.remove('open');
+        });
 
-        // Reload when cycle changes
-        document.getElementById('cycleSelect').addEventListener('change', () => { bmLoadAll(); });
+        // ---- Modals ----
+        function bmCloseModals() {
+            ['bmNewModal','bmRescheduleModal','bmCancelModal','bmCompleteModal'].forEach(id =>
+                document.getElementById(id).classList.remove('open'));
+        }
+        function bmShowNewModal() {
+            document.getElementById('bmDropdownMenu').classList.remove('open');
+            const today = new Date();
+            document.getElementById('bmNewDate').value = today.toISOString().slice(0,10);
+            document.getElementById('bmNewTitle').value = 'Board Meeting';
+            document.getElementById('bmNewTime').value = '11:00';
+            document.getElementById('bmNewDuration').value = '60';
+            document.getElementById('bmNewNotes').value = '';
+            document.getElementById('bmNewModal').classList.add('open');
+        }
+        function bmShowRescheduleModal() {
+            document.getElementById('bmDropdownMenu').classList.remove('open');
+            if (!bmCurrentMeeting || bmIsLocked()) return;
+            const dt = new Date(bmCurrentMeeting.scheduled_at);
+            document.getElementById('bmRescDate').value = dt.toISOString().slice(0,10);
+            document.getElementById('bmRescTime').value = dt.toTimeString().slice(0,5);
+            document.getElementById('bmRescNotes').value = '';
+            document.getElementById('bmRescheduleModal').classList.add('open');
+        }
+        function bmShowCancelModal() {
+            document.getElementById('bmDropdownMenu').classList.remove('open');
+            if (!bmCurrentMeeting || bmIsLocked()) return;
+            const hasContent = ['agenda','topic','action'].some(s => (bmContentCache[s] || []).length > 0);
+            document.getElementById('bmCancelWarn').style.display = hasContent ? '' : 'none';
+            document.getElementById('bmCancelModal').classList.add('open');
+        }
+        function bmShowCompleteModal() {
+            if (!bmCurrentMeeting || bmIsLocked()) return;
+            document.getElementById('bmCompleteModal').classList.add('open');
+        }
+
+        // ---- Actions ----
+        async function bmCreateMeeting() {
+            const dateStr = document.getElementById('bmNewDate').value;
+            const timeStr = document.getElementById('bmNewTime').value;
+            if (!dateStr) { alert('Date is required'); return; }
+            const dt = new Date(dateStr + 'T' + (timeStr || '11:00'));
+            const wn = bmWeekNumber(dt);
+            const yr = dt.getFullYear();
+            const body = {
+                title: document.getElementById('bmNewTitle').value.trim() || 'Board Meeting',
+                scheduled_at: dt.toISOString(),
+                duration_minutes: parseInt(document.getElementById('bmNewDuration').value) || 60,
+                notes: document.getElementById('bmNewNotes').value.trim() || null,
+                week_number: wn, year: yr,
+                week_range_label: bmWeekRange(dt)
+            };
+            try {
+                const r = await fetch('/api/theralia/board-meetings', {
+                    method:'POST', credentials:'include',
+                    headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+                const d = await r.json();
+                if (d.success) { bmCloseModals(); await bmLoadMeetings(); }
+                else alert(d.error || 'Failed');
+            } catch { alert('Network error'); }
+        }
+
+        async function bmReschedule() {
+            if (!bmCurrentMeeting) return;
+            const dateStr = document.getElementById('bmRescDate').value;
+            const timeStr = document.getElementById('bmRescTime').value;
+            if (!dateStr) { alert('Date is required'); return; }
+            const dt = new Date(dateStr + 'T' + (timeStr || '11:00'));
+            const body = {
+                scheduled_at: dt.toISOString(),
+                notes: document.getElementById('bmRescNotes').value.trim() || null,
+                week_number: bmWeekNumber(dt), year: dt.getFullYear(),
+                week_range_label: bmWeekRange(dt)
+            };
+            try {
+                const r = await fetch('/api/theralia/board-meetings/' + bmCurrentMeeting.id + '/reschedule', {
+                    method:'PATCH', credentials:'include',
+                    headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+                const d = await r.json();
+                if (d.success) { bmCloseModals(); await bmLoadMeetings(); }
+                else alert(d.error || 'Failed');
+            } catch { alert('Network error'); }
+        }
+
+        async function bmCancelMeeting() {
+            if (!bmCurrentMeeting) return;
+            try {
+                const r = await fetch('/api/theralia/board-meetings/' + bmCurrentMeeting.id + '/cancel', {
+                    method:'PATCH', credentials:'include',
+                    headers:{'Content-Type':'application/json'}, body: '{}' });
+                const d = await r.json();
+                if (d.success) { bmCloseModals(); await bmLoadMeetings(); }
+                else alert(d.error || 'Failed');
+            } catch { alert('Network error'); }
+        }
+
+        async function bmCompleteMeeting() {
+            if (!bmCurrentMeeting) return;
+            try {
+                const r = await fetch('/api/theralia/board-meetings/' + bmCurrentMeeting.id + '/complete', {
+                    method:'PATCH', credentials:'include',
+                    headers:{'Content-Type':'application/json'}, body: '{}' });
+                const d = await r.json();
+                if (d.success) { bmCloseModals(); await bmLoadMeetings(); }
+                else alert(d.error || 'Failed');
+            } catch { alert('Network error'); }
+        }
+
+        // ---- Init ----
+        bmLoadMeetings();
+        document.getElementById('cycleSelect').addEventListener('change', (e) => {
+            if (e.target.value) bmSelectMeeting(e.target.value);
+        });
 
         /* ============================================== */
         /* PRIVATE NOTES (per board meeting cycle)        */
         /* ============================================== */
         function pnGetKey() {
+            if (bmCurrentMeeting) return 'theralia_private_notes_mtg_' + bmCurrentMeeting.id;
             const sel = document.getElementById('cycleSelect');
-            const cycle = sel ? sel.value : '2026-w14';
+            const cycle = sel ? sel.value : 'none';
             return 'theralia_private_notes_' + cycle;
         }
 
         function pnGetLabel() {
+            if (bmCurrentMeeting) return 'W' + bmCurrentMeeting.week_number + ' \u00b7 ' + bmCurrentMeeting.year;
             const sel = document.getElementById('cycleSelect');
-            if (!sel || !sel.selectedOptions[0]) return 'W14 \u00b7 2026';
+            if (!sel || !sel.selectedOptions[0]) return '';
             return sel.selectedOptions[0].textContent.trim();
         }
 
@@ -5193,10 +5571,10 @@
             }, 600);
         });
 
-        // Reload notes when cycle changes
-        document.getElementById('cycleSelect').addEventListener('change', () => {
-            pnLoad();
-        });
+        // Reload notes when meeting changes (cycleSelect change already handled by bmSelectMeeting → bmRenderUI)
+        // Hook pnLoad into bmRenderUI via a post-render call
+        const _origBmRenderUI = bmRenderUI;
+        bmRenderUI = function() { _origBmRenderUI(); pnLoad(); };
 
         // Close panel on outside click
         document.addEventListener('click', (e) => {

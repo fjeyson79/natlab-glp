@@ -20117,6 +20117,197 @@ app.get('/api/theralia/audit-log', requireCSO, async (req, res) => {
     }
 });
 
+// =====================================================
+// THERALIA BOARD MEETINGS (Migration 059)
+// =====================================================
+
+// Helper: check if board meetings table exists
+let bmTableExists = null;
+let bmTableLastCheck = 0;
+async function checkBmTable() {
+    const now = Date.now();
+    if (bmTableExists === null || bmTableExists === false || (now - bmTableLastCheck > ROLE_COLUMN_CHECK_INTERVAL)) {
+        try {
+            const r = await pool.query(`SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name='theralia_board_meetings') AS ok`);
+            bmTableExists = r.rows[0]?.ok || false;
+            bmTableLastCheck = now;
+        } catch { bmTableExists = false; }
+    }
+    return bmTableExists;
+}
+
+// Helper: require CEO or CSO position for board meeting management
+async function requireCeoOrCso(req, res, next) {
+    const pos = await getPositionForReq(req);
+    if (pos === 'ceo' || pos === 'cso') return next();
+    return res.status(403).json({ error: 'CEO or CSO role required' });
+}
+
+// GET /api/theralia/board-meetings — list all meetings
+app.get('/api/theralia/board-meetings', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkBmTable())) return res.json({ success: true, meetings: [] });
+        const r = await pool.query(
+            `SELECT * FROM theralia_board_meetings WHERE workspace_id = 'theralia'
+             ORDER BY scheduled_at DESC LIMIT 100`
+        );
+        res.json({ success: true, meetings: r.rows });
+    } catch (err) {
+        console.error('[BM] List error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/theralia/board-meetings/:id/content — get content sections for a meeting
+app.get('/api/theralia/board-meetings/:id/content', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkBmTable())) return res.json({ success: true, content: {} });
+        const r = await pool.query(
+            `SELECT section, items FROM theralia_board_meeting_content WHERE meeting_id = $1`,
+            [req.params.id]
+        );
+        const content = {};
+        r.rows.forEach(row => { content[row.section] = row.items || []; });
+        res.json({ success: true, content });
+    } catch (err) {
+        console.error('[BM] Content load error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/theralia/board-meetings — create new meeting (CEO/CSO only)
+app.post('/api/theralia/board-meetings', requireAuth, requireCeoOrCso, async (req, res) => {
+    try {
+        if (!(await checkBmTable())) return res.status(500).json({ error: 'Board meetings not available' });
+        const { title, scheduled_at, duration_minutes, notes, week_number, year, week_range_label } = req.body;
+        if (!scheduled_at || !week_number || !year) return res.status(400).json({ error: 'scheduled_at, week_number, year required' });
+        const userId = req.session.user.researcher_id;
+        const r = await pool.query(
+            `INSERT INTO theralia_board_meetings (title, scheduled_at, duration_minutes, notes, week_number, year, week_range_label, created_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+            [title || 'Board Meeting', scheduled_at, duration_minutes || 60, notes || null, week_number, year, week_range_label || null, userId]
+        );
+        const pos = await getPositionForReq(req);
+        logAudit({ actor_id: userId, actor_position: pos, action: 'MEETING_CREATED', target_type: 'board_meeting', target_id: String(r.rows[0].id), detail: { title: r.rows[0].title, scheduled_at, week_number, year } });
+        res.json({ success: true, meeting: r.rows[0] });
+    } catch (err) {
+        console.error('[BM] Create error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// PUT /api/theralia/board-meetings/:id/content — save content for a section (CEO/CSO for agenda/action, any auth for topic)
+app.put('/api/theralia/board-meetings/:id/content', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkBmTable())) return res.status(500).json({ error: 'Board meetings not available' });
+        const { section, items } = req.body;
+        if (!section || !['agenda', 'topic', 'action'].includes(section)) return res.status(400).json({ error: 'Invalid section' });
+        if (!Array.isArray(items)) return res.status(400).json({ error: 'items must be array' });
+        // Check meeting is not locked
+        const mtg = await pool.query(`SELECT status FROM theralia_board_meetings WHERE id = $1`, [req.params.id]);
+        if (mtg.rows.length === 0) return res.status(404).json({ error: 'Meeting not found' });
+        if (['COMPLETED', 'CANCELLED'].includes(mtg.rows[0].status)) return res.status(403).json({ error: 'Meeting is locked' });
+        // CEO-only sections
+        if (['agenda', 'action'].includes(section)) {
+            const pos = await getPositionForReq(req);
+            if (pos !== 'ceo' && pos !== 'cso') {
+                // Check workspace master
+                try {
+                    const wu = await pool.query(
+                        `SELECT is_workspace_master FROM workspace_users wu JOIN workspaces w ON w.id=wu.workspace_id WHERE wu.user_id=$1 AND w.slug='theralia' AND wu.is_active=TRUE LIMIT 1`,
+                        [req.session.user.researcher_id]);
+                    if (!wu.rows[0]?.is_workspace_master) return res.status(403).json({ error: 'CEO or CSO required for this section' });
+                } catch { return res.status(403).json({ error: 'CEO or CSO required for this section' }); }
+            }
+        }
+        const userId = req.session.user.researcher_id;
+        await pool.query(
+            `INSERT INTO theralia_board_meeting_content (meeting_id, section, items, updated_by)
+             VALUES ($1, $2, $3, $4)
+             ON CONFLICT (meeting_id, section) DO UPDATE SET items = $3, updated_by = $4, updated_at = NOW()`,
+            [req.params.id, section, JSON.stringify(items), userId]
+        );
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[BM] Content save error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// PATCH /api/theralia/board-meetings/:id/reschedule — CEO/CSO only
+app.patch('/api/theralia/board-meetings/:id/reschedule', requireAuth, requireCeoOrCso, async (req, res) => {
+    try {
+        if (!(await checkBmTable())) return res.status(500).json({ error: 'Board meetings not available' });
+        const { scheduled_at, notes, week_number, year, week_range_label } = req.body;
+        if (!scheduled_at) return res.status(400).json({ error: 'scheduled_at required' });
+        const mtg = await pool.query(`SELECT * FROM theralia_board_meetings WHERE id = $1`, [req.params.id]);
+        if (mtg.rows.length === 0) return res.status(404).json({ error: 'Meeting not found' });
+        if (['COMPLETED', 'CANCELLED'].includes(mtg.rows[0].status)) return res.status(403).json({ error: 'Cannot reschedule locked meeting' });
+        const orig = mtg.rows[0].original_scheduled_at || mtg.rows[0].scheduled_at;
+        const r = await pool.query(
+            `UPDATE theralia_board_meetings SET scheduled_at = $1, status = 'RESCHEDULED',
+             original_scheduled_at = $2, notes = COALESCE($3, notes),
+             week_number = COALESCE($4, week_number), year = COALESCE($5, year),
+             week_range_label = COALESCE($6, week_range_label), updated_at = NOW()
+             WHERE id = $7 RETURNING *`,
+            [scheduled_at, orig, notes || null, week_number || null, year || null, week_range_label || null, req.params.id]
+        );
+        const pos = await getPositionForReq(req);
+        logAudit({ actor_id: req.session.user.researcher_id, actor_position: pos, action: 'MEETING_RESCHEDULED', target_type: 'board_meeting', target_id: String(req.params.id), detail: { original_scheduled_at: orig, new_scheduled_at: scheduled_at } });
+        res.json({ success: true, meeting: r.rows[0] });
+    } catch (err) {
+        console.error('[BM] Reschedule error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// PATCH /api/theralia/board-meetings/:id/cancel — CEO/CSO only
+app.patch('/api/theralia/board-meetings/:id/cancel', requireAuth, requireCeoOrCso, async (req, res) => {
+    try {
+        if (!(await checkBmTable())) return res.status(500).json({ error: 'Board meetings not available' });
+        const mtg = await pool.query(`SELECT * FROM theralia_board_meetings WHERE id = $1`, [req.params.id]);
+        if (mtg.rows.length === 0) return res.status(404).json({ error: 'Meeting not found' });
+        if (['COMPLETED', 'CANCELLED'].includes(mtg.rows[0].status)) return res.status(403).json({ error: 'Meeting already locked' });
+        // Check if content exists
+        const contentR = await pool.query(`SELECT section, items FROM theralia_board_meeting_content WHERE meeting_id = $1`, [req.params.id]);
+        const hasContent = contentR.rows.some(r => r.items && r.items.length > 0);
+        const userId = req.session.user.researcher_id;
+        const r = await pool.query(
+            `UPDATE theralia_board_meetings SET status = 'CANCELLED', cancelled_at = NOW(), cancelled_by = $1, updated_at = NOW()
+             WHERE id = $2 RETURNING *`,
+            [userId, req.params.id]
+        );
+        const pos = await getPositionForReq(req);
+        logAudit({ actor_id: userId, actor_position: pos, action: 'MEETING_CANCELLED', target_type: 'board_meeting', target_id: String(req.params.id), detail: { content_preserved: hasContent, title: mtg.rows[0].title } });
+        res.json({ success: true, meeting: r.rows[0], content_preserved: hasContent });
+    } catch (err) {
+        console.error('[BM] Cancel error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// PATCH /api/theralia/board-meetings/:id/complete — CEO/CSO only
+app.patch('/api/theralia/board-meetings/:id/complete', requireAuth, requireCeoOrCso, async (req, res) => {
+    try {
+        if (!(await checkBmTable())) return res.status(500).json({ error: 'Board meetings not available' });
+        const mtg = await pool.query(`SELECT * FROM theralia_board_meetings WHERE id = $1`, [req.params.id]);
+        if (mtg.rows.length === 0) return res.status(404).json({ error: 'Meeting not found' });
+        if (['COMPLETED', 'CANCELLED'].includes(mtg.rows[0].status)) return res.status(403).json({ error: 'Meeting already locked' });
+        const userId = req.session.user.researcher_id;
+        const r = await pool.query(
+            `UPDATE theralia_board_meetings SET status = 'COMPLETED', completed_at = NOW(), completed_by = $1, updated_at = NOW()
+             WHERE id = $2 RETURNING *`,
+            [userId, req.params.id]
+        );
+        const pos = await getPositionForReq(req);
+        logAudit({ actor_id: userId, actor_position: pos, action: 'MEETING_COMPLETED', target_type: 'board_meeting', target_id: String(req.params.id), detail: { title: mtg.rows[0].title } });
+        res.json({ success: true, meeting: r.rows[0] });
+    } catch (err) {
+        console.error('[BM] Complete error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
 // POST /api/investor/log-tab-access — Lightweight tab access tracking for investors
 app.post('/api/investor/log-tab-access', requireAuth, async (req, res) => {
     try {
