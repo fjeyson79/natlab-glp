@@ -2439,6 +2439,18 @@
 
         let selectedSupervisionResearcherId = null;
 
+        // NAT-Lab portal tab defaults by role + clearance_profile (mirrors PI modal logic)
+        function _natLabTabDefaults(role, clearanceProfile) {
+            const cp = clearanceProfile || 'standard';
+            if (cp === 'upload_only') return { files:true, inventory:false, training:false, glpVision:false, glpStatus:false, supervision:false };
+            if (cp === 'scientific') return { files:true, inventory:false, training:false, glpVision:true, glpStatus:false, supervision:false };
+            if (cp === 'non_scientific') return { files:true, inventory:true, training:true, glpVision:false, glpStatus:true, supervision: role === 'supervisor' };
+            // standard or custom: role-based
+            if (role === 'pi') return { files:true, inventory:true, training:true, glpVision:true, glpStatus:true, supervision:false };
+            if (role === 'supervisor') return { files:true, inventory:true, training:true, glpVision:true, glpStatus:true, supervision:true };
+            return { files:true, inventory:true, training:true, glpVision:true, glpStatus:true, supervision:false };
+        }
+
         // Load user info
         async function loadUser() {
             try {
@@ -2446,13 +2458,19 @@
                 if (response.status === 401) { window.location.href = 'access.html'; return; }
                 const data = await response.json();
                 const user = data.user || data;
+                // Compute effective tab visibility based on clearance_profile
+                const userClearanceProfile = user.clearance_profile || 'standard';
                 let userTabVisibility = null;
                 try {
-                    userTabVisibility = user.tab_visibility_json
-                        ? (typeof user.tab_visibility_json === 'string'
+                    if (userClearanceProfile === 'custom' && user.tab_visibility_json) {
+                        // Custom profile: use manually saved overrides
+                        userTabVisibility = typeof user.tab_visibility_json === 'string'
                             ? JSON.parse(user.tab_visibility_json)
-                            : user.tab_visibility_json)
-                        : null;
+                            : user.tab_visibility_json;
+                    } else {
+                        // Non-custom: compute profile defaults (same logic as PI modal)
+                        userTabVisibility = _natLabTabDefaults(user.role || 'researcher', userClearanceProfile);
+                    }
                 } catch (e) {
                     console.warn('Failed to parse tab_visibility_json', e);
                     userTabVisibility = null;
@@ -2490,7 +2508,8 @@
                 if (currentUserRole === 'supervisor') {
                     document.getElementById('roleBadge').classList.remove('hidden');
                     const supTab = document.getElementById('supervisionTabBtn');
-                    if (supTab && (!userTabVisibility || userTabVisibility.supervision !== false)) {
+                    // Tab visibility controls whether supervision tab appears (profile-driven or custom override)
+                    if (supTab && userTabVisibility && userTabVisibility.supervision !== false) {
                         supTab.style.display = 'block';
                     }
                 }

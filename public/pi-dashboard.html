@@ -484,6 +484,7 @@
         .uc-tv-slider:before { content: ""; position: absolute; height: 14px; width: 14px; left: 3px; bottom: 3px; background: white; transition: 0.2s; border-radius: 50%; }
         .uc-tv-switch input:checked + .uc-tv-slider { background: #10b981; }
         .uc-tv-switch input:checked + .uc-tv-slider:before { transform: translateX(16px); }
+        .uc-tv-slider-ro { opacity: 0.45; cursor: default; }
         .uc-tv-preset-btn { background: none; border: 1px solid #d1d5db; border-radius: 4px; padding: 3px 8px; font-size: 11px; color: #6b7280; cursor: pointer; transition: 0.15s; }
         .uc-tv-preset-btn:hover { background: #f3f4f6; color: #374151; border-color: #9ca3af; }
 
@@ -9118,67 +9119,87 @@ function dicBuildPdfViewerSrc(fileUrl) {
         }
 
         // ---- Tab Visibility Configuration (migration 058) ----
+        // Real upload.html portal tabs only
         const UC_TAB_KEYS = [
-            { key: 'dashboard',            label: 'Dashboard' },
-            { key: 'lab_files',            label: 'GLP Vision' },
-            { key: 'glp_console',          label: 'GLP Status' },
-            { key: 'group_docs',           label: 'Group Docs' },
-            { key: 'user_mgmt',            label: 'User Control' },
-            { key: 'training',             label: 'Training' },
-            { key: 'purchases_inventory',  label: 'Inventory' },
-            { key: 'backup',               label: 'Backup' },
-            { key: 'oligo_id',             label: 'Oligo-ID' },
-            { key: 'modules',              label: 'Modules' }
+            { key: 'files',       label: 'Files & Documents' },
+            { key: 'inventory',   label: 'Purchases & Inventory' },
+            { key: 'training',    label: 'Training & Approvals' },
+            { key: 'glpVision',   label: 'GLP Vision' },
+            { key: 'glpStatus',   label: 'GLP Status' },
+            { key: 'supervision', label: 'Supervision' }
         ];
 
-        // Role-aware defaults: PI sees all, Supervisor broad, Researcher standard
-        const UC_TAB_DEFAULTS = {
-            pi:         { dashboard:true, lab_files:true, glp_console:true, group_docs:true, user_mgmt:true, training:true, purchases_inventory:true, backup:true, oligo_id:true, modules:true },
-            supervisor: { dashboard:true, lab_files:true, glp_console:true, group_docs:true, user_mgmt:false, training:true, purchases_inventory:true, backup:false, oligo_id:true, modules:false },
-            researcher: { dashboard:true, lab_files:true, glp_console:true, group_docs:true, user_mgmt:false, training:true, purchases_inventory:true, backup:false, oligo_id:false, modules:false }
-        };
-
-        function ucGetTabDefaults(role) {
-            return UC_TAB_DEFAULTS[role] || UC_TAB_DEFAULTS.researcher;
+        // Profile+role-aware defaults for NAT-Lab portal tabs
+        function ucGetTabDefaults(role, clearanceProfile) {
+            const cp = clearanceProfile || 'standard';
+            if (cp === 'upload_only') return { files:true, inventory:false, training:false, glpVision:false, glpStatus:false, supervision:false };
+            if (cp === 'scientific') return { files:true, inventory:false, training:false, glpVision:true, glpStatus:false, supervision:false };
+            if (cp === 'non_scientific') return { files:true, inventory:true, training:true, glpVision:false, glpStatus:true, supervision: role === 'supervisor' };
+            // standard or custom: role-based
+            if (role === 'pi') return { files:true, inventory:true, training:true, glpVision:true, glpStatus:true, supervision:false };
+            if (role === 'supervisor') return { files:true, inventory:true, training:true, glpVision:true, glpStatus:true, supervision:true };
+            // researcher default
+            return { files:true, inventory:true, training:true, glpVision:true, glpStatus:true, supervision:false };
         }
 
-        function ucRenderTabVisibility(id, role, tabVisJson) {
+        function ucRenderTabVisibility(id, role, clearanceProfile, tabVisJson) {
+            const cp = clearanceProfile || 'standard';
+            const isCustom = cp === 'custom';
             let parsed = {};
-            if (tabVisJson) {
+            if (tabVisJson && isCustom) {
                 try { parsed = typeof tabVisJson === 'string' ? JSON.parse(tabVisJson) : tabVisJson; } catch(e) {}
             }
-            const defaults = ucGetTabDefaults(role);
-            const merged = { ...defaults, ...parsed };
+            const defaults = ucGetTabDefaults(role, cp);
+            const values = isCustom ? { ...defaults, ...parsed } : defaults;
+            const disabledAttr = isCustom ? '' : ' disabled';
             const rows = UC_TAB_KEYS.map(t => {
-                const visible = merged[t.key] !== false;
+                const visible = values[t.key] !== false;
                 return `<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0f0f0;">
-                    <span style="font-size:12px;color:#374151;">${t.label}</span>
+                    <span style="font-size:12px;color:#374151;${isCustom ? '' : 'opacity:0.6;'}">${t.label}</span>
                     <label class="uc-tv-switch">
-                        <input type="checkbox" id="${id}_tv_${t.key}" ${visible ? 'checked' : ''}>
-                        <span class="uc-tv-slider"></span>
+                        <input type="checkbox" id="${id}_tv_${t.key}" ${visible ? 'checked' : ''}${disabledAttr}>
+                        <span class="uc-tv-slider${isCustom ? '' : ' uc-tv-slider-ro'}"></span>
                     </label>
                 </div>`;
             }).join('');
 
-            return `<div class="clearance-section" style="margin-top:12px;">
+            const note = isCustom
+                ? 'Manual tab control is active. Toggle tabs visible or hidden for this user.'
+                : 'Tab visibility follows the selected clearance profile. Manual tab control is available only for Custom profile.';
+            const presetBtn = isCustom
+                ? `<button type="button" class="uc-tv-preset-btn" onclick="ucApplyTabPreset('${id}','${role}')" title="Reset to role defaults">Reset Defaults</button>`
+                : '';
+
+            return `<div class="clearance-section" id="${id}_tvSection" style="margin-top:12px;">
                 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
                     <h3 style="margin:0;">Tab Visibility</h3>
-                    <button type="button" class="uc-tv-preset-btn" onclick="ucApplyTabPreset('${id}','${role}')" title="Reset to role defaults">
-                        Reset to ${(role || 'researcher').charAt(0).toUpperCase() + (role || 'researcher').slice(1)} Defaults
-                    </button>
+                    ${presetBtn}
                 </div>
-                <div class="helper-text" style="margin-bottom:8px;">Control which portal tabs are visible for this user. Hidden tabs are not accessible.</div>
+                <div class="helper-text" style="margin-bottom:8px;">${note}</div>
                 <div id="${id}_tvGrid" style="background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:8px 12px;">
                     ${rows}
                 </div>
             </div>`;
         }
 
+        // Re-render tab visibility when clearance profile changes
+        function ucRefreshTabVisibility(id) {
+            const cp = document.getElementById(id + '_clearance')?.value || 'standard';
+            const role = document.getElementById(id + '_role')?.value || 'researcher';
+            const section = document.getElementById(id + '_tvSection');
+            if (!section) return;
+            // Re-render in place
+            const tmp = document.createElement('div');
+            tmp.innerHTML = ucRenderTabVisibility(id, role, cp, null);
+            section.replaceWith(tmp.firstElementChild);
+        }
+
         function ucApplyTabPreset(id, role) {
-            const defaults = ucGetTabDefaults(role);
+            const cp = document.getElementById(id + '_clearance')?.value || 'standard';
+            const defaults = ucGetTabDefaults(role, cp);
             UC_TAB_KEYS.forEach(t => {
                 const el = document.getElementById(id + '_tv_' + t.key);
-                if (el) el.checked = defaults[t.key] !== false;
+                if (el && !el.disabled) el.checked = defaults[t.key] !== false;
             });
         }
 
@@ -9234,13 +9255,15 @@ function dicBuildPdfViewerSrc(fileUrl) {
             custom: 'Custom: manual tab/module selection mode.'
         };
 
-        // Update clearance hint text and show/hide module selection
+        // Update clearance hint text and show/hide module selection + refresh tab visibility
         function ucClearanceChanged(id) {
             const cp = document.getElementById(id + '_clearance')?.value || 'standard';
             const hintEl = document.getElementById(id + '_clearanceHint');
             const moduleEl = document.getElementById(id + '_moduleSelect');
             if (hintEl) hintEl.textContent = UC_CLEARANCE_HINTS[cp] || '';
             if (moduleEl) moduleEl.style.display = (cp === 'non_scientific' || cp === 'custom') ? '' : 'none';
+            // Refresh tab visibility section for natlab workspace
+            if (id.endsWith('_natlab')) ucRefreshTabVisibility(id);
         }
 
         // Show role-based note (Supervision/PI Portal are role-based)
@@ -9258,6 +9281,8 @@ function dicBuildPdfViewerSrc(fileUrl) {
                 noteEl.style.display = 'none';
                 noteEl.textContent = '';
             }
+            // Refresh tab visibility when natlab role changes (affects defaults)
+            if (id.endsWith('_natlab')) ucRefreshTabVisibility(id);
         }
 
         function ucCollectWsData(prefix) {
@@ -9282,8 +9307,8 @@ function dicBuildPdfViewerSrc(fileUrl) {
                 if (cp === 'non_scientific' || cp === 'custom') {
                     entry.module_access_json = ucCollectModuleAccess(id);
                 }
-                // Include tab_visibility_json for natlab workspace
-                if (ws.slug === 'natlab') {
+                // Include tab_visibility_json only for natlab + custom clearance profile
+                if (ws.slug === 'natlab' && cp === 'custom') {
                     entry.tab_visibility_json = ucCollectTabVisibility(id);
                 }
                 result.push(entry);
@@ -9434,7 +9459,8 @@ function dicBuildPdfViewerSrc(fileUrl) {
                     ${(() => {
                         const natM = mMap['natlab'] || {};
                         const role = natM.role || u.role || 'researcher';
-                        return ucRenderTabVisibility('ucWs_natlab', role, natM.tab_visibility_json);
+                        const cp = natM.clearance_profile || 'standard';
+                        return ucRenderTabVisibility('ucWs_natlab', role, cp, natM.tab_visibility_json);
                     })()}
                 `;
 

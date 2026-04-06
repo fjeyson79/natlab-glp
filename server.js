@@ -1507,24 +1507,29 @@ app.get('/api/di/me', requireAuth, async (req, res) => {
     if (req.session.user.user_type) base.user_type = req.session.user.user_type;
     if (req.session.user.access_tier) base.access_tier = req.session.user.access_tier;
 
-    // NAT-Lab tab visibility (migration 058)
+    // NAT-Lab clearance profile + tab visibility (migration 041/058)
     try {
         const hasWu = await checkWuTable();
+        const hasClearance = hasWu && await checkWuClearanceCols();
         const hasTabVisibility = hasWu && await checkTabVisibilityCol();
-        if (hasWu && hasTabVisibility) {
+        if (hasWu) {
+            const cpCol = hasClearance ? ', wu.clearance_profile' : '';
+            const tvCol = hasTabVisibility ? ', wu.tab_visibility_json' : '';
             const result = await pool.query(
-                `SELECT wu.tab_visibility_json
+                `SELECT wu.role${cpCol}${tvCol}
                  FROM workspace_users wu
                  JOIN workspaces w ON w.id = wu.workspace_id
                  WHERE wu.user_id = $1 AND w.slug = 'natlab' AND wu.is_active = TRUE`,
                 [req.session.user.researcher_id]
             );
-            if (result.rows.length > 0 && result.rows[0].tab_visibility_json) {
-                base.tab_visibility_json = result.rows[0].tab_visibility_json;
+            if (result.rows.length > 0) {
+                const row = result.rows[0];
+                if (hasClearance && row.clearance_profile) base.clearance_profile = row.clearance_profile;
+                if (hasTabVisibility && row.tab_visibility_json) base.tab_visibility_json = row.tab_visibility_json;
             }
         }
     } catch (err) {
-        console.error('[ME] NATLAB tab visibility error:', err.message);
+        console.error('[ME] NATLAB clearance/tab visibility error:', err.message);
     }
 
     // Enrich with startup position if requesting from a COMPANY workspace
