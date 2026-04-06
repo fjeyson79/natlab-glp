@@ -2441,7 +2441,8 @@
 
         // Shared NAT-Lab tab visibility resolver — mirrors server-side computeEffectiveAccess
         // Maps effective access keys to upload.html portal tab keys
-        function resolveNatLabVisibleTabs({ role, clearance_profile, module_access_json }) {
+        // tab_visibility_json: per-user overrides for standard profile (e.g. {"inventory":false})
+        function resolveNatLabVisibleTabs({ role, clearance_profile, module_access_json, tab_visibility_json }) {
             const r = (role || 'researcher').toLowerCase();
             const cp = clearance_profile || 'standard';
             const a = { upload:false, glp_vision:false, inventory:false, training:false, glp_status:false, supervision:false };
@@ -2452,6 +2453,15 @@
                 a.upload = true; a.glp_vision = true;
             } else if (cp === 'standard') {
                 a.upload = true; a.glp_vision = true; a.inventory = true; a.training = true; a.glp_status = true;
+                // Apply per-user tab overrides for standard profile
+                let ov = {};
+                if (tab_visibility_json) {
+                    try { ov = typeof tab_visibility_json === 'string' ? JSON.parse(tab_visibility_json) : tab_visibility_json; } catch(e) {}
+                }
+                if (ov.inventory === false) a.inventory = false;
+                if (ov.training === false) a.training = false;
+                if (ov.glpStatus === false) a.glp_status = false;
+                if (ov.supervision === false) a.supervision = false;
             } else if (cp === 'non_scientific' || cp === 'custom') {
                 let m = {};
                 if (module_access_json) {
@@ -2460,7 +2470,20 @@
                 a.upload = m.upload === true; a.glp_vision = m.glp_vision === true;
                 a.inventory = m.inventory === true; a.training = m.training === true; a.glp_status = m.glp_status === true;
             }
-            if (r === 'supervisor') a.supervision = true;
+            // Hard rules: locked tabs always on, supervision only for supervisors
+            a.upload = true; a.glp_vision = true;
+            if (r !== 'supervisor') a.supervision = false;
+            if (r === 'supervisor' && cp === 'standard') {
+                // Allow supervisor opt-out via standard override
+                let ov = {};
+                if (tab_visibility_json) {
+                    try { ov = typeof tab_visibility_json === 'string' ? JSON.parse(tab_visibility_json) : tab_visibility_json; } catch(e) {}
+                }
+                if (ov.supervision === false) a.supervision = false;
+                else a.supervision = true;
+            } else if (r === 'supervisor') {
+                a.supervision = true;
+            }
             return { files: a.upload, inventory: a.inventory, training: a.training, glpVision: a.glp_vision, glpStatus: a.glp_status, supervision: a.supervision };
         }
 
@@ -2471,13 +2494,14 @@
                 if (response.status === 401) { window.location.href = 'access.html'; return; }
                 const data = await response.json();
                 const user = data.user || data;
-                // Compute effective tab visibility from clearance profile + module access
+                // Compute effective tab visibility from clearance profile + module access + standard overrides
                 let userTabVisibility = null;
                 try {
                     userTabVisibility = resolveNatLabVisibleTabs({
                         role: user.role,
                         clearance_profile: user.clearance_profile,
-                        module_access_json: user.module_access_json
+                        module_access_json: user.module_access_json,
+                        tab_visibility_json: user.tab_visibility_json
                     });
                 } catch (e) {
                     console.warn('Tab visibility resolve failed', e);

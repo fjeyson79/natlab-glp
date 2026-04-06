@@ -1507,16 +1507,18 @@ app.get('/api/di/me', requireAuth, async (req, res) => {
     if (req.session.user.user_type) base.user_type = req.session.user.user_type;
     if (req.session.user.access_tier) base.access_tier = req.session.user.access_tier;
 
-    // NAT-Lab clearance profile + module access (for frontend tab visibility resolver)
+    // NAT-Lab clearance profile + module access + tab overrides (for frontend tab visibility resolver)
     try {
         const hasWu = await checkWuTable();
         const hasClearance = hasWu && await checkWuClearanceCols();
         const hasModuleAccess = hasWu && await checkModuleAccessCol();
+        const hasTabVis = hasWu && await checkTabVisibilityCol();
         if (hasWu) {
             const cpCol = hasClearance ? ', wu.clearance_profile' : '';
             const maCol = hasModuleAccess ? ', wu.module_access_json' : '';
+            const tvCol = hasTabVis ? ', wu.tab_visibility_json' : '';
             const result = await pool.query(
-                `SELECT wu.role${cpCol}${maCol}
+                `SELECT wu.role${cpCol}${maCol}${tvCol}
                  FROM workspace_users wu
                  JOIN workspaces w ON w.id = wu.workspace_id
                  WHERE wu.user_id = $1 AND w.slug = 'natlab' AND wu.is_active = TRUE`,
@@ -1526,6 +1528,7 @@ app.get('/api/di/me', requireAuth, async (req, res) => {
                 const row = result.rows[0];
                 if (hasClearance && row.clearance_profile) base.clearance_profile = row.clearance_profile;
                 if (hasModuleAccess && row.module_access_json) base.module_access_json = row.module_access_json;
+                if (hasTabVis && row.tab_visibility_json) base.tab_visibility_json = row.tab_visibility_json;
             }
         }
     } catch (err) {

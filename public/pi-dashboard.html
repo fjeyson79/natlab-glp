@@ -9112,33 +9112,41 @@ function dicBuildPdfViewerSrc(fileUrl) {
             if (hint) hint.style.display = sel.value === 'custom' ? 'block' : 'none';
         }
 
-        // ---- Portal Tab Visibility Preview (read-only) ----
+        // ---- Portal Tab Visibility ----
         // Shared resolver: computes which NAT-Lab portal tabs a user sees.
         // Mirrors server-side computeEffectiveAccess logic, mapped to upload.html tab keys.
         // Used in PI modal preview AND upload.html live enforcement.
         const NATLAB_PORTAL_TABS = [
-            { key: 'files',       label: 'Files & Documents',      accessKey: 'upload' },
-            { key: 'inventory',   label: 'Purchases & Inventory',  accessKey: 'inventory' },
-            { key: 'training',    label: 'Training & Approvals',   accessKey: 'training' },
-            { key: 'glpVision',   label: 'GLP Vision',             accessKey: 'glp_vision' },
-            { key: 'glpStatus',   label: 'GLP Status',             accessKey: 'glp_status' },
-            { key: 'supervision', label: 'Supervision',            accessKey: 'supervision' }
+            { key: 'files',       label: 'Files & Documents',      accessKey: 'upload',      locked: true },
+            { key: 'inventory',   label: 'Purchases & Inventory',  accessKey: 'inventory',   locked: false },
+            { key: 'training',    label: 'Training & Approvals',   accessKey: 'training',    locked: false },
+            { key: 'glpVision',   label: 'GLP Vision',             accessKey: 'glp_vision',  locked: true },
+            { key: 'glpStatus',   label: 'GLP Status',             accessKey: 'glp_status',  locked: false },
+            { key: 'supervision', label: 'Supervision',            accessKey: 'supervision', locked: false }
         ];
 
-        function resolveNatLabVisibleTabs({ role, clearance_profile, module_access_json, membership_class }) {
+        // tab_visibility_json stores optional overrides for standard profile:
+        //   { "inventory": false, "glpStatus": false } — absent keys = default on
+        function resolveNatLabVisibleTabs({ role, clearance_profile, module_access_json, tab_visibility_json }) {
             const r = (role || 'researcher').toLowerCase();
             const cp = clearance_profile || 'standard';
-            // Start all off
             const a = { upload:false, glp_vision:false, inventory:false, training:false, glp_status:false, supervision:false };
-            // Role-based (always on)
             if (r === 'supervisor') a.supervision = true;
-            // Clearance-based
             if (cp === 'upload_only') {
                 a.upload = true;
             } else if (cp === 'scientific') {
                 a.upload = true; a.glp_vision = true;
             } else if (cp === 'standard') {
                 a.upload = true; a.glp_vision = true; a.inventory = true; a.training = true; a.glp_status = true;
+                // Apply per-user tab overrides for standard profile
+                let ov = {};
+                if (tab_visibility_json) {
+                    try { ov = typeof tab_visibility_json === 'string' ? JSON.parse(tab_visibility_json) : tab_visibility_json; } catch(e) {}
+                }
+                if (ov.inventory === false) a.inventory = false;
+                if (ov.training === false) a.training = false;
+                if (ov.glpStatus === false) a.glp_status = false;
+                if (ov.supervision === false) a.supervision = false;
             } else if (cp === 'non_scientific' || cp === 'custom') {
                 let m = {};
                 if (module_access_json) {
@@ -9147,45 +9155,106 @@ function dicBuildPdfViewerSrc(fileUrl) {
                 a.upload = m.upload === true; a.glp_vision = m.glp_vision === true;
                 a.inventory = m.inventory === true; a.training = m.training === true; a.glp_status = m.glp_status === true;
             }
-            // Re-assert role-based
-            if (r === 'supervisor') a.supervision = true;
+            // Hard rules: locked tabs always on, supervision only for supervisors
+            a.upload = true; a.glp_vision = true;
+            if (r !== 'supervisor') a.supervision = false;
+            if (r === 'supervisor' && cp === 'standard') {
+                // Allow supervisor opt-out via standard override
+                let ov = {};
+                if (tab_visibility_json) {
+                    try { ov = typeof tab_visibility_json === 'string' ? JSON.parse(tab_visibility_json) : tab_visibility_json; } catch(e) {}
+                }
+                if (ov.supervision === false) a.supervision = false;
+                else a.supervision = true;
+            } else if (r === 'supervisor') {
+                a.supervision = true;
+            }
             // Map to portal tab keys
             const result = {};
             NATLAB_PORTAL_TABS.forEach(t => { result[t.key] = a[t.accessKey] || false; });
             return result;
         }
 
-        function ucRenderTabPreview(id, role, clearanceProfile, moduleAccessJson) {
-            const vis = resolveNatLabVisibleTabs({ role, clearance_profile: clearanceProfile, module_access_json: moduleAccessJson });
+        function ucRenderTabPreview(id, role, clearanceProfile, moduleAccessJson, tabVisJson) {
+            const cp = clearanceProfile || 'standard';
+            const isStandard = cp === 'standard';
+            const vis = resolveNatLabVisibleTabs({ role, clearance_profile: cp, module_access_json: moduleAccessJson, tab_visibility_json: tabVisJson });
+
+            // For standard: parse existing overrides to set checkbox state
+            let ov = {};
+            if (isStandard && tabVisJson) {
+                try { ov = typeof tabVisJson === 'string' ? JSON.parse(tabVisJson) : tabVisJson; } catch(e) {}
+            }
+
             const rows = NATLAB_PORTAL_TABS.map(t => {
                 const on = vis[t.key];
-                return `<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0f0f0;">
-                    <span style="font-size:12px;color:${on ? '#374151' : '#9ca3af'};">${t.label}</span>
-                    <span class="uc-tv-badge ${on ? 'uc-tv-on' : 'uc-tv-off'}">${on ? 'Visible' : 'Hidden'}</span>
-                </div>`;
+                if (isStandard) {
+                    // Standard: show checkboxes
+                    const isLocked = t.locked;
+                    // Supervision is locked-off if not supervisor
+                    const isSupervisor = (role || '').toLowerCase() === 'supervisor';
+                    const supLocked = t.key === 'supervision' && !isSupervisor;
+                    const disabled = isLocked || supLocked;
+                    const checked = on;
+                    const lockLabel = isLocked ? ' <span style="font-size:10px;color:#9ca3af;">(always on)</span>'
+                        : supLocked ? ' <span style="font-size:10px;color:#9ca3af;">(role required)</span>' : '';
+                    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0f0f0;">
+                        <label style="display:flex;align-items:center;gap:6px;margin:0;font-size:12px;color:${disabled ? '#9ca3af' : '#374151'};cursor:${disabled ? 'default' : 'pointer'};">
+                            <input type="checkbox" id="${id}_st_${t.key}" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}
+                                onchange="ucRefreshTabVisibility('${id}')" style="margin:0;">
+                            ${t.label}${lockLabel}
+                        </label>
+                    </div>`;
+                } else {
+                    // Other profiles: read-only badges
+                    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0f0f0;">
+                        <span style="font-size:12px;color:${on ? '#374151' : '#9ca3af'};">${t.label}</span>
+                        <span class="uc-tv-badge ${on ? 'uc-tv-on' : 'uc-tv-off'}">${on ? 'Visible' : 'Hidden'}</span>
+                    </div>`;
+                }
             }).join('');
+
+            const helperText = isStandard
+                ? 'For Standard clearance, optional tabs can be enabled or disabled per user. Files &amp; Documents and GLP Vision are always included.'
+                : 'These tabs reflect the user\'s current effective NAT-Lab portal access.';
+
             return `<div class="clearance-section" id="${id}_tvSection" style="margin-top:12px;">
                 <h3 style="margin:0 0 6px 0;">Portal Tab Visibility</h3>
-                <div class="helper-text" style="margin-bottom:8px;">These tabs reflect the user's current effective NAT-Lab portal access.</div>
+                <div class="helper-text" style="margin-bottom:8px;">${helperText}</div>
                 <div id="${id}_tvGrid" style="background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:8px 12px;">
                     ${rows}
                 </div>
             </div>`;
         }
 
-        // Re-render preview when role or clearance profile changes
+        // Collect standard tab overrides (only non-default values)
+        function ucCollectStandardTabOverrides(id) {
+            const ov = {};
+            NATLAB_PORTAL_TABS.forEach(t => {
+                if (t.locked) return; // always on, skip
+                const el = document.getElementById(id + '_st_' + t.key);
+                if (el && !el.disabled && !el.checked) ov[t.key] = false;
+            });
+            return Object.keys(ov).length > 0 ? ov : null;
+        }
+
+        // Re-render preview when role, clearance profile, or module checkboxes change
         function ucRefreshTabVisibility(id) {
             const cp = document.getElementById(id + '_clearance')?.value || 'standard';
             const role = document.getElementById(id + '_role')?.value || 'researcher';
             const section = document.getElementById(id + '_tvSection');
             if (!section) return;
-            // For custom/non_scientific, read current module checkboxes
             let moduleJson = null;
             if (cp === 'non_scientific' || cp === 'custom') {
                 moduleJson = ucCollectModuleAccess(id);
             }
+            // For standard, read current checkbox state as overrides
+            let tabVisJson = null;
+            if (cp === 'standard') {
+                tabVisJson = ucCollectStandardTabOverrides(id);
+            }
             const tmp = document.createElement('div');
-            tmp.innerHTML = ucRenderTabPreview(id, role, cp, moduleJson);
+            tmp.innerHTML = ucRenderTabPreview(id, role, cp, moduleJson, tabVisJson);
             section.replaceWith(tmp.firstElementChild);
         }
 
@@ -9284,6 +9353,11 @@ function dicBuildPdfViewerSrc(fileUrl) {
                 // Include module_access_json for non_scientific/custom
                 if (cp === 'non_scientific' || cp === 'custom') {
                     entry.module_access_json = ucCollectModuleAccess(id);
+                }
+                // Include standard tab overrides for natlab
+                if (ws.slug === 'natlab' && cp === 'standard') {
+                    const ov = ucCollectStandardTabOverrides(id);
+                    entry.tab_visibility_json = ov || {};  // empty = all defaults
                 }
                 result.push(entry);
             }
@@ -9434,7 +9508,7 @@ function dicBuildPdfViewerSrc(fileUrl) {
                         const natM = mMap['natlab'] || {};
                         const role = natM.role || u.role || 'researcher';
                         const cp = natM.clearance_profile || 'standard';
-                        return ucRenderTabPreview('ucWs_natlab', role, cp, natM.module_access_json);
+                        return ucRenderTabPreview('ucWs_natlab', role, cp, natM.module_access_json, natM.tab_visibility_json);
                     })()}
                 `;
 
