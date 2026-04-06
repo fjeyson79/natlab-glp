@@ -9080,6 +9080,7 @@ function dicBuildPdfViewerSrc(fileUrl) {
                             <label style="font-size:11px;font-weight:600;margin-bottom:4px;display:block;">Module Access Selection</label>
                             ${ucModuleCheckboxes(id, d.module_access_json)}
                         </div>
+                        ${ws.slug === 'natlab' ? ucRenderStandardTabSelect(id, d.role || '', d.tab_visibility_json) : ''}
                         <div class="checkbox-row" style="margin-top:8px;">
                             <label><input type="checkbox" id="${id}_sci" ${d.scientific_access !== false ? 'checked' : ''}> Scientific</label>
                             <label><input type="checkbox" id="${id}_ops" ${d.operational_access !== false ? 'checked' : ''}> Operational</label>
@@ -9175,70 +9176,83 @@ function dicBuildPdfViewerSrc(fileUrl) {
             return result;
         }
 
-        function ucRenderTabPreview(id, role, clearanceProfile, moduleAccessJson, tabVisJson) {
-            const cp = clearanceProfile || 'standard';
-            const isStandard = cp === 'standard';
-            const vis = resolveNatLabVisibleTabs({ role, clearance_profile: cp, module_access_json: moduleAccessJson, tab_visibility_json: tabVisJson });
-
-            // For standard: parse existing overrides to set checkbox state
+        // Render Standard Tab Selection block (editable, lives inside clearance controls area)
+        function ucRenderStandardTabSelect(id, role, tabVisJson) {
             let ov = {};
-            if (isStandard && tabVisJson) {
+            if (tabVisJson) {
                 try { ov = typeof tabVisJson === 'string' ? JSON.parse(tabVisJson) : tabVisJson; } catch(e) {}
             }
+            const r = (role || 'researcher').toLowerCase();
+            const isSup = r === 'supervisor';
+            // Optional tabs for standard profile (files & glpVision always on, not shown here)
+            const opts = [
+                { key: 'inventory', label: 'Purchases & Inventory' },
+                { key: 'training',  label: 'Training & Approvals' },
+                { key: 'glpStatus', label: 'GLP Status' },
+                { key: 'supervision', label: 'Supervision' }
+            ];
+            const boxes = opts.map(o => {
+                const isSup_ = o.key === 'supervision';
+                const disabled = isSup_ && !isSup;
+                const checked = isSup_ ? (isSup && ov.supervision !== false) : (ov[o.key] !== false);
+                const suffix = isSup_ && !isSup ? ' <span style="color:#9ca3af;">(role required)</span>' : '';
+                return `<label style="display:inline-flex;align-items:center;gap:4px;margin:2px 12px 2px 0;font-size:11px;color:${disabled ? '#9ca3af' : '#374151'};">` +
+                    `<input type="checkbox" id="${id}_st_${o.key}" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}` +
+                    ` onchange="ucRefreshTabVisibility('${id}')"> ${o.label}${suffix}</label>`;
+            }).join('');
+            return `<div id="${id}_stdTabSelect" style="margin-top:8px;display:none;border:1px solid #e2e8f0;border-radius:6px;padding:8px;">
+                <label style="font-size:11px;font-weight:600;margin-bottom:4px;display:block;">Standard Tab Selection</label>
+                <div style="font-size:10px;color:#6b7280;margin-bottom:6px;">Files &amp; Documents and GLP Vision are always included. Select additional tabs below.</div>
+                ${boxes}
+            </div>`;
+        }
 
+        // Re-render standard tab select when role changes (supervision disabled state)
+        function ucRefreshStdTabSelect(id) {
+            const container = document.getElementById(id + '_stdTabSelect');
+            if (!container) return;
+            const role = document.getElementById(id + '_role')?.value || 'researcher';
+            // Preserve current overrides before re-render
+            const ov = ucCollectStandardTabOverrides(id) || {};
+            const wasVisible = container.style.display !== 'none';
+            const tmp = document.createElement('div');
+            tmp.innerHTML = ucRenderStandardTabSelect(id, role, ov);
+            container.replaceWith(tmp.firstElementChild);
+            // Restore visibility
+            const newEl = document.getElementById(id + '_stdTabSelect');
+            if (newEl && wasVisible) newEl.style.display = '';
+        }
+
+        // Read-only preview: always shows badges, never editable
+        function ucRenderTabPreview(id, role, clearanceProfile, moduleAccessJson, tabVisJson) {
+            const vis = resolveNatLabVisibleTabs({ role, clearance_profile: clearanceProfile, module_access_json: moduleAccessJson, tab_visibility_json: tabVisJson });
             const rows = NATLAB_PORTAL_TABS.map(t => {
                 const on = vis[t.key];
-                if (isStandard) {
-                    // Standard: show checkboxes
-                    const isLocked = t.locked;
-                    // Supervision is locked-off if not supervisor
-                    const isSupervisor = (role || '').toLowerCase() === 'supervisor';
-                    const supLocked = t.key === 'supervision' && !isSupervisor;
-                    const disabled = isLocked || supLocked;
-                    const checked = on;
-                    const lockLabel = isLocked ? ' <span style="font-size:10px;color:#9ca3af;">(always on)</span>'
-                        : supLocked ? ' <span style="font-size:10px;color:#9ca3af;">(role required)</span>' : '';
-                    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0f0f0;">
-                        <label style="display:flex;align-items:center;gap:6px;margin:0;font-size:12px;color:${disabled ? '#9ca3af' : '#374151'};cursor:${disabled ? 'default' : 'pointer'};">
-                            <input type="checkbox" id="${id}_st_${t.key}" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}
-                                onchange="ucRefreshTabVisibility('${id}')" style="margin:0;">
-                            ${t.label}${lockLabel}
-                        </label>
-                    </div>`;
-                } else {
-                    // Other profiles: read-only badges
-                    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0f0f0;">
-                        <span style="font-size:12px;color:${on ? '#374151' : '#9ca3af'};">${t.label}</span>
-                        <span class="uc-tv-badge ${on ? 'uc-tv-on' : 'uc-tv-off'}">${on ? 'Visible' : 'Hidden'}</span>
-                    </div>`;
-                }
+                return `<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f0f0f0;">
+                    <span style="font-size:12px;color:${on ? '#374151' : '#9ca3af'};">${t.label}</span>
+                    <span class="uc-tv-badge ${on ? 'uc-tv-on' : 'uc-tv-off'}">${on ? 'Visible' : 'Hidden'}</span>
+                </div>`;
             }).join('');
-
-            const helperText = isStandard
-                ? 'For Standard clearance, optional tabs can be enabled or disabled per user. Files &amp; Documents and GLP Vision are always included.'
-                : 'These tabs reflect the user\'s current effective NAT-Lab portal access.';
-
             return `<div class="clearance-section" id="${id}_tvSection" style="margin-top:12px;">
                 <h3 style="margin:0 0 6px 0;">Portal Tab Visibility</h3>
-                <div class="helper-text" style="margin-bottom:8px;">${helperText}</div>
+                <div class="helper-text" style="margin-bottom:8px;">These tabs reflect the user's current effective NAT-Lab portal access.</div>
                 <div id="${id}_tvGrid" style="background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:8px 12px;">
                     ${rows}
                 </div>
             </div>`;
         }
 
-        // Collect standard tab overrides (only non-default values)
+        // Collect standard tab overrides from clearance controls area (only non-default values)
         function ucCollectStandardTabOverrides(id) {
             const ov = {};
-            NATLAB_PORTAL_TABS.forEach(t => {
-                if (t.locked) return; // always on, skip
-                const el = document.getElementById(id + '_st_' + t.key);
-                if (el && !el.disabled && !el.checked) ov[t.key] = false;
+            ['inventory', 'training', 'glpStatus', 'supervision'].forEach(key => {
+                const el = document.getElementById(id + '_st_' + key);
+                if (el && !el.disabled && !el.checked) ov[key] = false;
             });
             return Object.keys(ov).length > 0 ? ov : null;
         }
 
-        // Re-render preview when role, clearance profile, or module checkboxes change
+        // Re-render read-only preview when clearance controls change
         function ucRefreshTabVisibility(id) {
             const cp = document.getElementById(id + '_clearance')?.value || 'standard';
             const role = document.getElementById(id + '_role')?.value || 'researcher';
@@ -9248,7 +9262,6 @@ function dicBuildPdfViewerSrc(fileUrl) {
             if (cp === 'non_scientific' || cp === 'custom') {
                 moduleJson = ucCollectModuleAccess(id);
             }
-            // For standard, read current checkbox state as overrides
             let tabVisJson = null;
             if (cp === 'standard') {
                 tabVisJson = ucCollectStandardTabOverrides(id);
@@ -9302,14 +9315,16 @@ function dicBuildPdfViewerSrc(fileUrl) {
             custom: 'Custom: manual tab/module selection mode.'
         };
 
-        // Update clearance hint text and show/hide module selection + refresh tab visibility
+        // Update clearance hint text and show/hide module selection + standard tab selection + refresh preview
         function ucClearanceChanged(id) {
             const cp = document.getElementById(id + '_clearance')?.value || 'standard';
             const hintEl = document.getElementById(id + '_clearanceHint');
             const moduleEl = document.getElementById(id + '_moduleSelect');
+            const stdTabEl = document.getElementById(id + '_stdTabSelect');
             if (hintEl) hintEl.textContent = UC_CLEARANCE_HINTS[cp] || '';
             if (moduleEl) moduleEl.style.display = (cp === 'non_scientific' || cp === 'custom') ? '' : 'none';
-            // Refresh tab visibility section for natlab workspace
+            if (stdTabEl) stdTabEl.style.display = (cp === 'standard') ? '' : 'none';
+            // Refresh read-only tab visibility preview for natlab workspace
             if (id.endsWith('_natlab')) ucRefreshTabVisibility(id);
         }
 
@@ -9328,8 +9343,11 @@ function dicBuildPdfViewerSrc(fileUrl) {
                 noteEl.style.display = 'none';
                 noteEl.textContent = '';
             }
-            // Refresh tab visibility when natlab role changes (affects defaults)
-            if (id.endsWith('_natlab')) ucRefreshTabVisibility(id);
+            // Refresh standard tab select + preview when natlab role changes
+            if (id.endsWith('_natlab')) {
+                ucRefreshStdTabSelect(id);
+                ucRefreshTabVisibility(id);
+            }
         }
 
         function ucCollectWsData(prefix) {
