@@ -5308,6 +5308,10 @@
             const updateBtn = document.getElementById('bmUpdateBtn');
             const dropWrap = document.getElementById('bmDropdownWrap');
 
+            // + Meeting dropdown always visible for CEO/CSO
+            const canManage = bmIsCeoOrCso();
+            dropWrap.style.display = canManage ? '' : 'none';
+
             if (!m) {
                 titleEl.textContent = 'Board Meeting';
                 dateEl.textContent = '';
@@ -5316,7 +5320,7 @@
                 footerEl.textContent = '';
                 noticeEl.style.display = 'none';
                 completeBtn.style.display = 'none';
-                dropWrap.style.display = bmIsCeoOrCso() ? '' : 'none';
+                if (updateBtn) updateBtn.style.display = 'none';
                 return;
             }
 
@@ -5331,13 +5335,10 @@
             // Cancelled notice
             noticeEl.style.display = m.status === 'CANCELLED' ? '' : 'none';
 
-            // Controls visibility (CEO/CSO only)
-            const canManage = bmIsCeoOrCso();
-            dropWrap.style.display = canManage ? '' : 'none';
+            // Complete + Update visibility
             const locked = bmIsLocked();
             completeBtn.style.display = (canManage && !locked) ? '' : 'none';
             completeBtn.disabled = locked;
-            // Disable Update mode for locked meetings
             if (updateBtn) updateBtn.style.display = locked ? 'none' : '';
 
             // Render content lists
