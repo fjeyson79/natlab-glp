@@ -2446,6 +2446,17 @@
                 if (response.status === 401) { window.location.href = 'access.html'; return; }
                 const data = await response.json();
                 const user = data.user || data;
+                let userTabVisibility = null;
+                try {
+                    userTabVisibility = user.tab_visibility_json
+                        ? (typeof user.tab_visibility_json === 'string'
+                            ? JSON.parse(user.tab_visibility_json)
+                            : user.tab_visibility_json)
+                        : null;
+                } catch (e) {
+                    console.warn('Failed to parse tab_visibility_json', e);
+                    userTabVisibility = null;
+                }
                   currentUserId = user.researcher_id;
 
                   // GLP Status header identity (session user only, never snapshot)
@@ -2474,12 +2485,36 @@
                 badge.textContent = user.affiliation;
                 badge.classList.add(user.affiliation);
 
-                // Check if user is a supervisor - show supervision tab (role-based, always)
+                // Check if user is a supervisor
                 currentUserRole = (user.role || '').toLowerCase();
                 if (currentUserRole === 'supervisor') {
                     document.getElementById('roleBadge').classList.remove('hidden');
                     const supTab = document.getElementById('supervisionTabBtn');
-                    if (supTab) supTab.style.display = 'block';
+                    if (supTab && (!userTabVisibility || userTabVisibility.supervision !== false)) {
+                        supTab.style.display = 'block';
+                    }
+                }
+
+                // Apply per-user tab visibility (migration 058)
+                try {
+                    const tabMap = {
+                        files: '[data-section="files"]',
+                        inventory: '[data-section="inventory"]',
+                        training: '[data-section="training"]',
+                        glpVision: '[data-section="glpVision"]',
+                        glpStatus: '#tabGLPStatus',
+                        supervision: '#supervisionTabBtn'
+                    };
+                    if (userTabVisibility) {
+                        Object.entries(tabMap).forEach(([key, selector]) => {
+                            if (userTabVisibility[key] === false) {
+                                const el = document.querySelector(selector);
+                                if (el) el.style.display = 'none';
+                            }
+                        });
+                    }
+                } catch (e) {
+                    console.warn('Tab visibility apply failed', e);
                 }
 
                 // Show InternalDocs dropdown for PI users

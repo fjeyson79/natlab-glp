@@ -1507,6 +1507,26 @@ app.get('/api/di/me', requireAuth, async (req, res) => {
     if (req.session.user.user_type) base.user_type = req.session.user.user_type;
     if (req.session.user.access_tier) base.access_tier = req.session.user.access_tier;
 
+    // NAT-Lab tab visibility (migration 058)
+    try {
+        const hasWu = await checkWuTable();
+        const hasTabVisibility = hasWu && await checkTabVisibilityCol();
+        if (hasWu && hasTabVisibility) {
+            const result = await pool.query(
+                `SELECT wu.tab_visibility_json
+                 FROM workspace_users wu
+                 JOIN workspaces w ON w.id = wu.workspace_id
+                 WHERE wu.user_id = $1 AND w.slug = 'natlab' AND wu.is_active = TRUE`,
+                [req.session.user.researcher_id]
+            );
+            if (result.rows.length > 0 && result.rows[0].tab_visibility_json) {
+                base.tab_visibility_json = result.rows[0].tab_visibility_json;
+            }
+        }
+    } catch (err) {
+        console.error('[ME] NATLAB tab visibility error:', err.message);
+    }
+
     // Enrich with startup position if requesting from a COMPANY workspace
     const wsSlug = req.query.workspace || req.headers['x-workspace-slug'] || '';
     if (wsSlug && wsSlug !== 'natlab') {
