@@ -20308,6 +20308,128 @@ app.patch('/api/theralia/board-meetings/:id/complete', requireAuth, requireCeoOr
     }
 });
 
+// =====================================================
+// BOARD MEETING FILES (Migration 060)
+// =====================================================
+
+// Helper: check if board meeting files table exists
+let bmFilesTableExists = null;
+let bmFilesTableLastCheck = 0;
+async function checkBmFilesTable() {
+    const now = Date.now();
+    if (bmFilesTableExists === null || bmFilesTableExists === false || (now - bmFilesTableLastCheck > ROLE_COLUMN_CHECK_INTERVAL)) {
+        try {
+            const r = await pool.query(`SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name='theralia_board_meeting_files') AS ok`);
+            bmFilesTableExists = r.rows[0]?.ok || false;
+            bmFilesTableLastCheck = now;
+        } catch { bmFilesTableExists = false; }
+    }
+    return bmFilesTableExists;
+}
+
+// Helper: check if the current user is a Theralia founder
+const BM_FOUNDER_POSITIONS = ['ceo', 'cso', 'cto', 'coo', 'advisor'];
+async function isBmFounder(req) {
+    const pos = await getPositionForReq(req);
+    if (BM_FOUNDER_POSITIONS.includes(pos)) return true;
+    // Check is_workspace_master and custom_position_title from DB
+    try {
+        const r = await pool.query(
+            `SELECT wu.is_workspace_master, wu.custom_position_title
+             FROM workspace_users wu JOIN workspaces w ON w.id = wu.workspace_id
+             WHERE wu.user_id = $1 AND w.slug = 'theralia' AND wu.is_active = TRUE LIMIT 1`,
+            [req.session.user.researcher_id]
+        );
+        if (!r.rows.length) return false;
+        if (r.rows[0].is_workspace_master === true) return true;
+        const cpt = (r.rows[0].custom_position_title || '').toLowerCase();
+        if (cpt.includes('founder')) return true;
+    } catch { /* fall through */ }
+    return false;
+}
+
+async function requireBmFounder(req, res, next) {
+    if (await isBmFounder(req)) return next();
+    return res.status(403).json({ error: 'Founder role required' });
+}
+
+// Multer for board meeting PDF uploads
+const bmFileUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 15 * 1024 * 1024 }, // 15MB
+    fileFilter: (req, file, cb) => {
+        const name = (file.originalname || '').toLowerCase();
+        const mt = (file.mimetype || '').toLowerCase();
+        if (mt === 'application/pdf' || name.endsWith('.pdf')) return cb(null, true);
+        return cb(new Error('Only PDF files are accepted'), false);
+    }
+});
+
+// POST /api/theralia/board-meetings/:id/files — upload a PDF for a board meeting (founders only)
+app.post('/api/theralia/board-meetings/:id/files', requireAuth, requireBmFounder, bmFileUpload.single('file'), async (req, res) => {
+    try {
+        if (!(await checkBmFilesTable())) return res.status(503).json({ error: 'Board meeting files not available' });
+        if (!req.file) return res.status(400).json({ error: 'No file provided' });
+        // Verify meeting exists
+        const mtg = await pool.query(`SELECT id FROM theralia_board_meetings WHERE id = $1`, [req.params.id]);
+        if (mtg.rows.length === 0) return res.status(404).json({ error: 'Meeting not found' });
+        const userId = req.session.user.researcher_id;
+        const origName = req.file.originalname || 'document.pdf';
+        const safeName = origName.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const ts = Date.now();
+        const r2Key = `theralia/board-meetings/${req.params.id}/${ts}_${safeName}`;
+        await uploadToR2(req.file.buffer, r2Key, 'application/pdf');
+        const r = await pool.query(
+            `INSERT INTO theralia_board_meeting_files (meeting_id, file_name, original_name, r2_object_key, uploaded_by)
+             VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+            [req.params.id, safeName, origName, r2Key, userId]
+        );
+        const pos = await getPositionForReq(req);
+        logAudit({ actor_id: userId, actor_position: pos, action: 'MEETING_FILE_UPLOADED', target_type: 'board_meeting_file', target_id: String(r.rows[0].id), detail: { meeting_id: parseInt(req.params.id), file_name: origName } });
+        res.json({ success: true, file: r.rows[0] });
+    } catch (err) {
+        console.error('[BM-FILES] Upload error:', err);
+        if (err.message === 'Only PDF files are accepted') return res.status(400).json({ error: err.message });
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/theralia/board-meetings/:id/files — list all PDFs for a board meeting
+app.get('/api/theralia/board-meetings/:id/files', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkBmFilesTable())) return res.json({ success: true, files: [] });
+        const r = await pool.query(
+            `SELECT id, meeting_id, file_name, original_name, uploaded_by, uploaded_at
+             FROM theralia_board_meeting_files WHERE meeting_id = $1 ORDER BY uploaded_at DESC`,
+            [req.params.id]
+        );
+        res.json({ success: true, files: r.rows });
+    } catch (err) {
+        console.error('[BM-FILES] List error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET /api/theralia/board-meeting-files/:fileId/view — stream PDF for inline viewing
+app.get('/api/theralia/board-meeting-files/:fileId/view', requireAuth, async (req, res) => {
+    try {
+        if (!(await checkBmFilesTable())) return res.status(404).json({ error: 'Not found' });
+        const r = await pool.query(
+            `SELECT r2_object_key, original_name FROM theralia_board_meeting_files WHERE id = $1`,
+            [req.params.fileId]
+        );
+        if (r.rows.length === 0) return res.status(404).json({ error: 'File not found' });
+        const obj = await downloadFromR2(r.rows[0].r2_object_key);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', 'inline; filename="' + (r.rows[0].original_name || 'document.pdf') + '"');
+        if (obj.ContentLength) res.setHeader('Content-Length', obj.ContentLength);
+        obj.Body.pipe(res);
+    } catch (err) {
+        console.error('[BM-FILES] View error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
 // POST /api/investor/log-tab-access — Lightweight tab access tracking for investors
 app.post('/api/investor/log-tab-access', requireAuth, async (req, res) => {
     try {

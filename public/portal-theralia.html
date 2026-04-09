@@ -682,6 +682,75 @@
             margin-bottom: 12px;
         }
 
+        /* ---- Board Meeting Documents ---- */
+        .bm-docs-section {
+            margin-top: 18px; padding-top: 16px;
+            border-top: 1px solid rgba(0,0,0,0.05);
+        }
+        .bm-docs-header {
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        .bm-docs-upload-btn {
+            display: inline-flex; align-items: center; gap: 5px;
+            background: #1a1c22; color: #fff; border: none; border-radius: 6px;
+            padding: 5px 12px; font-size: 11px; font-weight: 600;
+            cursor: pointer; font-family: inherit; transition: background 0.15s;
+        }
+        .bm-docs-upload-btn:hover { background: #2e3039; }
+        .bm-docs-upload-btn:disabled { opacity: 0.5; cursor: default; }
+        .bm-docs-list { list-style: none; margin: 0; padding: 0; }
+        .bm-docs-item {
+            display: flex; align-items: center; gap: 10px;
+            padding: 8px 10px; border-radius: 7px; cursor: pointer;
+            transition: background 0.12s; border: 1px solid transparent;
+        }
+        .bm-docs-item:hover { background: #f4f5f7; border-color: rgba(0,0,0,0.04); }
+        .bm-docs-icon {
+            width: 28px; height: 28px; background: rgba(220,38,38,0.06);
+            border-radius: 6px; display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0; color: #dc2626; font-size: 11px; font-weight: 700;
+        }
+        .bm-docs-name {
+            flex: 1; min-width: 0; font-size: 12.5px; font-weight: 500;
+            color: #2a2d35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .bm-docs-date { font-size: 10.5px; color: #9a9ea8; white-space: nowrap; }
+        .bm-docs-empty {
+            font-size: 12px; color: #b0b4be; font-style: italic;
+            padding: 8px 0;
+        }
+        .bm-docs-uploading {
+            font-size: 11px; color: #6b7280; padding: 6px 0;
+        }
+        /* Board meeting PDF viewer overlay — mirrors investor tab pattern */
+        .bm-pdf-viewer {
+            display: none; position: fixed; top: 56px; left: 0; right: 0; bottom: 0;
+            z-index: 90; flex-direction: column; background: #f6f7f9;
+        }
+        .bm-pdf-viewer.active { display: flex; }
+        .bm-pdf-bar {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 10px 16px; background: #ffffff;
+            border-bottom: 1px solid #e0e2e6; flex-shrink: 0;
+        }
+        .bm-pdf-bar-left { display: flex; align-items: center; gap: 10px; }
+        .bm-pdf-bar-title {
+            font-size: 12.5px; font-weight: 600; color: #2a2d35;
+            max-width: 400px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .bm-pdf-bar-btn {
+            display: inline-flex; align-items: center; gap: 5px;
+            padding: 6px 14px; border: 1px solid #e0e2e6; border-radius: 6px;
+            font-size: 12px; font-weight: 600; color: #2a2d35;
+            background: #ffffff; cursor: pointer; transition: border-color 0.12s;
+            font-family: inherit;
+        }
+        .bm-pdf-bar-btn:hover { border-color: #16a34a; }
+        .bm-pdf-frame {
+            flex: 1; width: 100%; border: none;
+        }
+
         /* ---- KV Rows ---- */
         .kv-row {
             display: flex; gap: 6px; margin-bottom: 8px;
@@ -3268,6 +3337,21 @@
                     <div class="bm-restricted" id="bmRestrict-action" style="display:none;font-size:11px;color:#b0b4be;font-style:italic;margin-top:4px">This is a CEO exclusive area.</div>
                 </div>
 
+                <!-- Meeting Documents -->
+                <div class="bm-docs-section" id="bmDocsSection">
+                    <div class="bm-docs-header">
+                        <div class="section-label">Meeting Documents</div>
+                        <button class="bm-docs-upload-btn" id="bmDocsUploadBtn" style="display:none;" onclick="bmDocsPickFile()">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+                            Upload PDF
+                        </button>
+                        <input type="file" id="bmDocsFileInput" accept=".pdf,application/pdf" style="display:none;" onchange="bmDocsUploadFile(this)">
+                    </div>
+                    <div id="bmDocsUploading" class="bm-docs-uploading" style="display:none;">Uploading...</div>
+                    <ul class="bm-docs-list" id="bmDocsList"></ul>
+                    <div class="bm-docs-empty" id="bmDocsEmpty">No documents attached.</div>
+                </div>
+
                 <div class="card-footer">
                     <span id="bmFooterLabel"></span>
                     <span></span>
@@ -3460,6 +3544,24 @@
                     <textarea class="pn-textarea" id="pnTextarea" placeholder="Type your private notes for this board meeting..."></textarea>
                     <div class="pn-saved" id="pnSaved"></div>
                 </div>
+            </div>
+
+            <!-- Board Meeting PDF Viewer -->
+            <div class="bm-pdf-viewer" id="bmPdfViewer">
+                <div class="bm-pdf-bar">
+                    <div class="bm-pdf-bar-left">
+                        <button class="bm-pdf-bar-btn" onclick="bmPdfClose()">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                            Back
+                        </button>
+                        <span class="bm-pdf-bar-title" id="bmPdfTitle"></span>
+                    </div>
+                    <button class="bm-pdf-bar-btn" onclick="bmPdfClose()">
+                        Close
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                    </button>
+                </div>
+                <iframe class="bm-pdf-frame" id="bmPdfFrame"></iframe>
             </div>
 
         </div>
@@ -4934,6 +5036,7 @@
         /* ============================================== */
         let _userAuthority = {};
         let _userPosition = '';
+        let _userCustomPositionTitle = '';
         let _userClearance = {};
 
         async function loadUser() {
@@ -4956,6 +5059,7 @@
                 document.getElementById('userName').textContent = user.name || user.researcher_id || '';
 
                 _userPosition = (user.workspace_position || '').toLowerCase();
+                _userCustomPositionTitle = (user.custom_position_title || '').toLowerCase();
                 let roleText = (user.role || '').toUpperCase();
                 if (user.workspace_position && user.workspace_position.toLowerCase() !== (user.role || '').toLowerCase()) {
                     roleText += ' \u00B7 ' + user.workspace_position.toUpperCase();
@@ -5267,7 +5371,9 @@
             } else {
                 bmCurrentMeeting = null;
                 bmContentCache = {};
+                bmDocsCache = [];
                 bmRenderUI();
+                bmDocsRender();
             }
         }
 
@@ -5518,6 +5624,99 @@
                 else alert(d.error || 'Failed');
             } catch { alert('Network error'); }
         }
+
+        /* ---- Meeting Documents ---- */
+        let bmDocsCache = [];
+        const BM_FOUNDER_POS = ['ceo','cso','cto','coo','advisor'];
+
+        function bmIsFounder() {
+            return BM_FOUNDER_POS.includes(_userPosition)
+                || hasAuthority('is_workspace_master')
+                || _userCustomPositionTitle.includes('founder');
+        }
+
+        async function bmDocsLoad() {
+            if (!bmCurrentMeeting) { bmDocsCache = []; bmDocsRender(); return; }
+            try {
+                const r = await fetch('/api/theralia/board-meetings/' + bmCurrentMeeting.id + '/files', { credentials:'include' });
+                const d = await r.json();
+                bmDocsCache = d.files || [];
+            } catch { bmDocsCache = []; }
+            bmDocsRender();
+        }
+
+        function bmDocsRender() {
+            const list = document.getElementById('bmDocsList');
+            const empty = document.getElementById('bmDocsEmpty');
+            const uploadBtn = document.getElementById('bmDocsUploadBtn');
+            uploadBtn.style.display = (bmIsFounder() && bmCurrentMeeting) ? '' : 'none';
+            if (bmDocsCache.length === 0) {
+                list.innerHTML = '';
+                empty.style.display = '';
+                return;
+            }
+            empty.style.display = 'none';
+            list.innerHTML = bmDocsCache.map(f => {
+                const dt = new Date(f.uploaded_at);
+                const dateStr = dt.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+                return '<li class="bm-docs-item" onclick="bmDocsOpen(' + f.id + ',\'' + dashSubEsc(f.original_name).replace(/'/g, "\\'") + '\')">' +
+                    '<div class="bm-docs-icon">PDF</div>' +
+                    '<div class="bm-docs-name" title="' + dashSubEsc(f.original_name) + '">' + dashSubEsc(f.original_name) + '</div>' +
+                    '<div class="bm-docs-date">' + dateStr + '</div>' +
+                    '</li>';
+            }).join('');
+        }
+
+        function bmDocsPickFile() {
+            document.getElementById('bmDocsFileInput').value = '';
+            document.getElementById('bmDocsFileInput').click();
+        }
+
+        async function bmDocsUploadFile(input) {
+            if (!input.files || !input.files[0] || !bmCurrentMeeting) return;
+            const file = input.files[0];
+            if (!file.name.toLowerCase().endsWith('.pdf')) {
+                alert('Only PDF files are accepted.');
+                return;
+            }
+            const uploadBtn = document.getElementById('bmDocsUploadBtn');
+            const uploading = document.getElementById('bmDocsUploading');
+            uploadBtn.disabled = true;
+            uploading.style.display = '';
+            try {
+                const fd = new FormData();
+                fd.append('file', file);
+                const r = await fetch('/api/theralia/board-meetings/' + bmCurrentMeeting.id + '/files', {
+                    method: 'POST', credentials: 'include', body: fd
+                });
+                const d = await r.json();
+                if (d.success) {
+                    await bmDocsLoad();
+                } else {
+                    alert(d.error || 'Upload failed');
+                }
+            } catch { alert('Network error'); }
+            uploadBtn.disabled = false;
+            uploading.style.display = 'none';
+        }
+
+        function bmDocsOpen(fileId, title) {
+            document.getElementById('bmPdfTitle').textContent = title || 'Document';
+            document.getElementById('bmPdfFrame').src = '/api/theralia/board-meeting-files/' + fileId + '/view#toolbar=0&navpanes=0&scrollbar=1';
+            document.getElementById('bmPdfViewer').classList.add('active');
+        }
+
+        function bmPdfClose() {
+            document.getElementById('bmPdfViewer').classList.remove('active');
+            document.getElementById('bmPdfFrame').src = '';
+        }
+
+        // Hook documents load into meeting selection
+        const _origBmSelectMeeting = bmSelectMeeting;
+        bmSelectMeeting = async function(id) {
+            await _origBmSelectMeeting(id);
+            await bmDocsLoad();
+        };
 
         // ---- Init ----
         bmLoadMeetings();
