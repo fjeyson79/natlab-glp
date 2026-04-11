@@ -13414,8 +13414,16 @@ app.get('/api/glp/status/group/weeks', requirePI, async (req, res) => {
 });
 
 // Fetch group snapshot — PI only
-app.get('/api/glp/status/group/snapshot', requirePI, async (req, res) => {
+app.get('/api/glp/status/group/snapshot', async (req, res) => {
     try {
+        // Dual auth: API key (curl/n8n) OR PI session (browser)
+        const apiKey = (req.headers['x-api-key'] || '').toString().trim();
+        const validApiKey = apiKey && apiKey === ((process.env.API_SECRET_KEY || '').toString().trim());
+        const validSession = req.session && req.session.user && req.session.user.role === 'pi';
+        if (!validApiKey && !validSession) {
+            return res.status(401).json({ error: 'Not authenticated' });
+        }
+
         if (!(await checkGroupIndexTable())) return res.status(404).json({ error: 'No data available' });
 
         const cohortId = (req.query.cohort_id || '').toUpperCase();
