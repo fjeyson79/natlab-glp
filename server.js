@@ -21812,14 +21812,20 @@ async function callOpenClaw(payload) {
         let chatPath = process.env.OPENCLAW_CHAT_PATH || '/v1/chat/completions';
         if (!chatPath.startsWith('/')) chatPath = '/' + chatPath;
         const url = baseUrl.replace(/\/$/, '') + chatPath;
+        console.log('[ZOE] -> POST ' + url);
         const r = await fetch(url, {
             method: 'POST', headers, body: JSON.stringify(payload), signal: ctrl.signal,
         });
         const text = await r.text();
+        const ctype = r.headers.get('content-type') || '';
+        console.log('[ZOE] <- status=' + r.status + ' content-type=' + ctype + ' body[0..200]=' + (text || '').slice(0, 200).replace(/\s+/g, ' '));
         let data = {};
         try { data = JSON.parse(text); } catch (_) { data = { reply: text }; }
-        if (!r.ok) return { reply: "[Zoe upstream error] " + (data.error || r.statusText) };
-        return { reply: data.reply || data.text || data.message || '(no content)' };
+        if (!r.ok) {
+            const snippet = (text || '').slice(0, 200);
+            return { reply: "[Zoe upstream error] HTTP " + r.status + " " + r.statusText + (snippet ? " — " + snippet : '') };
+        }
+        return { reply: data.reply || data.text || data.message || (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || '(no content)' };
     } catch (err) {
         return { reply: "[Zoe connectivity error] " + err.message };
     } finally {
@@ -21988,6 +21994,63 @@ app.post('/api/zoe/glp-context', requirePI, async (req, res) => {
         res.json({ ok: true, glpContext: req.session.zoeGlpContext });
     } catch (err) {
         res.status(500).json({ error: 'Failed to cache GLP context' });
+    }
+});
+
+// PI-only debug: report computed OpenClaw upstream config (no secrets).
+app.get('/api/zoe/debug-openclaw', requirePI, (req, res) => {
+    const baseUrl = process.env.OPENCLAW_BASE_URL || null;
+    let chatPath = process.env.OPENCLAW_CHAT_PATH || '/v1/chat/completions';
+    if (chatPath && !chatPath.startsWith('/')) chatPath = '/' + chatPath;
+    const computed = baseUrl ? (baseUrl.replace(/\/$/, '') + chatPath) : null;
+    res.json({
+        openclaw_base_url: baseUrl,
+        openclaw_chat_path: chatPath,
+        computed_upstream_url: computed,
+        openclaw_auth_header: process.env.OPENCLAW_AUTH_HEADER || 'Authorization',
+        has_openclaw_api_key: !!process.env.OPENCLAW_API_KEY,
+        timeout_ms: parseInt(process.env.OPENCLAW_TIMEOUT_MS || '30000', 10),
+    });
+});
+
+// PI-only one-shot connectivity test: minimal POST to the configured URL.
+// Returns status code and a short snippet of the response body. No secrets exposed.
+app.get('/api/zoe/test-openclaw', requirePI, async (req, res) => {
+    const baseUrl = process.env.OPENCLAW_BASE_URL;
+    if (!baseUrl) return res.status(400).json({ error: 'OPENCLAW_BASE_URL not set' });
+    let chatPath = process.env.OPENCLAW_CHAT_PATH || '/v1/chat/completions';
+    if (!chatPath.startsWith('/')) chatPath = '/' + chatPath;
+    const url = baseUrl.replace(/\/$/, '') + chatPath;
+    const headers = { 'Content-Type': 'application/json' };
+    if (process.env.OPENCLAW_API_KEY) {
+        const authHeader = process.env.OPENCLAW_AUTH_HEADER || 'Authorization';
+        const val = authHeader.toLowerCase() === 'authorization'
+            ? 'Bearer ' + process.env.OPENCLAW_API_KEY
+            : process.env.OPENCLAW_API_KEY;
+        headers[authHeader] = val;
+    }
+    const body = {
+        model: 'default',
+        messages: [{ role: 'user', content: 'ping' }],
+        max_tokens: 8,
+    };
+    const ctrl = new AbortController();
+    const tm = setTimeout(() => ctrl.abort(), 15000);
+    try {
+        const r = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body), signal: ctrl.signal });
+        const text = await r.text();
+        res.json({
+            url,
+            status: r.status,
+            statusText: r.statusText,
+            content_type: r.headers.get('content-type') || null,
+            body_snippet: (text || '').slice(0, 200),
+            ok: r.ok,
+        });
+    } catch (err) {
+        res.status(502).json({ url, error: err.message });
+    } finally {
+        clearTimeout(tm);
     }
 });
 
