@@ -22036,7 +22036,10 @@ app.get('/api/zoe/debug-openclaw', requirePI, (req, res) => {
         computed_upstream_url: computed,
         openclaw_auth_header: process.env.OPENCLAW_AUTH_HEADER || 'Authorization',
         has_openclaw_api_key: !!process.env.OPENCLAW_API_KEY,
-        timeout_ms: parseInt(process.env.OPENCLAW_TIMEOUT_MS || '30000', 10),
+        openclaw_model_effective: process.env.OPENCLAW_MODEL || 'default',
+        openclaw_timeout_ms_effective: parseInt(process.env.OPENCLAW_TIMEOUT_MS || '60000', 10),
+        openclaw_max_tokens_effective: process.env.OPENCLAW_MAX_TOKENS ? parseInt(process.env.OPENCLAW_MAX_TOKENS, 10) : null,
+        openclaw_temperature_effective: process.env.OPENCLAW_TEMPERATURE ? parseFloat(process.env.OPENCLAW_TEMPERATURE) : null,
     });
 });
 
@@ -22071,6 +22074,8 @@ app.get('/api/zoe/test-openclaw', requirePI, async (req, res) => {
         const text = await r.text();
         res.json({
             url,
+            request_model_used: body.model,
+            request_timeout_ms: timeoutMs,
             status: r.status,
             statusText: r.statusText,
             content_type: r.headers.get('content-type') || null,
@@ -22080,7 +22085,7 @@ app.get('/api/zoe/test-openclaw', requirePI, async (req, res) => {
     } catch (err) {
         const msg = err && err.message ? err.message : String(err);
         const isTimeout = msg.startsWith('TIMEOUT_');
-        res.status(isTimeout ? 504 : 502).json({ url, error: msg, timeout: isTimeout });
+        res.status(isTimeout ? 504 : 502).json({ url, request_model_used: body.model, request_timeout_ms: timeoutMs, error: msg, timeout: isTimeout });
     }
 });
 
