@@ -21789,33 +21789,57 @@ async function zoeExtractFileText(file) {
     return null;
 }
 
+// Build an OpenAI-compatible /v1/chat/completions body from our internal Zoe payload.
+function zoeBuildChatCompletionsBody(payload) {
+    const model = process.env.OPENCLAW_MODEL || 'default';
+    const messages = [];
+    if (payload.system) messages.push({ role: 'system', content: String(payload.system) });
+    // Attach portal context as a second system message so OpenClaw has grounding.
+    const ctxBits = [];
+    if (payload.mode) ctxBits.push('Mode: ' + payload.mode);
+    if (payload.workspace) ctxBits.push('Workspace: ' + payload.workspace);
+    if (payload.selected_file) ctxBits.push('Selected file: ' + JSON.stringify(payload.selected_file).slice(0, 2000));
+    if (payload.glp_context) ctxBits.push('GLP Vision context: ' + JSON.stringify(payload.glp_context).slice(0, 1000));
+    if (payload.portal_summary) ctxBits.push('Portal summary: ' + JSON.stringify(payload.portal_summary).slice(0, 1000));
+    if (ctxBits.length) messages.push({ role: 'system', content: ctxBits.join('\n') });
+    messages.push({ role: 'user', content: String(payload.message || '').slice(0, 8000) });
+    const body = { model, messages };
+    if (process.env.OPENCLAW_MAX_TOKENS) body.max_tokens = parseInt(process.env.OPENCLAW_MAX_TOKENS, 10);
+    if (process.env.OPENCLAW_TEMPERATURE) body.temperature = parseFloat(process.env.OPENCLAW_TEMPERATURE);
+    return body;
+}
+
 async function callOpenClaw(payload) {
     const baseUrl = process.env.OPENCLAW_BASE_URL;
-    const timeoutMs = parseInt(process.env.OPENCLAW_TIMEOUT_MS || '30000', 10);
+    const timeoutMs = parseInt(process.env.OPENCLAW_TIMEOUT_MS || '60000', 10);
     if (!baseUrl) {
         // Safe placeholder if OpenClaw is not yet wired — echo a graceful reply.
         return { reply: "[Zoe offline] OPENCLAW_BASE_URL is not configured. Your message was received: " + (payload.message || '').slice(0, 400) };
     }
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+    const headers = { 'Content-Type': 'application/json' };
+    if (process.env.OPENCLAW_API_KEY) {
+        const authHeader = process.env.OPENCLAW_AUTH_HEADER || 'Authorization';
+        const val = authHeader.toLowerCase() === 'authorization'
+            ? 'Bearer ' + process.env.OPENCLAW_API_KEY
+            : process.env.OPENCLAW_API_KEY;
+        headers[authHeader] = val;
+    }
+    // Path is configurable. OpenClaw (Hostinger VPS) exposes OpenAI-compatible
+    // /v1/chat/completions behind the nginx-token gateway.
+    let chatPath = process.env.OPENCLAW_CHAT_PATH || '/v1/chat/completions';
+    if (!chatPath.startsWith('/')) chatPath = '/' + chatPath;
+    const url = baseUrl.replace(/\/$/, '') + chatPath;
+    const body = zoeBuildChatCompletionsBody(payload);
+
+    console.log('[ZOE] -> POST ' + url + ' model=' + body.model + ' msgs=' + body.messages.length);
+    // Promise.race timeout — no AbortController (avoids node-fetch abort quirks
+    // that surfaced as "The user aborted a request" on long OpenClaw responses).
+    const fetchPromise = fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
+    const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('TIMEOUT_' + timeoutMs + 'ms')), timeoutMs)
+    );
     try {
-        const headers = { 'Content-Type': 'application/json' };
-        if (process.env.OPENCLAW_API_KEY) {
-            const authHeader = process.env.OPENCLAW_AUTH_HEADER || 'Authorization';
-            const val = authHeader.toLowerCase() === 'authorization'
-                ? 'Bearer ' + process.env.OPENCLAW_API_KEY
-                : process.env.OPENCLAW_API_KEY;
-            headers[authHeader] = val;
-        }
-        // Path is configurable. Discovered OpenClaw default is /v1/chat/completions
-        // (token-auth gateway on port 18791). Override via OPENCLAW_CHAT_PATH if needed.
-        let chatPath = process.env.OPENCLAW_CHAT_PATH || '/v1/chat/completions';
-        if (!chatPath.startsWith('/')) chatPath = '/' + chatPath;
-        const url = baseUrl.replace(/\/$/, '') + chatPath;
-        console.log('[ZOE] -> POST ' + url);
-        const r = await fetch(url, {
-            method: 'POST', headers, body: JSON.stringify(payload), signal: ctrl.signal,
-        });
+        const r = await Promise.race([fetchPromise, timeoutPromise]);
         const text = await r.text();
         const ctype = r.headers.get('content-type') || '';
         console.log('[ZOE] <- status=' + r.status + ' content-type=' + ctype + ' body[0..200]=' + (text || '').slice(0, 200).replace(/\s+/g, ' '));
@@ -21825,11 +21849,14 @@ async function callOpenClaw(payload) {
             const snippet = (text || '').slice(0, 200);
             return { reply: "[Zoe upstream error] HTTP " + r.status + " " + r.statusText + (snippet ? " — " + snippet : '') };
         }
-        return { reply: data.reply || data.text || data.message || (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || '(no content)' };
+        const content = (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content)
+            || data.reply || data.text || data.message;
+        return { reply: content || '(no content)' };
     } catch (err) {
-        return { reply: "[Zoe connectivity error] " + err.message };
-    } finally {
-        clearTimeout(t);
+        if (err && typeof err.message === 'string' && err.message.startsWith('TIMEOUT_')) {
+            return { reply: "[Zoe timeout] Upstream did not respond within " + timeoutMs + "ms." };
+        }
+        return { reply: "[Zoe connectivity error] " + (err && err.message ? err.message : String(err)) };
     }
 }
 
@@ -22030,14 +22057,17 @@ app.get('/api/zoe/test-openclaw', requirePI, async (req, res) => {
         headers[authHeader] = val;
     }
     const body = {
-        model: 'default',
+        model: process.env.OPENCLAW_MODEL || 'default',
         messages: [{ role: 'user', content: 'ping' }],
         max_tokens: 8,
     };
-    const ctrl = new AbortController();
-    const tm = setTimeout(() => ctrl.abort(), 15000);
+    const timeoutMs = 20000;
+    const fetchPromise = fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
+    const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('TIMEOUT_' + timeoutMs + 'ms')), timeoutMs)
+    );
     try {
-        const r = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body), signal: ctrl.signal });
+        const r = await Promise.race([fetchPromise, timeoutPromise]);
         const text = await r.text();
         res.json({
             url,
@@ -22048,9 +22078,9 @@ app.get('/api/zoe/test-openclaw', requirePI, async (req, res) => {
             ok: r.ok,
         });
     } catch (err) {
-        res.status(502).json({ url, error: err.message });
-    } finally {
-        clearTimeout(tm);
+        const msg = err && err.message ? err.message : String(err);
+        const isTimeout = msg.startsWith('TIMEOUT_');
+        res.status(isTimeout ? 504 : 502).json({ url, error: msg, timeout: isTimeout });
     }
 });
 
