@@ -2224,6 +2224,11 @@
 .or-filters { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; align-items:center; }
 .or-filters select, .or-filters input { padding:4px 8px; border:1px solid #d1d5db; border-radius:5px; font-size:12px; }
 
+/* Zoe quick-action chips — distinct from .tab-btn so they do not inherit nav padding */
+.zoe-quick-btn { padding:5px 10px; font-size:12px; background:#f1f5f9; color:#334155; border:1px solid #d0d5dd; border-radius:14px; cursor:pointer; line-height:1.2; }
+.zoe-quick-btn:hover { background:#e2e8f0; }
+#zoeChatInput:disabled, #zoeSendBtn:disabled { opacity:.55; cursor:not-allowed; }
+
 </style>
 </head>
 <body>
@@ -4058,19 +4063,19 @@
 
         <div style="display:grid; grid-template-columns: 1.4fr 1fr; gap:16px;">
             <!-- LEFT: Chat -->
-            <div style="border:1px solid #d0d5dd; border-radius:10px; background:white; display:flex; flex-direction:column; height:640px;">
-                <div style="padding:10px 14px; border-bottom:1px solid #e2e8f0; font-weight:600; color:#1a365d;">Chat</div>
-                <div id="zoeChatLog" style="flex:1; overflow-y:auto; padding:14px; display:flex; flex-direction:column; gap:10px; background:#fafbfc;"></div>
-                <div style="padding:8px 12px; border-top:1px solid #e2e8f0; display:flex; gap:6px; flex-wrap:wrap;">
-                    <button onclick="zoeQuick('Summarize recent activity')" class="tab-btn" style="padding:4px 10px; font-size:12px;">Summarize activity</button>
-                    <button onclick="zoeQuick('Review recent files')" class="tab-btn" style="padding:4px 10px; font-size:12px;">Review recent files</button>
-                    <button onclick="zoeQuick('What is pending in GLP?')" class="tab-btn" style="padding:4px 10px; font-size:12px;">Pending GLP</button>
-                    <button onclick="zoeQuick('Give me a researcher overview')" class="tab-btn" style="padding:4px 10px; font-size:12px;">Researcher overview</button>
-                    <button onclick="zoeQuick('Give me an overview of the current file')" class="tab-btn" style="padding:4px 10px; font-size:12px;">Current GLP file</button>
+            <div style="border:1px solid #d0d5dd; border-radius:10px; background:white; display:flex; flex-direction:column; height:640px; min-height:480px; overflow:hidden;">
+                <div style="padding:10px 14px; border-bottom:1px solid #e2e8f0; font-weight:600; color:#1a365d; flex:0 0 auto;">Chat</div>
+                <div id="zoeChatLog" style="flex:1 1 auto; min-height:0; overflow-y:auto; padding:14px; display:flex; flex-direction:column; gap:10px; background:#fafbfc;"></div>
+                <div style="padding:8px 12px; border-top:1px solid #e2e8f0; display:flex; gap:6px; flex-wrap:wrap; flex:0 0 auto; background:white;">
+                    <button type="button" onclick="zoeQuick('Summarize recent activity')" class="zoe-quick-btn">Summarize activity</button>
+                    <button type="button" onclick="zoeQuick('Review recent files')" class="zoe-quick-btn">Review recent files</button>
+                    <button type="button" onclick="zoeQuick('What is pending in GLP?')" class="zoe-quick-btn">Pending GLP</button>
+                    <button type="button" onclick="zoeQuick('Give me a researcher overview')" class="zoe-quick-btn">Researcher overview</button>
+                    <button type="button" onclick="zoeQuick('Give me an overview of the current file')" class="zoe-quick-btn">Current GLP file</button>
                 </div>
-                <div style="padding:10px 12px; border-top:1px solid #e2e8f0; display:flex; gap:8px;">
-                    <input id="zoeChatInput" type="text" placeholder="Ask Zoe..." onkeydown="if(event.key==='Enter'){zoeSend();}" style="flex:1; padding:9px 12px; border:1px solid #d0d5dd; border-radius:6px; font-size:13px;">
-                    <button onclick="zoeSend()" style="padding:8px 18px; background:#0f766e; color:white; border:none; border-radius:6px; cursor:pointer; font-size:13px; font-weight:600;">Send</button>
+                <div id="zoeComposer" style="padding:10px 12px; border-top:1px solid #e2e8f0; display:flex; gap:8px; flex:0 0 auto; background:white; align-items:flex-end;">
+                    <textarea id="zoeChatInput" rows="2" placeholder="Ask Zoe about a file, experiment, researcher, or GLP item..." onkeydown="zoeOnComposerKey(event)" style="flex:1 1 auto; min-height:42px; max-height:140px; padding:9px 12px; border:1px solid #d0d5dd; border-radius:6px; font-size:13px; font-family:inherit; resize:vertical; box-sizing:border-box;"></textarea>
+                    <button id="zoeSendBtn" type="button" onclick="zoeSend()" style="padding:10px 18px; background:#0f766e; color:white; border:none; border-radius:6px; cursor:pointer; font-size:13px; font-weight:600; flex:0 0 auto;">Send</button>
                 </div>
             </div>
 
@@ -13722,8 +13727,25 @@ function dicBuildPdfViewerSrc(fileUrl) {
     function zoeInit() {
         if (ZOE.initialized) return;
         ZOE.initialized = true;
+        if (!document.getElementById('zoeChatInput') || !document.getElementById('zoeSendBtn')) {
+            console.warn('[Zoe] Composer elements missing from DOM (#zoeChatInput / #zoeSendBtn).');
+        }
         zoeAppendMsg('zoe', 'Hi, I am Zoe. I can review files, discuss experiments, and help you supervise the lab. Start in Read mode for analysis, or switch to Work mode when you need action-enabled support.');
         zoeLoadContextSummary();
+    }
+
+    function zoeOnComposerKey(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            zoeSend();
+        }
+    }
+
+    function zoeSetComposerDisabled(disabled) {
+        const i = document.getElementById('zoeChatInput');
+        const b = document.getElementById('zoeSendBtn');
+        if (i) i.disabled = !!disabled;
+        if (b) b.disabled = !!disabled;
     }
 
     function zoeSetMode(mode) {
@@ -13764,12 +13786,14 @@ function dicBuildPdfViewerSrc(fileUrl) {
     async function zoeSend() {
         if (zoeInFlight) return;
         const input = document.getElementById('zoeChatInput');
+        if (!input) { console.warn('[Zoe] composer input missing'); return; }
         const msg = (input.value || '').trim();
         if (!msg) return;
         input.value = '';
         zoeAppendMsg('user', msg);
         const thinking = zoeAppendPending();
         zoeInFlight = true;
+        zoeSetComposerDisabled(true);
         const payload = {
             message: msg,
             mode: ZOE.mode,
@@ -13797,6 +13821,8 @@ function dicBuildPdfViewerSrc(fileUrl) {
             zoeAppendMsg('zoe', 'Could not reach Zoe. Check your connection and try again.');
         } finally {
             zoeInFlight = false;
+            zoeSetComposerDisabled(false);
+            const i = document.getElementById('zoeChatInput'); if (i) i.focus();
         }
     }
 

@@ -21723,13 +21723,26 @@ app.post('/api/investroom/boxes/:id/move', requireCSO, async (req, res) => {
 // ZOE — PI scientific & lab operations copilot
 // -----------------------------------------------------
 // Architecture:
-//   Browser (Zoe tab / Telegram) -> portal backend -> OpenClaw on Hostinger
-// The browser must never talk to OpenClaw directly. OpenClaw URL and key live
-// only here as env vars.
-// Required env:
-//   OPENCLAW_BASE_URL           e.g. https://openclaw.hostinger.example
-//   OPENCLAW_CHAT_PATH          path appended to base URL, default /v1/chat
-//   OPENCLAW_API_KEY            optional bearer token (sent as Authorization: Bearer)
+//   PI portal browser -> Railway portal backend -> OpenClaw on Hostinger VPS
+// The browser must never talk to OpenClaw directly. OpenClaw URL and gateway
+// token live only here as env vars and are never exposed to the frontend.
+// Telegram webhook reuses the same internal helper (zoeHandleChat) so all
+// upstream calls funnel through this backend.
+//
+// OpenClaw deployment notes (Hostinger VPS):
+//   - OpenClaw API service listens on 127.0.0.1:18791 (protected, token auth)
+//   - OpenClaw Control UI listens on 127.0.0.1:18789 — DO NOT target the UI port
+//   - Public reach goes through the VPS Nginx; OPENCLAW_BASE_URL must point to
+//     the API service (port 18791), e.g. http://187.127.69.147:18791
+//   - Chat route: /v1/chat/completions
+//   - gateway.auth.mode = token; the token env on OpenClaw is OPENCLAW_GATEWAY_TOKEN.
+//     On the Railway side we pass that same token via OPENCLAW_API_KEY in the
+//     Authorization: Bearer <token> header.
+//
+// Required Railway env:
+//   OPENCLAW_BASE_URL           e.g. http://187.127.69.147:18791  (API service, NOT UI)
+//   OPENCLAW_CHAT_PATH          default /v1/chat/completions
+//   OPENCLAW_API_KEY            OpenClaw gateway token (never logged, never sent to browser)
 //   OPENCLAW_AUTH_HEADER        optional header name override, default "Authorization"
 //   OPENCLAW_TIMEOUT_MS         optional, default 30000
 //   TELEGRAM_BOT_TOKEN          telegram bot token
@@ -21794,9 +21807,9 @@ async function callOpenClaw(payload) {
                 : process.env.OPENCLAW_API_KEY;
             headers[authHeader] = val;
         }
-        // Path is configurable: set OPENCLAW_CHAT_PATH to match the deployed OpenClaw route
-        // (e.g. "/v1/chat", "/api/chat", "/zoe"). Default "/v1/chat" is a placeholder.
-        let chatPath = process.env.OPENCLAW_CHAT_PATH || '/v1/chat';
+        // Path is configurable. Discovered OpenClaw default is /v1/chat/completions
+        // (token-auth gateway on port 18791). Override via OPENCLAW_CHAT_PATH if needed.
+        let chatPath = process.env.OPENCLAW_CHAT_PATH || '/v1/chat/completions';
         if (!chatPath.startsWith('/')) chatPath = '/' + chatPath;
         const url = baseUrl.replace(/\/$/, '') + chatPath;
         const r = await fetch(url, {
