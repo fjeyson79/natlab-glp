@@ -21719,6 +21719,322 @@ app.post('/api/investroom/boxes/:id/move', requireCSO, async (req, res) => {
 // END INVESTROOM PHASE UPLOADS
 // =====================================================
 
+// =====================================================
+// ZOE — PI scientific & lab operations copilot
+// -----------------------------------------------------
+// Architecture:
+//   Browser (Zoe tab / Telegram) -> portal backend -> OpenClaw on Hostinger
+// The browser must never talk to OpenClaw directly. OpenClaw URL and key live
+// only here as env vars.
+// Required env:
+//   OPENCLAW_BASE_URL           e.g. https://openclaw.hostinger.example
+//   OPENCLAW_CHAT_PATH          path appended to base URL, default /v1/chat
+//   OPENCLAW_API_KEY            optional bearer token (sent as Authorization: Bearer)
+//   OPENCLAW_AUTH_HEADER        optional header name override, default "Authorization"
+//   OPENCLAW_TIMEOUT_MS         optional, default 30000
+//   TELEGRAM_BOT_TOKEN          telegram bot token
+//   TELEGRAM_ALLOWED_USER_ID    comma-separated Telegram user ids allowed to talk to Zoe
+//   TELEGRAM_WEBHOOK_SECRET     optional, checked against ?secret= query param
+// =====================================================
+
+const ZOE_SYSTEM_READ = "You are Zoe, the personal scientific and lab operations assistant to a PI in molecular medicine. In Read mode, you are analytical, careful, evidence based, thoughtful, and honest about uncertainty. You analyze files, discuss experiments, review data, answer questions about researchers and lab activity, and provide useful scientific feedback without taking actions.";
+const ZOE_SYSTEM_WORK = "You are Zoe, the personal scientific and lab operations copilot to a PI in molecular medicine. In Work mode, you are proactive, organized, thoughtful, and operationally helpful. You can suggest actions, prepare structured follow up, draft supervision notes, draft feedback, recommend next steps, and support lab workflows within the PI permissions. You must remain transparent, grounded, and never claim actions were executed unless confirmed by the system.";
+
+// In-memory store for Zoe session-uploaded files (ephemeral; not persisted to DB).
+// TODO: swap to R2 + DB once deep content extraction is implemented.
+const zoeFileStore = new Map();
+
+// Lightweight extraction — PDF via pdf-parse, XLSX/CSV via xlsx. Images/unknown → null.
+// Trims aggressively so we never blow past a reasonable upstream payload size.
+async function zoeExtractFileText(file) {
+    const ZOE_EXTRACT_MAX_CHARS = 12000;
+    try {
+        if (file.mimetype === 'application/pdf') {
+            const pdfParse = require('pdf-parse');
+            const parsed = await pdfParse(file.buffer);
+            const text = (parsed.text || '').replace(/\s+\n/g, '\n').trim();
+            return { text: text.slice(0, ZOE_EXTRACT_MAX_CHARS), pages: parsed.numpages || null, truncated: text.length > ZOE_EXTRACT_MAX_CHARS };
+        }
+        if (file.mimetype === 'text/csv' ||
+            file.mimetype === 'application/vnd.ms-excel' ||
+            file.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
+            const XLSX = require('xlsx');
+            const wb = XLSX.read(file.buffer, { type: 'buffer' });
+            const chunks = [];
+            for (const name of wb.SheetNames) {
+                const csv = XLSX.utils.sheet_to_csv(wb.Sheets[name]);
+                chunks.push(`# Sheet: ${name}\n${csv}`);
+                if (chunks.join('\n\n').length > ZOE_EXTRACT_MAX_CHARS) break;
+            }
+            const text = chunks.join('\n\n');
+            return { text: text.slice(0, ZOE_EXTRACT_MAX_CHARS), sheets: wb.SheetNames, truncated: text.length > ZOE_EXTRACT_MAX_CHARS };
+        }
+    } catch (err) {
+        console.error('[ZOE] extract error for', file.originalname, err.message);
+        return { text: null, error: err.message };
+    }
+    return null;
+}
+
+async function callOpenClaw(payload) {
+    const baseUrl = process.env.OPENCLAW_BASE_URL;
+    const timeoutMs = parseInt(process.env.OPENCLAW_TIMEOUT_MS || '30000', 10);
+    if (!baseUrl) {
+        // Safe placeholder if OpenClaw is not yet wired — echo a graceful reply.
+        return { reply: "[Zoe offline] OPENCLAW_BASE_URL is not configured. Your message was received: " + (payload.message || '').slice(0, 400) };
+    }
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+        const headers = { 'Content-Type': 'application/json' };
+        if (process.env.OPENCLAW_API_KEY) {
+            const authHeader = process.env.OPENCLAW_AUTH_HEADER || 'Authorization';
+            const val = authHeader.toLowerCase() === 'authorization'
+                ? 'Bearer ' + process.env.OPENCLAW_API_KEY
+                : process.env.OPENCLAW_API_KEY;
+            headers[authHeader] = val;
+        }
+        // Path is configurable: set OPENCLAW_CHAT_PATH to match the deployed OpenClaw route
+        // (e.g. "/v1/chat", "/api/chat", "/zoe"). Default "/v1/chat" is a placeholder.
+        let chatPath = process.env.OPENCLAW_CHAT_PATH || '/v1/chat';
+        if (!chatPath.startsWith('/')) chatPath = '/' + chatPath;
+        const url = baseUrl.replace(/\/$/, '') + chatPath;
+        const r = await fetch(url, {
+            method: 'POST', headers, body: JSON.stringify(payload), signal: ctrl.signal,
+        });
+        const text = await r.text();
+        let data = {};
+        try { data = JSON.parse(text); } catch (_) { data = { reply: text }; }
+        if (!r.ok) return { reply: "[Zoe upstream error] " + (data.error || r.statusText) };
+        return { reply: data.reply || data.text || data.message || '(no content)' };
+    } catch (err) {
+        return { reply: "[Zoe connectivity error] " + err.message };
+    } finally {
+        clearTimeout(t);
+    }
+}
+
+// Build scoped summary context (PI + workspace scoping preserved).
+async function zoeBuildContextSummary(userId, workspaceId) {
+    const out = { pendingGlp: 0, revisionNeeded: 0, recentUploads: 0, activeProjects: 0, recentResearchers: [], experimentsNote: null };
+    try {
+        const pending = await pool.query(
+            `SELECT COUNT(*)::int AS c FROM di_submissions WHERE status IN ('PENDING','SUBMITTED') AND (workspace_id = $1 OR workspace_id IS NULL)`,
+            [workspaceId || DEFAULT_WORKSPACE_ID]
+        ).catch(() => ({ rows: [{ c: 0 }] }));
+        out.pendingGlp = pending.rows[0]?.c || 0;
+    } catch (_) {}
+    try {
+        const rev = await pool.query(
+            `SELECT COUNT(*)::int AS c FROM di_submissions WHERE status = 'REVISION_NEEDED' AND (workspace_id = $1 OR workspace_id IS NULL)`,
+            [workspaceId || DEFAULT_WORKSPACE_ID]
+        ).catch(() => ({ rows: [{ c: 0 }] }));
+        out.revisionNeeded = rev.rows[0]?.c || 0;
+    } catch (_) {}
+    try {
+        const recent = await pool.query(
+            `SELECT COUNT(*)::int AS c FROM di_submissions WHERE created_at > NOW() - INTERVAL '7 days' AND (workspace_id = $1 OR workspace_id IS NULL)`,
+            [workspaceId || DEFAULT_WORKSPACE_ID]
+        ).catch(() => ({ rows: [{ c: 0 }] }));
+        out.recentUploads = recent.rows[0]?.c || 0;
+    } catch (_) {}
+    try {
+        const researchers = await pool.query(
+            `SELECT DISTINCT uploader_researcher_id FROM di_submissions WHERE created_at > NOW() - INTERVAL '14 days' AND (workspace_id = $1 OR workspace_id IS NULL) LIMIT 8`,
+            [workspaceId || DEFAULT_WORKSPACE_ID]
+        ).catch(() => ({ rows: [] }));
+        out.recentResearchers = researchers.rows.map(r => r.uploader_researcher_id).filter(Boolean);
+    } catch (_) {}
+    // TODO: wire active projects + experiments from di_studio_projects once finalized shape is stable.
+    out.activeProjects = 0;
+    out.experimentsNote = "Experiment summaries will be wired from Research Studio once the Phase 2 schema lands.";
+    return out;
+}
+
+// Internal helper reused by /api/zoe/chat and Telegram webhook.
+async function zoeHandleChat({ userId, workspaceId, message, mode, selectedFileId, glpContext }) {
+    const system = mode === 'work' ? ZOE_SYSTEM_WORK : ZOE_SYSTEM_READ;
+    const summary = await zoeBuildContextSummary(userId, workspaceId);
+    let fileContext = null;
+    if (selectedFileId && zoeFileStore.has(selectedFileId)) {
+        const f = zoeFileStore.get(selectedFileId);
+        fileContext = {
+            fileName: f.name, mime: f.mime, size: f.size, summary: f.summary,
+            extractedText: f.extractedText || null,
+        };
+    }
+    const payload = {
+        system,
+        mode: mode === 'work' ? 'work' : 'read',
+        message: String(message || '').slice(0, 8000),
+        workspace: workspaceId || DEFAULT_WORKSPACE_SLUG,
+        user_id: userId || null,
+        selected_file: fileContext,
+        glp_context: glpContext || null,
+        portal_summary: summary,
+    };
+    return await callOpenClaw(payload);
+}
+
+// 1) POST /api/zoe/chat
+app.post('/api/zoe/chat', requirePI, async (req, res) => {
+    try {
+        const { message, mode, selectedFileId, glpContext } = req.body || {};
+        if (!message || typeof message !== 'string') return res.status(400).json({ error: 'message required' });
+        const out = await zoeHandleChat({
+            userId: req.session.user.id,
+            workspaceId: req.session.user.workspace_id || DEFAULT_WORKSPACE_ID,
+            message, mode, selectedFileId, glpContext,
+        });
+        // TODO: audit log Work-mode interactions once the audit table is available.
+        res.json({ reply: out.reply });
+    } catch (err) {
+        console.error('[ZOE] chat error:', err.message);
+        res.status(500).json({ error: 'Zoe chat failed' });
+    }
+});
+
+// 2) GET /api/zoe/context-summary
+app.get('/api/zoe/context-summary', requirePI, async (req, res) => {
+    try {
+        const s = await zoeBuildContextSummary(req.session.user.id, req.session.user.workspace_id);
+        res.json(s);
+    } catch (err) {
+        console.error('[ZOE] context-summary error:', err.message);
+        res.status(500).json({ error: 'Failed to load context summary' });
+    }
+});
+
+// 3) POST /api/zoe/analyze-file
+app.post('/api/zoe/analyze-file', requirePI, upload.single('file'), async (req, res) => {
+    try {
+        if (!req.file) return res.status(400).json({ error: 'file required' });
+        const allowed = ['application/pdf', 'text/csv', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'image/png', 'image/jpeg'];
+        if (!allowed.includes(req.file.mimetype)) return res.status(400).json({ error: 'Unsupported file type' });
+        const id = 'zoe_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+        const extracted = await zoeExtractFileText(req.file);
+        let summary;
+        if (extracted && extracted.text) {
+            const preview = extracted.text.slice(0, 400).replace(/\s+/g, ' ').trim();
+            const meta = extracted.pages ? `${extracted.pages} page(s)` : (extracted.sheets ? `sheets: ${extracted.sheets.join(', ')}` : '');
+            summary = `Extracted ${extracted.text.length} chars${meta ? ' • ' + meta : ''}${extracted.truncated ? ' (truncated)' : ''}. Preview: ${preview}`;
+        } else if (extracted && extracted.error) {
+            summary = `Received ${req.file.originalname} (${Math.round(req.file.size / 1024)} KB). Text extraction failed: ${extracted.error}.`;
+        } else {
+            summary = `Received ${req.file.originalname} (${Math.round(req.file.size / 1024)} KB). This file type is kept for visual reference; no text extraction performed.`;
+        }
+        // TODO: persist to R2 for durable review.
+        zoeFileStore.set(id, {
+            id, name: req.file.originalname, mime: req.file.mimetype,
+            size: req.file.size, buffer: req.file.buffer, summary,
+            extractedText: extracted && extracted.text ? extracted.text : null,
+            uploadedAt: Date.now(), ownerUserId: req.session.user.id,
+        });
+        // Evict oldest if over 50 entries
+        if (zoeFileStore.size > 50) {
+            const oldest = [...zoeFileStore.entries()].sort((a, b) => a[1].uploadedAt - b[1].uploadedAt)[0];
+            if (oldest) zoeFileStore.delete(oldest[0]);
+        }
+        res.json({ fileId: id, summary });
+    } catch (err) {
+        console.error('[ZOE] analyze-file error:', err.message);
+        res.status(500).json({ error: 'Analyze failed' });
+    }
+});
+
+// 4) POST /api/zoe/work-action
+app.post('/api/zoe/work-action', requirePI, async (req, res) => {
+    try {
+        const { kind, selectedFileId, glpContext } = req.body || {};
+        const allowed = ['supervision_note', 'project_summary', 'approval_suggestion', 'researcher_feedback', 'weekly_summary', 'meeting_brief'];
+        if (!allowed.includes(kind)) return res.status(400).json({ error: 'unsupported action' });
+        const prompt = `Prepare a ${kind.replace(/_/g, ' ')} draft for the PI based on current portal context. Return plain text only; do not claim execution.`;
+        const out = await zoeHandleChat({
+            userId: req.session.user.id,
+            workspaceId: req.session.user.workspace_id || DEFAULT_WORKSPACE_ID,
+            message: prompt, mode: 'work', selectedFileId, glpContext,
+        });
+        // TODO: persist drafts into a zoe_drafts table for audit once schema is added.
+        res.json({ draft: out.reply, kind });
+    } catch (err) {
+        console.error('[ZOE] work-action error:', err.message);
+        res.status(500).json({ error: 'Work action failed' });
+    }
+});
+
+// 5) POST /api/zoe/glp-context — cache current GLP Vision file context in session
+app.post('/api/zoe/glp-context', requirePI, async (req, res) => {
+    try {
+        const ctx = req.body || {};
+        req.session.zoeGlpContext = {
+            submissionId: ctx.submissionId || null,
+            fileName: ctx.fileName || null,
+            status: ctx.status || null,
+            at: Date.now(),
+        };
+        res.json({ ok: true, glpContext: req.session.zoeGlpContext });
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to cache GLP context' });
+    }
+});
+
+// =====================================================
+// TELEGRAM WEBHOOK — remote Zoe interface
+// =====================================================
+async function telegramSendMessage(chatId, text) {
+    const token = process.env.TELEGRAM_BOT_TOKEN;
+    if (!token) return;
+    try {
+        await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ chat_id: chatId, text: String(text || '').slice(0, 3800) }),
+        });
+    } catch (err) {
+        console.error('[TELEGRAM] send error:', err.message);
+    }
+}
+
+app.post('/api/telegram/webhook', async (req, res) => {
+    try {
+        const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
+        if (secret && req.query.secret !== secret) return res.status(403).json({ error: 'forbidden' });
+        const update = req.body || {};
+        const msg = update.message || update.edited_message;
+        if (!msg || !msg.text) return res.json({ ok: true });
+        const fromId = String(msg.from && msg.from.id);
+        const allowed = (process.env.TELEGRAM_ALLOWED_USER_ID || '').split(',').map(s => s.trim()).filter(Boolean);
+        if (!allowed.includes(fromId)) {
+            await telegramSendMessage(msg.chat.id, 'Access denied.');
+            return res.json({ ok: true });
+        }
+        let text = msg.text.trim();
+        let mode = 'read';
+        if (/^\/work\b/i.test(text)) { mode = 'work'; text = text.replace(/^\/work\b\s*/i, ''); }
+        else if (/^\/glp\b/i.test(text)) { text = 'Summarize current pending GLP items. ' + text.replace(/^\/glp\b\s*/i, ''); }
+        else if (/^\/activity\b/i.test(text)) { text = 'Summarize recent portal activity. ' + text.replace(/^\/activity\b\s*/i, ''); }
+        else if (/^\/project\b/i.test(text)) { text = 'Give a project overview for: ' + text.replace(/^\/project\b\s*/i, ''); }
+        else if (/^\/researcher\b/i.test(text)) { text = 'Summarize this researcher: ' + text.replace(/^\/researcher\b\s*/i, ''); }
+        else if (/^\/file\b/i.test(text)) { text = 'Find file matching: ' + text.replace(/^\/file\b\s*/i, ''); }
+
+        // TODO: map Telegram fromId -> PI user_id via a dedicated mapping table.
+        const out = await zoeHandleChat({
+            userId: null,
+            workspaceId: DEFAULT_WORKSPACE_ID,
+            message: text, mode,
+            selectedFileId: null, glpContext: null,
+        });
+        await telegramSendMessage(msg.chat.id, out.reply);
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('[TELEGRAM] webhook error:', err.message);
+        res.json({ ok: true });
+    }
+});
+
+// =====================================================
+// END ZOE
+// =====================================================
+
 app.listen(PORT, "0.0.0.0", async () => {
     console.log("[STARTUP] Server listening on port " + PORT);
     // Safety check: warn if any di_submissions row has no r2_object_key

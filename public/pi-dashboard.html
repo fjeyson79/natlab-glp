@@ -2248,6 +2248,7 @@
         <button class="tab-btn" data-tab="backup">Backup</button>
         <button class="tab-btn" data-tab="oligo-id" onclick="window.location.href='oligo-id.html'">Oligo-ID</button>
         <button class="tab-btn" data-tab="modules">Modules</button>
+        <button class="tab-btn" data-tab="zoe">Zoe</button>
     </div>
 
     <!-- ==================== DASHBOARD TAB ==================== -->
@@ -2361,6 +2362,7 @@
                     <button class="dic-vision-btn" onclick="dicSetVisionMode('training', this)">Training</button>
                     <button class="dic-vision-btn" onclick="dicSetVisionMode('inventory', this)">Inventory</button>
                     <button class="dic-vision-btn" onclick="dicSetVisionMode('onetoone', this)">1-to-1</button>
+                    <button class="dic-vision-btn" style="margin-left:auto; background:#0f766e; color:#fff; border-color:#0f766e;" onclick="zoeAskAboutCurrentGlpFile()" title="Ask Zoe about the currently focused GLP Vision file">Ask Zoe</button>
 </div>
                 <div class="dic-search-area">
                     <input type="text" class="dic-search-input" id="dicSearchInput" placeholder="Search files..." oninput="dicApplyFilters()">
@@ -4037,6 +4039,88 @@
         <div id="msModalContent" style="background:white; border-radius:10px; padding:24px; max-width:560px; width:90%; max-height:80vh; overflow-y:auto; box-shadow:0 8px 32px rgba(0,0,0,0.2);"></div>
     </div>
 
+    <!-- ==================== ZOE TAB (PI scientific & lab copilot) ==================== -->
+    <div class="tab-content" id="tab-zoe">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:18px; gap:12px;">
+            <div>
+                <h2 style="margin:0 0 4px 0; color:#1a365d;">Zoe</h2>
+                <p style="margin:0; color:#666; font-size:13px;">PI scientific and lab copilot</p>
+            </div>
+            <div style="display:flex; gap:0; background:#f1f5f9; border-radius:8px; padding:4px;">
+                <button id="zoeModeRead" onclick="zoeSetMode('read')" style="padding:6px 14px; border:none; background:#1a365d; color:white; border-radius:6px; cursor:pointer; font-size:13px; font-weight:600;">Read</button>
+                <button id="zoeModeWork" onclick="zoeSetMode('work')" style="padding:6px 14px; border:none; background:transparent; color:#475569; border-radius:6px; cursor:pointer; font-size:13px;">Work</button>
+            </div>
+        </div>
+
+        <div id="zoeModeNote" style="padding:10px 14px; background:#f0fdfa; border-left:3px solid #0f766e; border-radius:6px; font-size:13px; color:#134e4a; margin-bottom:16px;">Read only mode, analysis and support without execution.</div>
+
+        <div id="zoeGlpContextCard" style="display:none; padding:10px 14px; background:#fef3c7; border:1px solid #f59e0b; border-radius:6px; font-size:13px; color:#78350f; margin-bottom:16px;"></div>
+
+        <div style="display:grid; grid-template-columns: 1.4fr 1fr; gap:16px;">
+            <!-- LEFT: Chat -->
+            <div style="border:1px solid #d0d5dd; border-radius:10px; background:white; display:flex; flex-direction:column; height:640px;">
+                <div style="padding:10px 14px; border-bottom:1px solid #e2e8f0; font-weight:600; color:#1a365d;">Chat</div>
+                <div id="zoeChatLog" style="flex:1; overflow-y:auto; padding:14px; display:flex; flex-direction:column; gap:10px; background:#fafbfc;"></div>
+                <div style="padding:8px 12px; border-top:1px solid #e2e8f0; display:flex; gap:6px; flex-wrap:wrap;">
+                    <button onclick="zoeQuick('Summarize recent activity')" class="tab-btn" style="padding:4px 10px; font-size:12px;">Summarize activity</button>
+                    <button onclick="zoeQuick('Review recent files')" class="tab-btn" style="padding:4px 10px; font-size:12px;">Review recent files</button>
+                    <button onclick="zoeQuick('What is pending in GLP?')" class="tab-btn" style="padding:4px 10px; font-size:12px;">Pending GLP</button>
+                    <button onclick="zoeQuick('Give me a researcher overview')" class="tab-btn" style="padding:4px 10px; font-size:12px;">Researcher overview</button>
+                    <button onclick="zoeQuick('Give me an overview of the current file')" class="tab-btn" style="padding:4px 10px; font-size:12px;">Current GLP file</button>
+                </div>
+                <div style="padding:10px 12px; border-top:1px solid #e2e8f0; display:flex; gap:8px;">
+                    <input id="zoeChatInput" type="text" placeholder="Ask Zoe..." onkeydown="if(event.key==='Enter'){zoeSend();}" style="flex:1; padding:9px 12px; border:1px solid #d0d5dd; border-radius:6px; font-size:13px;">
+                    <button onclick="zoeSend()" style="padding:8px 18px; background:#0f766e; color:white; border:none; border-radius:6px; cursor:pointer; font-size:13px; font-weight:600;">Send</button>
+                </div>
+            </div>
+
+            <!-- RIGHT: Side cards -->
+            <div style="display:flex; flex-direction:column; gap:12px;">
+                <!-- Files -->
+                <div style="border:1px solid #d0d5dd; border-radius:10px; background:white; padding:14px;">
+                    <div style="font-weight:600; color:#1a365d; margin-bottom:8px;">Files</div>
+                    <input id="zoeFileInput" type="file" accept=".pdf,.csv,.xlsx,.png,.jpg,.jpeg" onchange="zoeUploadFile()" style="font-size:12px; margin-bottom:8px;">
+                    <div id="zoeFileList" style="font-size:12px; color:#475569;"></div>
+                </div>
+
+                <!-- Supervision summary -->
+                <div style="border:1px solid #d0d5dd; border-radius:10px; background:white; padding:14px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                        <div style="font-weight:600; color:#1a365d;">Supervision</div>
+                        <button onclick="zoeLoadContextSummary()" style="padding:3px 9px; font-size:11px; background:#e2e8f0; color:#1a365d; border:none; border-radius:4px; cursor:pointer;">Refresh</button>
+                    </div>
+                    <div id="zoeSupervisionCards" style="display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:12px;"></div>
+                </div>
+
+                <!-- Experiments -->
+                <div style="border:1px solid #d0d5dd; border-radius:10px; background:white; padding:14px;">
+                    <div style="font-weight:600; color:#1a365d; margin-bottom:8px;">Experiments</div>
+                    <div id="zoeExperimentsBox" style="font-size:12px; color:#475569;">No active experiments loaded.</div>
+                </div>
+
+                <!-- Researchers -->
+                <div style="border:1px solid #d0d5dd; border-radius:10px; background:white; padding:14px;">
+                    <div style="font-weight:600; color:#1a365d; margin-bottom:8px;">Researchers</div>
+                    <div id="zoeResearchersBox" style="font-size:12px; color:#475569;">No recent activity loaded.</div>
+                </div>
+
+                <!-- Work Actions (Work mode only) -->
+                <div id="zoeWorkActions" style="display:none; border:1px solid #0f766e; border-radius:10px; background:#f0fdfa; padding:14px;">
+                    <div style="font-weight:600; color:#134e4a; margin-bottom:10px;">Work Actions</div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+                        <button onclick="zoeWorkAction('supervision_note')" style="padding:7px; font-size:12px; background:white; border:1px solid #0f766e; color:#0f766e; border-radius:5px; cursor:pointer;">Draft supervision note</button>
+                        <button onclick="zoeWorkAction('project_summary')" style="padding:7px; font-size:12px; background:white; border:1px solid #0f766e; color:#0f766e; border-radius:5px; cursor:pointer;">Prepare project summary</button>
+                        <button onclick="zoeWorkAction('approval_suggestion')" style="padding:7px; font-size:12px; background:white; border:1px solid #0f766e; color:#0f766e; border-radius:5px; cursor:pointer;">Suggest approval</button>
+                        <button onclick="zoeWorkAction('researcher_feedback')" style="padding:7px; font-size:12px; background:white; border:1px solid #0f766e; color:#0f766e; border-radius:5px; cursor:pointer;">Draft feedback</button>
+                        <button onclick="zoeWorkAction('weekly_summary')" style="padding:7px; font-size:12px; background:white; border:1px solid #0f766e; color:#0f766e; border-radius:5px; cursor:pointer;">Weekly activity</button>
+                        <button onclick="zoeWorkAction('meeting_brief')" style="padding:7px; font-size:12px; background:white; border:1px solid #0f766e; color:#0f766e; border-radius:5px; cursor:pointer;">Meeting brief</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- ==================== END ZOE TAB ==================== -->
+
 
     <script>
         // =====================================================
@@ -4120,6 +4204,7 @@
                   if (tabId === 'purchases-inventory') { loadAllPurchaseRequests(); loadAllInventoryV2(); loadPONumbers(); piLoadSamplePacks(); }
                   if (tabId === 'training') { loadTrainingDocuments(); loadPendingTrainingPacks(); loadSealedTrainingPacks(); }
                   if (tabId === 'modules') { msInit(); }
+                  if (tabId === 'zoe') { zoeInit(); }
               });
           });
 
@@ -13622,6 +13707,230 @@ function dicBuildPdfViewerSrc(fileUrl) {
     document.addEventListener('click', function(e) {
         if (e.target.id === 'msModalOverlay') msCloseModal();
     });
+
+    // =====================================================
+    // ZOE — PI scientific & lab copilot
+    // =====================================================
+    const ZOE = {
+        mode: 'read',
+        initialized: false,
+        selectedFileId: null,
+        uploadedFiles: [],
+        glpContext: null,
+    };
+
+    function zoeInit() {
+        if (ZOE.initialized) return;
+        ZOE.initialized = true;
+        zoeAppendMsg('zoe', 'Hi, I am Zoe. I can review files, discuss experiments, and help you supervise the lab. Start in Read mode for analysis, or switch to Work mode when you need action-enabled support.');
+        zoeLoadContextSummary();
+    }
+
+    function zoeSetMode(mode) {
+        ZOE.mode = mode === 'work' ? 'work' : 'read';
+        document.getElementById('zoeModeRead').style.background = ZOE.mode === 'read' ? '#1a365d' : 'transparent';
+        document.getElementById('zoeModeRead').style.color = ZOE.mode === 'read' ? 'white' : '#475569';
+        document.getElementById('zoeModeWork').style.background = ZOE.mode === 'work' ? '#0f766e' : 'transparent';
+        document.getElementById('zoeModeWork').style.color = ZOE.mode === 'work' ? 'white' : '#475569';
+        document.getElementById('zoeModeNote').textContent = ZOE.mode === 'work'
+            ? 'Active copilot mode, action enabled support is available.'
+            : 'Read only mode, analysis and support without execution.';
+        document.getElementById('zoeModeNote').style.background = ZOE.mode === 'work' ? '#fef3c7' : '#f0fdfa';
+        document.getElementById('zoeModeNote').style.borderLeftColor = ZOE.mode === 'work' ? '#f59e0b' : '#0f766e';
+        document.getElementById('zoeModeNote').style.color = ZOE.mode === 'work' ? '#78350f' : '#134e4a';
+        document.getElementById('zoeWorkActions').style.display = ZOE.mode === 'work' ? 'block' : 'none';
+    }
+
+    function zoeAppendMsg(who, text) {
+        const log = document.getElementById('zoeChatLog');
+        const row = document.createElement('div');
+        const isUser = who === 'user';
+        row.style.cssText = 'display:flex; justify-content:' + (isUser ? 'flex-end' : 'flex-start') + ';';
+        const bubble = document.createElement('div');
+        bubble.style.cssText = 'max-width:80%; padding:9px 13px; border-radius:10px; font-size:13px; line-height:1.5; white-space:pre-wrap;' +
+            (isUser ? 'background:#1a365d; color:white;' : 'background:white; border:1px solid #e2e8f0; color:#1f2937;');
+        bubble.textContent = text;
+        row.appendChild(bubble);
+        log.appendChild(row);
+        log.scrollTop = log.scrollHeight;
+    }
+
+    function zoeQuick(text) {
+        document.getElementById('zoeChatInput').value = text;
+        zoeSend();
+    }
+
+    let zoeInFlight = false;
+    async function zoeSend() {
+        if (zoeInFlight) return;
+        const input = document.getElementById('zoeChatInput');
+        const msg = (input.value || '').trim();
+        if (!msg) return;
+        input.value = '';
+        zoeAppendMsg('user', msg);
+        const thinking = zoeAppendPending();
+        zoeInFlight = true;
+        const payload = {
+            message: msg,
+            mode: ZOE.mode,
+            workspace: (localStorage.getItem('ws') || 'natlab'),
+            selectedFileId: ZOE.selectedFileId,
+            glpContext: ZOE.glpContext,
+        };
+        try {
+            const r = await fetch('/api/zoe/chat', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            let data = {};
+            try { data = await r.json(); } catch (_) { data = {}; }
+            thinking.remove();
+            if (!r.ok) {
+                if (r.status === 401) zoeAppendMsg('zoe', 'Your session expired. Please sign in again.');
+                else if (r.status === 403) zoeAppendMsg('zoe', 'Access denied — Zoe is PI only.');
+                else zoeAppendMsg('zoe', 'Zoe is unavailable right now (' + r.status + '). ' + (data.error || ''));
+                return;
+            }
+            zoeAppendMsg('zoe', data.reply || data.error || '(no reply)');
+        } catch (err) {
+            thinking.remove();
+            zoeAppendMsg('zoe', 'Could not reach Zoe. Check your connection and try again.');
+        } finally {
+            zoeInFlight = false;
+        }
+    }
+
+    function zoeAppendPending() {
+        const log = document.getElementById('zoeChatLog');
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex; justify-content:flex-start;';
+        const bubble = document.createElement('div');
+        bubble.style.cssText = 'padding:9px 13px; border-radius:10px; font-size:13px; background:white; border:1px solid #e2e8f0; color:#94a3b8; font-style:italic;';
+        bubble.textContent = 'Zoe is thinking...';
+        row.appendChild(bubble);
+        log.appendChild(row);
+        log.scrollTop = log.scrollHeight;
+        return row;
+    }
+
+    async function zoeLoadContextSummary() {
+        try {
+            const r = await fetch('/api/zoe/context-summary');
+            const d = await r.json();
+            const box = document.getElementById('zoeSupervisionCards');
+            const card = (label, val) => `<div style="padding:8px; background:#f8fafc; border-radius:6px;"><div style="color:#64748b; font-size:11px;">${label}</div><div style="font-weight:600; color:#1a365d; font-size:16px;">${val ?? '-'}</div></div>`;
+            box.innerHTML =
+                card('Pending GLP', d.pendingGlp) +
+                card('Revision needed', d.revisionNeeded) +
+                card('Recent uploads', d.recentUploads) +
+                card('Active projects', d.activeProjects);
+            if (d.recentResearchers && d.recentResearchers.length) {
+                document.getElementById('zoeResearchersBox').textContent = d.recentResearchers.join(', ');
+            }
+            if (d.experimentsNote) {
+                document.getElementById('zoeExperimentsBox').textContent = d.experimentsNote;
+            }
+        } catch (err) { /* silent */ }
+    }
+
+    async function zoeUploadFile() {
+        const inp = document.getElementById('zoeFileInput');
+        const f = inp.files && inp.files[0];
+        if (!f) return;
+        const MAX_MB = 25;
+        if (f.size > MAX_MB * 1024 * 1024) {
+            zoeAppendMsg('zoe', 'File is too large (' + Math.round(f.size / 1024 / 1024) + ' MB). Limit is ' + MAX_MB + ' MB.');
+            inp.value = ''; return;
+        }
+        const fd = new FormData();
+        fd.append('file', f);
+        try {
+            const r = await fetch('/api/zoe/analyze-file', { method: 'POST', body: fd });
+            let d = {};
+            try { d = await r.json(); } catch (_) { d = {}; }
+            if (r.ok && d.fileId) {
+                ZOE.uploadedFiles.push({ id: d.fileId, name: f.name, summary: d.summary });
+                ZOE.selectedFileId = d.fileId;
+                zoeRenderFiles();
+                zoeAppendMsg('zoe', 'Uploaded "' + f.name + '". ' + (d.summary || ''));
+            } else {
+                zoeAppendMsg('zoe', 'Upload failed: ' + (d.error || ('HTTP ' + r.status)));
+            }
+        } catch (err) { zoeAppendMsg('zoe', 'Upload error — please try again.'); }
+        inp.value = '';
+    }
+
+    function zoeRenderFiles() {
+        const box = document.getElementById('zoeFileList');
+        if (!ZOE.uploadedFiles.length) { box.innerHTML = '<em>No files uploaded.</em>'; return; }
+        box.innerHTML = ZOE.uploadedFiles.map(f => {
+            const sel = (ZOE.selectedFileId === f.id);
+            return `<div style="padding:6px 8px; border-radius:5px; cursor:pointer; background:${sel?'#e0f2fe':'transparent'};" onclick="zoeSelectFile('${f.id}')">${sel?'● ':''}${f.name}</div>`;
+        }).join('');
+    }
+
+    function zoeSelectFile(id) { ZOE.selectedFileId = id; zoeRenderFiles(); }
+
+    async function zoeWorkAction(kind) {
+        if (ZOE.mode !== 'work') { zoeSetMode('work'); }
+        const thinking = zoeAppendPending();
+        try {
+            const r = await fetch('/api/zoe/work-action', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ kind, selectedFileId: ZOE.selectedFileId, glpContext: ZOE.glpContext }),
+            });
+            let d = {};
+            try { d = await r.json(); } catch (_) { d = {}; }
+            thinking.remove();
+            if (!r.ok) {
+                zoeAppendMsg('zoe', 'Work action unavailable (' + r.status + '). ' + (d.error || ''));
+                return;
+            }
+            zoeAppendMsg('zoe', '[' + kind + ' draft]\n\n' + (d.draft || '(empty)'));
+        } catch (err) {
+            thinking.remove();
+            zoeAppendMsg('zoe', 'Work action failed — please try again.');
+        }
+    }
+
+    // Open Zoe tab with preloaded GLP Vision context
+    window.zoeOpenWithContext = function(ctx) {
+        ZOE.glpContext = ctx || null;
+        const card = document.getElementById('zoeGlpContextCard');
+        if (ctx) {
+            card.style.display = 'block';
+            card.innerHTML = 'Current file from GLP Vision: <strong>' + (ctx.fileName || ctx.submissionId || 'unknown') + '</strong> <span style="color:#92400e;">[' + (ctx.status || '-') + ']</span>';
+        } else {
+            card.style.display = 'none';
+        }
+        if (typeof dicOpenTopTab === 'function') dicOpenTopTab('zoe');
+    };
+
+    // Read current GLP Vision selection from dic state (non-invasive)
+    function zoeAskAboutCurrentGlpFile() {
+        let ctx = null;
+        try {
+            const id = (typeof dicSelectedFileId !== 'undefined') ? dicSelectedFileId : null;
+            if (id && typeof dicAllFiles !== 'undefined' && Array.isArray(dicAllFiles)) {
+                const f = dicAllFiles.find(x => x.submission_id === id);
+                if (f) {
+                    ctx = {
+                        submissionId: f.submission_id,
+                        fileName: f.original_filename || f.file_name || f.filename || null,
+                        status: f.status || null,
+                    };
+                } else if (id) {
+                    ctx = { submissionId: id, fileName: null, status: null };
+                }
+            }
+        } catch (_) {}
+        window.zoeOpenWithContext(ctx);
+        if (!ctx) {
+            // Defer message until after tab switch so log exists
+            setTimeout(() => zoeAppendMsg('zoe', 'No GLP Vision file is currently focused — open a file in GLP Vision first, then click "Ask Zoe".'), 0);
+        }
+    }
+    window.zoeAskAboutCurrentGlpFile = zoeAskAboutCurrentGlpFile;
 
     </script>
 <script src="/js/presentation-mode.js"></script>
