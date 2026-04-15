@@ -22821,6 +22821,197 @@ app.get('/api/zoe/documents', requirePIRead, async (req, res) => {
     }
 });
 
+// GET /api/zoe/find-document?q=...
+// Natural-language document resolver. Compact SQL search across
+// di_submissions + di_group_documents. Returns top-5 matches with a
+// lightweight score + match_reason. No embeddings, no indexing.
+// Strategy: tokenize query, ILIKE against title/filename/category/uploader
+// and (if available) project name; boost for type hints ("paper", "sop",
+// "presentation", "report", "data"), boost for recency, penalize missing
+// object keys. The frontend decides auto-read vs. disambiguate.
+app.get('/api/zoe/find-document', requirePIRead, async (req, res) => {
+    try {
+        const wsId = req.session.user.workspace_id || DEFAULT_WORKSPACE_ID;
+        const rawQ = String(req.query.q || '').trim();
+        if (!rawQ) return res.json({ query: '', matches: [] });
+
+        const qLower = rawQ.toLowerCase();
+        // Token list (keep words ≥3 chars; keep numbers; drop stopwords)
+        const STOP = new Set(['the','and','from','with','what','does','read','show','tell','find','summarize','analyze','give','please','about','that','this','these','paper','papers','file','files','sop','sops','report','reports','presentation','presentations','data','doc','docs','document','documents','latest','newest','last','recent']);
+        const tokens = qLower.split(/[^a-z0-9]+/)
+            .filter(t => t.length >= 2 && !STOP.has(t)).slice(0, 10);
+
+        // Type hints shape the scoring
+        const wantsPaper = /\b(paper|publication|article|journal|doi)\b/.test(qLower);
+        const wantsSop = /\bsop\b/.test(qLower);
+        const wantsPresentation = /\b(presentation|slides?|deck|ppt|pptx)\b/.test(qLower);
+        const wantsReport = /\breport\b/.test(qLower);
+        const wantsData = /\b(data|dataset|csv|xls|xlsx|results?)\b/.test(qLower);
+        const wantsLatest = /\b(latest|newest|last|recent)\b/.test(qLower);
+
+        // Column availability for project linkage
+        let hasProjCol = false, hasRd = false;
+        try { hasProjCol = await hasRdProjectIdCol(); } catch (_) {}
+        try { hasRd = await checkRdTables(); } catch (_) {}
+        const joinable = hasProjCol && hasRd;
+
+        // Build ILIKE pattern list. If no tokens, fall back to whole query.
+        const patterns = (tokens.length > 0 ? tokens : [qLower]).map(t => `%${t}%`);
+        const patternParams = patterns.map((_, i) => `$${i + 2}`);
+        const orClause = [
+            `s.original_filename ILIKE ANY (ARRAY[${patternParams.join(',')}])`,
+            `COALESCE(s.file_type, '') ILIKE ANY (ARRAY[${patternParams.join(',')}])`,
+            `COALESCE(s.uploader_researcher_id, '') ILIKE ANY (ARRAY[${patternParams.join(',')}])`,
+            joinable ? `COALESCE(rp.title, '') ILIKE ANY (ARRAY[${patternParams.join(',')}])` : null,
+        ].filter(Boolean).join(' OR ');
+
+        const subSql = joinable
+            ? `SELECT s.submission_id AS id, s.original_filename AS title, s.file_type AS type,
+                      s.status, s.uploader_researcher_id AS uploader, s.created_at AS date,
+                      s.r2_object_key, s.rd_project_id AS project_id, rp.title AS project_name
+               FROM di_submissions s
+               LEFT JOIN rd_projects rp ON rp.id = s.rd_project_id
+               WHERE (s.workspace_id = $1 OR s.workspace_id IS NULL)
+                 AND s.status <> 'DISCARDED'
+                 AND (${orClause})
+               ORDER BY s.created_at DESC NULLS LAST
+               LIMIT 40`
+            : `SELECT s.submission_id AS id, s.original_filename AS title, s.file_type AS type,
+                      s.status, s.uploader_researcher_id AS uploader, s.created_at AS date,
+                      s.r2_object_key, NULL::int AS project_id, NULL::text AS project_name
+               FROM di_submissions s
+               WHERE (s.workspace_id = $1 OR s.workspace_id IS NULL)
+                 AND s.status <> 'DISCARDED'
+                 AND (${orClause})
+               ORDER BY s.created_at DESC NULLS LAST
+               LIMIT 40`;
+        const subParams = [wsId, ...patterns];
+
+        let subRows = [];
+        try { subRows = (await pool.query(subSql, subParams)).rows; }
+        catch (e) { console.error('[ZOE-FIND] submissions query:', e.message); }
+
+        // Group docs (no workspace column yet — see TODO at /api/zoe/documents)
+        let grpRows = [];
+        try {
+            const grpSql = `SELECT id, title, category, filename, file_type, created_at, uploaded_by, r2_object_key
+                            FROM di_group_documents
+                            WHERE is_active = true
+                              AND (
+                                COALESCE(title, '') ILIKE ANY (ARRAY[${patternParams.map((_,i)=>'$'+(i+1)).join(',')}])
+                                OR COALESCE(filename, '') ILIKE ANY (ARRAY[${patternParams.map((_,i)=>'$'+(i+1)).join(',')}])
+                                OR COALESCE(category, '') ILIKE ANY (ARRAY[${patternParams.map((_,i)=>'$'+(i+1)).join(',')}])
+                              )
+                            ORDER BY created_at DESC NULLS LAST
+                            LIMIT 40`;
+            grpRows = (await pool.query(grpSql, patterns)).rows;
+        } catch (_) {}
+
+        const norm = (s) => String(s || '').toLowerCase();
+        const now = Date.now();
+        const score = (row, kind) => {
+            const hay = [
+                norm(row.title), norm(row.filename), norm(row.type),
+                norm(row.category), norm(row.uploader), norm(row.project_name)
+            ].join(' | ');
+            let s = 0;
+            const reasons = [];
+            // Exact full-query substring = strong
+            if (qLower.length >= 3 && hay.includes(qLower)) { s += 40; reasons.push('exact query match'); }
+            // Each token that hits title/filename = 6; other fields = 3
+            const titleHay = norm(row.title || row.filename);
+            for (const t of tokens) {
+                if (!t) continue;
+                if (titleHay.includes(t)) { s += 6; reasons.push(`"${t}" in title`); }
+                else if (hay.includes(t)) { s += 3; }
+            }
+            // Type hints
+            const typeStr = norm((row.type || '') + ' ' + (row.category || '') + ' ' + (row.filename || row.title || ''));
+            if (wantsPaper && /paper|publication|journal|article|\.pdf/.test(typeStr)) { s += 8; reasons.push('matches "paper" hint'); }
+            if (wantsSop && /sop/.test(typeStr)) { s += 8; reasons.push('matches "SOP" hint'); }
+            if (wantsPresentation && /present|slide|deck|ppt/.test(typeStr)) { s += 8; reasons.push('matches "presentation" hint'); }
+            if (wantsReport && /report/.test(typeStr)) { s += 6; reasons.push('matches "report" hint'); }
+            if (wantsData && /data|csv|xls/.test(typeStr)) { s += 6; reasons.push('matches "data" hint'); }
+            // Recency boost (scaled — newest doc gets ~5 points, decays linearly over 180d)
+            const t = row.date ? new Date(row.date).getTime() : 0;
+            if (t) {
+                const ageDays = Math.max(0, (now - t) / (1000 * 3600 * 24));
+                const recencyPts = Math.max(0, 5 - (ageDays / 36));
+                s += recencyPts;
+                if (wantsLatest) s += recencyPts; // double-weight when user asked for latest
+            }
+            // No object key = can't actually read — penalize
+            if (!row.r2_object_key) { s -= 6; reasons.push('no stored object'); }
+            return { s, reasons };
+        };
+
+        const scored = [];
+        for (const r of subRows) {
+            const sc = score(r, 'submission');
+            scored.push({
+                id: `sub:${r.id}`,
+                title: r.title,
+                type: r.type,
+                category: r.type,
+                date: r.date,
+                uploader: r.uploader,
+                project_id: r.project_id || null,
+                project_name: r.project_name || null,
+                source_kind: 'submission',
+                score: sc.s,
+                match_reason: sc.reasons.slice(0, 3).join('; ') || 'field match',
+                can_read_content: !!r.r2_object_key && zoeDocCanReadContent(r.title, r.type)
+            });
+        }
+        for (const r of grpRows) {
+            const sc = score({ ...r, title: r.title || r.filename, type: r.file_type, date: r.created_at, uploader: r.uploaded_by }, 'group');
+            scored.push({
+                id: `grp:${r.id}`,
+                title: r.title || r.filename,
+                type: r.file_type,
+                category: r.category,
+                date: r.created_at,
+                uploader: r.uploaded_by,
+                project_id: null,
+                project_name: null,
+                source_kind: 'group_document',
+                score: sc.s,
+                match_reason: sc.reasons.slice(0, 3).join('; ') || 'field match',
+                can_read_content: !!r.r2_object_key && zoeDocCanReadContent(r.filename, r.file_type)
+            });
+        }
+
+        scored.sort((a, b) => b.score - a.score || new Date(b.date || 0) - new Date(a.date || 0));
+        const top = scored.slice(0, 5);
+
+        // Confidence buckets (for UI auto-read threshold):
+        //   high: best score ≥ 15 AND (top gap ≥ 8 OR only one match)
+        //   medium: best score ≥ 8
+        //   low: otherwise
+        let confidence = 'low';
+        if (top.length > 0) {
+            const best = top[0].score;
+            const second = top[1] ? top[1].score : 0;
+            if (best >= 15 && (top.length === 1 || (best - second) >= 8)) confidence = 'high';
+            else if (best >= 8) confidence = 'medium';
+        }
+
+        res.json({
+            query: rawQ,
+            tokens,
+            type_hints: {
+                paper: wantsPaper, sop: wantsSop, presentation: wantsPresentation,
+                report: wantsReport, data: wantsData, latest: wantsLatest
+            },
+            confidence,
+            matches: top
+        });
+    } catch (err) {
+        console.error('[ZOE-FIND] error:', err.message);
+        res.status(500).json({ error: 'Failed to resolve document' });
+    }
+});
+
 // GET /api/zoe/document/:id — metadata + extracted text for one document.
 // :id is namespaced — `sub:<submission_id>` | `grp:<id>`. Legacy numeric
 // IDs are treated as group_documents for back-compat.

@@ -13924,8 +13924,28 @@ function dicBuildPdfViewerSrc(fileUrl) {
         selectedFileId: null,
         uploadedFiles: [],
         glpContext: null,
-        activeDocId: null, // Phase 3: portal document selected for next question
+        activeDocId: null,  // Manually selected document (sticky)
+        resolvedDocId: null, // Auto-resolved by find-document (sticky until topic switch)
+        resolvedDocTitle: null,
     };
+
+    // Detect document-oriented intents. Returns true when the message likely
+    // refers to a specific portal document (paper, SOP, presentation, etc.).
+    // Intentionally permissive — a few false positives are fine because the
+    // resolver still validates with actual content matching.
+    const ZOE_DOC_INTENT = /\b(read|summari[sz]e|summary|analyze|analyse|review|what (does|is in|says)|find|locate|show me|compare|open|fetch)\b[\s\S]{0,60}\b(paper|publication|article|journal|sop|presentation|slides?|deck|report|data(?:set)?|file|document|doc|pdf|csv|xlsx?)\b/i;
+    const ZOE_DOC_NAMED = /\b(paper|sop|presentation|slides?|deck|report|data(?:set)?|file|document|doc)\b[^.?!]{0,80}\b(from|about|on|in|regarding|titled|named|called)\b/i;
+    // "Latest X" / "newest X" variants
+    const ZOE_DOC_LATEST = /\b(latest|newest|last|most recent)\b\s+(paper|sop|presentation|slides?|deck|report|data(?:set)?|file|document|doc|upload)/i;
+    // Topic-switch hints that should clear the resolved document memory
+    const ZOE_TOPIC_SWITCH = /\b(forget|clear|another paper|different paper|new topic|switch to|instead|new question)\b/i;
+    function zoeDetectDocIntent(msg) {
+        const m = String(msg || '');
+        return ZOE_DOC_INTENT.test(m) || ZOE_DOC_NAMED.test(m) || ZOE_DOC_LATEST.test(m);
+    }
+    function zoeShouldClearResolved(msg) {
+        return ZOE_TOPIC_SWITCH.test(String(msg || ''));
+    }
 
     function zoeInit() {
         if (ZOE.initialized) return;
@@ -13977,10 +13997,25 @@ function dicBuildPdfViewerSrc(fileUrl) {
     function zoeRefreshActiveDocBanner() {
         const el = document.getElementById('zoeActiveDocBanner');
         if (!el) return;
-        if (!ZOE.activeDocId) { el.style.display = 'none'; el.innerHTML = ''; return; }
+        if (ZOE.activeDocId) {
+            el.style.display = 'block';
+            el.innerHTML = 'Selected for next question: <strong>' + (ZOE.activeDocId || '').replace(/</g,'&lt;')
+                + '</strong> <a href="#" onclick="event.preventDefault(); ZOE.activeDocId=null; zoeLoadDocuments();" style="margin-left:6px; color:#0e7490;">clear</a>';
+            return;
+        }
+        zoeRefreshResolvedBanner();
+    }
+    function zoeRefreshResolvedBanner() {
+        const el = document.getElementById('zoeActiveDocBanner');
+        if (!el) return;
+        if (ZOE.activeDocId) return; // manual selection handled above
+        if (!ZOE.resolvedDocId) { el.style.display = 'none'; el.innerHTML = ''; return; }
+        const title = (ZOE.resolvedDocTitle || ZOE.resolvedDocId).replace(/</g, '&lt;');
         el.style.display = 'block';
-        el.innerHTML = 'Selected for next question: <strong>' + (ZOE.activeDocId || '').replace(/</g,'&lt;')
-            + '</strong> <a href="#" onclick="event.preventDefault(); ZOE.activeDocId=null; zoeLoadDocuments();" style="margin-left:6px; color:#0e7490;">clear</a>';
+        el.style.background = '#f0fdf4';
+        el.style.borderColor = '#22c55e';
+        el.style.color = '#14532d';
+        el.innerHTML = 'Using document: <strong>' + title + '</strong> <a href="#" onclick="event.preventDefault(); ZOE.resolvedDocId=null; ZOE.resolvedDocTitle=null; zoeRefreshResolvedBanner();" style="margin-left:6px; color:#166534;">clear</a>';
     }
 
     // ----- Project drafts (Zoe idea layer) -----
@@ -14102,12 +14137,48 @@ function dicBuildPdfViewerSrc(fileUrl) {
             if (cr.ok) liveContext = await cr.json();
         } catch (_) { /* non-fatal */ }
 
+        // Selection precedence:
+        //   1. Manual selection (ZOE.activeDocId) — always wins if set.
+        //   2. Follow-up memory (ZOE.resolvedDocId) — auto-resolved previously;
+        //      kept sticky unless the user says a topic-switch phrase or names a
+        //      clearly different document (a new doc-intent prompt).
+        //   3. Fresh resolution via /api/zoe/find-document on doc-intent prompts.
+        if (zoeShouldClearResolved(msg)) {
+            ZOE.resolvedDocId = null; ZOE.resolvedDocTitle = null; zoeRefreshResolvedBanner();
+        }
+        let resolverResult = null; // { confidence, matches } — only set when we called find-document this turn
         let selectedDoc = null;
+        const docIntent = zoeDetectDocIntent(msg);
         if (ZOE.activeDocId) {
             try {
                 const dr = await fetch('/api/zoe/document/' + encodeURIComponent(ZOE.activeDocId), { credentials: 'include' });
                 if (dr.ok) selectedDoc = await dr.json();
-            } catch (_) { /* non-fatal */ }
+            } catch (_) {}
+        } else if (docIntent || (!docIntent && ZOE.resolvedDocId)) {
+            // Doc-intent: try to resolve fresh. Otherwise, follow-up on resolved doc.
+            if (docIntent) {
+                try {
+                    const fr = await fetch('/api/zoe/find-document?q=' + encodeURIComponent(msg), { credentials: 'include' });
+                    if (fr.ok) resolverResult = await fr.json();
+                } catch (_) {}
+                if (resolverResult && Array.isArray(resolverResult.matches) && resolverResult.matches.length > 0) {
+                    if (resolverResult.confidence === 'high') {
+                        // Auto-pick top
+                        ZOE.resolvedDocId = resolverResult.matches[0].id;
+                        ZOE.resolvedDocTitle = resolverResult.matches[0].title;
+                        zoeRefreshResolvedBanner();
+                    } else {
+                        // Medium/low: don't auto-pick. Keep any prior resolved doc, but
+                        // pass candidate list to Zoe so she can ask the user to choose.
+                    }
+                }
+            }
+            if (ZOE.resolvedDocId) {
+                try {
+                    const dr = await fetch('/api/zoe/document/' + encodeURIComponent(ZOE.resolvedDocId), { credentials: 'include' });
+                    if (dr.ok) selectedDoc = await dr.json();
+                } catch (_) {}
+            }
         }
 
         // projects_derived=true means the project overview was reconstructed
@@ -14116,25 +14187,41 @@ function dicBuildPdfViewerSrc(fileUrl) {
             ? 'The "projects_overview" is partially derived — avoid stating exact project counts/workloads with certainty; use hedged language ("appears", "based on available signals") and invite the PI to confirm.'
             : 'The "projects_overview" reflects real submission linkage — speak about project counts, workload, and priorities normally.';
 
+        // Candidate list only injected when we have multiple plausible matches
+        // and could not auto-pick one — Zoe should help disambiguate.
+        const hasCandidates = !!(resolverResult && !selectedDoc
+            && resolverResult.matches && resolverResult.matches.length >= 1
+            && resolverResult.confidence !== 'high');
+        const noMatchesAtAll = !!(resolverResult && docIntent
+            && (!resolverResult.matches || resolverResult.matches.length === 0));
+
         const instruction = [
             'You are Zoe, PI scientific and strategic copilot with read-only portal visibility.',
             'When the question warrants it, structure your answer as: Priority → Interpretation → Recommended focus. Otherwise answer concisely.',
             'Grounding rules:',
             '- Prefer the fields "summary", "focus_recommendations", "projects_overview", "alerts", "draft_projects".',
             '- Use raw counts only to support conclusions; do not recite them.',
-            '- Distinguish facts (from the context/document) from inferences (your reasoning). Label inferences explicitly.',
-            '- Do not reference backend/internal roadmap notes, implementation details, or schema names in your answer.',
-            '- Never invent data. If a structured field is missing, empty, or null, explicitly say so, then offer the best grounded inference from adjacent signals and suggest one useful next step.',
+            '- Distinguish facts (from the context/document) from inferences. Label inferences explicitly.',
+            '- Do not reference backend/internal roadmap notes, implementation details, or schema names.',
+            '- Never invent data. If a structured field is missing or null, say so, then offer the best grounded inference from adjacent signals and suggest one useful next step.',
             derivedCaveat,
             'Draft awareness: before proposing a new idea, inspect "draft_projects". If a similar title/theme exists, reference it by title rather than duplicating; propose a new idea only when clearly distinct.',
-            selectedDoc ? 'Document grounding: a SELECTED DOCUMENT is provided. Base document-specific answers on its "text_content". Mention the document title naturally. If "content_truncated" is true, state that you only have the beginning of the document — do not claim to have read the entire file. If "text_content" is null, reason only from the metadata and say so.' : '',
-            selectedDoc ? 'When both the document and "draft_projects" are relevant, compare: does the document support, overlap with, or differ from existing drafts? Suggest a new draft only when clearly distinct.' : ''
+            // ---- Document-resolution rules (critical) ---------------------
+            'If a SELECTED DOCUMENT or RESOLVED DOCUMENT block is present, treat the document as already provided. Do NOT ask for a file path, upload, URL, DOI, or folder location under any circumstance. Do NOT ask the user to paste content. Analyze the given document directly.',
+            selectedDoc ? 'Document grounding: the ' + (ZOE.activeDocId ? 'SELECTED' : 'RESOLVED') + ' DOCUMENT is authoritative for document-specific questions. Base your answers on its "text_content". Mention the document title naturally when relevant.' : '',
+            selectedDoc ? 'Truncation: if "content_truncated" is true, state explicitly that you only have the beginning of the document — do not claim to have read the full file. If "text_content" is null, reason only from the metadata and say so; still do not ask for the file location.' : '',
+            selectedDoc ? 'When the document and "draft_projects" are both relevant: compare — does the document support, overlap with, or differ from existing drafts? Suggest a new draft only when clearly distinct.' : '',
+            hasCandidates ? 'CANDIDATE DOCUMENTS are included (the user mentioned a document but multiple files matched). List the top candidates by title and ask the user to confirm which one they meant. Do NOT invent content for any of them. If the top match has noticeably higher score/confidence than the others, you may proceed with it and state clearly which one you chose and why.' : '',
+            noMatchesAtAll ? 'NO MATCHES were found for the document the user asked about. Say so plainly, offer 1–2 ways to refine (add a keyword, mention the uploader, mention the project), and do not ask for a file path or upload.' : ''
         ].filter(Boolean).join('\n');
 
-        const contextBlock = (liveContext || selectedDoc) ? (
+        const contextBlock = (liveContext || selectedDoc || hasCandidates || noMatchesAtAll) ? (
             instruction
             + '\n\nLIVE PORTAL CONTEXT: ' + JSON.stringify(liveContext || {})
-            + (selectedDoc ? '\n\nSELECTED DOCUMENT: ' + JSON.stringify(selectedDoc) : '')
+            + (selectedDoc ? '\n\n' + (ZOE.activeDocId ? 'SELECTED' : 'RESOLVED') + ' DOCUMENT: ' + JSON.stringify(selectedDoc) : '')
+            + (hasCandidates ? '\n\nCANDIDATE DOCUMENTS (the user mentioned a doc but multiple matched; ask to confirm): '
+                + JSON.stringify({ query: resolverResult.query, confidence: resolverResult.confidence, matches: resolverResult.matches }) : '')
+            + (noMatchesAtAll ? '\n\nDOCUMENT RESOLVER: no matches for query "' + String(resolverResult.query || '').slice(0, 120) + '".' : '')
             + '\n\nUSER QUESTION: '
         ) : '';
 
