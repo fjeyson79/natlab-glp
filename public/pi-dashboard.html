@@ -4136,6 +4136,113 @@
         let labFilesData = [];
         let selectedLabFiles = new Set();
 
+        // ===== AI_bot capability gating =====================================
+        // Exposes helpers used by renderers to hide action controls when the
+        // current user is role='ai_bot' and the corresponding capability is
+        // not enabled. Read-only by default. Backend is the source of truth;
+        // this layer only reduces UI noise.
+        window.aiBotCaps = null; // null = not ai_bot; {} or {cap:true} when ai_bot
+        function isAIBot() { return !!window.aiBotCaps; }
+        function aiBotCan(cap) {
+            if (!isAIBot()) return true; // non-ai_bot users unaffected
+            return window.aiBotCaps[cap] === true;
+        }
+        // Inject CSS that hides [data-ai-cap="X"] elements when the capability
+        // is NOT present. Applied by toggling body classes `aibot-cap-X`.
+        function applyAIBotGating(caps) {
+            window.aiBotCaps = caps || {};
+            const body = document.body;
+            body.classList.add('role-ai-bot');
+            const AI_CAPS = ['approve','revise','discard','seal','upload_files','edit_files','delete_files'];
+            for (const c of AI_CAPS) {
+                body.classList.toggle('aibot-cap-' + c, caps[c] === true);
+            }
+            // Inject gating stylesheet once.
+            if (!document.getElementById('aibot-gating-style')) {
+                const st = document.createElement('style');
+                st.id = 'aibot-gating-style';
+                st.textContent = `
+                    body.role-ai-bot [data-ai-cap="approve"]:not(.aibot-allow),
+                    body.role-ai-bot [data-ai-cap="revise"]:not(.aibot-allow),
+                    body.role-ai-bot [data-ai-cap="discard"]:not(.aibot-allow),
+                    body.role-ai-bot [data-ai-cap="seal"]:not(.aibot-allow),
+                    body.role-ai-bot [data-ai-cap="upload_files"]:not(.aibot-allow),
+                    body.role-ai-bot [data-ai-cap="edit_files"]:not(.aibot-allow),
+                    body.role-ai-bot [data-ai-cap="delete_files"]:not(.aibot-allow) { display: none !important; }
+                    body.role-ai-bot.aibot-cap-approve        [data-ai-cap="approve"]       { display: ""; }
+                    body.role-ai-bot.aibot-cap-revise         [data-ai-cap="revise"]        { display: ""; }
+                    body.role-ai-bot.aibot-cap-discard        [data-ai-cap="discard"]       { display: ""; }
+                    body.role-ai-bot.aibot-cap-seal           [data-ai-cap="seal"]          { display: ""; }
+                    body.role-ai-bot.aibot-cap-upload_files   [data-ai-cap="upload_files"]  { display: ""; }
+                    body.role-ai-bot.aibot-cap-edit_files     [data-ai-cap="edit_files"]    { display: ""; }
+                    body.role-ai-bot.aibot-cap-delete_files   [data-ai-cap="delete_files"]  { display: ""; }
+                    body.role-ai-bot [data-ai-action-only]    { display: none !important; }
+                `;
+                document.head.appendChild(st);
+            }
+            // Heuristic fallback: scan for buttons whose label matches action verbs
+            // and hide them if the corresponding capability is off. Runs once on
+            // init and again after dynamic renders via hookDynamicGating().
+            scanAndGateActionButtons();
+            hookDynamicGating();
+        }
+        // Maps button label fragments to capability keys. Case-insensitive match.
+        const AIBOT_VERB_MAP = [
+            [/\bapprove\b|\bcertify\b|\bpi-?accept\b|\baccept\b/i, 'approve'],
+            [/\brevise\b|\brevision\b/i, 'revise'],
+            [/\bdiscard\b|\breject\b|\bdecline\b/i, 'discard'],
+            [/\bseal\b|\bdragon\s*seal\b|\block\b/i, 'seal'],
+            [/\bupload\b/i, 'upload_files'],
+            [/\bedit\b|\bsave\s+changes\b|\brename\b/i, 'edit_files'],
+            [/\bdelete\b|\bremove\b|\btrash\b|\barchive\b/i, 'delete_files'],
+        ];
+        function scanAndGateActionButtons(root) {
+            if (!isAIBot()) return;
+            const scope = root || document;
+            const btns = scope.querySelectorAll('button, a.btn, input[type="submit"]');
+            btns.forEach(btn => {
+                if (btn.dataset.aiGated === '1') return;
+                // If element or ancestor already has an explicit data-ai-cap, leave CSS to handle it.
+                if (btn.closest('[data-ai-cap]')) { btn.dataset.aiGated = '1'; return; }
+                // Skip read-only navigational buttons that are safe (tab switchers, close, cancel, etc.)
+                const txt = (btn.textContent || btn.value || '').trim();
+                if (!txt) { btn.dataset.aiGated = '1'; return; }
+                if (/^(close|cancel|back|refresh|view|details?|open|download|filter|search|apply|preview|export|next|prev|previous)$/i.test(txt)) {
+                    btn.dataset.aiGated = '1'; return;
+                }
+                for (const [rx, cap] of AIBOT_VERB_MAP) {
+                    if (rx.test(txt)) {
+                        if (!aiBotCan(cap)) {
+                            btn.style.display = 'none';
+                        }
+                        btn.dataset.aiGated = '1';
+                        btn.dataset.aiCapInferred = cap;
+                        return;
+                    }
+                }
+                btn.dataset.aiGated = '1';
+            });
+            // Hide upload inputs entirely unless upload_files enabled.
+            if (!aiBotCan('upload_files')) {
+                scope.querySelectorAll('input[type="file"]').forEach(el => { el.style.display = 'none'; });
+            }
+        }
+        let _aibotHookInstalled = false;
+        function hookDynamicGating() {
+            if (_aibotHookInstalled || !isAIBot()) return;
+            _aibotHookInstalled = true;
+            const mo = new MutationObserver(muts => {
+                for (const m of muts) {
+                    m.addedNodes && m.addedNodes.forEach(node => {
+                        if (node.nodeType === 1) scanAndGateActionButtons(node);
+                    });
+                }
+            });
+            mo.observe(document.body, { childList: true, subtree: true });
+        }
+        // ===== end AI_bot gating ============================================
+
+
         const __nativeFetch = window.fetch.bind(window);
         window.fetch = function(input, init = {}) {
             try {
@@ -4168,14 +4275,19 @@
                 const data = await response.json();
                 currentUser = data.user || data;
 
-                // Check if user is PI
+                // Check if user is PI or AI_bot (AI_bot inherits PI-level visibility)
                 const role = (currentUser.role || "").toUpperCase();
-                if (role !== "PI" && role !== "ADMIN") {
+                if (role !== "PI" && role !== "ADMIN" && role !== "AI_BOT") {
                     window.location.href = 'upload.html';
                     return;
                 }
 
                 document.getElementById('userName').textContent = currentUser.researcher_id;
+
+                // AI_bot gating: hide action controls unless the matching capability is enabled.
+                if (role === "AI_BOT") {
+                    applyAIBotGating(currentUser.ai_bot_capabilities || {});
+                }
 
                 // Load initial data
                 loadDashboardData();
@@ -9079,8 +9191,10 @@ function dicBuildPdfViewerSrc(fileUrl) {
             { value: 'researcher', label: 'Researcher' },
             { value: 'supervisor', label: 'Supervisor' },
             { value: 'pi', label: 'Principal Investigator' },
+            { value: 'ai_bot', label: 'AI_bot' },
             { value: 'custom', label: 'Custom' }
         ];
+        const AI_BOT_CAPABILITIES = ['approve', 'revise', 'discard', 'seal', 'upload_files', 'edit_files', 'delete_files'];
         const UC_STARTUP_ROLES = [
             { value: 'founder', label: 'Founder' },
             { value: 'admin', label: 'Admin' },
@@ -9148,6 +9262,7 @@ function dicBuildPdfViewerSrc(fileUrl) {
                                     ${ucRoleOptions(ws.slug, d.role || '')}
                                 </select>
                                 <div class="custom-role-hint" id="${id}_customHint">Custom role/access: privileges are defined manually through clearance and module settings.</div>
+                                ${ws.slug === 'natlab' ? ucRenderAIBotPanel(id, d.role || '', d.ai_bot_capabilities) : ''}
                             </div>
                         </div>
                         <div class="form-row" style="margin-top:8px;">
@@ -9201,6 +9316,41 @@ function dicBuildPdfViewerSrc(fileUrl) {
             const sel = document.getElementById(id + '_role');
             const hint = document.getElementById(id + '_customHint');
             if (hint) hint.style.display = sel.value === 'custom' ? 'block' : 'none';
+            const aiPanel = document.getElementById(id + '_aibotPanel');
+            if (aiPanel) aiPanel.style.display = sel.value === 'ai_bot' ? 'block' : 'none';
+        }
+
+        // Renders AI_bot capability list. Visible only when role === 'ai_bot'.
+        // Defaults every capability OFF — AI_bot is read-only unless PI explicitly enables a capability.
+        function ucRenderAIBotPanel(id, selectedRole, caps) {
+            const c = (caps && typeof caps === 'object') ? caps : {};
+            const visible = selectedRole === 'ai_bot';
+            const rows = AI_BOT_CAPABILITIES.map(cap => {
+                const checked = c[cap] === true ? 'checked' : '';
+                const label = cap.replace('_', ' ');
+                return `<label style="display:flex;align-items:center;gap:6px;font-size:12px;margin:2px 0;">
+                    <input type="checkbox" id="${id}_aibot_${cap}" ${checked}>
+                    <span style="text-transform:capitalize;">${label}</span>
+                </label>`;
+            }).join('');
+            return `
+                <div id="${id}_aibotPanel" style="display:${visible ? 'block' : 'none'};margin-top:8px;padding:10px;border:1px solid #7c3aed;border-radius:6px;background:#f5f3ff;">
+                    <div style="font-weight:600;font-size:12px;color:#5b21b6;margin-bottom:6px;">AI_bot Capabilities</div>
+                    <div style="font-size:11px;color:#6b21a8;margin-bottom:8px;">
+                        Read-only by default. AI_bot inherits full PI-level visibility. Enable a capability below to allow the corresponding write action.
+                    </div>
+                    ${rows}
+                </div>`;
+        }
+
+        // Collect AI_bot capability selections for a given row id.
+        function ucCollectAIBotCaps(id) {
+            const out = {};
+            for (const cap of AI_BOT_CAPABILITIES) {
+                const el = document.getElementById(id + '_aibot_' + cap);
+                out[cap] = !!(el && el.checked);
+            }
+            return out;
         }
 
         // ---- Portal Tab Visibility ----
@@ -9583,6 +9733,16 @@ function dicBuildPdfViewerSrc(fileUrl) {
                 const mMap = {};
                 memberships.forEach(m => { mMap[m.workspace_slug] = { ...m, _enabled: true }; });
 
+                // Load AI_bot capabilities (best-effort — column may be missing pre-migration 061)
+                try {
+                    const capResp = await fetch(`/api/di/members/${userId}/ai-bot-capabilities`, { credentials: 'include' });
+                    if (capResp.ok) {
+                        const capData = await capResp.json();
+                        if (!mMap['natlab']) mMap['natlab'] = { workspace_slug: 'natlab', _enabled: false };
+                        mMap['natlab'].ai_bot_capabilities = capData.capabilities || {};
+                    }
+                } catch (e) { /* non-fatal */ }
+
                 body.innerHTML = `
                     <div class="clearance-section">
                         <h3>Identity Overview</h3>
@@ -9647,6 +9807,12 @@ function dicBuildPdfViewerSrc(fileUrl) {
             const memberships = ucCollectWsData('ucWs');
             const affiliation = document.getElementById('uc_affiliation')?.value;
 
+            // Collect AI_bot capabilities from the NAT-Lab row, if role is ai_bot.
+            const natlabRowId = 'ucWs_natlab';
+            const natlabRoleEl = document.getElementById(natlabRowId + '_role');
+            const aiBotCaps = (natlabRoleEl && natlabRoleEl.value === 'ai_bot')
+                ? ucCollectAIBotCaps(natlabRowId) : null;
+
             try {
                 const resp = await fetch(`/api/di/user-clearance/${ucCurrentUserId}`, {
                     method: 'PUT',
@@ -9658,6 +9824,17 @@ function dicBuildPdfViewerSrc(fileUrl) {
                 if (!resp.ok) {
                     alert(data.error || 'Failed to save clearance');
                 } else {
+                    // Persist AI_bot capabilities separately (additive endpoint).
+                    if (aiBotCaps) {
+                        try {
+                            await fetch(`/api/di/members/${ucCurrentUserId}/ai-bot-capabilities`, {
+                                method: 'PATCH',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ capabilities: aiBotCaps }),
+                                credentials: 'include'
+                            });
+                        } catch (e) { console.warn('AI_bot capability save failed:', e); }
+                    }
                     alert('User clearance updated successfully.');
                     closeClearance();
                     loadAllUsers();

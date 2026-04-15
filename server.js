@@ -403,6 +403,62 @@ function requirePI(req, res, next) {
     next();
 }
 
+// ============================================================================
+// AI_BOT ROLE — DESIGN NOTE
+// ----------------------------------------------------------------------------
+// AI_bot is intended to mirror PI-level READ visibility across the entire
+// portal (scientific + strategic + tech-transfer + activity), while having
+// NO action authority by default. Action authority is granted ONLY through
+// the explicit per-user capability list in di_allowlist.ai_bot_capabilities
+// (migration 061). Capabilities default OFF.
+//
+// Enforcement contract:
+//   - requirePIRead      — allows 'pi' and 'ai_bot'. USE ONLY on read/GET
+//                          endpoints. Never guard a write with requirePIRead.
+//   - requirePIorCap(c)  — allows 'pi' always; 'ai_bot' only if capability
+//                          `c` is true. USE on capability-gated write
+//                          endpoints (approve/revise/discard/seal/upload_files/
+//                          edit_files/delete_files).
+//   - requirePI          — strict 'pi' only. Everything not in the capability
+//                          list (user mgmt, modules CUD, delegation, backups,
+//                          meetings CUD, system versions, Zoe work-actions,
+//                          oligo library writes, etc.) MUST stay on requirePI
+//                          so ai_bot is blocked by default (fail-closed).
+//
+// If you add a new write endpoint: default to requirePI. Only downgrade to
+// requirePIorCap(...) if that specific action belongs to the published
+// AI_bot capability list. NEVER protect a write with requirePIRead.
+// ============================================================================
+
+// AI_BOT / PI READ MIDDLEWARE - inherits PI visibility for role='ai_bot'.
+// Allows ai_bot to see everything a PI sees, without granting any write capability.
+// Use on GET / read-only endpoints that were previously requirePI.
+function requirePIRead(req, res, next) {
+    if (!req.session.user) {
+        return res.status(401).json({ error: 'Not authenticated' });
+    }
+    const role = req.session.user.role;
+    if (role === 'pi' || role === 'ai_bot') return next();
+    return res.status(403).json({ error: 'Access denied. PI role required.' });
+}
+
+// AI_BOT CAPABILITY MIDDLEWARE - factory. PI always passes; ai_bot must have
+// the named capability enabled in di_allowlist.ai_bot_capabilities.
+// Valid capabilities: approve, revise, discard, seal, upload_files, edit_files, delete_files.
+function requirePIorCap(capName) {
+    return function (req, res, next) {
+        const u = req.session.user;
+        if (!u) return res.status(401).json({ error: 'Not authenticated' });
+        if (u.role === 'pi') return next();
+        if (u.role === 'ai_bot') {
+            const caps = u.ai_bot_capabilities || {};
+            if (caps[capName] === true) return next();
+            return res.status(403).json({ error: `AI_bot capability '${capName}' is not enabled for this account.` });
+        }
+        return res.status(403).json({ error: 'Access denied. PI role required.' });
+    };
+}
+
 // CSO MIDDLEWARE - requires workspace_position = CSO (InvestRoom update mode)
 async function requireCSO(req, res, next) {
     if (!req.session.user) {
@@ -544,6 +600,28 @@ async function checkRoleColumn() {
     }
     return roleColumnExists;
 }
+
+// Helper: check if ai_bot_capabilities column exists (migration 061)
+let aiBotCapColExists = null;
+let aiBotCapColLastCheck = 0;
+async function checkAiBotCapCol() {
+    const now = Date.now();
+    if (aiBotCapColExists === null || aiBotCapColExists === false || (now - aiBotCapColLastCheck > ROLE_COLUMN_CHECK_INTERVAL)) {
+        try {
+            const result = await pool.query(`
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'di_allowlist' AND column_name = 'ai_bot_capabilities'
+            `);
+            aiBotCapColExists = result.rows.length > 0;
+            aiBotCapColLastCheck = now;
+        } catch (err) {
+            aiBotCapColExists = false;
+        }
+    }
+    return aiBotCapColExists;
+}
+
+const AI_BOT_CAPABILITIES = ['approve', 'revise', 'discard', 'seal', 'upload_files', 'edit_files', 'delete_files'];
 
 // Helper function to check if supervisor_researchers table exists (migration 008)
 let supervisorTableExists = null;
@@ -1287,16 +1365,18 @@ app.post('/api/di/login', async (req, res) => {
 
         // Get user with allowlist info (handle missing role column)
         const hasRole = await checkRoleColumn();
+        const hasAiBotCap = await checkAiBotCapCol();
+        const capSelect = hasAiBotCap ? `, a.ai_bot_capabilities` : `, '{}'::text as ai_bot_capabilities`;
         const loginQuery = hasRole
             ? `SELECT u.institution_email, u.password_hash, u.researcher_id,
                       a.name, a.affiliation, a.active, COALESCE(a.role, 'researcher') as role,
-                      COALESCE(u.force_password_reset, false) as force_password_reset
+                      COALESCE(u.force_password_reset, false) as force_password_reset${capSelect}
                FROM di_users u
                JOIN di_allowlist a ON u.researcher_id = a.researcher_id
                WHERE LOWER(u.institution_email) = $1`
             : `SELECT u.institution_email, u.password_hash, u.researcher_id,
                       a.name, a.affiliation, a.active, 'researcher' as role,
-                      COALESCE(u.force_password_reset, false) as force_password_reset
+                      COALESCE(u.force_password_reset, false) as force_password_reset${capSelect}
                FROM di_users u
                JOIN di_allowlist a ON u.researcher_id = a.researcher_id
                WHERE LOWER(u.institution_email) = $1`;
@@ -1345,13 +1425,24 @@ app.post('/api/di/login', async (req, res) => {
             [emailLower]
         ).catch(err => console.error('[LOGIN] last_login update failed:', err.message));
 
+        // Parse ai_bot_capabilities (JSONB comes back as object; fallback string parse)
+        let aiBotCaps = {};
+        try {
+            if (user.ai_bot_capabilities) {
+                aiBotCaps = typeof user.ai_bot_capabilities === 'string'
+                    ? JSON.parse(user.ai_bot_capabilities)
+                    : user.ai_bot_capabilities;
+            }
+        } catch (e) { aiBotCaps = {}; }
+
         // Set session with role
         req.session.user = {
             institution_email: user.institution_email,
             researcher_id: user.researcher_id,
             name: user.name,
             affiliation: user.affiliation,
-            role: user.role
+            role: user.role,
+            ai_bot_capabilities: user.role === 'ai_bot' ? aiBotCaps : {}
         };
 
         // Determine redirect based on role and workspace context
@@ -1360,7 +1451,8 @@ app.post('/api/di/login', async (req, res) => {
         if (wsSlug && wsSlug !== 'natlab') {
             // Workspace-specific portal redirect
             redirectPage = `portal-${wsSlug}.html`;
-        } else if (user.role === 'pi') {
+        } else if (user.role === 'pi' || user.role === 'ai_bot') {
+            // AI_bot inherits PI-level visibility, lands on PI dashboard.
             redirectPage = 'pi-dashboard.html';
         }
         // Supervisors go to upload.html (same as researchers) but get additional supervision panel
@@ -1502,6 +1594,12 @@ app.get('/api/di/me', requireAuth, async (req, res) => {
         role: req.session.user.role || 'researcher',
         institution_email: req.session.user.institution_email
     };
+
+    // Expose AI_bot capabilities so the frontend can gate action buttons.
+    // Only meaningful when role === 'ai_bot'; empty object otherwise.
+    if (req.session.user.role === 'ai_bot') {
+        base.ai_bot_capabilities = req.session.user.ai_bot_capabilities || {};
+    }
 
     // Pass through investor session markers if present
     if (req.session.user.user_type) base.user_type = req.session.user.user_type;
@@ -3093,7 +3191,7 @@ app.get('/api/di/revision-requests/open', requireAuth, async (req, res) => {
 
 // GET /api/di/revision-requests/all
 // All open revision requests for PI Lab Files view
-app.get('/api/di/revision-requests/all', requirePI, async (req, res) => {
+app.get('/api/di/revision-requests/all', requirePIRead, async (req, res) => {
     try {
         if (!await checkRevisionRequestsTable()) {
             return res.json({ requests: [] });
@@ -3187,7 +3285,7 @@ function renderHtmlPage(title, content, type = 'info') {
 
 // GET /api/di/members
 // Get all lab members (PI only)
-app.get('/api/di/members', requirePI, async (req, res) => {
+app.get('/api/di/members', requirePIRead, async (req, res) => {
     try {
         // Check if role column exists using the helper function
         const hasRoleColumn = await checkRoleColumn();
@@ -3276,7 +3374,7 @@ app.post('/api/di/members', requirePI, async (req, res) => {
         }
 
         // Workspace-aware role validation
-        const VALID_LAB_ROLES = ['researcher', 'supervisor', 'pi', 'custom'];
+        const VALID_LAB_ROLES = ['researcher', 'supervisor', 'pi', 'ai_bot', 'custom'];
         const VALID_COMPANY_ROLES = ['founder', 'admin', 'r_and_d', 'advisor', 'investor', 'custom'];
 
         // Determine which role sets are valid based on assigned workspaces
@@ -3470,7 +3568,7 @@ app.delete('/api/di/members/:id', requirePI, async (req, res) => {
 
 // GET /api/di/directory
 // Get directory tree structure of all submissions (PI only)
-app.get('/api/di/directory', requirePI, async (req, res) => {
+app.get('/api/di/directory', requirePIRead, async (req, res) => {
     try {
         // Get all members
         const membersResult = await pool.query(
@@ -3565,7 +3663,7 @@ app.get('/api/di/directory', requirePI, async (req, res) => {
 
 // POST /api/di/pi-upload
 // PI uploads file on behalf of a researcher
-app.post('/api/di/pi-upload-old', requirePI, upload.single('file'), async (req, res) => {
+app.post('/api/di/pi-upload-old', requirePIorCap('upload_files'), upload.single('file'), async (req, res) => {
     try {
         const { researcher_id, fileType } = req.body;
         const file = req.file;
@@ -3645,7 +3743,7 @@ app.post('/api/di/pi-upload-old', requirePI, upload.single('file'), async (req, 
 
 // DELETE /api/di/submissions/:id
 // Delete a submission (PI only)
-app.delete('/api/di/submissions/:id', requirePI, async (req, res) => {
+app.delete('/api/di/submissions/:id', requirePIorCap('delete_files'), async (req, res) => {
   try {
     const submissionId = req.params.id;
 
@@ -3830,7 +3928,7 @@ app.get('/api/di/group-documents/:id/download', requireAuth, async (req, res) =>
 
 // POST /api/di/group-documents
 // Upload a new group document (PI only)
-app.post('/api/di/group-documents', requirePI, groupDocUpload.single('file'), async (req, res) => {
+app.post('/api/di/group-documents', requirePIorCap('upload_files'), groupDocUpload.single('file'), async (req, res) => {
     try {
         const { title, category, description } = req.body;
         const canDownload = req.body.can_download !== 'false' && req.body.can_download !== false;
@@ -3882,7 +3980,7 @@ app.post('/api/di/group-documents', requirePI, groupDocUpload.single('file'), as
 
 // PUT /api/di/group-documents/:id
 // Update a group document metadata (PI only)
-app.put('/api/di/group-documents/:id', requirePI, async (req, res) => {
+app.put('/api/di/group-documents/:id', requirePIorCap('edit_files'), async (req, res) => {
     try {
         const { id } = req.params;
         const { title, category, description, can_download } = req.body;
@@ -3919,7 +4017,7 @@ app.put('/api/di/group-documents/:id', requirePI, async (req, res) => {
 
 // DELETE /api/di/group-documents/:id
 // Soft delete a group document (PI only)
-app.delete('/api/di/group-documents/:id', requirePI, async (req, res) => {
+app.delete('/api/di/group-documents/:id', requirePIorCap('delete_files'), async (req, res) => {
     try {
         const { id } = req.params;
 
@@ -3966,7 +4064,7 @@ app.delete('/api/di/group-documents/:id', requirePI, async (req, res) => {
 
 // GET /api/di/pending-approvals
 // List pending submissions for PI review
-app.get('/api/di/pending-approvals', requirePI, async (req, res) => {
+app.get('/api/di/pending-approvals', requirePIRead, async (req, res) => {
     try {
         const hasLegacy = await checkLegacyColumns();
         const legacyCols = hasLegacy
@@ -4000,7 +4098,7 @@ app.get('/api/di/pending-approvals', requirePI, async (req, res) => {
 
 // GET /api/di/lab-files
 // Get all submissions as flat list for Laboratory Files tab
-app.get('/api/di/lab-files', requirePI, async (req, res) => {
+app.get('/api/di/lab-files', requirePIRead, async (req, res) => {
     try {
         const result = await pool.query(
             `SELECT s.submission_id, s.researcher_id, s.original_filename, s.file_type,
@@ -4147,7 +4245,7 @@ app.post('/api/di/transfer-to-workspace', requirePI, async (req, res) => {
 // =====================================================
 
 // GET /api/di/lab-files-enriched — Performance-bounded with association counts
-app.get('/api/di/lab-files-enriched', requirePI, async (req, res) => {
+app.get('/api/di/lab-files-enriched', requirePIRead, async (req, res) => {
     try {
         const months = Math.min(Math.max(parseInt(req.query.months) || 12, 6), 60);
         const hasAssoc = await checkAssociationsTable();
@@ -4238,7 +4336,7 @@ app.get('/api/di/lab-files-enriched', requirePI, async (req, res) => {
 });
 
 // GET /api/di/researcher-file-metrics — Per-researcher counts
-app.get('/api/di/researcher-file-metrics', requirePI, async (req, res) => {
+app.get('/api/di/researcher-file-metrics', requirePIRead, async (req, res) => {
     try {
         const workspaceId = req.workspace.id;
 
@@ -4265,7 +4363,7 @@ app.get('/api/di/researcher-file-metrics', requirePI, async (req, res) => {
 });
 
 // GET /api/di/file-associations/:id — Manual links + heuristic suggestions
-app.get('/api/di/file-associations/:id', requirePI, async (req, res) => {
+app.get('/api/di/file-associations/:id', requirePIRead, async (req, res) => {
     try {
         const sourceFileId = req.params.id;
         const hasAssoc = await checkAssociationsTable();
@@ -4743,7 +4841,7 @@ app.delete('/api/di/vision/associations/:id', requireAuth, async (req, res) => {
 });
 
 // POST /api/di/approve-inline/:id — Session-based approval (DIC)
-app.post('/api/di/approve-inline/:id', requirePI, async (req, res) => {
+app.post('/api/di/approve-inline/:id', requirePIorCap('approve'), async (req, res) => {
     try {
         const { approval_comment } = req.body || {};
         const result = await performApproval(req.params.id, approval_comment);
@@ -4756,7 +4854,7 @@ app.post('/api/di/approve-inline/:id', requirePI, async (req, res) => {
 });
 
 // POST /api/di/revise-inline/:id — Session-based revision (DIC)
-app.post('/api/di/revise-inline/:id', requirePI, async (req, res) => {
+app.post('/api/di/revise-inline/:id', requirePIorCap('revise'), async (req, res) => {
     try {
         const { comments } = req.body;
         const result = await performRevision(req.params.id, comments);
@@ -4769,7 +4867,7 @@ app.post('/api/di/revise-inline/:id', requirePI, async (req, res) => {
 });
 
 // POST /api/di/discard-inline/:id — PI discards a submission (final, audit preserved)
-app.post('/api/di/discard-inline/:id', requirePI, async (req, res) => {
+app.post('/api/di/discard-inline/:id', requirePIorCap('discard'), async (req, res) => {
     try {
         const submissionId = req.params.id;
         const { reason, note } = req.body || {};
@@ -4835,7 +4933,7 @@ app.post('/api/di/discard-inline/:id', requirePI, async (req, res) => {
 });
 
 // POST /api/di/documents/:id/dragon-seal — Toggle PI Dragon Seal
-app.post('/api/di/documents/:id/dragon-seal', requirePI, async (req, res) => {
+app.post('/api/di/documents/:id/dragon-seal', requirePIorCap('seal'), async (req, res) => {
     try {
         const { enabled } = req.body;
         if (typeof enabled !== 'boolean') {
@@ -4923,7 +5021,7 @@ app.post('/api/di/bulk-download', requirePI, async (req, res) => {
 
 // GET /api/di/all-members
 // Get all members including inactive (for User Management)
-app.get('/api/di/all-members', requirePI, async (req, res) => {
+app.get('/api/di/all-members', requirePIRead, async (req, res) => {
     try {
         const hasLegacy = await checkLegacyColumns();
         const legacyCols = hasLegacy
@@ -5059,6 +5157,75 @@ app.put('/api/di/members/:id/reactivate', requirePI, async (req, res) => {
     }
 });
 
+// GET /api/di/members/:id/ai-bot-capabilities
+// Read AI_bot capability list for a user. PI-only.
+app.get('/api/di/members/:id/ai-bot-capabilities', requirePIRead, async (req, res) => {
+    try {
+        if (!(await checkAiBotCapCol())) {
+            return res.json({ researcher_id: req.params.id, capabilities: {}, available: AI_BOT_CAPABILITIES, column_missing: true });
+        }
+        const { id } = req.params;
+        const result = await pool.query(
+            `SELECT researcher_id, role, ai_bot_capabilities FROM di_allowlist WHERE researcher_id = $1`,
+            [id]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+        const row = result.rows[0];
+        const caps = (typeof row.ai_bot_capabilities === 'string')
+            ? JSON.parse(row.ai_bot_capabilities || '{}')
+            : (row.ai_bot_capabilities || {});
+        res.json({
+            researcher_id: row.researcher_id,
+            role: row.role,
+            capabilities: caps,
+            available: AI_BOT_CAPABILITIES
+        });
+    } catch (err) {
+        console.error('[AI_BOT] Read capabilities error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// PATCH /api/di/members/:id/ai-bot-capabilities
+// Update AI_bot capability list. PI-only. Only valid cap keys are persisted.
+app.patch('/api/di/members/:id/ai-bot-capabilities', requirePI, async (req, res) => {
+    try {
+        if (!(await checkAiBotCapCol())) {
+            return res.status(400).json({ error: 'ai_bot_capabilities column not available (run migration 061)' });
+        }
+        const { id } = req.params;
+        const body = req.body && typeof req.body === 'object' ? req.body : {};
+        const incoming = body.capabilities && typeof body.capabilities === 'object' ? body.capabilities : body;
+        // Whitelist: only known capability keys, cast to strict booleans.
+        const sanitized = {};
+        for (const k of AI_BOT_CAPABILITIES) {
+            sanitized[k] = incoming[k] === true;
+        }
+        const userRow = await pool.query(
+            `SELECT role FROM di_allowlist WHERE researcher_id = $1`, [id]
+        );
+        if (userRow.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+        // Allow saving caps even if role not yet ai_bot; they apply when/if role becomes ai_bot.
+        const result = await pool.query(
+            `UPDATE di_allowlist SET ai_bot_capabilities = $1::jsonb
+             WHERE researcher_id = $2
+             RETURNING researcher_id, role, ai_bot_capabilities`,
+            [JSON.stringify(sanitized), id]
+        );
+        console.log(`[AI_BOT] Capabilities for ${id} updated by PI ${req.session.user.researcher_id}: ${JSON.stringify(sanitized)}`);
+        res.json({
+            success: true,
+            researcher_id: result.rows[0].researcher_id,
+            role: result.rows[0].role,
+            capabilities: sanitized,
+            available: AI_BOT_CAPABILITIES
+        });
+    } catch (err) {
+        console.error('[AI_BOT] Update capabilities error:', err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
 // PUT /api/di/members/:id/legacy-enable
 // Enable legacy upload window for a researcher (48h)
 app.put('/api/di/members/:id/legacy-enable', requirePI, async (req, res) => {
@@ -5160,7 +5327,7 @@ app.post('/api/di/members/:id/reset-password', requirePI, async (req, res) => {
 
 // GET /api/di/user-clearance/:id
 // Get full clearance data for a user across all workspaces
-app.get('/api/di/user-clearance/:id', requirePI, async (req, res) => {
+app.get('/api/di/user-clearance/:id', requirePIRead, async (req, res) => {
     try {
         const { id } = req.params;
 
@@ -5253,7 +5420,7 @@ app.put('/api/di/user-clearance/:id', requirePI, async (req, res) => {
                     const wsId = wsRes.rows[0].id;
 
                     // Validate role
-                    const validNatLabRoles = ['researcher', 'supervisor', 'pi', 'custom'];
+                    const validNatLabRoles = ['researcher', 'supervisor', 'pi', 'ai_bot', 'custom'];
                     const validStartupRoles = ['founder', 'admin', 'r_and_d', 'advisor', 'investor', 'custom'];
                     const validRoles = m.workspace_slug === 'natlab' ? validNatLabRoles : validStartupRoles;
                     const role = validRoles.includes(m.role) ? m.role : validRoles[0];
@@ -5336,7 +5503,7 @@ app.put('/api/di/user-clearance/:id', requirePI, async (req, res) => {
                     }
 
                     // Sync NAT-Lab role back to di_allowlist.role for compatibility
-                    if (m.workspace_slug === 'natlab' && ['researcher', 'supervisor', 'pi'].includes(role)) {
+                    if (m.workspace_slug === 'natlab' && ['researcher', 'supervisor', 'pi', 'ai_bot'].includes(role)) {
                         await client.query(
                             'UPDATE di_allowlist SET role = $1 WHERE researcher_id = $2',
                             [role, id]
@@ -5373,7 +5540,7 @@ app.put('/api/di/user-clearance/:id', requirePI, async (req, res) => {
 
 // GET /api/di/workspaces
 // List all available workspaces (for clearance UI)
-app.get('/api/di/workspaces', requirePI, async (req, res) => {
+app.get('/api/di/workspaces', requirePIRead, async (req, res) => {
     try {
         const hasWs = await checkWsTable();
         if (!hasWs) {
@@ -5395,7 +5562,7 @@ app.get('/api/di/workspaces', requirePI, async (req, res) => {
 
 // GET /api/di/metrics
 // Dashboard metrics for PI portal
-app.get('/api/di/metrics', requirePI, async (req, res) => {
+app.get('/api/di/metrics', requirePIRead, async (req, res) => {
     try {
         // Get submissions by status
         const statusResult = await pool.query(
@@ -5460,7 +5627,7 @@ app.get('/api/di/metrics', requirePI, async (req, res) => {
 
 // GET /api/di/reports/export
 // Export submissions as CSV
-app.get('/api/di/reports/export', requirePI, async (req, res) => {
+app.get('/api/di/reports/export', requirePIRead, async (req, res) => {
     try {
         const { from, to, status, format } = req.query;
 
@@ -5711,7 +5878,7 @@ app.post('/api/di/delegation/unassign', requirePI, async (req, res) => {
 
 // GET /api/di/delegation/assignments
 // Get all assignments for a supervisor (or all if no supervisor_id)
-app.get('/api/di/delegation/assignments', requirePI, async (req, res) => {
+app.get('/api/di/delegation/assignments', requirePIRead, async (req, res) => {
     try {
         const { supervisor_id } = req.query;
         let query, params;
@@ -5749,7 +5916,7 @@ app.get('/api/di/delegation/assignments', requirePI, async (req, res) => {
 
 // GET /api/di/delegation/supervisors
 // Get all users with supervisor role
-app.get('/api/di/delegation/supervisors', requirePI, async (req, res) => {
+app.get('/api/di/delegation/supervisors', requirePIRead, async (req, res) => {
     try {
         const result = await pool.query(
             `SELECT researcher_id, name, institution_email, affiliation
@@ -5984,7 +6151,7 @@ async function streamCopyToR2(backupS3, backupBucket, sourceKey, destKey) {
 }
 
 // --- GET /api/di/backup/snapshots ---
-app.get('/api/di/backup/snapshots', requirePI, async (req, res) => {
+app.get('/api/di/backup/snapshots', requirePIRead, async (req, res) => {
   try {
     if (!backupS3Enabled()) return res.status(503).json({ error: 'Backup storage not configured' });
     const s3 = getBackupS3Client();
@@ -6130,7 +6297,7 @@ app.post('/api/di/backup/recover', requirePI, async (req, res) => {
 });
 
 // --- GET /api/di/backup/exports ---
-app.get('/api/di/backup/exports', requirePI, async (req, res) => {
+app.get('/api/di/backup/exports', requirePIRead, async (req, res) => {
   try {
     if (!backupS3Enabled()) return res.status(503).json({ error: 'Backup storage not configured' });
     const exports = [];
@@ -6243,7 +6410,7 @@ function dlBuildFilters(body) {
 }
 
 // --- GET /api/di/backup/download/researchers ---
-app.get('/api/di/backup/download/researchers', requirePI, async (req, res) => {
+app.get('/api/di/backup/download/researchers', requirePIRead, async (req, res) => {
   try {
     if (!r2Enabled()) return res.status(503).json({ error: 'R2 storage not configured' });
     const dbRows = await pool.query(
@@ -6474,7 +6641,7 @@ app.post('/api/system-versions', requirePI, async (req, res) => {
 });
 
 // --- POST /api/system-versions/:id/upload ---
-app.post('/api/system-versions/:id/upload', requirePI, sysVerUpload.single('file'), async (req, res) => {
+app.post('/api/system-versions/:id/upload', requirePIorCap('upload_files'), sysVerUpload.single('file'), async (req, res) => {
   try {
     if (!await checkSystemVersionsTable()) return res.status(503).json({ error: 'System versions table not available' });
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
@@ -6795,7 +6962,7 @@ app.post('/api/di/inventory/upload', requireAuth, requireInternal, inventoryUplo
 
 // GET /api/di/inventory/import/pending
 // List SUBMITTED inventory submissions for PI review
-app.get('/api/di/inventory/import/pending', requirePI, async (req, res) => {
+app.get('/api/di/inventory/import/pending', requirePIRead, async (req, res) => {
     try {
         const result = await pool.query(
             `SELECT s.submission_id, s.researcher_id, s.original_filename, s.affiliation,
@@ -6816,7 +6983,7 @@ app.get('/api/di/inventory/import/pending', requirePI, async (req, res) => {
 
 // GET /api/di/inventory/import/preview/:id
 // Parse CSV from R2 and compute diff for PI review
-app.get('/api/di/inventory/import/preview/:id', requirePI, async (req, res) => {
+app.get('/api/di/inventory/import/preview/:id', requirePIRead, async (req, res) => {
     try {
         const { id } = req.params;
 
@@ -6872,7 +7039,7 @@ app.get('/api/di/inventory/import/preview/:id', requirePI, async (req, res) => {
 
 // POST /api/di/inventory/import/approve/:id
 // PI approves inventory import — apply CSV changes to di_inventory
-app.post('/api/di/inventory/import/approve/:id', requirePI, async (req, res) => {
+app.post('/api/di/inventory/import/approve/:id', requirePIorCap('approve'), async (req, res) => {
     try {
         const { id } = req.params;
         const piUser = req.session.user;
@@ -6978,7 +7145,7 @@ app.post('/api/di/inventory/import/approve/:id', requirePI, async (req, res) => 
 
 // POST /api/di/inventory/import/revise/:id
 // PI requests revision on inventory import
-app.post('/api/di/inventory/import/revise/:id', requirePI, async (req, res) => {
+app.post('/api/di/inventory/import/revise/:id', requirePIorCap('revise'), async (req, res) => {
     try {
         const { id } = req.params;
         const { comments } = req.body;
@@ -7197,7 +7364,7 @@ app.put('/api/di/inventory/:id/mark-finished', requireAuth, requireInternal, asy
 
 // GET /api/di/inventory/all
 // PI sees all inventory items with optional filters
-app.get('/api/di/inventory/all', requirePI, async (req, res) => {
+app.get('/api/di/inventory/all', requirePIRead, async (req, res) => {
     try {
         const { affiliation, responsible, status, origin } = req.query;
         const conditions = [];
@@ -7240,7 +7407,7 @@ app.get('/api/di/inventory/all', requirePI, async (req, res) => {
 
 // GET /api/di/inventory/check-user/:researcher_id
 // Returns active inventory count for a user (used by deactivation warning)
-app.get('/api/di/inventory/check-user/:researcher_id', requirePI, async (req, res) => {
+app.get('/api/di/inventory/check-user/:researcher_id', requirePIRead, async (req, res) => {
     try {
         const { researcher_id } = req.params;
         const result = await pool.query(
@@ -7493,7 +7660,7 @@ app.post('/api/di/purchases/item/:itemId/receive', requireAuth, requireInternal,
 });
 
 // GET /api/di/purchases/all — PI views all purchase requests
-app.get('/api/di/purchases/all', requirePI, async (req, res) => {
+app.get('/api/di/purchases/all', requirePIRead, async (req, res) => {
     try {
         const result = await pool.query(
             `SELECT r.id, r.requester_id, r.affiliation, r.justification, r.status,
@@ -7533,7 +7700,7 @@ app.get('/api/di/purchases/all', requirePI, async (req, res) => {
 });
 
 // POST /api/di/purchases/:id/approve — PI approves a purchase request
-app.post('/api/di/purchases/:id/approve', requirePI, async (req, res) => {
+app.post('/api/di/purchases/:id/approve', requirePIorCap('approve'), async (req, res) => {
     try {
         const { id } = req.params;
         const result = await pool.query(
@@ -7553,7 +7720,7 @@ app.post('/api/di/purchases/:id/approve', requirePI, async (req, res) => {
 });
 
 // POST /api/di/purchases/:id/decline — PI declines a purchase request (requires comment)
-app.post('/api/di/purchases/:id/decline', requirePI, async (req, res) => {
+app.post('/api/di/purchases/:id/decline', requirePIorCap('discard'), async (req, res) => {
     try {
         const { id } = req.params;
         const { pi_comment } = req.body;
@@ -7784,7 +7951,7 @@ app.post('/api/di/purchase-items/:item_id/request-cancel', requireAuth, requireI
 });
 
 // POST /api/di/purchase-items/:item_id/pi-accept — PI accepts modification or cancellation
-app.post('/api/di/purchase-items/:item_id/pi-accept', requirePI, async (req, res) => {
+app.post('/api/di/purchase-items/:item_id/pi-accept', requirePIorCap('approve'), async (req, res) => {
     const client = await pool.connect();
     try {
         const user = req.session.user;
@@ -7886,7 +8053,7 @@ app.post('/api/di/purchase-items/:item_id/pi-accept', requirePI, async (req, res
 });
 
 // POST /api/di/purchase-items/:item_id/pi-reject — PI rejects modification or cancellation
-app.post('/api/di/purchase-items/:item_id/pi-reject', requirePI, async (req, res) => {
+app.post('/api/di/purchase-items/:item_id/pi-reject', requirePIorCap('discard'), async (req, res) => {
     const client = await pool.connect();
     try {
         const user = req.session.user;
@@ -7945,7 +8112,7 @@ app.post('/api/di/purchase-items/:item_id/pi-reject', requirePI, async (req, res
 });
 
 // GET /api/di/purchases/consolidated — PI consolidated email list of approved, non-ordered items
-app.get('/api/di/purchases/consolidated', requirePI, async (req, res) => {
+app.get('/api/di/purchases/consolidated', requirePIRead, async (req, res) => {
     try {
         const { affiliation } = req.query;
         if (!affiliation || !['LiU', 'UNAV'].includes(affiliation)) {
@@ -8071,7 +8238,7 @@ app.post('/api/di/purchases/consolidated/create-batch', requirePI, async (req, r
 });
 
 // GET /api/di/purchases/consolidated/search-accepted — PI searches accepted items within N days
-app.get('/api/di/purchases/consolidated/search-accepted', requirePI, async (req, res) => {
+app.get('/api/di/purchases/consolidated/search-accepted', requirePIRead, async (req, res) => {
     try {
         const { affiliation, days } = req.query;
         if (!affiliation || !['LiU', 'UNAV'].includes(affiliation)) {
@@ -8309,7 +8476,7 @@ app.put('/api/di/inventory-v2/:id/mark-finished', requireAuth, requireInternal, 
 });
 
 // GET /api/di/inventory-v2/all — PI views all inventory items with filters
-app.get('/api/di/inventory-v2/all', requirePI, async (req, res) => {
+app.get('/api/di/inventory-v2/all', requirePIRead, async (req, res) => {
     try {
         const { item_type, affiliation, visibility_scope, status, source } = req.query;
         let query = `SELECT ii.*, a.name AS created_by_name FROM di_inventory_items ii
@@ -8386,7 +8553,7 @@ app.post('/api/di/inventory-v2/:id/demote-from-group', requirePI, async (req, re
 });
 
 // POST /api/di/inventory-v2/:id/approve — PI approves pending item
-app.post('/api/di/inventory-v2/:id/approve', requirePI, async (req, res) => {
+app.post('/api/di/inventory-v2/:id/approve', requirePIorCap('approve'), async (req, res) => {
     try {
         const { id } = req.params;
         const existing = await pool.query('SELECT * FROM di_inventory_items WHERE id = $1', [id]);
@@ -8415,7 +8582,7 @@ app.post('/api/di/inventory-v2/:id/approve', requirePI, async (req, res) => {
 });
 
 // POST /api/di/inventory-v2/:id/revision — PI requests revision
-app.post('/api/di/inventory-v2/:id/revision', requirePI, async (req, res) => {
+app.post('/api/di/inventory-v2/:id/revision', requirePIorCap('revise'), async (req, res) => {
     try {
         const { id } = req.params;
         const { comment } = req.body;
@@ -8443,7 +8610,7 @@ app.post('/api/di/inventory-v2/:id/revision', requirePI, async (req, res) => {
 });
 
 // POST /api/di/inventory-v2/:id/reject — PI rejects item
-app.post('/api/di/inventory-v2/:id/reject', requirePI, async (req, res) => {
+app.post('/api/di/inventory-v2/:id/reject', requirePIorCap('discard'), async (req, res) => {
     try {
         const { id } = req.params;
         const { comment } = req.body;
@@ -8471,7 +8638,7 @@ app.post('/api/di/inventory-v2/:id/reject', requirePI, async (req, res) => {
 });
 
 // GET /api/di/inventory-v2/po-numbers — PI searchable PO monitoring
-app.get('/api/di/inventory-v2/po-numbers', requirePI, async (req, res) => {
+app.get('/api/di/inventory-v2/po-numbers', requirePIRead, async (req, res) => {
     try {
         const { search } = req.query;
         let query = `SELECT pi2.internal_order_number, pi2.product_name, pi2.catalog_id, pi2.product_link,
@@ -8560,7 +8727,7 @@ app.post('/api/di/inventory-v2/:id/request-transfer', requireAuth, requireIntern
 });
 
 // POST /api/di/inventory-v2/:id/approve-consume — PI approves consume
-app.post('/api/di/inventory-v2/:id/approve-consume', requirePI, async (req, res) => {
+app.post('/api/di/inventory-v2/:id/approve-consume', requirePIorCap('approve'), async (req, res) => {
     try {
         const { id } = req.params;
         const existing = await pool.query('SELECT * FROM di_inventory_items WHERE id = $1', [id]);
@@ -8587,7 +8754,7 @@ app.post('/api/di/inventory-v2/:id/approve-consume', requirePI, async (req, res)
 });
 
 // POST /api/di/inventory-v2/:id/reject-consume — PI rejects consume
-app.post('/api/di/inventory-v2/:id/reject-consume', requirePI, async (req, res) => {
+app.post('/api/di/inventory-v2/:id/reject-consume', requirePIorCap('discard'), async (req, res) => {
     try {
         const { id } = req.params;
         const { comment } = req.body;
@@ -8618,7 +8785,7 @@ app.post('/api/di/inventory-v2/:id/reject-consume', requirePI, async (req, res) 
 });
 
 // POST /api/di/inventory-v2/:id/approve-transfer — PI approves transfer to group
-app.post('/api/di/inventory-v2/:id/approve-transfer', requirePI, async (req, res) => {
+app.post('/api/di/inventory-v2/:id/approve-transfer', requirePIorCap('approve'), async (req, res) => {
     try {
         const { id } = req.params;
         const existing = await pool.query('SELECT * FROM di_inventory_items WHERE id = $1', [id]);
@@ -8645,7 +8812,7 @@ app.post('/api/di/inventory-v2/:id/approve-transfer', requirePI, async (req, res
 });
 
 // POST /api/di/inventory-v2/:id/reject-transfer — PI rejects transfer
-app.post('/api/di/inventory-v2/:id/reject-transfer', requirePI, async (req, res) => {
+app.post('/api/di/inventory-v2/:id/reject-transfer', requirePIorCap('discard'), async (req, res) => {
     try {
         const { id } = req.params;
         const { comment } = req.body;
@@ -8714,7 +8881,7 @@ app.post('/api/di/inventory-v2/:id/request-delete', requireAuth, requireInternal
 });
 
 // POST /api/di/inventory-v2/:id/approve-delete — PI approves deletion
-app.post('/api/di/inventory-v2/:id/approve-delete', requirePI, async (req, res) => {
+app.post('/api/di/inventory-v2/:id/approve-delete', requirePIorCap('approve'), async (req, res) => {
     try {
         const { id } = req.params;
         const existing = await pool.query('SELECT * FROM di_inventory_items WHERE id = $1', [id]);
@@ -8741,7 +8908,7 @@ app.post('/api/di/inventory-v2/:id/approve-delete', requirePI, async (req, res) 
 });
 
 // POST /api/di/inventory-v2/:id/reject-delete — PI rejects deletion
-app.post('/api/di/inventory-v2/:id/reject-delete', requirePI, async (req, res) => {
+app.post('/api/di/inventory-v2/:id/reject-delete', requirePIorCap('discard'), async (req, res) => {
     try {
         const { id } = req.params;
         const { comment } = req.body;
@@ -8774,7 +8941,7 @@ app.post('/api/di/inventory-v2/:id/reject-delete', requirePI, async (req, res) =
 // ==================== DUPLICATE SUGGESTIONS + OFFLINE APPROVAL ====================
 
 // GET /api/di/inventory-v2/:id/duplicate-suggestions — PI checks for group duplicates
-app.get('/api/di/inventory-v2/:id/duplicate-suggestions', requirePI, async (req, res) => {
+app.get('/api/di/inventory-v2/:id/duplicate-suggestions', requirePIRead, async (req, res) => {
     try {
         const { id } = req.params;
         const existing = await pool.query('SELECT * FROM di_inventory_items WHERE id = $1', [id]);
@@ -8840,7 +9007,7 @@ app.get('/api/di/inventory-v2/:id/duplicate-suggestions', requirePI, async (req,
 });
 
 // POST /api/di/inventory-v2/:id/approve-as-new — PI approves offline item as new group entry
-app.post('/api/di/inventory-v2/:id/approve-as-new', requirePI, async (req, res) => {
+app.post('/api/di/inventory-v2/:id/approve-as-new', requirePIorCap('approve'), async (req, res) => {
     try {
         const { id } = req.params;
         const existing = await pool.query('SELECT * FROM di_inventory_items WHERE id = $1', [id]);
@@ -8869,7 +9036,7 @@ app.post('/api/di/inventory-v2/:id/approve-as-new', requirePI, async (req, res) 
 });
 
 // POST /api/di/inventory-v2/:id/approve-as-duplicate — PI links offline item to existing group record
-app.post('/api/di/inventory-v2/:id/approve-as-duplicate', requirePI, async (req, res) => {
+app.post('/api/di/inventory-v2/:id/approve-as-duplicate', requirePIorCap('approve'), async (req, res) => {
     try {
         const { id } = req.params;
         const { duplicate_of_inventory_id } = req.body;
@@ -9420,7 +9587,7 @@ app.get('/api/di/inventory-v2/sample-pack/my-packs', requireAuth, requireInterna
 });
 
 // GET /api/di/inventory-v2/sample-pack/all — PI lists all packs for affiliation
-app.get('/api/di/inventory-v2/sample-pack/all', requirePI, async (req, res) => {
+app.get('/api/di/inventory-v2/sample-pack/all', requirePIRead, async (req, res) => {
     try {
         if (!await checkSamplePacksTable()) return res.json({ packs: [] });
         const user = req.session.user;
@@ -9463,7 +9630,7 @@ app.get('/api/di/inventory-v2/sample-pack/:id', requireAuth, requireInternal, as
 });
 
 // POST /api/di/inventory-v2/sample-pack/:id/approve — PI approves pack, inserts samples into inventory
-app.post('/api/di/inventory-v2/sample-pack/:id/approve', requirePI, async (req, res) => {
+app.post('/api/di/inventory-v2/sample-pack/:id/approve', requirePIorCap('approve'), async (req, res) => {
     try {
         if (!await checkSamplePacksTable()) return res.status(503).json({ error: 'Not migrated' });
         const { id } = req.params;
@@ -9551,7 +9718,7 @@ app.post('/api/di/inventory-v2/sample-pack/:id/approve', requirePI, async (req, 
 });
 
 // POST /api/di/inventory-v2/sample-pack/:id/revision — PI requests revision
-app.post('/api/di/inventory-v2/sample-pack/:id/revision', requirePI, async (req, res) => {
+app.post('/api/di/inventory-v2/sample-pack/:id/revision', requirePIorCap('revise'), async (req, res) => {
     try {
         if (!await checkSamplePacksTable()) return res.status(503).json({ error: 'Not migrated' });
         const { id } = req.params;
@@ -9577,7 +9744,7 @@ app.post('/api/di/inventory-v2/sample-pack/:id/revision', requirePI, async (req,
 });
 
 // POST /api/di/inventory-v2/sample-pack/:id/reject — PI rejects pack
-app.post('/api/di/inventory-v2/sample-pack/:id/reject', requirePI, async (req, res) => {
+app.post('/api/di/inventory-v2/sample-pack/:id/reject', requirePIorCap('discard'), async (req, res) => {
     try {
         if (!await checkSamplePacksTable()) return res.status(503).json({ error: 'Not migrated' });
         const { id } = req.params;
@@ -10402,7 +10569,7 @@ app.post('/api/di/training/entries/:id/certify', requireSupervisor, async (req, 
 });
 
 // --- PI: Certify training entry (PI route only) ---
-app.post('/api/di/training/entries/:id/pi-certify', requirePI, async (req, res) => {
+app.post('/api/di/training/entries/:id/pi-certify', requirePIorCap('approve'), async (req, res) => {
     try {
         if (!(await checkTrainingTables())) return res.status(501).json({ error: 'Training tables not available' });
         const entry = await pool.query(
@@ -10475,7 +10642,7 @@ app.post('/api/di/training/packs/:pack_id/clear-pending', requirePI, async (req,
 });
 
 // --- PI: List pending PI-route certifications ---
-app.get('/api/di/training/pi-pending-certifications', requirePI, async (req, res) => {
+app.get('/api/di/training/pi-pending-certifications', requirePIRead, async (req, res) => {
     try {
         if (!(await checkTrainingTables())) return res.status(501).json({ error: 'Training tables not available' });
         const result = await pool.query(
@@ -10494,7 +10661,7 @@ app.get('/api/di/training/pi-pending-certifications', requirePI, async (req, res
 });
 
 // --- PI: List pending packs ---
-app.get('/api/di/training/packs/pending', requirePI, async (req, res) => {
+app.get('/api/di/training/packs/pending', requirePIRead, async (req, res) => {
     try {
         if (!(await checkTrainingTables())) return res.status(501).json({ error: 'Training tables not available' });
         const result = await pool.query(
@@ -10547,7 +10714,7 @@ app.get('/api/di/training/packs/:id', requireAuth, async (req, res) => {
 });
 
 // --- PI: Seal pack ---
-app.post('/api/di/training/packs/:id/seal', requirePI, async (req, res) => {
+app.post('/api/di/training/packs/:id/seal', requirePIorCap('seal'), async (req, res) => {
     try {
         if (!(await checkTrainingTables())) return res.status(501).json({ error: 'Training tables not available' });
         const packId = req.params.id;
@@ -10675,7 +10842,7 @@ app.post('/api/di/training/packs/:id/seal', requirePI, async (req, res) => {
 });
 
 // --- PI: Request revision ---
-app.post('/api/di/training/packs/:id/revise', requirePI, async (req, res) => {
+app.post('/api/di/training/packs/:id/revise', requirePIorCap('revise'), async (req, res) => {
     try {
         if (!(await checkTrainingTables())) return res.status(501).json({ error: 'Training tables not available' });
         const { comments } = req.body;
@@ -11091,7 +11258,7 @@ app.get('/api/di/vision/inventory/:user_id', requirePIOrApiKey, async (req, res)
 });
 
 // --- PI read-only view of a researcher's Training tab data ---
-app.get('/api/di/training/pi-researcher-view/:researcherId', requirePI, async (req, res) => {
+app.get('/api/di/training/pi-researcher-view/:researcherId', requirePIRead, async (req, res) => {
     try {
         if (!(await checkTrainingTables())) return res.status(501).json({ error: 'Training tables not available' });
         const userId = req.params.researcherId;
@@ -11165,7 +11332,7 @@ app.get('/api/di/training/pi-researcher-view/:researcherId', requirePI, async (r
 });
 
 // --- PI read-only view of a researcher's Inventory tab data ---
-app.get('/api/di/inventory-v2/pi-researcher-view/:researcherId', requirePI, async (req, res) => {
+app.get('/api/di/inventory-v2/pi-researcher-view/:researcherId', requirePIRead, async (req, res) => {
     try {
         const userId = req.params.researcherId;
 
@@ -11472,7 +11639,7 @@ app.post('/api/di/1to1/finalizeDraftToVersion', requirePI, async (req, res) => {
 });
 
 // GET /api/di/1to1/listMeetings/:researcherId
-app.get('/api/di/1to1/listMeetings/:researcherId', requirePI, async (req, res) => {
+app.get('/api/di/1to1/listMeetings/:researcherId', requirePIRead, async (req, res) => {
     try {
         if (!(await check1to1Tables())) return res.status(501).json({ error: '1-to-1 tables not available' });
         const piId = req.session.user.researcher_id;
@@ -11534,7 +11701,7 @@ app.get('/api/di/1to1/listMeetings/:researcherId', requirePI, async (req, res) =
 });
 
 // GET /api/di/1to1/getVersion/:versionId
-app.get('/api/di/1to1/getVersion/:versionId', requirePI, async (req, res) => {
+app.get('/api/di/1to1/getVersion/:versionId', requirePIRead, async (req, res) => {
     try {
         if (!(await check1to1Tables())) return res.status(501).json({ error: '1-to-1 tables not available' });
         const versionId = parseInt(req.params.versionId, 10);
@@ -11624,7 +11791,7 @@ app.post('/api/di/1to1/startEditFromLatest', requirePI, async (req, res) => {
 
 
 // GET /api/di/1to1/previous — Fetch previous meeting snapshot, section scoped (PI only)
-app.get('/api/di/1to1/previous', requirePI, async (req, res) => {
+app.get('/api/di/1to1/previous', requirePIRead, async (req, res) => {
     try {
         if (!(await check1to1Tables())) return res.status(501).json({ error: '1-to-1 tables not available' });
         const { user_id, before, section } = req.query;
@@ -13107,7 +13274,7 @@ async function checkGroupIndexTable() {
 }
 
 // GET cohort members — PI only
-app.get('/api/glp/cohorts/members', requirePI, async (req, res) => {
+app.get('/api/glp/cohorts/members', requirePIRead, async (req, res) => {
     try {
         if (!(await checkCohortTable())) return res.status(501).json({ error: 'Cohort table not available' });
 
@@ -13391,7 +13558,7 @@ app.post('/api/glp/status/generate-group', requirePI, async (req, res) => {
 });
 
 // List group weeks — PI only
-app.get('/api/glp/status/group/weeks', requirePI, async (req, res) => {
+app.get('/api/glp/status/group/weeks', requirePIRead, async (req, res) => {
     try {
         if (!(await checkGroupIndexTable())) return res.json({ success: true, weeks: [] });
 
@@ -13455,7 +13622,7 @@ app.get('/api/glp/status/group/snapshot', async (req, res) => {
 });
 
 // PI-only: fetch weeks list for a specific user (for viewing other members' GLP status)
-app.get('/api/glp/status/user/:userId/weeks', requirePI, async (req, res) => {
+app.get('/api/glp/status/user/:userId/weeks', requirePIRead, async (req, res) => {
     try {
         if (!(await checkGlpStatusTable())) return res.json({ success: true, weeks: [] });
 
@@ -13476,7 +13643,7 @@ app.get('/api/glp/status/user/:userId/weeks', requirePI, async (req, res) => {
 });
 
 // PI-only: fetch snapshot for a specific user and week
-app.get('/api/glp/status/user/:userId/week/:isoWeek', requirePI, async (req, res) => {
+app.get('/api/glp/status/user/:userId/week/:isoWeek', requirePIRead, async (req, res) => {
     try {
         if (!(await checkGlpStatusTable())) return res.status(404).json({ error: 'No data available' });
 
@@ -13543,7 +13710,7 @@ async function listR2Prefix(prefix) {
 }
 
 // 1. GET /api/internal-docs/tree
-app.get('/api/internal-docs/tree', requirePI, async (req, res) => {
+app.get('/api/internal-docs/tree', requirePIRead, async (req, res) => {
   try {
     const tree = {};
     for (const [cat, slug] of Object.entries(INTDOC_CATEGORIES)) {
@@ -13579,7 +13746,7 @@ app.get('/api/internal-docs/tree', requirePI, async (req, res) => {
 });
 
 // 2. GET /api/internal-docs/list
-app.get('/api/internal-docs/list', requirePI, async (req, res) => {
+app.get('/api/internal-docs/list', requirePIRead, async (req, res) => {
   try {
     const { category, folder } = req.query;
     if (!category) return res.status(400).json({ error: 'Category required' });
@@ -13647,7 +13814,7 @@ app.post('/api/internal-docs/create-folder', requirePI, async (req, res) => {
 });
 
 // 4. POST /api/internal-docs/upload
-app.post('/api/internal-docs/upload', requirePI, upload.array('files', 20), async (req, res) => {
+app.post('/api/internal-docs/upload', requirePIorCap('upload_files'), upload.array('files', 20), async (req, res) => {
   try {
     const { category, folder } = req.body;
     if (!category || !INTDOC_CATEGORIES[category]) return res.status(400).json({ error: 'Invalid category' });
@@ -13685,7 +13852,7 @@ app.post('/api/internal-docs/upload', requirePI, upload.array('files', 20), asyn
 });
 
 // 5. POST /api/internal-docs/delete (move to trash)
-app.post('/api/internal-docs/delete', requirePI, async (req, res) => {
+app.post('/api/internal-docs/delete', requirePIorCap('delete_files'), async (req, res) => {
   try {
     const { key } = req.body;
     if (!key || !key.startsWith(INTDOC_PREFIX) || key.startsWith(INTDOC_TRASH)) {
@@ -13801,7 +13968,7 @@ app.get('/api/internal-docs/open', (req, res, next) => {
 
 
 // 8. GET /api/internal-docs/trash
-app.get('/api/internal-docs/trash', requirePI, async (req, res) => {
+app.get('/api/internal-docs/trash', requirePIRead, async (req, res) => {
   try {
     const objects = await listR2Prefix(INTDOC_TRASH);
     const items = objects
@@ -13823,7 +13990,7 @@ app.get('/api/internal-docs/trash', requirePI, async (req, res) => {
 });
 
 // 9. POST /api/internal-docs/delete-folder
-app.post('/api/internal-docs/delete-folder', requirePI, async (req, res) => {
+app.post('/api/internal-docs/delete-folder', requirePIorCap('delete_files'), async (req, res) => {
   try {
     const { category, folder, force } = req.body;
     if (!category || !INTDOC_CATEGORIES[category] || category === 'papers') {
@@ -14165,7 +14332,7 @@ app.get('/api/meetings/next', requireAuth, async (req, res) => {
 });
 
 // GET /api/meetings/by-date/:date — PI convenience lookup
-app.get('/api/meetings/by-date/:date', requirePI, async (req, res) => {
+app.get('/api/meetings/by-date/:date', requirePIRead, async (req, res) => {
     if (!(await checkMeetingTables())) return res.json({ meeting: null });
     try {
         const mResult = await pool.query('SELECT * FROM meeting_schedule WHERE meeting_date = $1', [req.params.date]);
@@ -14186,7 +14353,7 @@ app.get('/api/meetings/by-date/:date', requirePI, async (req, res) => {
 });
 
 // GET /api/meetings/list — PI list of all meetings
-app.get('/api/meetings/list', requirePI, async (req, res) => {
+app.get('/api/meetings/list', requirePIRead, async (req, res) => {
     if (!(await checkMeetingTables())) return res.json({ meetings: [] });
     try {
         // Check if notification columns exist
@@ -14609,7 +14776,7 @@ app.post('/api/meetings/month-plan', requirePI, async (req, res) => {
 });
 
 // GET /api/meetings/pool — read speaker pool
-app.get('/api/meetings/pool', requirePI, async (req, res) => {
+app.get('/api/meetings/pool', requirePIRead, async (req, res) => {
     if (!(await checkMeetingTables())) return res.json({ pool: [] });
     try {
         const activeUsers = await pool.query(
@@ -14765,7 +14932,7 @@ app.post('/api/meetings/update-details', requirePI, async (req, res) => {
 // =====================================================
 
 // GET /api/meeting-groups — list active meeting groups
-app.get('/api/meeting-groups', requirePI, async (req, res) => {
+app.get('/api/meeting-groups', requirePIRead, async (req, res) => {
     if (!(await checkMeetingGroupsTable())) return res.json({ groups: [] });
     try {
         const result = await pool.query(
@@ -14828,7 +14995,7 @@ app.put('/api/meeting-groups/:id', requirePI, async (req, res) => {
 });
 
 // GET /api/meeting-groups/:id/members — get group members (pool)
-app.get('/api/meeting-groups/:id/members', requirePI, async (req, res) => {
+app.get('/api/meeting-groups/:id/members', requirePIRead, async (req, res) => {
     if (!(await checkMeetingGroupsTable())) return res.json({ members: [] });
     try {
         const activeUsers = await pool.query(
@@ -14925,7 +15092,7 @@ function isUuid(v) {
 }
 
 // GET /api/oligo/catalog – list all probes with synthesis count
-app.get("/api/oligo/catalog", requirePI, async (req, res) => {
+app.get("/api/oligo/catalog", requirePIRead, async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT pc.id, pc.canonical_id, pc.display_name, pc.length_nt, pc.status, pc.finalized_at,
@@ -14943,7 +15110,7 @@ app.get("/api/oligo/catalog", requirePI, async (req, res) => {
 });
 
 // GET /api/oligo/catalog/:id – probe details + syntheses
-app.get("/api/oligo/catalog/:id", requirePI, async (req, res) => {
+app.get("/api/oligo/catalog/:id", requirePIRead, async (req, res) => {
     try {
         const probeId = String(req.params.id || "").trim();
         if (!isUuid(probeId)) return res.status(400).json({ error: "Invalid probe ID" });
@@ -15328,7 +15495,7 @@ app.post("/api/oligo/import-master", requirePI, oligoCsvUpload.single("file"), a
 // =====================================================
 
 // GET /api/oligo/imports – list packs with item counts
-app.get("/api/oligo/imports", requirePI, async (req, res) => {
+app.get("/api/oligo/imports", requirePIRead, async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT
@@ -15353,7 +15520,7 @@ app.get("/api/oligo/imports", requirePI, async (req, res) => {
 });
 
 // GET /api/oligo/imports/:import_id – pack metadata + items
-app.get("/api/oligo/imports/:import_id", requirePI, async (req, res) => {
+app.get("/api/oligo/imports/:import_id", requirePIRead, async (req, res) => {
     try {
         const importId = String(req.params.import_id || "").trim();
         if (!isUuid(importId)) return res.status(400).json({ error: "Invalid import ID" });
@@ -16081,7 +16248,7 @@ app.post("/api/oligo/excel-upload", requirePI, oligoExcelUpload.single("file"), 
 });
 
 // GET /api/oligo/data-sources – list imported Excel/CSV data sources
-app.get("/api/oligo/data-sources", requirePI, async (req, res) => {
+app.get("/api/oligo/data-sources", requirePIRead, async (req, res) => {
     try {
         const tableReady = await checkOligoDataSourcesTable();
         if (!tableReady) return res.json({ data_sources: [] });
@@ -16099,7 +16266,7 @@ app.get("/api/oligo/data-sources", requirePI, async (req, res) => {
 });
 
 // GET /api/oligo/duplicates – list synthesis records pending discard confirmation
-app.get("/api/oligo/duplicates", requirePI, async (req, res) => {
+app.get("/api/oligo/duplicates", requirePIRead, async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT ps.id, ps.probe_id, ps.supplier, ps.order_number, ps.oligo_number,
@@ -16136,7 +16303,7 @@ app.post("/api/oligo/duplicates/discard-all", requirePI, async (req, res) => {
 });
 
 // GET /api/oligo/library-definitions – list available library types
-app.get("/api/oligo/library-definitions", requirePI, async (req, res) => {
+app.get("/api/oligo/library-definitions", requirePIRead, async (req, res) => {
     try {
         const result = await pool.query(`SELECT id, name, description FROM oligo_library_definitions ORDER BY name`);
         res.json({ definitions: result.rows });
@@ -16147,7 +16314,7 @@ app.get("/api/oligo/library-definitions", requirePI, async (req, res) => {
 });
 
 // GET /api/oligo/library-candidates – orders with ≥20 probes (since last import)
-app.get("/api/oligo/library-candidates", requirePI, async (req, res) => {
+app.get("/api/oligo/library-candidates", requirePIRead, async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT ps.order_number, ps.supplier,
@@ -16274,7 +16441,7 @@ app.post("/api/oligo/certificate-upload", requirePI, oligoCertUpload.single("fil
 });
 
 // GET /api/oligo/registry – probe grid data (enhanced catalog for registry UI)
-app.get("/api/oligo/registry", requirePI, async (req, res) => {
+app.get("/api/oligo/registry", requirePIRead, async (req, res) => {
     try {
         const m030Ready = await checkOligoDataSourcesTable();
         if (!m030Ready) {
@@ -16319,7 +16486,7 @@ app.get("/api/oligo/registry", requirePI, async (req, res) => {
 });
 
 // GET /api/oligo/registry/:id – full probe detail for probe page
-app.get("/api/oligo/registry/:id", requirePI, async (req, res) => {
+app.get("/api/oligo/registry/:id", requirePIRead, async (req, res) => {
     try {
         const probeId = String(req.params.id || '').trim();
         if (!isUuid(probeId)) return res.status(400).json({ error: "Invalid probe ID" });
@@ -16365,7 +16532,7 @@ app.get("/api/oligo/registry/:id", requirePI, async (req, res) => {
 
 // GET /api/oligo/oligos – list all with library names and synthesis count
 // Supports chemical identity filters: ?basis=DNA|RNA  ?mod5=...  ?mod3=...  ?seq=...
-app.get("/api/oligo/oligos", requirePI, async (req, res) => {
+app.get("/api/oligo/oligos", requirePIRead, async (req, res) => {
     try {
         // Build optional WHERE clauses for chemical identity search
         const conditions = [`(ps.excel_status = 'active' OR ps.excel_status IS NULL)`];
@@ -16417,7 +16584,7 @@ app.get("/api/oligo/oligos", requirePI, async (req, res) => {
 });
 
 // GET /api/oligo/oligos/:id – full detail: identity + libraries + synthesis batches + identity PDFs
-app.get("/api/oligo/oligos/:id", requirePI, async (req, res) => {
+app.get("/api/oligo/oligos/:id", requirePIRead, async (req, res) => {
     try {
         const id = String(req.params.id || '').trim();
         if (!isUuid(id)) return res.status(400).json({ error: "Invalid ID" });
@@ -16668,7 +16835,7 @@ app.post("/api/oligo/oligos/:id/upload-doc", requirePI, oligoCertUpload.single("
 // ── Libraries ──
 
 // GET /api/oligo/libraries – list all libraries with member count + card summary
-app.get("/api/oligo/libraries", requirePI, async (req, res) => {
+app.get("/api/oligo/libraries", requirePIRead, async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT pl.id, pl.library_name, pl.description, pl.created_by, pl.created_at,
@@ -16724,7 +16891,7 @@ app.post("/api/oligo/libraries", requirePI, async (req, res) => {
 });
 
 // GET /api/oligo/libraries/:id – library detail with members + aliquots
-app.get("/api/oligo/libraries/:id", requirePI, async (req, res) => {
+app.get("/api/oligo/libraries/:id", requirePIRead, async (req, res) => {
     try {
         const id = String(req.params.id || '').trim();
         if (!isUuid(id)) return res.status(400).json({ error: "Invalid ID" });
@@ -17124,7 +17291,7 @@ app.post("/api/oligo/libraries/:id/certificate-upload", requirePI, oligoCertUplo
 });
 
 // GET /api/oligo/library-certificates/:id/download – signed URL for library certificate PDF
-app.get("/api/oligo/library-certificates/:id/download", requirePI, async (req, res) => {
+app.get("/api/oligo/library-certificates/:id/download", requirePIRead, async (req, res) => {
     try {
         const id = String(req.params.id || '').trim();
         if (!isUuid(id)) return res.status(400).json({ error: "Invalid ID" });
@@ -17184,7 +17351,7 @@ app.patch("/api/oligo/syntheses/:id", requirePI, async (req, res) => {
 });
 
 // GET /api/oligo/syntheses/:id/certificate – get signed download URL for certificate PDF
-app.get("/api/oligo/syntheses/:id/certificate", requirePI, async (req, res) => {
+app.get("/api/oligo/syntheses/:id/certificate", requirePIRead, async (req, res) => {
     try {
         const id = String(req.params.id || '').trim();
         if (!isUuid(id)) return res.status(400).json({ error: "Invalid ID" });
@@ -17205,7 +17372,7 @@ app.get("/api/oligo/syntheses/:id/certificate", requirePI, async (req, res) => {
 });
 
 // GET /api/oligo/certificates – list all certificates (synthesis-level and identity-level)
-app.get("/api/oligo/certificates", requirePI, async (req, res) => {
+app.get("/api/oligo/certificates", requirePIRead, async (req, res) => {
     try {
         const synthCerts = await pool.query(`
             SELECT ps.id AS synthesis_id, ps.supplier, ps.order_number, ps.oligo_number,
@@ -17295,7 +17462,7 @@ app.get("/api/oligo/certificates", requirePI, async (req, res) => {
 });
 
 // GET /api/oligo/identity-docs/:id/download – signed URL for identity-level PDF
-app.get("/api/oligo/identity-docs/:id/download", requirePI, async (req, res) => {
+app.get("/api/oligo/identity-docs/:id/download", requirePIRead, async (req, res) => {
     try {
         const id = String(req.params.id || '').trim();
         if (!isUuid(id)) return res.status(400).json({ error: "Invalid ID" });
@@ -17567,7 +17734,7 @@ app.post('/api/internal/workflow-event', async (req, res) => {
 // Body: { "workflow_name": "Weekly GLP Snapshot", "status": "failure", "detail": "Azure timeout after 30s" }
 
 // --- GET /api/pi/health-snapshot — read cached portal health ---
-app.get('/api/pi/health-snapshot', requirePI, async (req, res) => {
+app.get('/api/pi/health-snapshot', requirePIRead, async (req, res) => {
     if (!(await checkPortalHealthTables())) {
         return res.json({ success: true, snapshot: null });
     }
@@ -17582,7 +17749,7 @@ app.get('/api/pi/health-snapshot', requirePI, async (req, res) => {
 });
 
 // --- GET /api/pi/actions — unified PI action items (excludes file approvals) ---
-app.get('/api/pi/actions', requirePI, async (req, res) => {
+app.get('/api/pi/actions', requirePIRead, async (req, res) => {
     try {
         const items = [];
 
@@ -17721,7 +17888,7 @@ app.post('/api/files/share', requirePI, async (req, res) => {
 });
 
 // GET /api/files/shared — Get all shared files (PI view)
-app.get('/api/files/shared', requirePI, async (req, res) => {
+app.get('/api/files/shared', requirePIRead, async (req, res) => {
     try {
         if (!(await checkFileSharesTable())) return res.json({ shares: [] });
         const result = await pool.query(`
@@ -17786,7 +17953,7 @@ async function checkModulesTable() {
 }
 
 // GET /api/modules/list – all modules with toggle count and workspace count
-app.get('/api/modules/list', requirePI, async (req, res) => {
+app.get('/api/modules/list', requirePIRead, async (req, res) => {
     try {
         if (!(await checkModulesTable())) return res.status(501).json({ error: 'Modules tables not available' });
         const result = await pool.query(`
@@ -17804,7 +17971,7 @@ app.get('/api/modules/list', requirePI, async (req, res) => {
 });
 
 // GET /api/modules/workspaces – list workspaces for transfer UI
-app.get('/api/modules/workspaces', requirePI, async (req, res) => {
+app.get('/api/modules/workspaces', requirePIRead, async (req, res) => {
     try {
         const result = await pool.query(`SELECT id, slug, name, workspace_type FROM workspaces WHERE is_active = TRUE ORDER BY slug`);
         res.json({ workspaces: result.rows });
@@ -17815,7 +17982,7 @@ app.get('/api/modules/workspaces', requirePI, async (req, res) => {
 });
 
 // GET /api/modules/blueprints – list available blueprints grouped by category
-app.get('/api/modules/blueprints', requirePI, async (req, res) => {
+app.get('/api/modules/blueprints', requirePIRead, async (req, res) => {
     const admin = MODULE_BLUEPRINTS.filter(b => b.category === 'admin');
     const user  = MODULE_BLUEPRINTS.filter(b => b.category === 'user');
     res.json({ blueprints: { admin, user } });
@@ -17877,7 +18044,7 @@ app.post('/api/modules/from-blueprint', requirePI, async (req, res) => {
 });
 
 // GET /api/modules/:id – single module with toggles and workspace assignments
-app.get('/api/modules/:id', requirePI, async (req, res) => {
+app.get('/api/modules/:id', requirePIRead, async (req, res) => {
     try {
         if (!(await checkModulesTable())) return res.status(501).json({ error: 'Modules tables not available' });
         const mod = await pool.query(`SELECT * FROM modules WHERE id = $1`, [req.params.id]);
@@ -21941,7 +22108,7 @@ app.post('/api/zoe/chat', requirePI, async (req, res) => {
 });
 
 // 2) GET /api/zoe/context-summary
-app.get('/api/zoe/context-summary', requirePI, async (req, res) => {
+app.get('/api/zoe/context-summary', requirePIRead, async (req, res) => {
     try {
         const s = await zoeBuildContextSummary(req.session.user.id, req.session.user.workspace_id);
         res.json(s);
@@ -22025,7 +22192,7 @@ app.post('/api/zoe/glp-context', requirePI, async (req, res) => {
 });
 
 // PI-only debug: report computed OpenClaw upstream config (no secrets).
-app.get('/api/zoe/debug-openclaw', requirePI, (req, res) => {
+app.get('/api/zoe/debug-openclaw', requirePIRead, (req, res) => {
     const baseUrl = process.env.OPENCLAW_BASE_URL || null;
     let chatPath = process.env.OPENCLAW_CHAT_PATH || '/v1/chat/completions';
     if (chatPath && !chatPath.startsWith('/')) chatPath = '/' + chatPath;
@@ -22045,7 +22212,7 @@ app.get('/api/zoe/debug-openclaw', requirePI, (req, res) => {
 
 // PI-only one-shot connectivity test: minimal POST to the configured URL.
 // Returns status code and a short snippet of the response body. No secrets exposed.
-app.get('/api/zoe/test-openclaw', requirePI, async (req, res) => {
+app.get('/api/zoe/test-openclaw', requirePIRead, async (req, res) => {
     const baseUrl = process.env.OPENCLAW_BASE_URL;
     if (!baseUrl) return res.status(400).json({ error: 'OPENCLAW_BASE_URL not set' });
     let chatPath = process.env.OPENCLAW_CHAT_PATH || '/v1/chat/completions';
