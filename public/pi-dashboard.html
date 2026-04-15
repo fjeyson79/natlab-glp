@@ -13929,19 +13929,43 @@ function dicBuildPdfViewerSrc(fileUrl) {
         resolvedDocTitle: null,
     };
 
-    // Detect document-oriented intents. Returns true when the message likely
-    // refers to a specific portal document (paper, SOP, presentation, etc.).
-    // Intentionally permissive — a few false positives are fine because the
-    // resolver still validates with actual content matching.
-    const ZOE_DOC_INTENT = /\b(read|summari[sz]e|summary|analyze|analyse|review|what (does|is in|says)|find|locate|show me|compare|open|fetch)\b[\s\S]{0,60}\b(paper|publication|article|journal|sop|presentation|slides?|deck|report|data(?:set)?|file|document|doc|pdf|csv|xlsx?)\b/i;
-    const ZOE_DOC_NAMED = /\b(paper|sop|presentation|slides?|deck|report|data(?:set)?|file|document|doc)\b[^.?!]{0,80}\b(from|about|on|in|regarding|titled|named|called)\b/i;
-    // "Latest X" / "newest X" variants
-    const ZOE_DOC_LATEST = /\b(latest|newest|last|most recent)\b\s+(paper|sop|presentation|slides?|deck|report|data(?:set)?|file|document|doc|upload)/i;
+    // Detect document-oriented intents. Intentionally permissive — false
+    // positives are fine because the resolver validates with real matches.
+    // Triggers whenever the message plausibly refers to a portal document,
+    // even without an explicit verb like "read" ("TOUCAN paper", "latest SOP").
+    const ZOE_DOC_NOUNS = '(?:paper|publication|article|journal|sop|presentation|slides?|deck|report|data(?:set|file)?|file|files|document|documents|doc|docs|pdf|csv|xlsx?|manuscript|preprint)';
+    // Action + noun ("read the paper", "summarize sop")
+    const ZOE_DOC_ACTION = new RegExp('\\b(read|summari[sz]e|summary|analyz(?:e|se)|review|open|fetch|show|display|find|locate|search|compare|explain|describe|tell me about|what (?:does|is in|says|says in)|in the)\\b[\\s\\S]{0,80}\\b' + ZOE_DOC_NOUNS + '\\b', 'i');
+    // Named reference ("paper from X", "sop about Y", "report on Z", "MRSA presentation")
+    const ZOE_DOC_NAMED = new RegExp('\\b' + ZOE_DOC_NOUNS + '\\b[^.?!]{0,80}\\b(from|about|on|in|regarding|titled|named|called|by)\\b', 'i');
+    const ZOE_DOC_NAMED2 = new RegExp('\\b(from|about|on|in|regarding|titled|named|called|by)\\b[^.?!]{0,80}\\b' + ZOE_DOC_NOUNS + '\\b', 'i');
+    // Latest/newest/last + noun
+    const ZOE_DOC_LATEST = new RegExp('\\b(latest|newest|last|most recent|recent|yesterday|today)\\b[\\s\\S]{0,30}\\b' + ZOE_DOC_NOUNS + '\\b', 'i');
+    // Bare noun phrase that plausibly names a document ("TOUCAN paper",
+    // "MRSA presentation", "weekly report"). Matches <capitalized-or-allcaps
+    // token(s)> before a doc noun, OR any short message whose last token is a
+    // doc noun (e.g. "toucan paper").
+    const ZOE_DOC_BARE = new RegExp('(?:\\b[A-Za-z][A-Za-z0-9\\-]{2,}\\s+){1,4}' + ZOE_DOC_NOUNS + '\\b', 'i');
+    // Capability-scope questions ("can you read papers", "do you have access
+    // to files") — not a file request per se; handled as a capability hint so
+    // Zoe answers correctly instead of claiming metadata-only access.
+    const ZOE_CAPABILITY_Q = /\b(can you|are you able to|do you|will you|could you)\b[\s\S]{0,60}\b(read|access|analyz(?:e|se)|search|find|see|retrieve|open|pull|fetch|summariz(?:e|se))\b[\s\S]{0,80}\b(papers?|files?|documents?|docs?|sops?|reports?|presentations?|data)\b/i;
     // Topic-switch hints that should clear the resolved document memory
     const ZOE_TOPIC_SWITCH = /\b(forget|clear|another paper|different paper|new topic|switch to|instead|new question)\b/i;
+
     function zoeDetectDocIntent(msg) {
         const m = String(msg || '');
-        return ZOE_DOC_INTENT.test(m) || ZOE_DOC_NAMED.test(m) || ZOE_DOC_LATEST.test(m);
+        if (ZOE_DOC_ACTION.test(m)) return true;
+        if (ZOE_DOC_NAMED.test(m)) return true;
+        if (ZOE_DOC_NAMED2.test(m)) return true;
+        if (ZOE_DOC_LATEST.test(m)) return true;
+        // Bare noun phrases: only when the whole message is short (otherwise
+        // generic chat mentioning "paper" would always trigger).
+        if (m.length <= 120 && ZOE_DOC_BARE.test(m)) return true;
+        return false;
+    }
+    function zoeDetectCapabilityQ(msg) {
+        return ZOE_CAPABILITY_Q.test(String(msg || ''));
     }
     function zoeShouldClearResolved(msg) {
         return ZOE_TOPIC_SWITCH.test(String(msg || ''));
@@ -14195,8 +14219,12 @@ function dicBuildPdfViewerSrc(fileUrl) {
         const noMatchesAtAll = !!(resolverResult && docIntent
             && (!resolverResult.matches || resolverResult.matches.length === 0));
 
+        const capabilityQ = zoeDetectCapabilityQ(msg);
         const instruction = [
             'You are Zoe, PI scientific and strategic copilot with read-only portal visibility.',
+            // ---- Core capability statement (always present) --------------
+            'CAPABILITIES: You are a conversational interface to the portal documents. When the user asks about a paper, SOP, presentation, report, or data file, you can search the portal for it, read it when retrievable and in a readable format, analyze it, and report back. The portal infrastructure does the search/extract/read for you and injects results in the RESOLVED DOCUMENT / SELECTED DOCUMENT / CANDIDATE DOCUMENTS blocks when applicable. Never claim "metadata-only access". Never say you cannot read files in the portal. Only state inability for a specific case: no match found, unsupported format, extraction failed, or empty text_content.',
+            'NEVER ask the user for: a file path, upload, URL, DOI, link, folder location, or pasted content. If the infrastructure could not find or read the specific file, say so for that file only and suggest how to refine (add a keyword, mention the uploader, mention the project).',
             'When the question warrants it, structure your answer as: Priority → Interpretation → Recommended focus. Otherwise answer concisely.',
             'Grounding rules:',
             '- Prefer the fields "summary", "focus_recommendations", "projects_overview", "alerts", "draft_projects".',
@@ -14206,16 +14234,15 @@ function dicBuildPdfViewerSrc(fileUrl) {
             '- Never invent data. If a structured field is missing or null, say so, then offer the best grounded inference from adjacent signals and suggest one useful next step.',
             derivedCaveat,
             'Draft awareness: before proposing a new idea, inspect "draft_projects". If a similar title/theme exists, reference it by title rather than duplicating; propose a new idea only when clearly distinct.',
-            // ---- Document-resolution rules (critical) ---------------------
-            'If a SELECTED DOCUMENT or RESOLVED DOCUMENT block is present, treat the document as already provided. Do NOT ask for a file path, upload, URL, DOI, or folder location under any circumstance. Do NOT ask the user to paste content. Analyze the given document directly.',
-            selectedDoc ? 'Document grounding: the ' + (ZOE.activeDocId ? 'SELECTED' : 'RESOLVED') + ' DOCUMENT is authoritative for document-specific questions. Base your answers on its "text_content". Mention the document title naturally when relevant.' : '',
-            selectedDoc ? 'Truncation: if "content_truncated" is true, state explicitly that you only have the beginning of the document — do not claim to have read the full file. If "text_content" is null, reason only from the metadata and say so; still do not ask for the file location.' : '',
-            selectedDoc ? 'When the document and "draft_projects" are both relevant: compare — does the document support, overlap with, or differ from existing drafts? Suggest a new draft only when clearly distinct.' : '',
-            hasCandidates ? 'CANDIDATE DOCUMENTS are included (the user mentioned a document but multiple files matched). List the top candidates by title and ask the user to confirm which one they meant. Do NOT invent content for any of them. If the top match has noticeably higher score/confidence than the others, you may proceed with it and state clearly which one you chose and why.' : '',
-            noMatchesAtAll ? 'NO MATCHES were found for the document the user asked about. Say so plainly, offer 1–2 ways to refine (add a keyword, mention the uploader, mention the project), and do not ask for a file path or upload.' : ''
+            // ---- Document grounding rules -------------------------------
+            selectedDoc ? 'Document grounding: the ' + (ZOE.activeDocId ? 'SELECTED' : 'RESOLVED') + ' DOCUMENT is authoritative. Base your answer on its "text_content". Mention the document title naturally. Analyzer style for scientific papers: (a) what the file says, (b) key interpretation / main innovation / mechanism / key result, (c) relevance to current projects and "draft_projects" (e.g. TOUCAN), (d) suggested next step if useful.' : '',
+            selectedDoc ? 'Truncation: if "content_truncated" is true, state explicitly that you only have the beginning of the document — do not claim to have read the full file. If "text_content" is null, say "I found the document but its readable content is not available" and reason only from metadata; do NOT ask for the file location.' : '',
+            hasCandidates ? 'CANDIDATE DOCUMENTS are included. Say: "I found likely matches; please confirm which one you want", list the top candidates by title + date, and let the user pick. If one has a noticeably higher score, you may proceed with it and state which one you chose and why.' : '',
+            noMatchesAtAll ? 'NO MATCHES were found for the file the user asked about. Say plainly: "I could not find a matching file in the portal" and offer 1–2 refinement suggestions. Do NOT ask for a file path or upload.' : '',
+            capabilityQ ? 'CAPABILITY QUESTION: the user is asking about your abilities. Answer affirmatively and concretely: yes, you can search for and read documents stored in the portal when they are retrievable and in a readable format; you can analyze papers, SOPs, presentations, reports, and common data files (PDF, TXT/MD, JSON, CSV/XLS/XLSX); image-only or unsupported binaries fall back to metadata. Do NOT list limitations as if they were the default.' : ''
         ].filter(Boolean).join('\n');
 
-        const contextBlock = (liveContext || selectedDoc || hasCandidates || noMatchesAtAll) ? (
+        const contextBlock = (liveContext || selectedDoc || hasCandidates || noMatchesAtAll || capabilityQ) ? (
             instruction
             + '\n\nLIVE PORTAL CONTEXT: ' + JSON.stringify(liveContext || {})
             + (selectedDoc ? '\n\n' + (ZOE.activeDocId ? 'SELECTED' : 'RESOLVED') + ' DOCUMENT: ' + JSON.stringify(selectedDoc) : '')
