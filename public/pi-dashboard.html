@@ -4109,6 +4109,21 @@
                     <div id="zoeResearchersBox" style="font-size:12px; color:#475569;">No recent activity loaded.</div>
                 </div>
 
+                <!-- Project Ideas / Drafts (Zoe idea layer, separate from live projects) -->
+                <div style="border:1px solid #d0d5dd; border-radius:10px; background:white; padding:14px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <div style="font-weight:600; color:#1a365d;">Project Ideas</div>
+                        <button id="zoeDraftsRefresh" onclick="zoeLoadDrafts()" style="padding:3px 9px; font-size:11px; background:#e2e8f0; color:#1a365d; border:none; border-radius:4px; cursor:pointer;">Refresh</button>
+                    </div>
+                    <div id="zoeDraftsList" style="font-size:12px; color:#475569; max-height:180px; overflow-y:auto;">No ideas yet.</div>
+                    <div style="margin-top:10px; border-top:1px solid #e2e8f0; padding-top:10px;" data-ai-cap="create_project_drafts">
+                        <input id="zoeDraftTitle" type="text" placeholder="Idea title..." style="width:100%; padding:6px; font-size:12px; border:1px solid #d0d5dd; border-radius:4px; box-sizing:border-box; margin-bottom:6px;">
+                        <textarea id="zoeDraftDesc" rows="2" placeholder="Short description / rationale..." style="width:100%; padding:6px; font-size:12px; border:1px solid #d0d5dd; border-radius:4px; box-sizing:border-box; resize:vertical; margin-bottom:6px;"></textarea>
+                        <button type="button" onclick="zoeCreateDraft()" data-ai-cap="create_project_drafts" class="aibot-allow" style="padding:6px 12px; font-size:12px; background:#0f766e; color:white; border:none; border-radius:4px; cursor:pointer;">Save idea</button>
+                        <span id="zoeDraftMsg" style="font-size:11px; color:#64748b; margin-left:8px;"></span>
+                    </div>
+                </div>
+
                 <!-- Work Actions (Work mode only) -->
                 <div id="zoeWorkActions" style="display:none; border:1px solid #0f766e; border-radius:10px; background:#f0fdfa; padding:14px;">
                     <div style="font-weight:600; color:#134e4a; margin-bottom:10px;">Work Actions</div>
@@ -9194,7 +9209,7 @@ function dicBuildPdfViewerSrc(fileUrl) {
             { value: 'ai_bot', label: 'AI_bot' },
             { value: 'custom', label: 'Custom' }
         ];
-        const AI_BOT_CAPABILITIES = ['approve', 'revise', 'discard', 'seal', 'upload_files', 'edit_files', 'delete_files'];
+        const AI_BOT_CAPABILITIES = ['approve', 'revise', 'discard', 'seal', 'upload_files', 'edit_files', 'delete_files', 'create_project_drafts'];
         const UC_STARTUP_ROLES = [
             { value: 'founder', label: 'Founder' },
             { value: 'admin', label: 'Admin' },
@@ -13909,6 +13924,56 @@ function dicBuildPdfViewerSrc(fileUrl) {
         }
         zoeAppendMsg('zoe', 'Hi, I am Zoe. I can review files, discuss experiments, and help you supervise the lab. Start in Read mode for analysis, or switch to Work mode when you need action-enabled support.');
         zoeLoadContextSummary();
+        zoeLoadDrafts();
+    }
+
+    // ----- Project drafts (Zoe idea layer) -----
+    async function zoeLoadDrafts() {
+        const box = document.getElementById('zoeDraftsList');
+        if (!box) return;
+        try {
+            const r = await fetch('/api/zoe/project-drafts', { credentials: 'include' });
+            if (!r.ok) { box.textContent = 'Failed to load ideas.'; return; }
+            const d = await r.json();
+            const list = (d.drafts || []);
+            if (list.length === 0) { box.textContent = 'No ideas yet.'; return; }
+            box.innerHTML = list.map(it => {
+                const title = (it.title || '').replace(/</g, '&lt;');
+                const desc = (it.short_description || '').replace(/</g, '&lt;').slice(0, 140);
+                const by = (it.created_by || '').replace(/</g, '&lt;');
+                const role = it.created_by_role === 'ai_bot' ? ' · Zoe' : '';
+                const date = it.created_at ? new Date(it.created_at).toLocaleDateString() : '';
+                return `<div style="padding:6px 0; border-bottom:1px solid #f1f5f9;">
+                    <div style="font-weight:600; color:#1a365d;">${title}
+                        <span style="font-weight:400; color:#94a3b8; font-size:11px;">· ${it.status}</span>
+                    </div>
+                    ${desc ? `<div style="color:#475569; margin:2px 0;">${desc}</div>` : ''}
+                    <div style="color:#94a3b8; font-size:11px;">${by}${role} · ${date}</div>
+                </div>`;
+            }).join('');
+        } catch (err) { box.textContent = 'Failed to load ideas.'; }
+    }
+
+    async function zoeCreateDraft() {
+        const t = (document.getElementById('zoeDraftTitle')?.value || '').trim();
+        const d = (document.getElementById('zoeDraftDesc')?.value || '').trim();
+        const msg = document.getElementById('zoeDraftMsg');
+        if (!t) { if (msg) msg.textContent = 'Title required'; return; }
+        if (msg) msg.textContent = 'Saving...';
+        try {
+            const r = await fetch('/api/zoe/project-drafts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ title: t, short_description: d })
+            });
+            const data = await r.json();
+            if (!r.ok) { if (msg) msg.textContent = data.error || 'Failed'; return; }
+            document.getElementById('zoeDraftTitle').value = '';
+            document.getElementById('zoeDraftDesc').value = '';
+            if (msg) msg.textContent = 'Saved.';
+            zoeLoadDrafts();
+        } catch (err) { if (msg) msg.textContent = 'Connection error'; }
     }
 
     function zoeOnComposerKey(e) {
@@ -13971,8 +14036,35 @@ function dicBuildPdfViewerSrc(fileUrl) {
         const thinking = zoeAppendPending();
         zoeInFlight = true;
         zoeSetComposerDisabled(true);
+
+        // Fetch live portal context (counts + recent items + alerts) and prepend
+        // to the user's message as a structured briefing, so Zoe's answer is
+        // grounded in current portal state. Read-only; no action is triggered.
+        let liveContext = null;
+        try {
+            const cr = await fetch('/api/zoe/context', { credentials: 'include' });
+            if (cr.ok) liveContext = await cr.json();
+        } catch (_) { /* non-fatal */ }
+        // projects_derived=true means the project overview was reconstructed
+        // from di_studio_projects (no submission FK), so counts may be partial.
+        // Tell Zoe to soften certainty when that flag is set.
+        const derivedCaveat = (liveContext && liveContext.projects_derived === true)
+            ? 'IMPORTANT: "projects_derived" is TRUE in this context — the project overview is partially derived from available metadata. Do not state exact project counts, per-project workloads, or per-project conclusions with certainty. Use hedged language ("appears", "based on available signals") and invite the PI to confirm. '
+            : 'The "projects_overview" reflects real submission linkage — you may speak about project counts, workload, and priorities normally. ';
+        const contextBlock = liveContext ? (
+            'You are Zoe, PI scientific and strategic copilot with read-only portal visibility. '
+            + 'Use the LIVE PORTAL CONTEXT below to ground your answer. Prefer the "summary", '
+            + '"focus_recommendations", "projects_overview", and "alerts" fields when the user '
+            + 'asks what needs attention, which project is stale, or for a lab status. '
+            + derivedCaveat
+            + 'Before proposing a new project idea, check "draft_projects" — if a similar idea already exists, reference it (by title) instead of duplicating; only create a new one when clearly distinct. '
+            + 'Do not invent data not in the context. If a field is null or empty, say so briefly.\n\n'
+            + 'LIVE PORTAL CONTEXT: ' + JSON.stringify(liveContext) + '\n\n'
+            + 'USER QUESTION: '
+        ) : '';
+
         const payload = {
-            message: msg,
+            message: contextBlock + msg,
             mode: ZOE.mode,
             workspace: (localStorage.getItem('ws') || 'natlab'),
             selectedFileId: ZOE.selectedFileId,

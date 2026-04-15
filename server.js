@@ -621,7 +621,7 @@ async function checkAiBotCapCol() {
     return aiBotCapColExists;
 }
 
-const AI_BOT_CAPABILITIES = ['approve', 'revise', 'discard', 'seal', 'upload_files', 'edit_files', 'delete_files'];
+const AI_BOT_CAPABILITIES = ['approve', 'revise', 'discard', 'seal', 'upload_files', 'edit_files', 'delete_files', 'create_project_drafts'];
 
 // Helper function to check if supervisor_researchers table exists (migration 008)
 let supervisorTableExists = null;
@@ -22115,6 +22115,529 @@ app.get('/api/zoe/context-summary', requirePIRead, async (req, res) => {
     } catch (err) {
         console.error('[ZOE] context-summary error:', err.message);
         res.status(500).json({ error: 'Failed to load context summary' });
+    }
+});
+
+// 2b) GET /api/zoe/context
+// Richer structured live-portal snapshot for Zoe chat prompt injection.
+// Read-only; PI + AI_bot; workspace-scoped. Compact by design — counts,
+// top-N recents, light researcher overview, derived alerts, projects
+// overview, focus recommendations, trends. Never dumps full datasets.
+//
+// Project linkage: uses di_submissions.rd_project_id → rd_projects when
+// that column/table pair is available. NAT-Lab scientific projects come
+// from di_studio_projects (no submission FK today); that listing is
+// marked `derived: true` so the model knows counts may be partial.
+app.get('/api/zoe/context', requirePIRead, async (req, res) => {
+    const wsId = req.session.user.workspace_id || DEFAULT_WORKSPACE_ID;
+    const userId = req.session.user.id || req.session.user.researcher_id || null;
+    const affiliation = req.session.user.affiliation || null;
+    const safeQ = async (sql, params, fallback) => {
+        try { const r = await pool.query(sql, params); return r.rows; }
+        catch (_) { return fallback; }
+    };
+    try {
+        const base = await zoeBuildContextSummary(userId, wsId).catch(() => ({}));
+
+        // Detect project-linkage capability once.
+        let hasProjCol = false, hasRd = false;
+        try { hasProjCol = await hasRdProjectIdCol(); } catch (_) { hasProjCol = false; }
+        try { hasRd = await checkRdTables(); } catch (_) { hasRd = false; }
+        const projectJoinable = hasProjCol && hasRd;
+
+        // -- Counts -------------------------------------------------------
+        const approvedRows = await safeQ(
+            `SELECT COUNT(*)::int AS c FROM di_submissions
+             WHERE status = 'APPROVED' AND (workspace_id = $1 OR workspace_id IS NULL)`,
+            [wsId], [{ c: 0 }]
+        );
+        const pending_glp_count = Number(base.pendingGlp || 0);
+        const revision_needed_count = Number(base.revisionNeeded || 0);
+        const approved_count = approvedRows[0]?.c || 0;
+        const recent_uploads_count = Number(base.recentUploads || 0);
+        const active_projects_count = Number(base.activeProjects || 0);
+
+        // -- Recent files (top 8, with optional project linkage) ---------
+        const recentFilesSql = projectJoinable
+            ? `SELECT s.submission_id, s.original_filename, s.file_type, s.status,
+                      s.uploader_researcher_id, s.created_at, s.signed_at,
+                      s.rd_project_id AS project_id, rp.title AS project_name,
+                      a.affiliation AS uploader_affiliation,
+                      (s.status = 'REVISION_NEEDED') AS is_recent_revision_needed
+               FROM di_submissions s
+               LEFT JOIN rd_projects rp ON rp.id = s.rd_project_id
+               LEFT JOIN di_allowlist a ON a.researcher_id = s.uploader_researcher_id
+               WHERE (s.workspace_id = $1 OR s.workspace_id IS NULL)
+               ORDER BY s.created_at DESC NULLS LAST
+               LIMIT 8`
+            : `SELECT s.submission_id, s.original_filename, s.file_type, s.status,
+                      s.uploader_researcher_id, s.created_at, s.signed_at,
+                      NULL::int AS project_id, NULL::text AS project_name,
+                      a.affiliation AS uploader_affiliation,
+                      (s.status = 'REVISION_NEEDED') AS is_recent_revision_needed
+               FROM di_submissions s
+               LEFT JOIN di_allowlist a ON a.researcher_id = s.uploader_researcher_id
+               WHERE (s.workspace_id = $1 OR s.workspace_id IS NULL)
+               ORDER BY s.created_at DESC NULLS LAST
+               LIMIT 8`;
+        const recentFilesRows = await safeQ(recentFilesSql, [wsId], []);
+        const recent_files = recentFilesRows.map(r => ({
+            id: r.submission_id,
+            title: r.original_filename,
+            type: r.file_type,            // category proxy (kept name `type` for back-compat)
+            category: r.file_type,
+            uploader: r.uploader_researcher_id,
+            affiliation: r.uploader_affiliation || null,
+            status: r.status,
+            date: r.created_at,
+            signed_at: r.signed_at,
+            project_id: r.project_id,
+            project_name: r.project_name,
+            is_recent_revision_needed: !!r.is_recent_revision_needed
+        }));
+
+        // -- Recent activity (top 10, last 30d) ---------------------------
+        const recentActivitySql = projectJoinable
+            ? `SELECT s.submission_id AS id, s.original_filename AS title, s.status,
+                      s.uploader_researcher_id AS actor,
+                      s.rd_project_id AS project_id, rp.title AS project_name,
+                      COALESCE(s.signed_at, s.created_at) AS at
+               FROM di_submissions s
+               LEFT JOIN rd_projects rp ON rp.id = s.rd_project_id
+               WHERE (s.workspace_id = $1 OR s.workspace_id IS NULL)
+                 AND COALESCE(s.signed_at, s.created_at) > NOW() - INTERVAL '30 days'
+               ORDER BY COALESCE(s.signed_at, s.created_at) DESC NULLS LAST
+               LIMIT 10`
+            : `SELECT s.submission_id AS id, s.original_filename AS title, s.status,
+                      s.uploader_researcher_id AS actor,
+                      NULL::int AS project_id, NULL::text AS project_name,
+                      COALESCE(s.signed_at, s.created_at) AS at
+               FROM di_submissions s
+               WHERE (s.workspace_id = $1 OR s.workspace_id IS NULL)
+                 AND COALESCE(s.signed_at, s.created_at) > NOW() - INTERVAL '30 days'
+               ORDER BY COALESCE(s.signed_at, s.created_at) DESC NULLS LAST
+               LIMIT 10`;
+        const activityRows = await safeQ(recentActivitySql, [wsId], []);
+        const recent_activity = activityRows.map(r => ({
+            kind: 'submission',
+            id: r.id,
+            title: r.title,
+            status: r.status,
+            actor: r.actor,
+            project_id: r.project_id,
+            project_name: r.project_name,
+            at: r.at
+        }));
+
+        // -- Researcher overview (top 10 active, enriched) ---------------
+        const researcherRows = await safeQ(
+            `SELECT s.uploader_researcher_id AS rid,
+                    a.name AS name,
+                    COUNT(*)::int AS recent_uploads,
+                    SUM(CASE WHEN s.status IN ('PENDING','SUBMITTED') THEN 1 ELSE 0 END)::int AS pending,
+                    SUM(CASE WHEN s.status = 'REVISION_NEEDED' THEN 1 ELSE 0 END)::int AS revision_needed,
+                    SUM(CASE WHEN s.status = 'APPROVED' THEN 1 ELSE 0 END)::int AS approved,
+                    MAX(s.created_at) AS last_upload_at
+             FROM di_submissions s
+             LEFT JOIN di_allowlist a ON a.researcher_id = s.uploader_researcher_id
+             WHERE (s.workspace_id = $1 OR s.workspace_id IS NULL)
+               AND s.created_at > NOW() - INTERVAL '30 days'
+               AND s.uploader_researcher_id IS NOT NULL
+             GROUP BY s.uploader_researcher_id, a.name
+             ORDER BY recent_uploads DESC
+             LIMIT 10`,
+            [wsId], []
+        );
+        const researcher_overview = researcherRows.map(r => ({
+            researcher_id: r.rid,
+            name: r.name || null,
+            recent_uploads: r.recent_uploads,
+            pending: r.pending,
+            revision_needed: r.revision_needed,
+            approved: r.approved,
+            last_upload_at: r.last_upload_at
+        }));
+
+        // -- Projects overview --------------------------------------------
+        // Primary path: aggregate submissions by rd_project_id. Secondary
+        // path: list di_studio_projects (NAT-Lab scientific) as derived.
+        let projects_overview = [];
+        let projects_derived = false;
+        if (projectJoinable) {
+            const projRows = await safeQ(
+                `SELECT rp.id AS project_id, rp.title AS project_name, rp.status,
+                        COUNT(s.*)::int AS recent_files_count,
+                        SUM(CASE WHEN s.status IN ('PENDING','SUBMITTED') THEN 1 ELSE 0 END)::int AS pending_count,
+                        SUM(CASE WHEN s.status = 'REVISION_NEEDED' THEN 1 ELSE 0 END)::int AS revision_needed_count,
+                        MAX(s.created_at) AS last_activity_at
+                 FROM rd_projects rp
+                 LEFT JOIN di_submissions s
+                   ON s.rd_project_id = rp.id
+                   AND (s.workspace_id = $1 OR s.workspace_id IS NULL)
+                   AND s.created_at > NOW() - INTERVAL '60 days'
+                 WHERE rp.workspace_id = $1
+                 GROUP BY rp.id, rp.title, rp.status
+                 ORDER BY last_activity_at DESC NULLS LAST, rp.updated_at DESC NULLS LAST
+                 LIMIT 8`,
+                [wsId], []
+            );
+            projects_overview = projRows.map(r => {
+                const stale = !r.last_activity_at ||
+                    (Date.now() - new Date(r.last_activity_at).getTime()) > 21 * 24 * 3600 * 1000;
+                let health = 'good';
+                if ((r.revision_needed_count || 0) > 0) health = 'attention';
+                else if ((r.pending_count || 0) >= 3 || stale) health = 'watch';
+                return {
+                    project_id: r.project_id,
+                    project_name: r.project_name,
+                    status: r.status,
+                    recent_files_count: r.recent_files_count || 0,
+                    pending_count: r.pending_count || 0,
+                    revision_needed_count: r.revision_needed_count || 0,
+                    last_activity_at: r.last_activity_at,
+                    stale,
+                    health
+                };
+            });
+        }
+        if (projects_overview.length === 0 && affiliation) {
+            // Fallback: NAT-Lab scientific projects (no submission FK exists)
+            const studioRows = await safeQ(
+                `SELECT p.id AS project_id, p.title AS project_name, p.status,
+                        p.updated_at AS last_activity_at
+                 FROM di_studio_projects p
+                 WHERE p.affiliation = $1
+                 ORDER BY p.updated_at DESC NULLS LAST
+                 LIMIT 8`,
+                [affiliation], []
+            );
+            projects_overview = studioRows.map(r => {
+                const stale = !r.last_activity_at ||
+                    (Date.now() - new Date(r.last_activity_at).getTime()) > 30 * 24 * 3600 * 1000;
+                return {
+                    project_id: r.project_id,
+                    project_name: r.project_name,
+                    status: r.status,
+                    recent_files_count: null,
+                    pending_count: null,
+                    revision_needed_count: null,
+                    last_activity_at: r.last_activity_at,
+                    stale,
+                    health: stale ? 'watch' : 'good'
+                };
+            });
+            projects_derived = studioRows.length > 0;
+        }
+
+        // -- Alerts (enriched) --------------------------------------------
+        const alerts = [];
+        if (pending_glp_count > 0) alerts.push({
+            level: pending_glp_count >= 5 ? 'warn' : 'info',
+            code: 'pending_approvals_exist',
+            message: `${pending_glp_count} submission(s) pending PI approval.`
+        });
+        if (revision_needed_count > 0) alerts.push({
+            level: 'warn', code: 'revision_needed_exists',
+            message: `${revision_needed_count} submission(s) need revision.`
+        });
+        if (recent_uploads_count === 0) alerts.push({
+            level: 'info', code: 'no_recent_uploads',
+            message: 'No uploads in the last 7 days.'
+        });
+        // Researcher-level: anyone with >=3 pending items
+        for (const r of researcher_overview) {
+            if ((r.pending || 0) >= 3) {
+                alerts.push({
+                    level: 'warn', code: 'researcher_many_pending',
+                    message: `${r.name || r.researcher_id} has ${r.pending} pending item(s).`,
+                    entity_type: 'researcher', entity_id: r.researcher_id
+                });
+            }
+        }
+        // Recent upload spike: >10 in last 7d
+        if (recent_uploads_count >= 10) alerts.push({
+            level: 'info', code: 'recent_upload_spike',
+            message: `${recent_uploads_count} uploads in the last 7 days.`
+        });
+        // Project-level
+        for (const p of projects_overview) {
+            if ((p.revision_needed_count || 0) > 0) alerts.push({
+                level: 'warn', code: 'project_revision_needed',
+                message: `Project "${p.project_name}" has ${p.revision_needed_count} revision-needed item(s).`,
+                entity_type: 'project', entity_id: p.project_id
+            });
+            if (p.stale && (p.pending_count || 0) === 0) alerts.push({
+                level: 'info', code: 'project_stale',
+                message: `Project "${p.project_name}" has no recent activity.`,
+                entity_type: 'project', entity_id: p.project_id
+            });
+        }
+        if (projects_overview.length === 0) alerts.push({
+            level: 'info', code: 'no_active_projects_linked',
+            message: 'No active projects linked to this workspace context.'
+        });
+        // Missing project association on recent files (only when linkage is real)
+        if (projectJoinable) {
+            const unlinked = recent_files.filter(f => !f.project_id).length;
+            if (unlinked >= 3) alerts.push({
+                level: 'info', code: 'recent_files_missing_project',
+                message: `${unlinked} of ${recent_files.length} recent files have no project association.`
+            });
+        }
+
+        // -- Focus recommendations (top 3-5) -----------------------------
+        const focus_recommendations = [];
+        // Rank projects by score (revision > pending > stale)
+        const projScored = projects_overview.map(p => ({
+            ref: p,
+            score: (p.revision_needed_count || 0) * 3 + (p.pending_count || 0) * 2 + (p.stale ? 1 : 0)
+        })).filter(x => x.score > 0).sort((a, b) => b.score - a.score);
+        for (const x of projScored.slice(0, 3)) {
+            const reasonParts = [];
+            if (x.ref.pending_count) reasonParts.push(`${x.ref.pending_count} pending`);
+            if (x.ref.revision_needed_count) reasonParts.push(`${x.ref.revision_needed_count} revision-needed`);
+            if (x.ref.stale && reasonParts.length === 0) reasonParts.push('stale activity');
+            focus_recommendations.push({
+                type: 'project',
+                label: x.ref.project_name,
+                reason: reasonParts.join(' and ') + ' file(s)',
+                priority: (x.ref.revision_needed_count || 0) > 0 ? 'high' : 'medium'
+            });
+        }
+        // Rank researchers by pending + revision_needed
+        const resScored = researcher_overview.map(r => ({
+            ref: r,
+            score: (r.pending || 0) * 2 + (r.revision_needed || 0) * 3
+        })).filter(x => x.score > 0).sort((a, b) => b.score - a.score);
+        for (const x of resScored.slice(0, 2)) {
+            focus_recommendations.push({
+                type: 'researcher',
+                label: x.ref.name || x.ref.researcher_id,
+                reason: `${x.ref.pending || 0} pending, ${x.ref.revision_needed || 0} revision-needed`,
+                priority: (x.ref.revision_needed || 0) > 0 ? 'high' : 'medium'
+            });
+        }
+        if (focus_recommendations.length === 0 && pending_glp_count > 0) {
+            focus_recommendations.push({
+                type: 'glp',
+                label: 'Pending GLP queue',
+                reason: `${pending_glp_count} submission(s) awaiting PI review`,
+                priority: pending_glp_count >= 5 ? 'high' : 'medium'
+            });
+        }
+
+        // -- Trends (last 7 days) ----------------------------------------
+        const trendsRow = await safeQ(
+            `SELECT
+                SUM(CASE WHEN created_at > NOW() - INTERVAL '7 days' THEN 1 ELSE 0 END)::int AS uploads_last_7d,
+                SUM(CASE WHEN status = 'APPROVED' AND COALESCE(signed_at, updated_at, created_at) > NOW() - INTERVAL '7 days' THEN 1 ELSE 0 END)::int AS approvals_last_7d,
+                SUM(CASE WHEN status = 'REVISION_NEEDED' AND COALESCE(updated_at, created_at) > NOW() - INTERVAL '7 days' THEN 1 ELSE 0 END)::int AS revisions_last_7d
+             FROM di_submissions
+             WHERE (workspace_id = $1 OR workspace_id IS NULL)`,
+            [wsId], [{ uploads_last_7d: null, approvals_last_7d: null, revisions_last_7d: null }]
+        );
+        const trends = {
+            uploads_last_7d: trendsRow[0]?.uploads_last_7d ?? null,
+            approvals_last_7d: trendsRow[0]?.approvals_last_7d ?? null,
+            revisions_last_7d: trendsRow[0]?.revisions_last_7d ?? null
+        };
+
+        // -- Summary block (derived) -------------------------------------
+        let priority_level = 'normal';
+        const criticalCount = alerts.filter(a => a.level === 'warn').length;
+        if (revision_needed_count > 0 || pending_glp_count >= 5 || criticalCount >= 3) priority_level = 'high';
+        else if (pending_glp_count > 0 || criticalCount >= 1) priority_level = 'elevated';
+        const headlineParts = [];
+        if (pending_glp_count > 0) headlineParts.push(`${pending_glp_count} pending`);
+        if (revision_needed_count > 0) headlineParts.push(`${revision_needed_count} revision-needed`);
+        if (projects_overview.length > 0) headlineParts.push(`${projects_overview.length} project(s) tracked`);
+        if (recent_uploads_count > 0) headlineParts.push(`${recent_uploads_count} upload(s) last 7d`);
+        const headline = headlineParts.length
+            ? headlineParts.join(', ') + '.'
+            : 'Lab is quiet — no pending approvals or revisions.';
+        const summary = {
+            priority_level,
+            headline,
+            needs_attention: pending_glp_count > 0 || revision_needed_count > 0 || criticalCount > 0
+        };
+
+        // -- Draft projects (Zoe idea layer, top 8) ----------------------
+        // Compact shape only — no joins. Silently empty if table missing.
+        let draft_projects = [];
+        if (await checkZoeDraftsTable()) {
+            const draftRows = await safeQ(
+                `SELECT id, title, status, created_at, tags
+                 FROM zoe_project_drafts
+                 WHERE (workspace_id = $1 OR workspace_id IS NULL)
+                   AND status IN ('draft', 'under_review')
+                 ORDER BY created_at DESC
+                 LIMIT 8`,
+                [wsId], []
+            );
+            draft_projects = draftRows.map(r => ({
+                id: r.id,
+                title: r.title,
+                status: r.status,
+                created_at: r.created_at,
+                tags: r.tags || null
+            }));
+        }
+
+        res.json({
+            generated_at: new Date().toISOString(),
+            workspace_id: wsId,
+            summary,
+            pending_glp_count,
+            revision_needed_count,
+            approved_count,
+            recent_uploads_count,
+            active_projects_count,
+            trends,
+            recent_files,
+            recent_activity,
+            researcher_overview,
+            projects_overview,
+            projects_derived,                 // true => counts are limited / derived from di_studio_projects
+            focus_recommendations,
+            alerts,
+            draft_projects,
+            notes: base.experimentsNote || null
+        });
+    } catch (err) {
+        console.error('[ZOE] context error:', err.message);
+        res.status(500).json({ error: 'Failed to build Zoe context' });
+    }
+});
+
+// ---------------------------------------------------------------------------
+// Zoe project drafts (idea layer) — migration 062
+// ---------------------------------------------------------------------------
+// Separate from live projects. PI can always create; AI_bot only with the
+// `create_project_drafts` capability. Edits/deletes are PI-only in v1.
+let zoeDraftsTableExists = null;
+let zoeDraftsTableLastCheck = 0;
+async function checkZoeDraftsTable() {
+    const now = Date.now();
+    if (zoeDraftsTableExists === null || zoeDraftsTableExists === false ||
+        (now - zoeDraftsTableLastCheck > 60000)) {
+        try {
+            const r = await pool.query(
+                `SELECT table_name FROM information_schema.tables WHERE table_name = 'zoe_project_drafts'`
+            );
+            zoeDraftsTableExists = r.rows.length > 0;
+            zoeDraftsTableLastCheck = now;
+        } catch (_) { zoeDraftsTableExists = false; }
+    }
+    return zoeDraftsTableExists;
+}
+const VALID_DRAFT_STATUSES = ['draft', 'under_review', 'approved', 'archived'];
+
+// GET /api/zoe/project-drafts — list drafts for this workspace.
+// PI + AI_bot (read visibility). Optional ?status=... filter.
+app.get('/api/zoe/project-drafts', requirePIRead, async (req, res) => {
+    try {
+        if (!(await checkZoeDraftsTable())) {
+            return res.json({ drafts: [], column_missing: true });
+        }
+        const wsId = req.session.user.workspace_id || DEFAULT_WORKSPACE_ID;
+        const status = typeof req.query.status === 'string' && VALID_DRAFT_STATUSES.includes(req.query.status)
+            ? req.query.status : null;
+        const params = [wsId];
+        let sql = `SELECT id, workspace_id, title, short_description, notes, status,
+                          tags, related_project_id, created_by, created_by_role,
+                          created_at, updated_at
+                   FROM zoe_project_drafts
+                   WHERE (workspace_id = $1 OR workspace_id IS NULL)`;
+        if (status) { params.push(status); sql += ` AND status = $2`; }
+        sql += ` ORDER BY created_at DESC LIMIT 100`;
+        const r = await pool.query(sql, params);
+        res.json({ drafts: r.rows });
+    } catch (err) {
+        console.error('[ZOE-DRAFTS] list error:', err.message);
+        res.status(500).json({ error: 'Failed to list drafts' });
+    }
+});
+
+// POST /api/zoe/project-drafts — create a new draft idea.
+// PI always; AI_bot only with capability `create_project_drafts`.
+app.post('/api/zoe/project-drafts', requirePIorCap('create_project_drafts'), async (req, res) => {
+    try {
+        if (!(await checkZoeDraftsTable())) {
+            return res.status(400).json({ error: 'Drafts table not available (run migration 062)' });
+        }
+        const b = req.body && typeof req.body === 'object' ? req.body : {};
+        const title = (b.title || '').toString().trim();
+        if (!title) return res.status(400).json({ error: 'title required' });
+        if (title.length > 255) return res.status(400).json({ error: 'title too long (max 255)' });
+        const short_description = b.short_description ? String(b.short_description).slice(0, 2000) : null;
+        const notes = b.notes ? String(b.notes).slice(0, 20000) : null;
+        const statusIn = (b.status || 'draft').toString();
+        const status = VALID_DRAFT_STATUSES.includes(statusIn) ? statusIn : 'draft';
+        const tags = b.tags ? String(b.tags).slice(0, 500) : null;
+        const related_project_id = Number.isInteger(b.related_project_id) ? b.related_project_id : null;
+        const wsId = req.session.user.workspace_id || DEFAULT_WORKSPACE_ID;
+        const createdBy = req.session.user.researcher_id || req.session.user.id || 'unknown';
+        const createdByRole = req.session.user.role || null;
+        const r = await pool.query(
+            `INSERT INTO zoe_project_drafts
+                (workspace_id, title, short_description, notes, status, tags,
+                 related_project_id, created_by, created_by_role)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+             RETURNING *`,
+            [wsId, title, short_description, notes, status, tags, related_project_id, createdBy, createdByRole]
+        );
+        console.log(`[ZOE-DRAFTS] created id=${r.rows[0].id} by=${createdBy} role=${createdByRole}`);
+        res.json({ success: true, draft: r.rows[0] });
+    } catch (err) {
+        console.error('[ZOE-DRAFTS] create error:', err.message);
+        res.status(500).json({ error: 'Failed to create draft' });
+    }
+});
+
+// PATCH /api/zoe/project-drafts/:id — PI only in v1.
+app.patch('/api/zoe/project-drafts/:id', requirePI, async (req, res) => {
+    try {
+        if (!(await checkZoeDraftsTable())) return res.status(400).json({ error: 'Drafts table not available' });
+        const id = parseInt(req.params.id, 10);
+        if (!Number.isInteger(id)) return res.status(400).json({ error: 'invalid id' });
+        const b = req.body && typeof req.body === 'object' ? req.body : {};
+        const fields = [];
+        const vals = [];
+        let i = 1;
+        const push = (col, v) => { fields.push(`${col} = $${i++}`); vals.push(v); };
+        if (typeof b.title === 'string') push('title', b.title.slice(0, 255));
+        if (typeof b.short_description === 'string') push('short_description', b.short_description.slice(0, 2000));
+        if (typeof b.notes === 'string') push('notes', b.notes.slice(0, 20000));
+        if (typeof b.status === 'string' && VALID_DRAFT_STATUSES.includes(b.status)) push('status', b.status);
+        if (typeof b.tags === 'string') push('tags', b.tags.slice(0, 500));
+        if (b.related_project_id === null || Number.isInteger(b.related_project_id)) push('related_project_id', b.related_project_id);
+        if (fields.length === 0) return res.status(400).json({ error: 'no updatable fields provided' });
+        push('updated_at', new Date());
+        vals.push(id);
+        const r = await pool.query(
+            `UPDATE zoe_project_drafts SET ${fields.join(', ')} WHERE id = $${i} RETURNING *`,
+            vals
+        );
+        if (r.rows.length === 0) return res.status(404).json({ error: 'draft not found' });
+        res.json({ success: true, draft: r.rows[0] });
+    } catch (err) {
+        console.error('[ZOE-DRAFTS] patch error:', err.message);
+        res.status(500).json({ error: 'Failed to update draft' });
+    }
+});
+
+// DELETE /api/zoe/project-drafts/:id — PI only in v1.
+app.delete('/api/zoe/project-drafts/:id', requirePI, async (req, res) => {
+    try {
+        if (!(await checkZoeDraftsTable())) return res.status(400).json({ error: 'Drafts table not available' });
+        const id = parseInt(req.params.id, 10);
+        if (!Number.isInteger(id)) return res.status(400).json({ error: 'invalid id' });
+        const r = await pool.query(`DELETE FROM zoe_project_drafts WHERE id = $1`, [id]);
+        if (r.rowCount === 0) return res.status(404).json({ error: 'draft not found' });
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[ZOE-DRAFTS] delete error:', err.message);
+        res.status(500).json({ error: 'Failed to delete draft' });
     }
 });
 
