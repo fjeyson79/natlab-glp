@@ -4109,6 +4109,16 @@
                     <div id="zoeResearchersBox" style="font-size:12px; color:#475569;">No recent activity loaded.</div>
                 </div>
 
+                <!-- Recent Documents (Phase 3 — Zoe can read these) -->
+                <div style="border:1px solid #d0d5dd; border-radius:10px; background:white; padding:14px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <div style="font-weight:600; color:#1a365d;">Recent Documents</div>
+                        <button onclick="zoeLoadDocuments()" style="padding:3px 9px; font-size:11px; background:#e2e8f0; color:#1a365d; border:none; border-radius:4px; cursor:pointer;">Refresh</button>
+                    </div>
+                    <div id="zoeActiveDocBanner" style="display:none; padding:6px 8px; background:#ecfeff; border:1px solid #06b6d4; border-radius:5px; margin-bottom:8px; font-size:11px; color:#0e7490;"></div>
+                    <div id="zoeDocsList" style="font-size:12px; color:#475569; max-height:200px; overflow-y:auto;">Loading...</div>
+                </div>
+
                 <!-- Project Ideas / Drafts (Zoe idea layer, separate from live projects) -->
                 <div style="border:1px solid #d0d5dd; border-radius:10px; background:white; padding:14px;">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
@@ -13914,6 +13924,7 @@ function dicBuildPdfViewerSrc(fileUrl) {
         selectedFileId: null,
         uploadedFiles: [],
         glpContext: null,
+        activeDocId: null, // Phase 3: portal document selected for next question
     };
 
     function zoeInit() {
@@ -13925,6 +13936,51 @@ function dicBuildPdfViewerSrc(fileUrl) {
         zoeAppendMsg('zoe', 'Hi, I am Zoe. I can review files, discuss experiments, and help you supervise the lab. Start in Read mode for analysis, or switch to Work mode when you need action-enabled support.');
         zoeLoadContextSummary();
         zoeLoadDrafts();
+        zoeLoadDocuments();
+    }
+
+    // ----- Document reading (Phase 3) -----
+    // ZOE.activeDocId — null or 'sub:xxx' / 'grp:xxx'. When set, the next
+    // zoeSend() call fetches /api/zoe/document/:id and injects its content
+    // into the prompt. Selection is sticky until cleared.
+    async function zoeLoadDocuments() {
+        const box = document.getElementById('zoeDocsList');
+        if (!box) return;
+        try {
+            const r = await fetch('/api/zoe/documents', { credentials: 'include' });
+            if (!r.ok) { box.textContent = 'Failed to load documents.'; return; }
+            const d = await r.json();
+            const docs = (d.documents || []).slice(0, 15);
+            if (docs.length === 0) { box.textContent = 'No readable documents yet.'; return; }
+            box.innerHTML = docs.map(doc => {
+                const title = (doc.title || '').replace(/</g, '&lt;');
+                const sub = [doc.project_name, doc.uploader, doc.status].filter(Boolean).join(' · ').replace(/</g, '&lt;');
+                const ck = doc.can_read_content;
+                const badge = ck ? '' : '<span style="font-size:10px; color:#b45309; margin-left:6px;">(metadata only)</span>';
+                const date = doc.date ? new Date(doc.date).toLocaleDateString() : '';
+                const isActive = (ZOE.activeDocId === doc.id);
+                return `<div data-doc-id="${doc.id}" onclick="zoeSelectDoc('${doc.id}')"
+                    style="padding:6px 8px; border-radius:4px; cursor:pointer; border:1px solid ${isActive ? '#06b6d4' : 'transparent'}; background:${isActive ? '#ecfeff' : 'transparent'}; margin-bottom:2px;">
+                    <div style="font-weight:600; color:#1a365d;">${title}${badge}</div>
+                    <div style="color:#94a3b8; font-size:11px;">${sub} · ${date}</div>
+                </div>`;
+            }).join('');
+            zoeRefreshActiveDocBanner();
+        } catch (err) { box.textContent = 'Failed to load documents.'; }
+    }
+
+    function zoeSelectDoc(docId) {
+        ZOE.activeDocId = (ZOE.activeDocId === docId) ? null : docId;
+        zoeLoadDocuments();
+    }
+
+    function zoeRefreshActiveDocBanner() {
+        const el = document.getElementById('zoeActiveDocBanner');
+        if (!el) return;
+        if (!ZOE.activeDocId) { el.style.display = 'none'; el.innerHTML = ''; return; }
+        el.style.display = 'block';
+        el.innerHTML = 'Selected for next question: <strong>' + (ZOE.activeDocId || '').replace(/</g,'&lt;')
+            + '</strong> <a href="#" onclick="event.preventDefault(); ZOE.activeDocId=null; zoeLoadDocuments();" style="margin-left:6px; color:#0e7490;">clear</a>';
     }
 
     // ----- Project drafts (Zoe idea layer) -----
@@ -14037,30 +14093,49 @@ function dicBuildPdfViewerSrc(fileUrl) {
         zoeInFlight = true;
         zoeSetComposerDisabled(true);
 
-        // Fetch live portal context (counts + recent items + alerts) and prepend
-        // to the user's message as a structured briefing, so Zoe's answer is
-        // grounded in current portal state. Read-only; no action is triggered.
+        // Fetch live portal context, and — when a portal document is selected —
+        // its extracted content. Both are prepended to the user message as a
+        // structured briefing. Read-only; no action is triggered.
         let liveContext = null;
         try {
             const cr = await fetch('/api/zoe/context', { credentials: 'include' });
             if (cr.ok) liveContext = await cr.json();
         } catch (_) { /* non-fatal */ }
+
+        let selectedDoc = null;
+        if (ZOE.activeDocId) {
+            try {
+                const dr = await fetch('/api/zoe/document/' + encodeURIComponent(ZOE.activeDocId), { credentials: 'include' });
+                if (dr.ok) selectedDoc = await dr.json();
+            } catch (_) { /* non-fatal */ }
+        }
+
         // projects_derived=true means the project overview was reconstructed
         // from di_studio_projects (no submission FK), so counts may be partial.
-        // Tell Zoe to soften certainty when that flag is set.
         const derivedCaveat = (liveContext && liveContext.projects_derived === true)
-            ? 'IMPORTANT: "projects_derived" is TRUE in this context — the project overview is partially derived from available metadata. Do not state exact project counts, per-project workloads, or per-project conclusions with certainty. Use hedged language ("appears", "based on available signals") and invite the PI to confirm. '
-            : 'The "projects_overview" reflects real submission linkage — you may speak about project counts, workload, and priorities normally. ';
-        const contextBlock = liveContext ? (
-            'You are Zoe, PI scientific and strategic copilot with read-only portal visibility. '
-            + 'Use the LIVE PORTAL CONTEXT below to ground your answer. Prefer the "summary", '
-            + '"focus_recommendations", "projects_overview", and "alerts" fields when the user '
-            + 'asks what needs attention, which project is stale, or for a lab status. '
-            + derivedCaveat
-            + 'Before proposing a new project idea, check "draft_projects" — if a similar idea already exists, reference it (by title) instead of duplicating; only create a new one when clearly distinct. '
-            + 'Do not invent data not in the context. If a field is null or empty, say so briefly.\n\n'
-            + 'LIVE PORTAL CONTEXT: ' + JSON.stringify(liveContext) + '\n\n'
-            + 'USER QUESTION: '
+            ? 'The "projects_overview" is partially derived — avoid stating exact project counts/workloads with certainty; use hedged language ("appears", "based on available signals") and invite the PI to confirm.'
+            : 'The "projects_overview" reflects real submission linkage — speak about project counts, workload, and priorities normally.';
+
+        const instruction = [
+            'You are Zoe, PI scientific and strategic copilot with read-only portal visibility.',
+            'When the question warrants it, structure your answer as: Priority → Interpretation → Recommended focus. Otherwise answer concisely.',
+            'Grounding rules:',
+            '- Prefer the fields "summary", "focus_recommendations", "projects_overview", "alerts", "draft_projects".',
+            '- Use raw counts only to support conclusions; do not recite them.',
+            '- Distinguish facts (from the context/document) from inferences (your reasoning). Label inferences explicitly.',
+            '- Do not reference backend/internal roadmap notes, implementation details, or schema names in your answer.',
+            '- Never invent data. If a structured field is missing, empty, or null, explicitly say so, then offer the best grounded inference from adjacent signals and suggest one useful next step.',
+            derivedCaveat,
+            'Draft awareness: before proposing a new idea, inspect "draft_projects". If a similar title/theme exists, reference it by title rather than duplicating; propose a new idea only when clearly distinct.',
+            selectedDoc ? 'Document grounding: a SELECTED DOCUMENT is provided. Base document-specific answers on its "text_content". Mention the document title naturally. If "content_truncated" is true, state that you only have the beginning of the document — do not claim to have read the entire file. If "text_content" is null, reason only from the metadata and say so.' : '',
+            selectedDoc ? 'When both the document and "draft_projects" are relevant, compare: does the document support, overlap with, or differ from existing drafts? Suggest a new draft only when clearly distinct.' : ''
+        ].filter(Boolean).join('\n');
+
+        const contextBlock = (liveContext || selectedDoc) ? (
+            instruction
+            + '\n\nLIVE PORTAL CONTEXT: ' + JSON.stringify(liveContext || {})
+            + (selectedDoc ? '\n\nSELECTED DOCUMENT: ' + JSON.stringify(selectedDoc) : '')
+            + '\n\nUSER QUESTION: '
         ) : '';
 
         const payload = {

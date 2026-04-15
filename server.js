@@ -21926,6 +21926,68 @@ const zoeFileStore = new Map();
 
 // Lightweight extraction — PDF via pdf-parse, XLSX/CSV via xlsx. Images/unknown → null.
 // Trims aggressively so we never blow past a reasonable upstream payload size.
+// ---------------------------------------------------------------------------
+// Zoe document extraction (Phase 3): buffer-based extractor used by
+// /api/zoe/document/:id. Reuses pdf-parse and xlsx (already in the project).
+// Gracefully returns { text, extraction_method, content_truncated, notes? }.
+// Never throws; returns { text: null, error } on unsupported/failed input.
+// ---------------------------------------------------------------------------
+const ZOE_DOC_MAX_CHARS = 18000;
+async function zoeExtractFromBuffer(buffer, contentType, filename) {
+    const ext = (filename || '').toLowerCase().split('.').pop();
+    const mime = (contentType || '').toLowerCase();
+    const clip = (s) => {
+        const t = String(s || '');
+        return { text: t.slice(0, ZOE_DOC_MAX_CHARS), truncated: t.length > ZOE_DOC_MAX_CHARS };
+    };
+    try {
+        // PDF
+        if (mime.includes('pdf') || ext === 'pdf') {
+            const pdfParse = require('pdf-parse');
+            const parsed = await pdfParse(buffer);
+            const raw = (parsed.text || '').replace(/\s+\n/g, '\n').trim();
+            const { text, truncated } = clip(raw);
+            return { text, extraction_method: 'pdf-parse', content_truncated: truncated, pages: parsed.numpages || null };
+        }
+        // Plain text / markdown / JSON
+        if (mime.startsWith('text/') || ['txt', 'md', 'markdown', 'json', 'log'].includes(ext)) {
+            const raw = buffer.toString('utf8');
+            if (ext === 'json' || mime.includes('json')) {
+                try {
+                    const pretty = JSON.stringify(JSON.parse(raw), null, 2);
+                    const { text, truncated } = clip(pretty);
+                    return { text, extraction_method: 'json-pretty', content_truncated: truncated };
+                } catch (_) { /* fall through to raw text */ }
+            }
+            const { text, truncated } = clip(raw);
+            return { text, extraction_method: 'utf8-text', content_truncated: truncated };
+        }
+        // CSV / XLS / XLSX — compact preview only (first N rows per sheet)
+        if (mime.includes('csv') || ext === 'csv' ||
+            mime.includes('spreadsheetml') || mime.includes('ms-excel') ||
+            ext === 'xlsx' || ext === 'xls') {
+            const XLSX = require('xlsx');
+            const wb = XLSX.read(buffer, { type: 'buffer' });
+            const chunks = [];
+            for (const name of wb.SheetNames) {
+                const sheet = wb.Sheets[name];
+                const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
+                const preview = rows.slice(0, 40); // first 40 rows per sheet
+                const totalRows = rows.length;
+                chunks.push(`# Sheet: ${name} (${totalRows} row(s), showing first ${preview.length})\n`
+                    + preview.map(r => (r || []).join(',')).join('\n'));
+                if (chunks.join('\n\n').length > ZOE_DOC_MAX_CHARS) break;
+            }
+            const { text, truncated } = clip(chunks.join('\n\n'));
+            return { text, extraction_method: 'xlsx-preview', content_truncated: truncated, sheets: wb.SheetNames };
+        }
+        // Unsupported binary formats
+        return { text: null, error: `Unsupported content type for extraction: ${mime || ext || 'unknown'}` };
+    } catch (err) {
+        return { text: null, error: String(err && err.message || err) };
+    }
+}
+
 async function zoeExtractFileText(file) {
     const ZOE_EXTRACT_MAX_CHARS = 12000;
     try {
@@ -22501,7 +22563,9 @@ app.get('/api/zoe/context', requirePIRead, async (req, res) => {
             focus_recommendations,
             alerts,
             draft_projects,
-            notes: base.experimentsNote || null
+            // Neutral note only. Never leak internal roadmap wording here —
+            // it gets echoed back through Zoe and confuses users.
+            notes: null
         });
     } catch (err) {
         console.error('[ZOE] context error:', err.message);
@@ -22638,6 +22702,268 @@ app.delete('/api/zoe/project-drafts/:id', requirePI, async (req, res) => {
     } catch (err) {
         console.error('[ZOE-DRAFTS] delete error:', err.message);
         res.status(500).json({ error: 'Failed to delete draft' });
+    }
+});
+
+// ---------------------------------------------------------------------------
+// Zoe Document Intelligence (Phase 3): listing + retrieval with extraction.
+// Read-only. PI + AI_bot via requirePIRead. Workspace-scoped. No writes.
+// Sources: di_submissions (primary), di_group_documents (secondary).
+// IDs are namespaced as `sub:<submission_id>` and `grp:<id>` so either
+// source can be resolved through the same /api/zoe/document/:id route.
+// ---------------------------------------------------------------------------
+const ZOE_READABLE_EXTS = new Set(['pdf', 'txt', 'md', 'markdown', 'json', 'log', 'csv', 'xls', 'xlsx']);
+function zoeDocCanReadContent(filename, fileType) {
+    const ext = (filename || '').toLowerCase().split('.').pop();
+    if (ZOE_READABLE_EXTS.has(ext)) return true;
+    const t = (fileType || '').toLowerCase();
+    return /pdf|text|csv|json|excel|spreadsheet|markdown/.test(t);
+}
+
+// GET /api/zoe/documents — compact list of recent portal docs Zoe can read.
+app.get('/api/zoe/documents', requirePIRead, async (req, res) => {
+    try {
+        const wsId = req.session.user.workspace_id || DEFAULT_WORKSPACE_ID;
+        const recent = req.query.recent === '0' ? false : true;
+        const wantType = typeof req.query.type === 'string' ? req.query.type : null;
+        const wantStatus = typeof req.query.status === 'string' ? req.query.status : null;
+        const wantProject = req.query.project_id ? parseInt(req.query.project_id, 10) : null;
+
+        // Column existence for project linkage
+        let hasProjCol = false, hasRd = false;
+        try { hasProjCol = await hasRdProjectIdCol(); } catch (_) {}
+        try { hasRd = await checkRdTables(); } catch (_) {}
+        const joinable = hasProjCol && hasRd;
+
+        const subSql = joinable
+            ? `SELECT s.submission_id AS id, s.original_filename AS title, s.file_type AS type,
+                      s.status, s.uploader_researcher_id AS uploader, s.created_at AS date,
+                      s.r2_object_key, s.rd_project_id AS project_id, rp.title AS project_name
+               FROM di_submissions s
+               LEFT JOIN rd_projects rp ON rp.id = s.rd_project_id
+               WHERE (s.workspace_id = $1 OR s.workspace_id IS NULL)
+                 AND s.r2_object_key IS NOT NULL
+                 AND s.status <> 'DISCARDED'
+                 ${wantType ? ` AND s.file_type = $2` : ''}
+                 ${wantStatus ? ` AND s.status = ${wantType ? '$3' : '$2'}` : ''}
+                 ${wantProject ? ` AND s.rd_project_id = $${2 + (wantType?1:0) + (wantStatus?1:0)}` : ''}
+               ORDER BY s.created_at DESC NULLS LAST
+               LIMIT ${recent ? 20 : 60}`
+            : `SELECT s.submission_id AS id, s.original_filename AS title, s.file_type AS type,
+                      s.status, s.uploader_researcher_id AS uploader, s.created_at AS date,
+                      s.r2_object_key, NULL::int AS project_id, NULL::text AS project_name
+               FROM di_submissions s
+               WHERE (s.workspace_id = $1 OR s.workspace_id IS NULL)
+                 AND s.r2_object_key IS NOT NULL
+                 AND s.status <> 'DISCARDED'
+                 ${wantType ? ` AND s.file_type = $2` : ''}
+                 ${wantStatus ? ` AND s.status = ${wantType ? '$3' : '$2'}` : ''}
+               ORDER BY s.created_at DESC NULLS LAST
+               LIMIT ${recent ? 20 : 60}`;
+        const subParams = [wsId];
+        if (wantType) subParams.push(wantType);
+        if (wantStatus) subParams.push(wantStatus);
+        if (wantProject && joinable) subParams.push(wantProject);
+
+        let subRows = [];
+        try { subRows = (await pool.query(subSql, subParams)).rows; } catch (e) { console.error('[ZOE-DOCS] submissions query:', e.message); }
+
+        const subItems = subRows.map(r => ({
+            id: `sub:${r.id}`,
+            title: r.title,
+            type: r.type,
+            category: r.type,
+            uploader: r.uploader,
+            date: r.date,
+            status: r.status,
+            project_id: r.project_id,
+            project_name: r.project_name,
+            source_kind: 'submission',
+            can_read_content: zoeDocCanReadContent(r.title, r.type)
+        }));
+
+        // Group documents — intentionally global for v1.
+        // TODO (follow-up): di_group_documents has no workspace_id column
+        // (migrations 006 + 007). If/when multiple lab workspaces share this
+        // portal, add `workspace_id` via a new migration and tighten this
+        // query to `WHERE (workspace_id = $1 OR workspace_id IS NULL)` to
+        // match the submission scoping pattern used above.
+        let grpItems = [];
+        try {
+            const grpRows = (await pool.query(
+                `SELECT id, title, category, filename, file_type, created_at, uploaded_by
+                 FROM di_group_documents WHERE is_active = true
+                 ORDER BY created_at DESC NULLS LAST LIMIT 20`
+            )).rows;
+            grpItems = grpRows.map(r => ({
+                id: `grp:${r.id}`,
+                title: r.title || r.filename,
+                type: r.file_type,
+                category: r.category,
+                uploader: r.uploaded_by,
+                date: r.created_at,
+                status: 'ACTIVE',
+                project_id: null,
+                project_name: null,
+                source_kind: 'group_document',
+                can_read_content: zoeDocCanReadContent(r.filename, r.file_type)
+            }));
+        } catch (_) { /* table may be absent */ }
+
+        const documents = [...subItems, ...grpItems]
+            .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))
+            .slice(0, recent ? 25 : 80);
+
+        res.json({ count: documents.length, documents });
+    } catch (err) {
+        console.error('[ZOE-DOCS] list error:', err.message);
+        res.status(500).json({ error: 'Failed to list documents' });
+    }
+});
+
+// GET /api/zoe/document/:id — metadata + extracted text for one document.
+// :id is namespaced — `sub:<submission_id>` | `grp:<id>`. Legacy numeric
+// IDs are treated as group_documents for back-compat.
+app.get('/api/zoe/document/:id', requirePIRead, async (req, res) => {
+    try {
+        const raw = String(req.params.id || '').trim();
+        let kind = 'submission';
+        let key = raw;
+        if (raw.startsWith('sub:')) { kind = 'submission'; key = raw.slice(4); }
+        else if (raw.startsWith('grp:')) { kind = 'group_document'; key = raw.slice(4); }
+        else if (/^\d+$/.test(raw)) { kind = 'group_document'; key = raw; }
+
+        let meta = null;
+        let r2Key = null;
+        let filename = null;
+        let fileType = null;
+
+        if (kind === 'submission') {
+            const wsId = req.session.user.workspace_id || DEFAULT_WORKSPACE_ID;
+            const q = await pool.query(
+                `SELECT s.submission_id, s.original_filename, s.file_type, s.status,
+                        s.uploader_researcher_id, s.created_at, s.r2_object_key,
+                        s.workspace_id
+                        ${await hasRdProjectIdCol() ? ', s.rd_project_id' : ''}
+                 FROM di_submissions s
+                 WHERE s.submission_id = $1`,
+                [key]
+            );
+            if (q.rows.length === 0) return res.status(404).json({ error: 'Document not found' });
+            const row = q.rows[0];
+            // Workspace scoping: enforce visibility
+            if (row.workspace_id != null && wsId != null && Number(row.workspace_id) !== Number(wsId)) {
+                return res.status(403).json({ error: 'Document outside workspace scope' });
+            }
+            let projectName = null;
+            if (row.rd_project_id != null) {
+                try {
+                    const p = await pool.query(`SELECT title FROM rd_projects WHERE id = $1`, [row.rd_project_id]);
+                    projectName = p.rows[0]?.title || null;
+                } catch (_) {}
+            }
+            meta = {
+                id: raw,
+                title: row.original_filename,
+                type: row.file_type,
+                category: row.file_type,
+                uploader: row.uploader_researcher_id,
+                date: row.created_at,
+                status: row.status,
+                project_id: row.rd_project_id || null,
+                project_name: projectName,
+                source_kind: 'submission'
+            };
+            r2Key = row.r2_object_key;
+            filename = row.original_filename;
+            fileType = row.file_type;
+        } else {
+            const q = await pool.query(
+                `SELECT id, title, category, description, filename, file_type, r2_object_key,
+                        created_at, uploaded_by, is_active
+                 FROM di_group_documents WHERE id = $1`,
+                [key]
+            );
+            if (q.rows.length === 0) return res.status(404).json({ error: 'Document not found' });
+            const row = q.rows[0];
+            if (!row.is_active) return res.status(410).json({ error: 'Document no longer active' });
+            meta = {
+                id: raw,
+                title: row.title || row.filename,
+                type: row.file_type,
+                category: row.category,
+                uploader: row.uploaded_by,
+                date: row.created_at,
+                status: 'ACTIVE',
+                project_id: null,
+                project_name: null,
+                source_kind: 'group_document',
+                description: row.description || null
+            };
+            r2Key = row.r2_object_key;
+            filename = row.filename;
+            fileType = row.file_type;
+        }
+
+        // Graceful path: metadata-only if no object key
+        if (!r2Key) {
+            return res.json({
+                ...meta,
+                text_content: null,
+                content_truncated: false,
+                extraction_method: null,
+                text_length: 0,
+                notes: 'No stored object for this record — metadata only.'
+            });
+        }
+
+        // Extract — bounded by ZOE_DOC_MAX_CHARS
+        try {
+            const normKey = typeof normalizeR2Key === 'function' ? normalizeR2Key(r2Key) : r2Key;
+            const obj = await downloadFromR2(normKey);
+            const buf = obj && (obj.Body || obj.body || obj) && Buffer.isBuffer(obj.Body) ? obj.Body
+                        : Buffer.isBuffer(obj) ? obj
+                        : Buffer.isBuffer(obj?.body) ? obj.body
+                        : null;
+            const buffer = buf || (obj?.Body ? Buffer.from(obj.Body) : null);
+            if (!buffer) throw new Error('Empty buffer from storage');
+            const out = await zoeExtractFromBuffer(buffer, fileType, filename);
+            if (out && out.text != null) {
+                return res.json({
+                    ...meta,
+                    text_content: out.text,
+                    content_truncated: !!out.content_truncated,
+                    extraction_method: out.extraction_method,
+                    text_length: out.text.length,
+                    pages: out.pages || null,
+                    sheets: out.sheets || null,
+                    notes: out.content_truncated
+                        ? `Content truncated at ${ZOE_DOC_MAX_CHARS} characters — showing beginning of document.`
+                        : null
+                });
+            }
+            return res.json({
+                ...meta,
+                text_content: null,
+                content_truncated: false,
+                extraction_method: null,
+                text_length: 0,
+                notes: (out && out.error) ? `Extraction unavailable: ${out.error}` : 'Readable content unavailable for this format.'
+            });
+        } catch (err) {
+            console.error('[ZOE-DOC] extract error:', err.message);
+            return res.json({
+                ...meta,
+                text_content: null,
+                content_truncated: false,
+                extraction_method: null,
+                text_length: 0,
+                notes: `Extraction failed: ${err.message}`
+            });
+        }
+    } catch (err) {
+        console.error('[ZOE-DOC] get error:', err.message);
+        res.status(500).json({ error: 'Failed to load document' });
     }
 });
 
