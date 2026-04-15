@@ -596,6 +596,28 @@
         .rtb-vt-btn.active { background: #1a1c22; color: #fff; }
         .rtb-vt-btn.rtb-edit-btn { margin-left: auto; color: #16a34a; border-color: rgba(22,163,74,0.4); }
         .rtb-vt-btn.rtb-edit-btn:hover { background: rgba(22,163,74,0.08); }
+        .rtb-vt-btn.rtb-del-btn { color: #c0392b; border-color: rgba(192,57,43,0.4); }
+        .rtb-vt-btn.rtb-del-btn:hover { background: rgba(192,57,43,0.08); }
+
+        /* ---- Per-item Edit / Delete controls (Board Meeting) ---- */
+        .bm-item-row { display: flex; align-items: flex-start; gap: 8px; }
+        li.bm-item-row { list-style-position: inside; }
+        .bm-item-row .bm-item-text { flex: 1; min-width: 0; word-break: break-word; }
+        .bm-item-row .action-text { flex: 1; min-width: 0; }
+        .bm-item-actions {
+            display: inline-flex; gap: 4px; flex-shrink: 0;
+            opacity: 0; transition: opacity 0.12s;
+        }
+        .bm-item-row:hover .bm-item-actions,
+        .bm-item-row:focus-within .bm-item-actions { opacity: 1; }
+        .bm-item-btn {
+            background: transparent; border: 1px solid rgba(0,0,0,0.12);
+            color: #555a66; font-family: inherit; font-size: 10px;
+            padding: 1px 7px; border-radius: 8px; cursor: pointer;
+            line-height: 1.4; letter-spacing: 0.02em;
+        }
+        .bm-item-btn:hover { color: #16a34a; border-color: rgba(22,163,74,0.45); }
+        .bm-item-btn.bm-item-del:hover { color: #c0392b; border-color: rgba(192,57,43,0.45); }
 
         .rtb-formatted { font-size: 13px; color: #2a2d35; line-height: 1.55; }
         .rtb-formatted h3, .rtb-formatted h4 {
@@ -5602,7 +5624,8 @@
                 if (addRow) addRow.style.display = 'none';
                 rtbRender(host, rtbExtract(items), {
                     editable: canEdit,
-                    onEdit: () => bmOpenRichEditor(section)
+                    onEdit: () => bmOpenRichEditor(section),
+                    onDelete: canEdit ? () => bmDeleteRich(section) : null
                 });
                 return;
             }
@@ -5611,11 +5634,19 @@
             host.style.display = 'none';
             listEl.style.display = '';
             if (addRow) addRow.style.display = '';
+            const actions = (i) => canEdit
+                ? '<span class="bm-item-actions">' +
+                    '<button type="button" class="bm-item-btn" onclick="bmEditItem(\'' + section + '\',' + i + ')">Edit</button>' +
+                    '<button type="button" class="bm-item-btn bm-item-del" onclick="bmDeleteItem(\'' + section + '\',' + i + ')">Delete</button>' +
+                  '</span>'
+                : '';
             if (section === 'agenda' || section === 'topic') {
-                listEl.innerHTML = items.map(t => '<li>' + dashSubEsc(t) + '</li>').join('');
+                listEl.innerHTML = items.map((t, i) =>
+                    '<li class="bm-item-row"><span class="bm-item-text">' + dashSubEsc(t) + '</span>' + actions(i) + '</li>'
+                ).join('');
             } else if (section === 'action') {
-                listEl.innerHTML = items.map(t =>
-                    '<div class="action-item"><div class="action-text">' + dashSubEsc(t) + '</div></div>'
+                listEl.innerHTML = items.map((t, i) =>
+                    '<div class="action-item bm-item-row"><div class="action-text">' + dashSubEsc(t) + '</div>' + actions(i) + '</div>'
                 ).join('');
             }
         }
@@ -5658,6 +5689,9 @@
         }
 
         // ---- Inline editing (server-persisted) ----
+        // Per-section edit-index tracker: null = appending new; number = replacing that item
+        const _bmEditIdx = { agenda: null, topic: null, action: null };
+
         function bmAddInline(section) {
             if (!_isUpdateMode || bmIsLocked()) return;
             if (BM_CEO_SECTIONS.includes(section) && !bmIsCeoOrCso()) {
@@ -5665,6 +5699,7 @@
                 if (restrict) { restrict.style.display = ''; setTimeout(() => { restrict.style.display = 'none'; }, 3000); }
                 return;
             }
+            _bmEditIdx[section] = null;
             document.querySelectorAll('#sec-board .sub-inline-edit.open').forEach(el => el.classList.remove('open'));
             const editor = document.getElementById('bmEdit-' + section);
             const input = document.getElementById('bmInput-' + section);
@@ -5673,11 +5708,44 @@
             input.focus();
         }
 
-        async function bmSaveInline(section) {
+        function bmEditItem(section, idx) {
+            if (!_isUpdateMode || bmIsLocked()) return;
+            if (BM_CEO_SECTIONS.includes(section) && !bmIsCeoOrCso()) return;
+            const items = bmContentCache[section] || [];
+            if (rtbIsRich(items)) { bmOpenRichEditor(section); return; }
+            const current = items[idx];
+            if (current === undefined) return;
+            _bmEditIdx[section] = idx;
+            document.querySelectorAll('#sec-board .sub-inline-edit.open').forEach(el => el.classList.remove('open'));
+            const editor = document.getElementById('bmEdit-' + section);
             const input = document.getElementById('bmInput-' + section);
-            const val = input.value.trim();
-            if (!val || !bmCurrentMeeting) return;
-            const items = [...(bmContentCache[section] || []), val];
+            input.value = current;
+            editor.classList.add('open');
+            input.focus();
+            input.select();
+        }
+
+        async function bmDeleteItem(section, idx) {
+            if (!_isUpdateMode || bmIsLocked() || !bmCurrentMeeting) return;
+            if (BM_CEO_SECTIONS.includes(section) && !bmIsCeoOrCso()) return;
+            const current = bmContentCache[section] || [];
+            if (rtbIsRich(current)) return; // rich uses bmDeleteRich
+            if (idx < 0 || idx >= current.length) return;
+            if (!confirm('Delete this item?')) return;
+            const next = current.slice();
+            next.splice(idx, 1);
+            await bmPutItems(section, next);
+        }
+
+        async function bmDeleteRich(section) {
+            if (!_isUpdateMode || bmIsLocked() || !bmCurrentMeeting) return;
+            if (BM_CEO_SECTIONS.includes(section) && !bmIsCeoOrCso()) return;
+            if (!confirm('Delete all content in this section?')) return;
+            await bmPutItems(section, []);
+        }
+
+        // Shared PUT — used by delete flows and replace flows
+        async function bmPutItems(section, items) {
             try {
                 const r = await fetch('/api/theralia/board-meetings/' + bmCurrentMeeting.id + '/content', {
                     method:'PUT', credentials:'include',
@@ -5687,15 +5755,38 @@
                 if (r.ok) {
                     bmContentCache[section] = items;
                     bmRenderList(section);
-                } else {
-                    const d = await r.json();
-                    alert(d.error || 'Failed to save');
+                    return true;
                 }
-            } catch { alert('Network error'); }
+                const d = await r.json().catch(()=>({}));
+                alert(d.error || 'Failed to save');
+                return false;
+            } catch { alert('Network error'); return false; }
+        }
+
+        async function bmSaveInline(section) {
+            const input = document.getElementById('bmInput-' + section);
+            const val = input.value.trim();
+            if (!bmCurrentMeeting) return;
+            const editIdx = _bmEditIdx[section];
+            const current = bmContentCache[section] || [];
+            let items;
+            if (editIdx !== null && editIdx !== undefined) {
+                // Replace mode
+                if (rtbIsRich(current)) { _bmEditIdx[section] = null; document.getElementById('bmEdit-' + section).classList.remove('open'); return; }
+                items = current.slice();
+                if (!val) items.splice(editIdx, 1); else items[editIdx] = val;
+            } else {
+                // Append mode
+                if (!val) return;
+                items = rtbIsRich(current) ? [val] : [...current, val];
+            }
+            _bmEditIdx[section] = null;
+            await bmPutItems(section, items);
             document.getElementById('bmEdit-' + section).classList.remove('open');
         }
 
         function bmCancelInline(section) {
+            _bmEditIdx[section] = null;
             document.getElementById('bmEdit-' + section).classList.remove('open');
         }
 
@@ -5824,7 +5915,8 @@
                 '<div class="rtb-view-toggle">' +
                     '<button type="button" class="rtb-vt-btn ' + (mode === 'formatted' ? 'active' : '') + '" data-m="formatted">Formatted</button>' +
                     '<button type="button" class="rtb-vt-btn ' + (mode === 'box' ? 'active' : '') + '" data-m="box">Box view</button>' +
-                    (opts.editable ? '<button type="button" class="rtb-vt-btn rtb-edit-btn">Rich edit</button>' : '') +
+                    (opts.editable ? '<button type="button" class="rtb-vt-btn rtb-edit-btn">Edit</button>' : '') +
+                    (opts.onDelete ? '<button type="button" class="rtb-vt-btn rtb-del-btn">Delete</button>' : '') +
                 '</div>';
             container.innerHTML = toggle + body;
             container.querySelectorAll('.rtb-vt-btn[data-m]').forEach(b => {
@@ -5836,6 +5928,10 @@
             if (opts.editable && opts.onEdit) {
                 const eb = container.querySelector('.rtb-edit-btn');
                 if (eb) eb.addEventListener('click', opts.onEdit);
+            }
+            if (opts.onDelete) {
+                const db = container.querySelector('.rtb-del-btn');
+                if (db) db.addEventListener('click', opts.onDelete);
             }
         }
 
