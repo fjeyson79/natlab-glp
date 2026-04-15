@@ -573,6 +573,116 @@
             transition: color 0.15s;
         }
 
+        /* ---- RTB — Reusable Rich Text Block ---- */
+        .rtb-edit-link {
+            background: transparent; border: 1px solid rgba(0,0,0,0.12); color: #555a66;
+            font-family: inherit; font-size: 10.5px; padding: 2px 8px; border-radius: 10px;
+            cursor: pointer; margin: 0 0 8px 0; letter-spacing: 0.02em;
+            transition: border-color 0.15s, color 0.15s;
+        }
+        .rtb-edit-link:hover { color: #16a34a; border-color: rgba(22,163,74,0.45); }
+        .rtb-host { margin: 4px 0 8px 0; }
+        .rtb-host[style*="display: none"] + * {}
+        .rtb-view-toggle {
+            display: flex; gap: 4px; margin: 0 0 8px 0;
+            border-bottom: 1px solid rgba(0,0,0,0.06); padding-bottom: 6px;
+        }
+        .rtb-vt-btn {
+            background: transparent; border: 1px solid transparent;
+            color: #8b8f9a; font-family: inherit; font-size: 10.5px;
+            padding: 3px 9px; border-radius: 10px; cursor: pointer;
+            letter-spacing: 0.02em;
+        }
+        .rtb-vt-btn.active { background: #1a1c22; color: #fff; }
+        .rtb-vt-btn.rtb-edit-btn { margin-left: auto; color: #16a34a; border-color: rgba(22,163,74,0.4); }
+        .rtb-vt-btn.rtb-edit-btn:hover { background: rgba(22,163,74,0.08); }
+
+        .rtb-formatted { font-size: 13px; color: #2a2d35; line-height: 1.55; }
+        .rtb-formatted h3, .rtb-formatted h4 {
+            font-size: 12px; font-weight: 600; color: #1a1c22;
+            margin: 12px 0 4px 0; text-transform: none;
+            letter-spacing: 0.02em;
+        }
+        .rtb-formatted h3:first-child, .rtb-formatted h4:first-child { margin-top: 0; }
+        .rtb-formatted h3.rtb-action-title { color: #16a34a; }
+        .rtb-formatted p { margin: 4px 0; }
+        .rtb-formatted p.rtb-action { color: #16a34a; }
+        .rtb-formatted ul, .rtb-formatted ol { margin: 4px 0 8px 18px; padding: 0; }
+        .rtb-formatted li { margin: 2px 0; }
+        .rtb-formatted hr { border: 0; border-top: 1px solid rgba(0,0,0,0.08); margin: 10px 0; }
+
+        .rtb-boxes { display: grid; grid-template-columns: 1fr; gap: 8px; }
+        @media (min-width: 900px) { .rtb-boxes { grid-template-columns: 1fr 1fr; } }
+        .rtb-box {
+            background: #f9fafb; border: 1px solid rgba(0,0,0,0.06);
+            border-radius: 8px; padding: 10px 12px;
+        }
+        .rtb-box-title {
+            font-size: 11px; font-weight: 600; color: #1a1c22;
+            text-transform: uppercase; letter-spacing: 0.06em;
+            margin-bottom: 6px; padding-bottom: 4px;
+            border-bottom: 1px solid rgba(0,0,0,0.06);
+        }
+        .rtb-box-title.rtb-action-title { color: #16a34a; border-bottom-color: rgba(22,163,74,0.25); }
+        .rtb-box p { font-size: 12.5px; color: #2a2d35; margin: 3px 0; line-height: 1.5; }
+        .rtb-box ul, .rtb-box ol { margin: 3px 0 4px 16px; font-size: 12.5px; color: #2a2d35; }
+        .rtb-box li { margin: 2px 0; }
+
+        /* Modal */
+        .rtb-modal {
+            display: none; position: fixed; inset: 0; background: rgba(10,12,16,0.55);
+            z-index: 9999; align-items: center; justify-content: center;
+        }
+        .rtb-modal.open { display: flex; }
+        .rtb-modal-card {
+            background: #fff; width: min(720px, 94vw); max-height: 88vh;
+            display: flex; flex-direction: column; border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.35); overflow: hidden;
+        }
+        .rtb-modal-head {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 12px 16px; border-bottom: 1px solid rgba(0,0,0,0.06);
+        }
+        .rtb-modal-title { font-size: 13px; font-weight: 600; color: #1a1c22; }
+        .rtb-modal-x { background: transparent; border: 0; font-size: 20px; color: #8b8f9a; cursor: pointer; line-height: 1; }
+        .rtb-toolbar {
+            display: flex; flex-wrap: wrap; gap: 4px; align-items: center;
+            padding: 8px 12px; border-bottom: 1px solid rgba(0,0,0,0.06);
+            background: #f9fafb;
+        }
+        .rtb-toolbar button {
+            background: #fff; border: 1px solid rgba(0,0,0,0.1); color: #2a2d35;
+            font-family: inherit; font-size: 12px; padding: 4px 10px;
+            border-radius: 6px; cursor: pointer; min-width: 30px;
+        }
+        .rtb-toolbar button:hover { border-color: #16a34a; color: #16a34a; }
+        .rtb-tb-spacer { flex: 1; }
+        .rtb-fmt-btn { background: #1a1c22 !important; color: #fff !important; border-color: #1a1c22 !important; }
+        .rtb-fmt-btn:hover { background: #16a34a !important; border-color: #16a34a !important; }
+        .rtb-edit-area {
+            flex: 1; min-height: 260px; max-height: 55vh; overflow-y: auto;
+            padding: 14px 18px; font-size: 13px; color: #2a2d35; line-height: 1.55;
+            outline: none;
+        }
+        .rtb-edit-area h3 { font-size: 13px; font-weight: 600; color: #1a1c22; margin: 10px 0 4px 0; }
+        .rtb-edit-area ul, .rtb-edit-area ol { margin: 4px 0 8px 20px; }
+        .rtb-edit-area p { margin: 4px 0; }
+        .rtb-edit-area:empty:before {
+            content: 'Paste raw text, then click Format — or write/edit directly.';
+            color: #b0b4be; font-style: italic;
+        }
+        .rtb-modal-foot {
+            display: flex; justify-content: flex-end; gap: 8px;
+            padding: 10px 16px; border-top: 1px solid rgba(0,0,0,0.06);
+        }
+        .rtb-btn-cancel, .rtb-btn-save {
+            font-family: inherit; font-size: 12px; padding: 6px 14px;
+            border-radius: 6px; cursor: pointer;
+        }
+        .rtb-btn-cancel { background: transparent; border: 1px solid rgba(0,0,0,0.12); color: #555a66; }
+        .rtb-btn-save { background: #16a34a; border: 1px solid #16a34a; color: #fff; }
+        .rtb-btn-save:hover { background: #15893f; }
+
         /* ---- Inline Subsection Editor ---- */
         .sub-inline-edit {
             display: none; margin-top: 4px; margin-bottom: 6px;
@@ -5455,15 +5565,95 @@
 
         function bmRenderList(section) {
             const items = bmContentCache[section] || [];
-            if (section === 'agenda') {
-                document.getElementById('bmAgendaList').innerHTML = items.map(t => '<li>' + dashSubEsc(t) + '</li>').join('');
-            } else if (section === 'topic') {
-                document.getElementById('bmTopicList').innerHTML = items.map(t => '<li>' + dashSubEsc(t) + '</li>').join('');
+            const listMap = { agenda:'bmAgendaList', topic:'bmTopicList', action:'bmActionList' };
+            const listEl = document.getElementById(listMap[section]);
+            if (!listEl) return;
+
+            // Ensure RTB host exists as sibling of the list
+            let host = document.getElementById('rtbHost-' + section);
+            if (!host) {
+                host = document.createElement('div');
+                host.id = 'rtbHost-' + section;
+                host.className = 'rtb-host';
+                listEl.parentNode.insertBefore(host, listEl);
+            }
+            // Ensure "Rich edit" link exists above list (once)
+            let richBtn = document.getElementById('rtbEditLink-' + section);
+            if (!richBtn) {
+                richBtn = document.createElement('button');
+                richBtn.type = 'button';
+                richBtn.id = 'rtbEditLink-' + section;
+                richBtn.className = 'rtb-edit-link';
+                richBtn.textContent = 'Rich edit';
+                richBtn.onclick = () => bmOpenRichEditor(section);
+                listEl.parentNode.insertBefore(richBtn, host);
+            }
+
+            const canEdit = _isUpdateMode && !bmIsLocked() &&
+                (BM_CEO_SECTIONS.includes(section) ? bmIsCeoOrCso() : true);
+            richBtn.style.display = canEdit ? '' : 'none';
+
+            // Find add-row for this section (sibling of list)
+            const addRow = listEl.parentNode.querySelector('.add-row');
+
+            if (rtbIsRich(items)) {
+                host.style.display = '';
+                listEl.style.display = 'none';
+                if (addRow) addRow.style.display = 'none';
+                rtbRender(host, rtbExtract(items), {
+                    editable: canEdit,
+                    onEdit: () => bmOpenRichEditor(section)
+                });
+                return;
+            }
+
+            // Legacy bullet rendering
+            host.style.display = 'none';
+            listEl.style.display = '';
+            if (addRow) addRow.style.display = '';
+            if (section === 'agenda' || section === 'topic') {
+                listEl.innerHTML = items.map(t => '<li>' + dashSubEsc(t) + '</li>').join('');
             } else if (section === 'action') {
-                document.getElementById('bmActionList').innerHTML = items.map(t =>
+                listEl.innerHTML = items.map(t =>
                     '<div class="action-item"><div class="action-text">' + dashSubEsc(t) + '</div></div>'
                 ).join('');
             }
+        }
+
+        // Legacy bullets -> initial HTML for first rich edit
+        function bmItemsToHtml(items) {
+            if (!items || !items.length) return '';
+            return '<ul>' + items.map(t => '<li>' + dashSubEsc(t) + '</li>').join('') + '</ul>';
+        }
+
+        async function bmOpenRichEditor(section) {
+            if (!bmCurrentMeeting) return;
+            if (bmIsLocked()) return;
+            if (BM_CEO_SECTIONS.includes(section) && !bmIsCeoOrCso()) return;
+            const items = bmContentCache[section] || [];
+            const initial = rtbIsRich(items) ? rtbExtract(items) : bmItemsToHtml(items);
+            const sectionLabel = section === 'agenda' ? 'Agenda' : section === 'topic' ? 'Suggested Topics' : 'Action Points';
+            const html = await rtbOpen('Edit ' + sectionLabel, initial);
+            if (html === null) return;
+            await bmSaveRich(section, html);
+        }
+
+        async function bmSaveRich(section, html) {
+            const items = [RTB_MARK + html];
+            try {
+                const r = await fetch('/api/theralia/board-meetings/' + bmCurrentMeeting.id + '/content', {
+                    method:'PUT', credentials:'include',
+                    headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({ section, items })
+                });
+                if (r.ok) {
+                    bmContentCache[section] = items;
+                    bmRenderList(section);
+                } else {
+                    const d = await r.json().catch(()=>({}));
+                    alert(d.error || 'Failed to save');
+                }
+            } catch { alert('Network error'); }
         }
 
         // ---- Inline editing (server-persisted) ----
@@ -5506,6 +5696,209 @@
 
         function bmCancelInline(section) {
             document.getElementById('bmEdit-' + section).classList.remove('open');
+        }
+
+        /* ============================================== */
+        /* RTB — REUSABLE RICH TEXT BLOCK PATTERN         */
+        /* Generic: any section whose storage is a JSON   */
+        /* array-of-strings can opt-in by saving          */
+        /* [RTB_MARK + html] and routing renders to       */
+        /* rtbRender(host, rtbExtract(items), opts).      */
+        /* ============================================== */
+        const RTB_MARK = '@@HTML@@';
+        function rtbIsRich(items) {
+            return Array.isArray(items) && items.length === 1 &&
+                typeof items[0] === 'string' && items[0].startsWith(RTB_MARK);
+        }
+        function rtbExtract(items) { return rtbIsRich(items) ? items[0].slice(RTB_MARK.length) : ''; }
+        function rtbEscHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
+
+        // Whitelist sanitizer — keeps formatting only, strips scripts/events/styles
+        function rtbSanitize(html) {
+            const allowed = { B:1, STRONG:1, I:1, EM:1, U:1, P:1, BR:1, H3:1, H4:1, UL:1, OL:1, LI:1, HR:1, DIV:1, SPAN:1, MARK:1 };
+            const doc = new DOMParser().parseFromString('<body>' + (html || '') + '</body>', 'text/html');
+            (function walk(node) {
+                const kids = Array.from(node.childNodes);
+                for (const c of kids) {
+                    if (c.nodeType === 1) {
+                        if (!allowed[c.tagName]) {
+                            while (c.firstChild) node.insertBefore(c.firstChild, c);
+                            node.removeChild(c);
+                            continue;
+                        }
+                        Array.from(c.attributes).forEach(a => {
+                            const n = a.name.toLowerCase();
+                            if (n === 'class' && /^(rtb-[a-z0-9_-]+(\s+rtb-[a-z0-9_-]+)*)$/.test(a.value)) return;
+                            c.removeAttribute(a.name);
+                        });
+                        walk(c);
+                    } else if (c.nodeType !== 3) {
+                        node.removeChild(c);
+                    }
+                }
+            })(doc.body);
+            return doc.body.innerHTML;
+        }
+
+        // Auto-format pasted raw text into structured HTML
+        function rtbAutoFormat(text) {
+            const lines = (text || '').replace(/\r/g, '').split('\n');
+            let out = '', inList = false;
+            const closeList = () => { if (inList) { out += '</ul>'; inList = false; } };
+            for (const raw of lines) {
+                const line = raw.trim();
+                if (!line) { closeList(); continue; }
+                if (/^(action points?|actions?)\s*:?\s*$/i.test(line)) {
+                    closeList();
+                    out += '<h3 class="rtb-action-title">' + rtbEscHtml(line.replace(/:\s*$/, '')) + '</h3>';
+                    continue;
+                }
+                if (/:\s*$/.test(line) && line.length < 90) {
+                    closeList();
+                    out += '<h3>' + rtbEscHtml(line.replace(/:\s*$/, '')) + '</h3>';
+                    continue;
+                }
+                if (/^[-*•·]\s+/.test(line)) {
+                    if (!inList) { out += '<ul>'; inList = true; }
+                    out += '<li>' + rtbEscHtml(line.replace(/^[-*•·]\s+/, '')) + '</li>';
+                    continue;
+                }
+                if (/^\d+[.)]\s+/.test(line)) {
+                    if (!inList) { out += '<ul>'; inList = true; }
+                    out += '<li>' + rtbEscHtml(line.replace(/^\d+[.)]\s+/, '')) + '</li>';
+                    continue;
+                }
+                closeList();
+                if (/^action:/i.test(line)) {
+                    out += '<p class="rtb-action"><strong>' + rtbEscHtml(line) + '</strong></p>';
+                    continue;
+                }
+                out += '<p>' + rtbEscHtml(line) + '</p>';
+            }
+            closeList();
+            return out;
+        }
+
+        // Split sanitized HTML into box cards by H3/H4 headings
+        function rtbBoxify(html) {
+            const wrap = document.createElement('div');
+            wrap.innerHTML = html;
+            const sections = [];
+            let cur = { title: null, titleCls: '', html: '' };
+            Array.from(wrap.childNodes).forEach(n => {
+                if (n.nodeType === 1 && /^H[34]$/.test(n.tagName)) {
+                    if (cur.title || cur.html) sections.push(cur);
+                    cur = { title: n.textContent.trim(), titleCls: n.className || '', html: '' };
+                } else {
+                    cur.html += n.outerHTML || (n.nodeType === 3 ? rtbEscHtml(n.textContent) : '');
+                }
+            });
+            if (cur.title || cur.html) sections.push(cur);
+            if (!sections.length || (sections.length === 1 && !sections[0].title)) {
+                return '<div class="rtb-formatted">' + html + '</div>';
+            }
+            return '<div class="rtb-boxes">' + sections.map(s => {
+                const t = s.title ? '<div class="rtb-box-title ' + (s.titleCls || '') + '">' + rtbEscHtml(s.title) + '</div>' : '';
+                return '<div class="rtb-box">' + t + s.html + '</div>';
+            }).join('') + '</div>';
+        }
+
+        // Render html into host with view-mode toggle + optional edit button
+        function rtbRender(container, html, opts) {
+            opts = opts || {};
+            const mode = container.dataset.rtbMode || 'formatted';
+            const clean = rtbSanitize(html || '');
+            const body = (mode === 'box') ? rtbBoxify(clean) : '<div class="rtb-formatted">' + clean + '</div>';
+            const toggle =
+                '<div class="rtb-view-toggle">' +
+                    '<button type="button" class="rtb-vt-btn ' + (mode === 'formatted' ? 'active' : '') + '" data-m="formatted">Formatted</button>' +
+                    '<button type="button" class="rtb-vt-btn ' + (mode === 'box' ? 'active' : '') + '" data-m="box">Box view</button>' +
+                    (opts.editable ? '<button type="button" class="rtb-vt-btn rtb-edit-btn">Rich edit</button>' : '') +
+                '</div>';
+            container.innerHTML = toggle + body;
+            container.querySelectorAll('.rtb-vt-btn[data-m]').forEach(b => {
+                b.addEventListener('click', () => {
+                    container.dataset.rtbMode = b.dataset.m;
+                    rtbRender(container, html, opts);
+                });
+            });
+            if (opts.editable && opts.onEdit) {
+                const eb = container.querySelector('.rtb-edit-btn');
+                if (eb) eb.addEventListener('click', opts.onEdit);
+            }
+        }
+
+        // Modal editor — returns Promise<string|null>
+        let _rtbResolve = null;
+        function rtbEnsureModal() {
+            if (document.getElementById('rtbModal')) return;
+            const m = document.createElement('div');
+            m.id = 'rtbModal';
+            m.className = 'rtb-modal';
+            m.innerHTML =
+                '<div class="rtb-modal-card">' +
+                    '<div class="rtb-modal-head">' +
+                        '<span class="rtb-modal-title" id="rtbModalTitle">Edit</span>' +
+                        '<button type="button" class="rtb-modal-x" onclick="rtbClose()">&times;</button>' +
+                    '</div>' +
+                    '<div class="rtb-toolbar">' +
+                        '<button type="button" data-cmd="bold" title="Bold"><b>B</b></button>' +
+                        '<button type="button" data-cmd="italic" title="Italic"><i>I</i></button>' +
+                        '<button type="button" data-cmd="heading" title="Section title">H</button>' +
+                        '<button type="button" data-cmd="insertUnorderedList" title="Bullets">&bull; List</button>' +
+                        '<button type="button" data-cmd="insertOrderedList" title="Numbered">1. List</button>' +
+                        '<button type="button" data-cmd="separator" title="Separator">&mdash;</button>' +
+                        '<span class="rtb-tb-spacer"></span>' +
+                        '<button type="button" class="rtb-fmt-btn" id="rtbFormatBtn" title="Auto-format pasted raw text">Format</button>' +
+                    '</div>' +
+                    '<div class="rtb-edit-area" id="rtbEditArea" contenteditable="true"></div>' +
+                    '<div class="rtb-modal-foot">' +
+                        '<button type="button" class="rtb-btn-cancel" onclick="rtbClose()">Cancel</button>' +
+                        '<button type="button" class="rtb-btn-save" id="rtbSaveBtn">Save</button>' +
+                    '</div>' +
+                '</div>';
+            document.body.appendChild(m);
+
+            m.querySelectorAll('.rtb-toolbar button[data-cmd]').forEach(b => {
+                b.addEventListener('mousedown', e => e.preventDefault());
+                b.addEventListener('click', () => {
+                    const cmd = b.dataset.cmd;
+                    const area = document.getElementById('rtbEditArea');
+                    area.focus();
+                    if (cmd === 'heading') document.execCommand('formatBlock', false, 'H3');
+                    else if (cmd === 'separator') document.execCommand('insertHTML', false, '<hr>');
+                    else document.execCommand(cmd, false, null);
+                });
+            });
+            document.getElementById('rtbFormatBtn').addEventListener('click', () => {
+                const area = document.getElementById('rtbEditArea');
+                area.innerHTML = rtbAutoFormat(area.innerText);
+            });
+            document.getElementById('rtbEditArea').addEventListener('paste', e => {
+                e.preventDefault();
+                const t = (e.clipboardData || window.clipboardData).getData('text');
+                document.execCommand('insertText', false, t);
+            });
+            document.getElementById('rtbSaveBtn').addEventListener('click', () => {
+                const html = rtbSanitize(document.getElementById('rtbEditArea').innerHTML);
+                const r = _rtbResolve; _rtbResolve = null;
+                document.getElementById('rtbModal').classList.remove('open');
+                if (r) r(html);
+            });
+            m.addEventListener('click', e => { if (e.target === m) rtbClose(); });
+        }
+        function rtbOpen(title, initialHtml) {
+            rtbEnsureModal();
+            document.getElementById('rtbModalTitle').textContent = title || 'Edit';
+            document.getElementById('rtbEditArea').innerHTML = rtbSanitize(initialHtml || '');
+            document.getElementById('rtbModal').classList.add('open');
+            setTimeout(() => document.getElementById('rtbEditArea').focus(), 30);
+            return new Promise(res => { _rtbResolve = res; });
+        }
+        function rtbClose() {
+            const m = document.getElementById('rtbModal');
+            if (m) m.classList.remove('open');
+            if (_rtbResolve) { _rtbResolve(null); _rtbResolve = null; }
         }
 
         // ---- Dropdown ----
