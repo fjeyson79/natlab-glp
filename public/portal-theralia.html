@@ -5639,7 +5639,8 @@
         }
 
         async function bmSaveRich(section, html) {
-            const items = [RTB_MARK + html];
+            const clean = rtbSanitize(html || '');
+            const items = rtbIsEffectivelyEmpty(clean) ? [] : [RTB_MARK + clean];
             try {
                 const r = await fetch('/api/theralia/board-meetings/' + bmCurrentMeeting.id + '/content', {
                     method:'PUT', credentials:'include',
@@ -5711,6 +5712,16 @@
                 typeof items[0] === 'string' && items[0].startsWith(RTB_MARK);
         }
         function rtbExtract(items) { return rtbIsRich(items) ? items[0].slice(RTB_MARK.length) : ''; }
+        // Is sanitized HTML effectively empty? (no visible text, no hr/img/table)
+        function rtbIsEffectivelyEmpty(html) {
+            if (!html) return true;
+            const d = document.createElement('div');
+            d.innerHTML = html;
+            const txt = (d.textContent || '').replace(/[\u00a0\s]+/g, '');
+            if (txt) return false;
+            if (d.querySelector('hr,img,table')) return false;
+            return true;
+        }
         function rtbEscHtml(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
 
         // Whitelist sanitizer — keeps formatting only, strips scripts/events/styles
