@@ -22031,7 +22031,17 @@ function zoeBuildChatCompletionsBody(payload) {
     if (payload.glp_context) ctxBits.push('GLP Vision context: ' + JSON.stringify(payload.glp_context).slice(0, 1000));
     if (payload.portal_summary) ctxBits.push('Portal summary: ' + JSON.stringify(payload.portal_summary).slice(0, 1000));
     if (ctxBits.length) messages.push({ role: 'system', content: ctxBits.join('\n') });
-    messages.push({ role: 'user', content: String(payload.message || '').slice(0, 8000) });
+    // Single cap across the whole pipeline. Large enough to carry instruction
+    // (~2k) + LIVE PORTAL CONTEXT JSON (~6k) + RESOLVED DOCUMENT with
+    // text_content up to ZOE_DOC_MAX_CHARS (~18k) + USER QUESTION, with
+    // comfortable headroom. Raise further if you enlarge ZOE_DOC_MAX_CHARS.
+    const ZOE_USER_MSG_CAP = 120000;
+    const userContent = String(payload.message || '');
+    const clipped = userContent.slice(0, ZOE_USER_MSG_CAP);
+    if (userContent.length > ZOE_USER_MSG_CAP) {
+        console.warn('[ZOE/diag] user message clipped at ' + ZOE_USER_MSG_CAP + ' (input=' + userContent.length + ')');
+    }
+    messages.push({ role: 'user', content: clipped });
     const body = { model, messages };
     if (process.env.OPENCLAW_MAX_TOKENS) body.max_tokens = parseInt(process.env.OPENCLAW_MAX_TOKENS, 10);
     if (process.env.OPENCLAW_TEMPERATURE) body.temperature = parseFloat(process.env.OPENCLAW_TEMPERATURE);
@@ -22138,10 +22148,23 @@ async function zoeHandleChat({ userId, workspaceId, message, mode, selectedFileI
             extractedText: f.extractedText || null,
         };
     }
+    // NOTE: do not pre-truncate here — the composed message from the Zoe tab
+    // carries the full LIVE PORTAL CONTEXT + RESOLVED DOCUMENT + USER QUESTION
+    // block. A single cap is applied in zoeBuildChatCompletionsBody().
+    const composedMessage = String(message || '');
+    // --- Temporary diagnostic log (metadata only; no content) -----------
+    try {
+        console.log('[ZOE/diag] msg_len=' + composedMessage.length
+            + ' has_context=' + /LIVE PORTAL CONTEXT:/.test(composedMessage)
+            + ' has_resolved_doc=' + /RESOLVED DOCUMENT:/.test(composedMessage)
+            + ' has_selected_doc=' + /SELECTED DOCUMENT:/.test(composedMessage)
+            + ' has_candidates=' + /CANDIDATE DOCUMENTS/.test(composedMessage)
+            + ' has_user_question=' + /USER QUESTION:/.test(composedMessage));
+    } catch (_) {}
     const payload = {
         system,
         mode: mode === 'work' ? 'work' : 'read',
-        message: String(message || '').slice(0, 8000),
+        message: composedMessage,
         workspace: workspaceId || DEFAULT_WORKSPACE_SLUG,
         user_id: userId || null,
         selected_file: fileContext,
