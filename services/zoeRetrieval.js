@@ -104,6 +104,16 @@ function classifyIntent(message) {
         // multiple ranked candidates rather than selecting a single document.
         isListing: /^\s*(list|show( me)?|all|recent|latest|any|give me|what)\s+[a-z0-9]+/i.test(m)
             || /\b(list|show all|all the)\s+(sops?|protocols?|procedures?|data|datasets?|presentations?|slides?|decks?|reports?|papers?|documents?|files?)\b/i.test(m),
+        // Phase 4.5: batch-mode intent. Triggers multi-doc retrieval + analysis
+        //  when the user asks to review / compare / evaluate many files, or
+        //  asks "which ones ..." questions. Distinct from isListing: listing
+        //  returns a ranked list for user-facing display; batch retrieves AND
+        //  extracts each file so Zoe can reason across them in one answer.
+        wantsBatch:
+            /\b(all|every|each|bulk)\s+([a-z-]+\s+){0,3}(sops?|protocols?|procedures?|data|datasets?|files?|docs?|documents?|presentations?|slides?|decks?|reports?|papers?)\b/i.test(m)
+            || /\b(review all|compare|comparison|comparing|compared|evaluate all|analys[ez]e all|audit all|list and (review|evaluate|analys[ez]e))\b/i.test(m)
+            || /\bwhich (one|ones|files?|docs?|sops?|datasets?|presentations?|papers?|documents?)\b/i.test(m)
+            || /\bacross\s+(researchers?|files?|docs?|sops?|datasets?|presentations?|papers?|(the )?lab|(the )?team)\b/i.test(m),
     };
     if (flags.wantsPaper) kinds.push('paper');
     if (flags.wantsSop) kinds.push('sop');
@@ -128,6 +138,133 @@ function extOf(filenameOrTitle) {
     const s = String(filenameOrTitle || '').toLowerCase();
     const dot = s.lastIndexOf('.');
     return dot >= 0 ? s.slice(dot + 1) : '';
+}
+
+// Phase 4.4: diacritic-stripping lowercase normalizer. Needed so "Jürgen"
+// in a filename or roster entry compares cleanly against ascii tokens from
+// the query. No external deps; relies on NFD normalization.
+function normAscii(s) {
+    return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+// Phase 4.4: parse an R2 key into searchable parts. All operational files
+// are PDFs stored under an org/researcher/date/filename-ish prefix, but
+// every source uses a slightly different layout:
+//   di/{aff}/Submitted/{year}/{dateStamp}_{researcher_id}_{safeOriginal}
+//   di/{aff}/Approved/Training/{year}/{ts}_{safeName}
+//   rd/{workspace}/{projectId}/{docType}/{ts}_{safeName}
+//   group-docs/internal/{category}[/{subfolder}]*/{filename}
+//   company/{ws}/{section}/{ts}_{safeName}
+//   theralia/..., oligo/..., system_versions/..., glp-status/...
+// This parser is intentionally lenient: it returns whatever it can, plus a
+// lowercase haystack joining every segment for path-aware ranking.
+function parseR2Path(key) {
+    if (!key) return null;
+    const s = String(key);
+    const parts = s.split('/').filter(Boolean);
+    if (parts.length === 0) return null;
+    const filename = parts[parts.length - 1];
+    const organization = parts[0] || null;
+    // Try to find YYYY or YYYY-MM-DD-ish segments as chronological hints.
+    const chronoSegments = [];
+    const RX_YEAR = /^\d{4}$/;
+    const RX_DATE = /^\d{4}-\d{2}(-\d{2})?$/;
+    const RX_TS   = /^\d{10,14}/; // unix ms / compact ts prefix
+    for (const p of parts) {
+        if (RX_YEAR.test(p) || RX_DATE.test(p)) chronoSegments.push(p);
+        else if (RX_TS.test(p)) chronoSegments.push(p.slice(0, 10));
+    }
+    // For di/{aff}/Submitted/{year}/{dateStamp}_{researcher_id}_... the
+    // researcher_id is embedded in the filename; we surface the filename
+    // stem as an additional haystack bucket.
+    const stem = String(filename).replace(/\.[a-z0-9]{2,5}$/i, '');
+    const hay = normAscii(parts.join(' ') + ' ' + stem);
+    return {
+        organization,
+        segments: parts,
+        filename,
+        stem,
+        chrono_segments: chronoSegments,
+        hay, // lowercase ascii-folded join for substring tests
+    };
+}
+
+// Phase 4.4: detect a researcher reference in a free-text question.
+// `roster` is the list passed by the caller — each entry is
+//   { researcher_id, name, first_name?, last_name?, email? }
+// Returns the best-matching entry along with the token that matched, or
+// null if no entry is referenced. The caller decides how aggressively to
+// filter candidates based on the result.
+function detectResearcherInQuery(question, roster) {
+    if (!question || !Array.isArray(roster) || roster.length === 0) return null;
+    const q = normAscii(question);
+    // Word-boundary presence test, ascii-folded on both sides.
+    const contains = (needle) => {
+        const n = normAscii(needle).trim();
+        if (!n || n.length < 2) return false;
+        // Avoid matching 1-2 letter initials inside other words.
+        const esc = n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const re = new RegExp('(^|[^a-z0-9])' + esc + '([^a-z0-9]|$)');
+        return re.test(q);
+    };
+    let best = null;
+    let bestScore = 0;
+    for (const r of roster) {
+        const first = r.first_name || (String(r.name || '').trim().split(/\s+/)[0] || '');
+        const lastParts = String(r.name || '').trim().split(/\s+/);
+        const last = r.last_name || (lastParts.length > 1 ? lastParts[lastParts.length - 1] : '');
+        // Score: id > last-name > first-name. Longer tokens beat shorter.
+        let score = 0;
+        let matched = null;
+        if (r.researcher_id && contains(r.researcher_id)) {
+            score = 30 + String(r.researcher_id).length;
+            matched = r.researcher_id;
+        } else if (last && last.length >= 3 && contains(last)) {
+            score = 20 + last.length;
+            matched = last;
+        } else if (first && first.length >= 3 && contains(first)) {
+            score = 10 + first.length;
+            matched = first;
+        }
+        if (score > bestScore) {
+            bestScore = score;
+            best = {
+                researcher_id: r.researcher_id || null,
+                name: r.name || null,
+                first_name: first || null,
+                last_name: last || null,
+                matched_token: matched,
+                email: r.email || null,
+            };
+        }
+    }
+    return best;
+}
+
+// Phase 4.4: per-candidate researcher/path match. Returns an object the
+// ranker uses for boosts and the trace uses for diagnostics. Pure
+// inspection — no DB or R2 access.
+function matchCandidateToResearcher(row, hint) {
+    if (!row || !hint) {
+        return { uploader: false, path: false, filename: false, any: false };
+    }
+    const rid = normAscii(hint.researcher_id || '');
+    const fn = normAscii(hint.first_name || '');
+    const ln = normAscii(hint.last_name || '');
+    const fields = [
+        normAscii(row.uploader || ''),
+        normAscii(row.uploader_name || ''),
+        normAscii(row.uploader_first_name || ''),
+        normAscii(row.uploader_last_name || ''),
+    ].join(' ');
+    const pathHay = normAscii((row.r2_path && row.r2_path.hay) || '');
+    const fileHay = normAscii(row.filename || row.title || '');
+
+    const hasIn = (hay, needle) => !!(needle && needle.length >= 2 && hay.includes(needle));
+    const uploader = hasIn(fields, rid) || hasIn(fields, ln) || hasIn(fields, fn);
+    const path = hasIn(pathHay, rid) || hasIn(pathHay, ln) || hasIn(pathHay, fn);
+    const filename = hasIn(fileHay, rid) || hasIn(fileHay, ln) || hasIn(fileHay, fn);
+    return { uploader, path, filename, any: uploader || path || filename };
 }
 
 const READABLE_EXTS = new Set([
@@ -380,7 +517,71 @@ function scoreCandidate(row, intent, opts) {
         s += 5; reasons.push('matches active project');
     }
 
-    return { score: Math.round(s * 100) / 100, reasons, normalized_type: normalizedType };
+    // (j) Phase 4.4: researcher-aware boosts. Only fire when the caller has
+    //     detected a researcher reference in the query (opts.researcherHint).
+    //     Researcher match via uploader field is the strongest signal; R2
+    //     path and filename serve as fallbacks when metadata is thin.
+    let researcherMatch = null;
+    if (opts.researcherHint) {
+        researcherMatch = matchCandidateToResearcher(row, opts.researcherHint);
+        if (researcherMatch.uploader) { s += 20; reasons.push('researcher uploader'); }
+        else if (researcherMatch.path) { s += 10; reasons.push('researcher in path'); }
+        else if (researcherMatch.filename) { s += 5; reasons.push('researcher in filename'); }
+        else {
+            // Hard downrank when the user asked for a specific researcher and
+            // this candidate has no signal connecting to that researcher. Keep
+            // the penalty large enough to drop mismatches below the intent
+            // threshold (minScoreForIntent), but not so large it banishes
+            // PAPER candidates (which legitimately may have no uploader).
+            if (normalizedType !== 'PAPER') {
+                s -= 10; reasons.push('researcher mismatch');
+            }
+        }
+    }
+
+    // (k) Phase 4.4: R2 path tokens. Score a small additive bump per query
+    //     token found anywhere in the key (organization / workspace / year /
+    //     folder names). Capped so path never overpowers type/researcher.
+    if (row.r2_path && row.r2_path.hay) {
+        const pathHay = row.r2_path.hay;
+        let pathHits = 0;
+        for (const t of tokens) {
+            if (!t || t.length < 3) continue;
+            if (pathHay.includes(t)) pathHits++;
+        }
+        if (pathHits > 0) {
+            const add = Math.min(6, pathHits * 2);
+            s += add;
+            reasons.push(`path match×${pathHits}`);
+        }
+    }
+
+    // (l) Phase 4.4: filename stem substring bonus. A strong signal when the
+    //     query contains an unusual keyword (project code, acronym) that
+    //     lines up with the filename — e.g. "TOUCAN" in "baris_toucan_v3.pdf".
+    if (tokens.length) {
+        const stem = normAscii(
+            (row.r2_path && row.r2_path.stem) || row.filename || row.title || ''
+        );
+        if (stem) {
+            let stemHits = 0;
+            for (const t of tokens) {
+                if (!t || t.length < 4) continue;
+                if (stem.includes(t)) stemHits++;
+            }
+            if (stemHits > 0) {
+                s += Math.min(6, stemHits * 3);
+                reasons.push(`filename stem×${stemHits}`);
+            }
+        }
+    }
+
+    return {
+        score: Math.round(s * 100) / 100,
+        reasons,
+        normalized_type: normalizedType,
+        researcher_match: researcherMatch,
+    };
 }
 
 // Rank a list of candidates and attach score + reasons. Returns a new sorted
@@ -395,6 +596,9 @@ function rankCandidates(rows, intent, opts) {
             //  type and a compact "why selected" reason list up to the caller.
             normalized_type: sc.normalized_type || normalizeDocType(r),
             why_selected: sc.reasons.slice(0, 5),
+            // Phase 4.4: attach per-candidate researcher-match flags for trace
+            //  and frontend display (null when no researcher was detected).
+            researcher_match: sc.researcher_match || null,
             readable: !!r.r2_object_key && isReadableFormat(
                 r.filename || r.title, r.type || r.file_type
             )
@@ -707,18 +911,476 @@ function chunkForPrompt(extracted, intent) {
     return sections.slice(0, 6).map(s => `## ${s.kind.toUpperCase()}\n${s.content}`).join('\n\n');
 }
 
+// ---- 4b. Phase 4.5: per-document analysis + aggregation ------------------
+//
+// Lightweight, heuristic-only analyzer. No LLM calls. Inspects the extraction
+// result for one document and surfaces structural flags (missing sections,
+// tiny sheets, title-only slides, hedge language, etc.) that the downstream
+// narrator (Zoe / OpenClaw) can reason about when building a batch answer.
+// Never throws; returns a stable shape even for failed extractions.
+
+function analyzeDocument(row, extraction, intent) {
+    const out = {
+        summary: '',
+        issues: [],
+        quality: (extraction && extraction.quality) || 'empty',
+        extraction_hint: extractionHintFor(intent),
+        structure: {},
+    };
+    if (!extraction || !extraction.success) {
+        out.issues.push({
+            code: 'extraction_failed', severity: 'error',
+            message: (extraction && extraction.error) || 'extraction failed'
+        });
+        out.summary = 'Extraction failed; no content analyzed.';
+        return out;
+    }
+    const nt = (row && (row.normalized_type || normalizeDocType(row))) || 'OTHER';
+    const text = (extraction.text || '').trim();
+    const chars = text.length;
+    if (!extraction.readable || chars === 0) {
+        out.issues.push({ code: 'empty_text', severity: 'error', message: 'No readable text extracted.' });
+        out.summary = 'Document readable=false; content empty.';
+        return out;
+    }
+
+    if (nt === 'DATA') {
+        const sheets = extraction.sheets || [];
+        const sections = extraction.sections || [];
+        out.structure.sheets = sheets.length;
+        out.structure.sections = sections.length;
+        let totalHeaderCols = 0;
+        let sheetsWithoutHeaders = 0;
+        let tinySheets = 0;
+        for (const s of sections) {
+            const headerMatch = (s.content || '').match(/Headers:\s*([^\n]+)/);
+            const rowMatch = (s.content || '').match(/\((\d+)\s+row\(s\)/);
+            const cols = headerMatch && headerMatch[1] !== '(none)'
+                ? headerMatch[1].split(',').filter(Boolean).length
+                : 0;
+            totalHeaderCols += cols;
+            if (!cols) sheetsWithoutHeaders++;
+            if (rowMatch && parseInt(rowMatch[1], 10) < 3) tinySheets++;
+        }
+        if (sheets.length === 0) {
+            out.issues.push({ code: 'no_sheets', severity: 'warn', message: 'No sheets detected.' });
+        }
+        if (sheetsWithoutHeaders > 0) {
+            out.issues.push({
+                code: 'missing_headers', severity: 'warn',
+                message: `${sheetsWithoutHeaders} sheet(s) without headers.`
+            });
+        }
+        if (tinySheets > 0) {
+            out.issues.push({
+                code: 'tiny_sheets', severity: 'warn',
+                message: `${tinySheets} sheet(s) with fewer than 3 rows.`
+            });
+        }
+        if (chars < 300) {
+            out.issues.push({ code: 'very_thin', severity: 'warn', message: 'Extracted content is very short.' });
+        }
+        out.summary = `DATA file: ${sheets.length} sheet(s), ${totalHeaderCols} header column(s) total.`;
+    } else if (nt === 'SOP') {
+        const sections = extraction.sections || [];
+        out.structure.sections = sections.length;
+        const hasProcedure = sections.some(s => /procedure|steps/i.test(s.kind || ''));
+        const hasQC = sections.some(s => /qc|quality|safety/i.test(s.kind || ''));
+        const hasVersion = sections.some(s => /version|approval/i.test(s.kind || ''));
+        const stepMatches = text.match(/^\s*\d+\.\s/mg) || [];
+        out.structure.steps = stepMatches.length;
+        if (sections.length === 0) {
+            out.issues.push({ code: 'no_sections', severity: 'warn', message: 'No structured section headings detected.' });
+        }
+        if (!hasProcedure) {
+            out.issues.push({ code: 'missing_procedure', severity: 'warn', message: 'No PROCEDURE/STEPS section found.' });
+        }
+        if (!hasQC) {
+            out.issues.push({ code: 'missing_qc', severity: 'info', message: 'No QC / safety section.' });
+        }
+        if (!hasVersion) {
+            out.issues.push({ code: 'missing_version', severity: 'info', message: 'No version/approval marker.' });
+        }
+        if (stepMatches.length < 3) {
+            out.issues.push({
+                code: 'few_steps', severity: 'warn',
+                message: `Only ${stepMatches.length} numbered step(s) detected.`
+            });
+        }
+        if (chars < 500) {
+            out.issues.push({ code: 'too_brief', severity: 'warn', message: 'SOP content is very short (<500 chars).' });
+        }
+        const ambiguous = (text.match(/\b(approximately|about|some|several|as needed|if required|somewhat|roughly|around|maybe|perhaps)\b/gi) || []).length;
+        if (ambiguous >= 5) {
+            out.issues.push({
+                code: 'ambiguous_language', severity: 'info',
+                message: `${ambiguous} hedge word(s) detected (e.g. "approximately", "as needed").`
+            });
+        }
+        out.summary = `SOP: ${sections.length} section(s), ${stepMatches.length} numbered step(s).`;
+    } else if (nt === 'PRESENTATION') {
+        const slides = extraction.slides || 0;
+        const sections = extraction.sections || [];
+        out.structure.slides = slides;
+        const emptyBody = sections.filter(s => {
+            const lines = String(s.content || '').split('\n');
+            return lines.length <= 1 || (lines.slice(1).join(' ').trim().length === 0);
+        }).length;
+        out.structure.slides_without_body = emptyBody;
+        if (slides === 0) {
+            out.issues.push({ code: 'no_slides', severity: 'error', message: 'No slides detected.' });
+        }
+        if (slides > 0 && slides < 3) {
+            out.issues.push({ code: 'too_few_slides', severity: 'warn', message: `Only ${slides} slide(s).` });
+        }
+        if (slides > 0 && emptyBody >= Math.max(2, Math.floor(slides / 2))) {
+            out.issues.push({
+                code: 'sparse_slides', severity: 'warn',
+                message: `${emptyBody} slide(s) have titles only (no body).`
+            });
+        }
+        out.summary = `Presentation: ${slides} slide(s), ${emptyBody} title-only.`;
+    } else if (nt === 'REPORT') {
+        const sections = extraction.sections || [];
+        out.structure.sections = sections.length;
+        if (chars < 800) {
+            out.issues.push({ code: 'too_brief', severity: 'warn', message: 'Report is very short (<800 chars).' });
+        }
+        if (sections.length < 2) {
+            out.issues.push({ code: 'unstructured', severity: 'info', message: 'No clear section structure.' });
+        }
+        out.summary = `Report: ${sections.length} section(s), ${chars} chars.`;
+    } else if (nt === 'PAPER') {
+        const sections = extraction.sections || [];
+        out.structure.sections = sections.length;
+        const hasAbstract = sections.some(s => /abstract/i.test(s.kind || ''));
+        const hasMethods = sections.some(s => /method/i.test(s.kind || ''));
+        const hasResults = sections.some(s => /result/i.test(s.kind || ''));
+        if (!hasAbstract) out.issues.push({ code: 'no_abstract', severity: 'info', message: 'No abstract section detected.' });
+        if (!hasMethods) out.issues.push({ code: 'no_methods', severity: 'info', message: 'No methods section detected.' });
+        if (!hasResults) out.issues.push({ code: 'no_results', severity: 'info', message: 'No results section detected.' });
+        out.summary = `Paper: ${sections.length} section(s) detected.`;
+    } else {
+        out.summary = `${nt}: ${chars} chars extracted.`;
+    }
+
+    if (extraction.content_truncated) {
+        out.issues.push({
+            code: 'content_truncated', severity: 'info',
+            message: `Content truncated at ${ZOE_DOC_MAX_CHARS} chars.`
+        });
+    }
+    return out;
+}
+
+// Phase 4.5: roll up per-document analyses into an aggregate view.
+// Input: array of { id, title, normalized_type, analysis } entries.
+// Output: { total, by_type, strongest[], weakest[], recurring_issues[] }.
+function aggregateFindings(entries) {
+    const by_type = {};
+    const issue_counts = {};
+    const strong = [];
+    const weak = [];
+    for (const e of (entries || [])) {
+        const t = e.normalized_type || 'OTHER';
+        by_type[t] = (by_type[t] || 0) + 1;
+        const a = e.analysis || {};
+        const issues = a.issues || [];
+        const errors = issues.filter(i => i.severity === 'error').length;
+        const warns  = issues.filter(i => i.severity === 'warn').length;
+        if (a.quality === 'high' && errors === 0 && warns <= 1) {
+            strong.push({ id: e.id, title: e.title });
+        }
+        if (a.quality === 'low' || a.quality === 'empty' || errors > 0 || warns >= 3) {
+            weak.push({ id: e.id, title: e.title });
+        }
+        for (const iss of issues) {
+            issue_counts[iss.code] = (issue_counts[iss.code] || 0) + 1;
+        }
+    }
+    const recurring = Object.entries(issue_counts)
+        .filter(([, n]) => n >= 2)
+        .sort((a, b) => b[1] - a[1])
+        .map(([code, count]) => ({ code, count }));
+    return {
+        total: (entries || []).length,
+        by_type,
+        strongest: strong,
+        weakest: weak,
+        recurring_issues: recurring,
+    };
+}
+
+// ---- 4c. Phase 4.6: deterministic batch narrative ------------------------
+//
+// Produce a structured, markdown-formatted answer from the batch payload
+// (documents[] + aggregate). No LLM calls — pure formatting. The output is
+// a self-contained answer the frontend can render as-is, or a high-fidelity
+// scaffold a downstream model can expand upon. Tone is analytical, not
+// alarmist. Structural issues detected automatically are labelled as such
+// and kept separate from higher-level interpretation prompts.
+
+const TYPE_LABEL = {
+    SOP: 'SOP',
+    DATA: 'DATA',
+    PRESENTATION: 'Presentation',
+    REPORT: 'Report',
+    PAPER: 'Paper',
+    OTHER: 'Other',
+};
+
+function _countWithIssue(docs, code) {
+    return (docs || []).filter(d =>
+        (d.analysis && d.analysis.issues || []).some(i => i.code === code)
+    ).length;
+}
+
+function _typeSpecificNotes(type, docs) {
+    const notes = [];
+    const n = docs.length;
+    if (n === 0) return notes;
+    if (type === 'SOP') {
+        const ambiguous = _countWithIssue(docs, 'ambiguous_language');
+        const noProc = _countWithIssue(docs, 'missing_procedure');
+        const fewSteps = _countWithIssue(docs, 'few_steps');
+        const noQc = _countWithIssue(docs, 'missing_qc');
+        const noVersion = _countWithIssue(docs, 'missing_version');
+        const tooBrief = _countWithIssue(docs, 'too_brief');
+        const noSections = _countWithIssue(docs, 'no_sections');
+        if (noProc)   notes.push(`${noProc}/${n} SOP(s) lack an explicit PROCEDURE/STEPS section marker.`);
+        if (fewSteps) notes.push(`${fewSteps}/${n} SOP(s) have fewer than 3 numbered steps — procedural detail may be insufficient.`);
+        if (ambiguous) notes.push(`${ambiguous}/${n} SOP(s) use hedge language ("approximately", "as needed", "somewhat"), which reduces reproducibility.`);
+        if (noQc)     notes.push(`${noQc}/${n} SOP(s) carry no QC or safety section.`);
+        if (noVersion) notes.push(`${noVersion}/${n} SOP(s) have no version or approval marker.`);
+        if (tooBrief) notes.push(`${tooBrief}/${n} SOP(s) are under 500 characters — verify the full document was captured.`);
+        if (noSections) notes.push(`${noSections}/${n} SOP(s) carry no structured section headings at all.`);
+        if (notes.length === 0) notes.push(`All ${n} SOP(s) carry procedure, QC, and version markers with adequate length.`);
+    } else if (type === 'DATA') {
+        const noHeaders = _countWithIssue(docs, 'missing_headers');
+        const tiny = _countWithIssue(docs, 'tiny_sheets');
+        const thin = _countWithIssue(docs, 'very_thin');
+        const noSheets = _countWithIssue(docs, 'no_sheets');
+        if (noSheets) notes.push(`${noSheets}/${n} DATA file(s) had no extractable sheets.`);
+        if (noHeaders) notes.push(`${noHeaders}/${n} DATA file(s) contain sheets without header rows — column meanings are opaque to a reader.`);
+        if (tiny)     notes.push(`${tiny}/${n} DATA file(s) have at least one sheet with fewer than 3 rows — consider whether additional replicates or validation runs are needed.`);
+        if (thin)     notes.push(`${thin}/${n} DATA file(s) extracted under 300 characters of readable content — the underlying file may be very small or empty.`);
+        if (notes.length === 0) notes.push(`All ${n} DATA file(s) have headers and non-trivial row counts.`);
+    } else if (type === 'PRESENTATION') {
+        const noSlides = _countWithIssue(docs, 'no_slides');
+        const tooFew = _countWithIssue(docs, 'too_few_slides');
+        const sparse = _countWithIssue(docs, 'sparse_slides');
+        if (noSlides) notes.push(`${noSlides}/${n} deck(s) had no extractable slides — file may be corrupt or exported from a non-pptx source.`);
+        if (tooFew)   notes.push(`${tooFew}/${n} deck(s) have fewer than 3 slides — likely drafts rather than full presentations.`);
+        if (sparse)   notes.push(`${sparse}/${n} deck(s) have titles but little or no body content on at least half the slides — narrative support is thin.`);
+        if (notes.length === 0) notes.push(`All ${n} deck(s) have multi-slide structure with body content.`);
+    } else if (type === 'REPORT') {
+        const brief = _countWithIssue(docs, 'too_brief');
+        const unstructured = _countWithIssue(docs, 'unstructured');
+        if (brief)        notes.push(`${brief}/${n} report(s) under 800 characters — likely summaries rather than full analyses.`);
+        if (unstructured) notes.push(`${unstructured}/${n} report(s) lack clear section structure.`);
+        if (notes.length === 0) notes.push(`All ${n} report(s) are structured and of reasonable length.`);
+    } else if (type === 'PAPER') {
+        const noAbstract = _countWithIssue(docs, 'no_abstract');
+        const noMethods = _countWithIssue(docs, 'no_methods');
+        const noResults = _countWithIssue(docs, 'no_results');
+        const missing = [];
+        if (noAbstract) missing.push(`${noAbstract} without abstract`);
+        if (noMethods) missing.push(`${noMethods} without methods`);
+        if (noResults) missing.push(`${noResults} without results`);
+        if (missing.length) notes.push(`Canonical sections missing in a subset — ${missing.join(', ')}.`);
+        if (notes.length === 0) notes.push(`All ${n} paper(s) carry abstract, methods, and results sections.`);
+    } else {
+        notes.push(`${n} ${TYPE_LABEL[type] || type} document(s) analyzed; type-specific heuristics not defined.`);
+    }
+    return notes;
+}
+
+const _RECOMMEND_MAP = {
+    missing_headers: (n) => `Add header rows to sheets where they are missing (${n} file(s) affected) so columns are self-describing.`,
+    tiny_sheets: (n) => `Consolidate or augment sheets with fewer than 3 rows across ${n} file(s) — verify whether data capture is complete.`,
+    no_sheets: (n) => `${n} DATA file(s) yielded no sheets — confirm the file format is readable.`,
+    missing_procedure: (n) => `Label the PROCEDURE or STEPS section explicitly in ${n} SOP(s) so operational detail is locatable.`,
+    few_steps: (n) => `Expand procedural detail in ${n} SOP(s) where fewer than 3 numbered steps were detected.`,
+    missing_qc: (n) => `Add a QC or safety section to ${n} SOP(s) to meet documentation standards.`,
+    missing_version: (n) => `Include a version or approval marker in ${n} SOP(s) for traceability.`,
+    ambiguous_language: (n) => `Tighten hedge language ("approximately", "as needed", "somewhat") in ${n} SOP(s) — replace with specific values or quantifiable criteria where possible.`,
+    too_brief: (n) => `Expand content in ${n} file(s) flagged as short — verify whether the full document was captured.`,
+    very_thin: (n) => `Investigate ${n} data file(s) with very thin extractable content — the raw file may require manual inspection.`,
+    no_slides: (n) => `${n} deck(s) had no extractable slides — re-export as pptx or verify file format.`,
+    too_few_slides: (n) => `Expand ${n} deck(s) with fewer than 3 slides if they are intended as full presentations.`,
+    sparse_slides: (n) => `Add body content to title-only slides in ${n} deck(s) — listeners cannot follow titles alone.`,
+    no_sections: (n) => `Introduce section headings in ${n} document(s) with none detected, so the structure is navigable.`,
+    unstructured: (n) => `Segment ${n} report(s) into clearer sections.`,
+    // These codes intentionally don't produce recommendations — they are
+    // either reported elsewhere (extraction_failed) or best surfaced as
+    // informational context rather than action items:
+    extraction_failed: null,
+    empty_text: null,
+    content_truncated: null,
+    no_abstract: null,
+    no_methods: null,
+    no_results: null,
+};
+
+function _buildRecommendations(batchDocs, aggregate) {
+    const recs = [];
+    const failed = (batchDocs || []).filter(d =>
+        (d.analysis && d.analysis.issues || []).some(i => i.code === 'extraction_failed')
+    );
+    if (failed.length) {
+        const names = failed.slice(0, 5).map(d => `**${d.title}**`).join(', ');
+        recs.push(`Re-upload or repair: ${names}${failed.length > 5 ? ` (+${failed.length - 5} more)` : ''} — extraction failed.`);
+    }
+    for (const ri of (aggregate.recurring_issues || []).slice(0, 6)) {
+        const fn = _RECOMMEND_MAP[ri.code];
+        if (typeof fn === 'function') recs.push(fn(ri.count));
+    }
+    for (const w of (aggregate.weakest || []).slice(0, 3)) {
+        const doc = (batchDocs || []).find(d => d.id === w.id);
+        if (!doc) continue;
+        const majors = (doc.analysis && doc.analysis.issues || [])
+            .filter(i => i.severity === 'error' || i.severity === 'warn');
+        if (majors.length >= 3) {
+            recs.push(`Prioritize revising **${w.title}** — ${majors.length} structural issue(s) detected.`);
+        }
+    }
+    // Deduplicate while preserving order.
+    const seen = new Set();
+    return recs.filter(r => (seen.has(r) ? false : (seen.add(r), true)));
+}
+
+function _fmtList(items, fallback) {
+    if (!items || items.length === 0) return [`- ${fallback}`];
+    return items.map(s => `- ${s}`);
+}
+
+function formatBatchNarrative(batchDocs, aggregate, opts) {
+    opts = opts || {};
+    const researcherHint = opts.researcherHint || null;
+    const intent = opts.intent || null;
+    const truncatedFrom = opts.truncatedFrom || null;
+    const docs = Array.isArray(batchDocs) ? batchDocs : [];
+    const agg = aggregate || { total: 0, by_type: {}, strongest: [], weakest: [], recurring_issues: [] };
+
+    const typeCounts = Object.entries(agg.by_type || {})
+        .sort((a, b) => b[1] - a[1])
+        .map(([t, n]) => `${TYPE_LABEL[t] || t}: ${n}`)
+        .join(', ');
+
+    const out = [];
+
+    // --- Section 1: Overview ---------------------------------------------
+    out.push('## Overview');
+    if (agg.total === 0) {
+        out.push(`No files were analyzed. No documents matched the query filters, or every candidate was unreadable.`);
+    } else {
+        out.push(`Analyzed **${agg.total} file(s)** — ${typeCounts || 'unknown type mix'}.`);
+    }
+    const filters = [];
+    if (researcherHint && researcherHint.name) {
+        filters.push(`researcher = **${researcherHint.name}**` +
+            (researcherHint.researcher_id ? ` (${researcherHint.researcher_id})` : ''));
+    }
+    if (intent && intent.kinds && intent.kinds.length && intent.kinds[0] !== 'generic') {
+        filters.push(`type focus = ${intent.kinds.join('/')}`);
+    }
+    if (filters.length) out.push(`Filters applied: ${filters.join('; ')}.`);
+    if (truncatedFrom && truncatedFrom > docs.length) {
+        out.push(`_Ranked pool contained ${truncatedFrom} candidates; analysis was capped at the top ${docs.length} files._`);
+    }
+    out.push('');
+
+    // --- Section 2: Strongest files --------------------------------------
+    out.push('## Strongest files');
+    const strongLines = (agg.strongest || []).slice(0, 5).map(s => {
+        const doc = docs.find(d => d.id === s.id);
+        const summary = doc && doc.analysis && doc.analysis.summary ? ` — ${doc.analysis.summary}` : '';
+        const type = doc && doc.normalized_type ? ` _(${TYPE_LABEL[doc.normalized_type] || doc.normalized_type})_` : '';
+        return `**${s.title}**${type}${summary}`;
+    });
+    for (const l of _fmtList(strongLines, 'No files met the "high quality + minimal structural issues" bar.')) out.push(l);
+    out.push('');
+
+    // --- Section 3: Weakest files ----------------------------------------
+    out.push('## Weakest files');
+    const weakLines = (agg.weakest || []).slice(0, 5).map(w => {
+        const doc = docs.find(d => d.id === w.id);
+        const codes = doc && doc.analysis && doc.analysis.issues
+            ? doc.analysis.issues
+                .filter(i => i.severity === 'error' || i.severity === 'warn')
+                .slice(0, 4).map(i => `\`${i.code}\``).join(', ')
+            : '';
+        const type = doc && doc.normalized_type ? ` _(${TYPE_LABEL[doc.normalized_type] || doc.normalized_type})_` : '';
+        return `**${w.title}**${type}${codes ? ' — issues: ' + codes : ''}`;
+    });
+    for (const l of _fmtList(weakLines, 'No files were flagged as weakest by the heuristic pass.')) out.push(l);
+    out.push('');
+
+    // --- Section 4: Recurring issues -------------------------------------
+    out.push('## Recurring issues');
+    const recurLines = (agg.recurring_issues || []).slice(0, 8).map(ri => {
+        return `\`${ri.code}\` — ${ri.count} file(s).`;
+    });
+    for (const l of _fmtList(recurLines, 'No structural issue appeared in more than one file.')) out.push(l);
+    out.push('');
+
+    // --- Section 5: Per-type findings ------------------------------------
+    //     Always grouped by normalized_type when the batch is mixed; folded
+    //     into a single block when the batch is homogeneous.
+    const typeKeys = Object.keys(agg.by_type || {});
+    if (typeKeys.length > 1) {
+        out.push('## Findings by document type');
+        // Sort types by count, then label.
+        typeKeys.sort((a, b) => (agg.by_type[b] - agg.by_type[a]) || a.localeCompare(b));
+        for (const t of typeKeys) {
+            const label = TYPE_LABEL[t] || t;
+            out.push(`### ${label} (${agg.by_type[t]})`);
+            const typeDocs = docs.filter(d => d.normalized_type === t);
+            const notes = _typeSpecificNotes(t, typeDocs);
+            for (const n of notes) out.push(`- ${n}`);
+            out.push('');
+        }
+    } else if (typeKeys.length === 1) {
+        const t = typeKeys[0];
+        const label = TYPE_LABEL[t] || t;
+        out.push(`## ${label}-specific observations`);
+        const notes = _typeSpecificNotes(t, docs);
+        for (const n of notes) out.push(`- ${n}`);
+        out.push('');
+    }
+
+    // --- Section 6: Recommendations --------------------------------------
+    out.push('## Recommendations');
+    const recs = _buildRecommendations(docs, agg);
+    for (const l of _fmtList(recs, 'No prioritized revisions required based on structural signals.')) out.push(l);
+    out.push('');
+
+    // --- Section 7: Detection vs interpretation --------------------------
+    out.push('---');
+    out.push('_The issues above are **structural signals detected automatically** from file contents — section markers, header rows, slide counts, step numbering, hedge language, and extraction quality. They do not judge scientific merit, novelty, or correctness of claims. Higher-level interpretation (whether a result supports its conclusion, whether a protocol is appropriate for a given assay) requires subject-matter review of the flagged files._');
+
+    return out.join('\n');
+}
+
 // ---- 5. Trace object -----------------------------------------------------
 //
 // Small, structured, safe to log or pipe back to the frontend in a debug
 // channel. Never contains raw document text or secrets — only identities,
 // scores, and status flags.
 
-function buildTrace({ intent, candidates, selected, extraction, fallbackUsed, promptSize, confidence }) {
+function buildTrace({ intent, candidates, selected, extraction, fallbackUsed, promptSize, confidence, researcherHint }) {
     return {
         source_module: 'zoeRetrieval',
         intent: intent ? {
             kinds: intent.kinds, tokens: intent.tokens,
             flags: intent.flags
+        } : null,
+        // Phase 4.4: surface the detected researcher (if any) so operators
+        // can debug why candidates were boosted or penalized.
+        researcher_hint: researcherHint ? {
+            researcher_id: researcherHint.researcher_id || null,
+            name: researcherHint.name || null,
+            matched_token: researcherHint.matched_token || null,
         } : null,
         candidates: (candidates || []).slice(0, 5).map(c => ({
             id: c.id, title: (c.title || '').slice(0, 120),
@@ -726,7 +1388,10 @@ function buildTrace({ intent, candidates, selected, extraction, fallbackUsed, pr
             // Phase 4.3: surface canonical type + why it scored as it did.
             normalized_type: c.normalized_type || normalizeDocType(c),
             score: c.score, match_reason: c.match_reason,
-            readable: !!c.readable
+            readable: !!c.readable,
+            // Phase 4.4: per-candidate researcher + path diagnostics.
+            researcher_match: c.researcher_match || null,
+            path_hay: c.r2_path && c.r2_path.hay ? c.r2_path.hay.slice(0, 160) : null,
         })),
         selected: selected ? {
             id: selected.id, title: (selected.title || '').slice(0, 120),
@@ -734,6 +1399,7 @@ function buildTrace({ intent, candidates, selected, extraction, fallbackUsed, pr
             normalized_type: selected.normalized_type || normalizeDocType(selected),
             why_selected: selected.match_reason
                 || (Array.isArray(selected.why_selected) ? selected.why_selected.join('; ') : null),
+            researcher_match: selected.researcher_match || null,
             r2_key_present: !!selected.r2_object_key,
         } : null,
         extraction: extraction ? {
@@ -769,4 +1435,14 @@ module.exports = {
     extractContent,
     chunkForPrompt,
     buildTrace,
+    // Phase 4.4
+    parseR2Path,
+    detectResearcherInQuery,
+    matchCandidateToResearcher,
+    normAscii,
+    // Phase 4.5
+    analyzeDocument,
+    aggregateFindings,
+    // Phase 4.6
+    formatBatchNarrative,
 };

@@ -22825,6 +22825,72 @@ function zoeDocCanReadContent(filename, fileType) {
 // downloadFromR2 only.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Phase 4.4 — cached researcher roster for Zoe retrieval.
+//
+// Zoe's retrieval layer needs to recognize researcher names in questions
+// (e.g. "show Frank's latest SOP"). We read di_allowlist once per TTL and
+// keep the roster in-process. The roster is also used to resolve an
+// uploader code (di_submissions.uploader_researcher_id) back to a display
+// name for ranking and trace. Intentionally global: the allowlist is the
+// per-lab roster, not per-workspace.
+// ---------------------------------------------------------------------------
+let _zoeRosterCache = { at: 0, list: [], byId: new Map() };
+const ZOE_ROSTER_TTL_MS = 5 * 60 * 1000;
+async function getZoeResearcherRoster() {
+    const now = Date.now();
+    if (_zoeRosterCache.list.length && (now - _zoeRosterCache.at) < ZOE_ROSTER_TTL_MS) {
+        return _zoeRosterCache;
+    }
+    try {
+        const r = await pool.query(
+            `SELECT researcher_id, name, institution_email
+             FROM di_allowlist
+             WHERE active = true`
+        );
+        const list = [];
+        const byId = new Map();
+        for (const row of (r.rows || [])) {
+            const nameParts = String(row.name || '').trim().split(/\s+/).filter(Boolean);
+            const first_name = nameParts[0] || '';
+            const last_name = nameParts.length > 1 ? nameParts[nameParts.length - 1] : '';
+            const entry = {
+                researcher_id: row.researcher_id,
+                name: row.name,
+                first_name,
+                last_name,
+                email: row.institution_email || null,
+            };
+            list.push(entry);
+            if (row.researcher_id) byId.set(String(row.researcher_id).toLowerCase(), entry);
+        }
+        _zoeRosterCache = { at: now, list, byId };
+    } catch (e) {
+        console.warn('[ZOE] roster load failed (non-fatal):', e.message);
+        // keep whatever we had; worst case empty
+    }
+    return _zoeRosterCache;
+}
+
+// Attach r2_path (parsed via zoeRetrieval.parseR2Path) + uploader_name to a
+// candidate row so the ranker can use researcher/path signals. Mutates the
+// row and returns it for chaining.
+function zoeEnrichCandidate(row, roster) {
+    if (!row) return row;
+    if (row.r2_object_key) {
+        try { row.r2_path = zoeRetrieval.parseR2Path(row.r2_object_key); } catch (_) {}
+    }
+    if (row.uploader && roster && roster.byId) {
+        const hit = roster.byId.get(String(row.uploader).toLowerCase());
+        if (hit) {
+            row.uploader_name = hit.name;
+            row.uploader_first_name = hit.first_name;
+            row.uploader_last_name = hit.last_name;
+        }
+    }
+    return row;
+}
+
 // Map an internal-docs category slug to the "type" label used by Zoe's
 // ranker. Categories other than "papers" are general folders the PI uses
 // for grants/projects/collaborators/other.
@@ -22872,6 +22938,8 @@ async function zoeListInternalDocs() {
                 project_id: null,
                 project_name: folderHint || null,
                 r2_object_key: key,
+                // Phase 4.4: pre-parsed path for path-aware ranking and trace.
+                r2_path: zoeRetrieval.parseR2Path(key),
                 source_kind: 'internal_doc'
             });
         }
@@ -22903,6 +22971,8 @@ async function zoeSearchRdDocuments(wsId, patterns) {
                 COALESCE(d.title, '')         ILIKE ANY (ARRAY[${placeholders}])
                 OR COALESCE(d.filename, '')   ILIKE ANY (ARRAY[${placeholders}])
                 OR COALESCE(d.document_type,'') ILIKE ANY (ARRAY[${placeholders}])
+                OR COALESCE(d.uploaded_by, '') ILIKE ANY (ARRAY[${placeholders}])
+                OR COALESCE(d.r2_key, '')     ILIKE ANY (ARRAY[${placeholders}])
                 OR COALESCE(p.title, '')      ILIKE ANY (ARRAY[${placeholders}])
               )
             ORDER BY d.created_at DESC NULLS LAST
@@ -22920,6 +22990,8 @@ async function zoeSearchRdDocuments(wsId, patterns) {
             project_id: row.project_id || null,
             project_name: row.project_name || null,
             r2_object_key: row.r2_object_key,
+            // Phase 4.4: pre-parsed path enables path/researcher ranking.
+            r2_path: zoeRetrieval.parseR2Path(row.r2_object_key),
             source_kind: 'rd_document'
         }));
     } catch (e) {
@@ -23506,12 +23578,23 @@ app.post('/api/zoe/retrieve', requirePIRead, async (req, res) => {
         // 1) Intent classification
         const intent = zoeRetrieval.classifyIntent(question);
 
+        // Phase 4.4: researcher detection. Look up any roster name mentioned
+        //  in the question so retrieval can filter candidates to that
+        //  researcher's files first. When a researcher is detected we also
+        //  widen the token-based ILIKE search (like isListing) — the
+        //  researcher filter itself narrows the space enough, and strict
+        //  token matching would otherwise exclude relevant files whose
+        //  filenames don't contain the name.
+        const roster = await getZoeResearcherRoster();
+        const researcherHint = zoeRetrieval.detectResearcherInQuery(question, roster.list);
+
         // 2) Metadata search — reuse the find-document ILIKE pattern logic.
         //    Tokens come from the retrieval service (broader stopword list).
         // Phase 4.3: a listing query ("list SOPs", "show data") has mostly
         //  stopwords, so token-based ILIKE matches nothing. Broaden to a
         //  wildcard and let the ranker pick by normalized type + recency.
-        const patterns = intent.flags.isListing
+        const broaden = intent.flags.isListing || !!researcherHint;
+        const patterns = broaden
             ? ['%']
             : (intent.tokens.length > 0 ? intent.tokens : [question.toLowerCase()]).map(t => `%${t}%`);
         const patternParams = patterns.map((_, i) => `$${i + 2}`);
@@ -23525,8 +23608,22 @@ app.post('/api/zoe/retrieve', requirePIRead, async (req, res) => {
             `s.original_filename ILIKE ANY (ARRAY[${patternParams.join(',')}])`,
             `COALESCE(s.file_type, '') ILIKE ANY (ARRAY[${patternParams.join(',')}])`,
             `COALESCE(s.uploader_researcher_id, '') ILIKE ANY (ARRAY[${patternParams.join(',')}])`,
+            // Phase 4.4: R2 object key carries organization/year/filename
+            //  segments the user may name directly ("TOUCAN", "2026", etc.).
+            `COALESCE(s.r2_object_key, '') ILIKE ANY (ARRAY[${patternParams.join(',')}])`,
             joinable ? `COALESCE(rp.title, '') ILIKE ANY (ARRAY[${patternParams.join(',')}])` : null
         ].filter(Boolean).join(' OR ');
+
+        // Phase 4.4: when a researcher is detected in the query, pre-filter
+        //  submissions to that researcher's files (uploader or researcher_id).
+        //  Keeps the result set small + relevant before the ranker sees it.
+        const subParams = [wsId, ...patterns];
+        let subResearcherClause = '';
+        if (researcherHint && researcherHint.researcher_id) {
+            subParams.push(researcherHint.researcher_id);
+            const p = `$${subParams.length}`;
+            subResearcherClause = ` AND (s.uploader_researcher_id = ${p} OR s.researcher_id = ${p})`;
+        }
 
         const subSql = joinable
             ? `SELECT s.submission_id AS id, s.original_filename AS title, s.file_type AS type,
@@ -23536,7 +23633,7 @@ app.post('/api/zoe/retrieve', requirePIRead, async (req, res) => {
                LEFT JOIN rd_projects rp ON rp.id = s.rd_project_id
                WHERE (s.workspace_id = $1 OR s.workspace_id IS NULL)
                  AND s.status <> 'DISCARDED'
-                 AND (${subOr})
+                 AND (${subOr})${subResearcherClause}
                ORDER BY s.created_at DESC NULLS LAST LIMIT 40`
             : `SELECT s.submission_id AS id, s.original_filename AS title, s.file_type AS type,
                       s.status, s.uploader_researcher_id AS uploader, s.created_at AS date,
@@ -23544,21 +23641,25 @@ app.post('/api/zoe/retrieve', requirePIRead, async (req, res) => {
                FROM di_submissions s
                WHERE (s.workspace_id = $1 OR s.workspace_id IS NULL)
                  AND s.status <> 'DISCARDED'
-                 AND (${subOr})
+                 AND (${subOr})${subResearcherClause}
                ORDER BY s.created_at DESC NULLS LAST LIMIT 40`;
         let subRows = [];
-        try { subRows = (await pool.query(subSql, [wsId, ...patterns])).rows; }
+        try { subRows = (await pool.query(subSql, subParams)).rows; }
         catch (e) { console.error('[ZOE-RETRIEVE] subs query:', e.message); }
 
         let grpRows = [];
         try {
+            const grpPh = patterns.map((_,i)=>'$'+(i+1)).join(',');
             const grpSql = `SELECT id, title, category, filename, file_type, created_at, uploaded_by, r2_object_key
                             FROM di_group_documents
                             WHERE is_active = true
                               AND (
-                                COALESCE(title, '') ILIKE ANY (ARRAY[${patterns.map((_,i)=>'$'+(i+1)).join(',')}])
-                                OR COALESCE(filename, '') ILIKE ANY (ARRAY[${patterns.map((_,i)=>'$'+(i+1)).join(',')}])
-                                OR COALESCE(category, '') ILIKE ANY (ARRAY[${patterns.map((_,i)=>'$'+(i+1)).join(',')}])
+                                COALESCE(title, '') ILIKE ANY (ARRAY[${grpPh}])
+                                OR COALESCE(filename, '') ILIKE ANY (ARRAY[${grpPh}])
+                                OR COALESCE(category, '') ILIKE ANY (ARRAY[${grpPh}])
+                                -- Phase 4.4: uploaded_by + R2 key as searchable signals
+                                OR COALESCE(uploaded_by, '') ILIKE ANY (ARRAY[${grpPh}])
+                                OR COALESCE(r2_object_key, '') ILIKE ANY (ARRAY[${grpPh}])
                               )
                             ORDER BY created_at DESC NULLS LAST LIMIT 40`;
             grpRows = (await pool.query(grpSql, patterns)).rows;
@@ -23573,44 +23674,77 @@ app.post('/api/zoe/retrieve', requirePIRead, async (req, res) => {
             zoeSearchRdDocuments(wsId, patterns),
             zoeListInternalDocs(),
         ]);
-        // In-process filter for internal-docs: keep files whose filename or
-        // folder hint matches at least one token. Papers always stay in
-        // contention (flat folder), folders are filtered per token.
+        // In-process filter for internal-docs: keep files whose filename,
+        // folder hint, or R2 path matches at least one token. Phase 4.4: also
+        // include researcher name tokens so "list SOPs from Jürgen" reaches
+        // his folder under group-docs/internal/projects/<name>/ even when the
+        // filename doesn't carry his name.
         const lcTokens = (intent.tokens || []).map(t => t.toLowerCase());
+        const researcherTokens = researcherHint
+            ? [researcherHint.matched_token, researcherHint.first_name, researcherHint.last_name,
+               researcherHint.researcher_id]
+                .filter(Boolean).map(s => String(s).toLowerCase())
+            : [];
+        const filterTokens = Array.from(new Set([...lcTokens, ...researcherTokens]));
         const intdocRows = intdocRowsAll.filter(c => {
-            if (lcTokens.length === 0) return true;
-            const hay = (c.title + ' ' + (c.project_name || '') + ' ' + (c.category || '')).toLowerCase();
-            return lcTokens.some(t => hay.includes(t));
+            if (filterTokens.length === 0) return true;
+            const pathHay = (c.r2_path && c.r2_path.hay) || '';
+            const hay = (c.title + ' ' + (c.project_name || '') + ' ' +
+                         (c.category || '') + ' ' + pathHay + ' ' +
+                         (c.r2_object_key || '')).toLowerCase();
+            return filterTokens.some(t => hay.includes(t));
         });
 
         // 3) Rank
         const normalizedRows = [
-            ...subRows.map(r => ({
+            ...subRows.map(r => zoeEnrichCandidate({
                 id: `sub:${r.id}`, title: r.title, filename: r.title,
                 type: r.type, category: r.type, date: r.date,
                 uploader: r.uploader, status: r.status,
                 project_id: r.project_id || null, project_name: r.project_name || null,
                 r2_object_key: r.r2_object_key, source_kind: 'submission',
-            })),
-            ...grpRows.map(r => ({
+            }, roster)),
+            ...grpRows.map(r => zoeEnrichCandidate({
                 id: `grp:${r.id}`, title: r.title || r.filename,
                 filename: r.filename, type: r.file_type, category: r.category,
                 date: r.created_at, uploader: r.uploaded_by, status: 'ACTIVE',
                 project_id: null, project_name: null,
                 r2_object_key: r.r2_object_key, source_kind: 'group_document',
-            })),
-            ...rdRowsRaw,       // already normalized by zoeSearchRdDocuments
-            ...intdocRows,      // already normalized by zoeListInternalDocs
+            }, roster)),
+            // rd_documents + internal_docs come in already normalized; still
+            // run them through enrichment so they get r2_path + uploader_name.
+            ...rdRowsRaw.map(r => zoeEnrichCandidate(r, roster)),
+            ...intdocRows.map(r => zoeEnrichCandidate(r, roster)),
         ];
         console.log('[ZOE-RETRIEVE] sources:'
             + ' di_submissions=' + subRows.length
             + ' di_group_documents=' + grpRows.length
             + ' rd_documents=' + rdRowsRaw.length
-            + ' internal_docs=' + intdocRows.length + '/' + intdocRowsAll.length);
+            + ' internal_docs=' + intdocRows.length + '/' + intdocRowsAll.length
+            + (researcherHint ? ' researcher=' + (researcherHint.researcher_id || researcherHint.name) : ''));
         const projectHintId = sessionMemory.currentProjectId
             ? parseInt(sessionMemory.currentProjectId, 10) : null;
-        const ranked = zoeRetrieval.rankCandidates(normalizedRows, intent, { projectHintId });
-        const topCandidates = ranked.slice(0, maxCandidates);
+        const ranked = zoeRetrieval.rankCandidates(normalizedRows, intent, {
+            projectHintId,
+            researcherHint,
+        });
+        // Phase 4.4: when a researcher is explicitly named AND the user asks
+        //  for an operational doc (SOP / DATA / PRES / REPORT), drop
+        //  candidates that have no researcher signal anywhere — uploader,
+        //  r2 path, or filename. PAPER + internal_doc rows are immune because
+        //  they often have no uploader metadata.
+        const operationalIntent = !!(intent.flags.wantsSop || intent.flags.wantsData
+            || intent.flags.wantsPresentation || intent.flags.wantsReport);
+        const filtered = (researcherHint && operationalIntent)
+            ? ranked.filter(c => {
+                const rm = c.researcher_match;
+                if (rm && rm.any) return true;
+                if (c.normalized_type === 'PAPER') return true;
+                if (c.source_kind === 'internal_doc') return true;
+                return false;
+            })
+            : ranked;
+        const topCandidates = filtered.slice(0, maxCandidates);
         const confidence = zoeRetrieval.confidenceOf(topCandidates);
 
         // 4) Walk candidates in score order; skip unreadable ones.
@@ -23619,10 +23753,23 @@ app.post('/api/zoe/retrieve', requirePIRead, async (req, res) => {
         let fallbackUsed = false;
         const attemptLog = []; // per-attempt status for the trace
 
+        // Phase 4.5: batch mode. When the user asks to review/compare/evaluate
+        //  many files, we walk deeper into the ranked list and extract each.
+        //  Single-document behavior is preserved: `selected` + `extraction`
+        //  still point at the first readable document, so downstream callers
+        //  that ignore `batch` continue to work unchanged.
+        const wantsBatch = !!intent.flags.wantsBatch;
+        const batchLimit = Math.min(15, Math.max(3, parseInt(body.batch_limit, 10) || 8));
+        const batchDocs = [];   // readable, analyzed docs for the batch response
+        const walkList = wantsBatch
+            ? filtered.slice(0, batchLimit)
+            : topCandidates;
+
         if (topCandidates.length === 0) {
             const trace = zoeRetrieval.buildTrace({
                 intent, candidates: [], selected: null, extraction: null,
-                fallbackUsed: false, promptSize: 0, confidence
+                fallbackUsed: false, promptSize: 0, confidence,
+                researcherHint,
             });
             console.log('[ZOE-RETRIEVE] no candidates q="' + question.slice(0, 80) + '"');
             return res.json({
@@ -23630,6 +23777,11 @@ app.post('/api/zoe/retrieve', requirePIRead, async (req, res) => {
                 intent_flags: intent.flags, confidence,
                 extraction_hint: zoeRetrieval.extractionHintFor(intent),
                 candidates: [], selected: null, extraction: null,
+                batch: wantsBatch ? {
+                    mode: true, analyzed: 0, requested_limit: batchLimit,
+                    truncated_from: null, documents: [],
+                    aggregate: zoeRetrieval.aggregateFindings([])
+                } : null,
                 trace, took_ms: Date.now() - t0
             });
         }
@@ -23641,8 +23793,8 @@ app.post('/api/zoe/retrieve', requirePIRead, async (req, res) => {
         // candidate list, so the prompt falls back to "I could not find a
         // matching file" rather than hallucinating an answer.
         const minScore = zoeRetrieval.minScoreForIntent(intent);
-        for (let i = 0; i < topCandidates.length; i++) {
-            const cand = topCandidates[i];
+        for (let i = 0; i < walkList.length; i++) {
+            const cand = walkList[i];
             if (!cand.r2_object_key) {
                 attemptLog.push({ id: cand.id, title: cand.title, skipped: true, reason: 'no_r2_key' });
                 continue;
@@ -23704,10 +23856,39 @@ app.post('/api/zoe/retrieve', requirePIRead, async (req, res) => {
                     stream_normalized: true
                 });
                 if (ext && ext.success && ext.readable) {
-                    selected = cand;
-                    extraction = ext;
-                    fallbackUsed = (i > 0);
-                    break;
+                    // Back-compat: first readable doc becomes the single
+                    //  `selected` + `extraction` (unchanged single-file path).
+                    if (!selected) {
+                        selected = cand;
+                        extraction = ext;
+                        fallbackUsed = (i > 0);
+                    }
+                    if (wantsBatch) {
+                        // Phase 4.5: analyze + collect for the batch response.
+                        const analysis = zoeRetrieval.analyzeDocument(cand, ext, intent);
+                        const chunkText = zoeRetrieval.chunkForPrompt(ext, intent) || '';
+                        batchDocs.push({
+                            id: cand.id,
+                            title: cand.title,
+                            filename: cand.filename || cand.title,
+                            source_kind: cand.source_kind,
+                            normalized_type: cand.normalized_type,
+                            date: cand.date || null,
+                            uploader: cand.uploader || null,
+                            uploader_name: cand.uploader_name || null,
+                            project_name: cand.project_name || null,
+                            r2_object_key: cand.r2_object_key,
+                            score: cand.score,
+                            analysis,
+                            text: (ext.text || '').slice(0, zoeRetrieval.ZOE_DOC_MAX_CHARS),
+                            chunked_text: chunkText.slice(0, zoeRetrieval.ZOE_DOC_MAX_CHARS),
+                            content_truncated: !!ext.content_truncated,
+                            parser: ext.parser,
+                        });
+                        if (batchDocs.length >= batchLimit) break;
+                    } else {
+                        break;
+                    }
                 }
             } catch (err) {
                 attemptLog.push({
@@ -23752,12 +23933,24 @@ app.post('/api/zoe/retrieve', requirePIRead, async (req, res) => {
 
         const trace = zoeRetrieval.buildTrace({
             intent, candidates: topCandidates, selected,
-            extraction, fallbackUsed, promptSize, confidence
+            extraction, fallbackUsed, promptSize, confidence,
+            researcherHint,
         });
         trace.attempts = attemptLog;
+        // Phase 4.5: tiny batch summary on the trace for debug.
+        if (wantsBatch) {
+            trace.batch_summary = {
+                analyzed: batchDocs.length,
+                requested_limit: batchLimit,
+                pool_size: filtered.length,
+                truncated: filtered.length > batchLimit,
+            };
+        }
 
         console.log('[ZOE-RETRIEVE] q="' + question.slice(0, 60) + '"'
             + ' kinds=' + intent.kinds.join(',')
+            + (researcherHint ? ' researcher=' + (researcherHint.researcher_id || researcherHint.name) : '')
+            + (wantsBatch ? ' batch=' + batchDocs.length + '/' + batchLimit : '')
             + ' candidates=' + topCandidates.length
             + ' selected=' + (selected ? selected.id : 'none')
             + ' parser=' + (extraction ? extraction.parser : 'n/a')
@@ -23780,9 +23973,12 @@ app.post('/api/zoe/retrieve', requirePIRead, async (req, res) => {
                 normalized_type: c.normalized_type || null,
                 category: c.category || null,
                 project_name: c.project_name || null,
+                uploader: c.uploader || null,
+                uploader_name: c.uploader_name || null,
                 status: c.status || null, date: c.date || null,
                 score: c.score, match_reason: c.match_reason,
                 why_selected: Array.isArray(c.why_selected) ? c.why_selected : null,
+                researcher_match: c.researcher_match || null,
                 readable: !!c.readable
             })),
             selected: selected ? {
@@ -23793,8 +23989,20 @@ app.post('/api/zoe/retrieve', requirePIRead, async (req, res) => {
                 project_id: selected.project_id || null,
                 project_name: selected.project_name || null,
                 uploader: selected.uploader || null,
+                uploader_name: selected.uploader_name || null,
+                researcher_match: selected.researcher_match || null,
                 status: selected.status || null,
                 date: selected.date || null
+            } : null,
+            // Phase 4.4: detected researcher (null if none) — helps the
+            //  frontend label responses ("Showing Frank's SOPs") and gives
+            //  debug visibility into why a candidate got boosted.
+            researcher_hint: researcherHint ? {
+                researcher_id: researcherHint.researcher_id || null,
+                name: researcherHint.name || null,
+                first_name: researcherHint.first_name || null,
+                last_name: researcherHint.last_name || null,
+                matched_token: researcherHint.matched_token || null
             } : null,
             extraction: extraction ? {
                 parser: extraction.parser,
@@ -23810,6 +24018,50 @@ app.post('/api/zoe/retrieve', requirePIRead, async (req, res) => {
                 chunked_text: chunk || null,
                 error: extraction.error || null
             } : null,
+            // Phase 4.5: batch-mode result. Null when wantsBatch is false.
+            //  `documents` carries per-file extraction + heuristic analysis;
+            //  `aggregate` rolls up by_type / strongest / weakest /
+            //  recurring_issues so the narrator can produce Section 1-4
+            //  output without re-reading each document.
+            batch: wantsBatch ? (() => {
+                const aggregate = zoeRetrieval.aggregateFindings(batchDocs.map(d => ({
+                    id: d.id, title: d.title,
+                    normalized_type: d.normalized_type,
+                    analysis: d.analysis
+                })));
+                return {
+                    mode: true,
+                    analyzed: batchDocs.length,
+                    requested_limit: batchLimit,
+                    truncated_from: filtered.length > batchLimit ? filtered.length : null,
+                    documents: batchDocs.map(d => ({
+                        id: d.id, title: d.title,
+                        source_kind: d.source_kind,
+                        normalized_type: d.normalized_type,
+                        date: d.date, uploader: d.uploader,
+                        uploader_name: d.uploader_name,
+                        project_name: d.project_name,
+                        score: d.score,
+                        parser: d.parser,
+                        content_truncated: d.content_truncated,
+                        summary: d.analysis.summary,
+                        quality: d.analysis.quality,
+                        issues: d.analysis.issues,
+                        structure: d.analysis.structure,
+                        extraction_hint: d.analysis.extraction_hint,
+                        chunked_text: d.chunked_text,
+                    })),
+                    aggregate,
+                    // Phase 4.6: deterministic structured answer built from
+                    //  batchDocs + aggregate. Renders directly as markdown OR
+                    //  can be handed to OpenClaw as a scaffold. No LLM calls.
+                    narrative: zoeRetrieval.formatBatchNarrative(batchDocs, aggregate, {
+                        researcherHint,
+                        intent,
+                        truncatedFrom: filtered.length > batchLimit ? filtered.length : null,
+                    }),
+                };
+            })() : null,
             fallback_used: fallbackUsed,
             trace,
             took_ms: Date.now() - t0
