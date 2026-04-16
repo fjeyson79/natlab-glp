@@ -22211,13 +22211,9 @@ async function zoeBuildContextSummary(userId, workspaceId) {
         ).catch(() => ({ rows: [{ c: 0 }] }));
         out.recentUploads = recent.rows[0]?.c || 0;
     } catch (_) {}
-    try {
-        const researchers = await pool.query(
-            `SELECT DISTINCT uploader_researcher_id FROM di_submissions WHERE created_at > NOW() - INTERVAL '14 days' AND (workspace_id = $1 OR workspace_id IS NULL) LIMIT 8`,
-            [workspaceId || DEFAULT_WORKSPACE_ID]
-        ).catch(() => ({ rows: [] }));
-        out.recentResearchers = researchers.rows.map(r => r.uploader_researcher_id).filter(Boolean);
-    } catch (_) {}
+    // Schema-compat: production di_submissions currently lacks
+    //  uploader_researcher_id. Skip the query and degrade to [].
+    out.recentResearchers = [];
     // TODO: wire active projects + experiments from di_studio_projects once finalized shape is stable.
     out.activeProjects = 0;
     out.experimentsNote = "Experiment summaries will be wired from Research Studio once the Phase 2 schema lands.";
@@ -22331,25 +22327,24 @@ app.get('/api/zoe/context', requirePIRead, async (req, res) => {
         const active_projects_count = Number(base.activeProjects || 0);
 
         // -- Recent files (top 8, with optional project linkage) ---------
+        // Schema-compat: di_submissions.uploader_researcher_id is absent in
+        //  production; drop the column + di_allowlist join. uploader/
+        //  affiliation degrade to null.
         const recentFilesSql = projectJoinable
             ? `SELECT s.submission_id, s.original_filename, s.file_type, s.status,
-                      s.uploader_researcher_id, s.created_at, s.signed_at,
+                      s.created_at, s.signed_at,
                       s.rd_project_id AS project_id, rp.title AS project_name,
-                      a.affiliation AS uploader_affiliation,
                       (s.status = 'REVISION_NEEDED') AS is_recent_revision_needed
                FROM di_submissions s
                LEFT JOIN rd_projects rp ON rp.id = s.rd_project_id
-               LEFT JOIN di_allowlist a ON a.researcher_id = s.uploader_researcher_id
                WHERE (s.workspace_id = $1 OR s.workspace_id IS NULL)
                ORDER BY s.created_at DESC NULLS LAST
                LIMIT 8`
             : `SELECT s.submission_id, s.original_filename, s.file_type, s.status,
-                      s.uploader_researcher_id, s.created_at, s.signed_at,
+                      s.created_at, s.signed_at,
                       NULL::int AS project_id, NULL::text AS project_name,
-                      a.affiliation AS uploader_affiliation,
                       (s.status = 'REVISION_NEEDED') AS is_recent_revision_needed
                FROM di_submissions s
-               LEFT JOIN di_allowlist a ON a.researcher_id = s.uploader_researcher_id
                WHERE (s.workspace_id = $1 OR s.workspace_id IS NULL)
                ORDER BY s.created_at DESC NULLS LAST
                LIMIT 8`;
@@ -22359,8 +22354,8 @@ app.get('/api/zoe/context', requirePIRead, async (req, res) => {
             title: r.original_filename,
             type: r.file_type,            // category proxy (kept name `type` for back-compat)
             category: r.file_type,
-            uploader: r.uploader_researcher_id,
-            affiliation: r.uploader_affiliation || null,
+            uploader: null,
+            affiliation: null,
             status: r.status,
             date: r.created_at,
             signed_at: r.signed_at,
@@ -22370,9 +22365,9 @@ app.get('/api/zoe/context', requirePIRead, async (req, res) => {
         }));
 
         // -- Recent activity (top 10, last 30d) ---------------------------
+        // Schema-compat: drop uploader_researcher_id; actor degrades to null.
         const recentActivitySql = projectJoinable
             ? `SELECT s.submission_id AS id, s.original_filename AS title, s.status,
-                      s.uploader_researcher_id AS actor,
                       s.rd_project_id AS project_id, rp.title AS project_name,
                       COALESCE(s.signed_at, s.created_at) AS at
                FROM di_submissions s
@@ -22382,7 +22377,6 @@ app.get('/api/zoe/context', requirePIRead, async (req, res) => {
                ORDER BY COALESCE(s.signed_at, s.created_at) DESC NULLS LAST
                LIMIT 10`
             : `SELECT s.submission_id AS id, s.original_filename AS title, s.status,
-                      s.uploader_researcher_id AS actor,
                       NULL::int AS project_id, NULL::text AS project_name,
                       COALESCE(s.signed_at, s.created_at) AS at
                FROM di_submissions s
@@ -22396,40 +22390,16 @@ app.get('/api/zoe/context', requirePIRead, async (req, res) => {
             id: r.id,
             title: r.title,
             status: r.status,
-            actor: r.actor,
+            actor: null,
             project_id: r.project_id,
             project_name: r.project_name,
             at: r.at
         }));
 
         // -- Researcher overview (top 10 active, enriched) ---------------
-        const researcherRows = await safeQ(
-            `SELECT s.uploader_researcher_id AS rid,
-                    a.name AS name,
-                    COUNT(*)::int AS recent_uploads,
-                    SUM(CASE WHEN s.status IN ('PENDING','SUBMITTED') THEN 1 ELSE 0 END)::int AS pending,
-                    SUM(CASE WHEN s.status = 'REVISION_NEEDED' THEN 1 ELSE 0 END)::int AS revision_needed,
-                    SUM(CASE WHEN s.status = 'APPROVED' THEN 1 ELSE 0 END)::int AS approved,
-                    MAX(s.created_at) AS last_upload_at
-             FROM di_submissions s
-             LEFT JOIN di_allowlist a ON a.researcher_id = s.uploader_researcher_id
-             WHERE (s.workspace_id = $1 OR s.workspace_id IS NULL)
-               AND s.created_at > NOW() - INTERVAL '30 days'
-               AND s.uploader_researcher_id IS NOT NULL
-             GROUP BY s.uploader_researcher_id, a.name
-             ORDER BY recent_uploads DESC
-             LIMIT 10`,
-            [wsId], []
-        );
-        const researcher_overview = researcherRows.map(r => ({
-            researcher_id: r.rid,
-            name: r.name || null,
-            recent_uploads: r.recent_uploads,
-            pending: r.pending,
-            revision_needed: r.revision_needed,
-            approved: r.approved,
-            last_upload_at: r.last_upload_at
-        }));
+        // Schema-compat: di_submissions.uploader_researcher_id is absent in
+        //  production, so we cannot group by uploader. Degrade to [].
+        const researcher_overview = [];
 
         // -- Projects overview --------------------------------------------
         // Primary path: aggregate submissions by rd_project_id. Secondary
@@ -22600,11 +22570,13 @@ app.get('/api/zoe/context', requirePIRead, async (req, res) => {
         }
 
         // -- Trends (last 7 days) ----------------------------------------
+        // Schema-compat: di_submissions.updated_at is absent in production.
+        //  Fall back to signed_at/created_at only.
         const trendsRow = await safeQ(
             `SELECT
                 SUM(CASE WHEN created_at > NOW() - INTERVAL '7 days' THEN 1 ELSE 0 END)::int AS uploads_last_7d,
-                SUM(CASE WHEN status = 'APPROVED' AND COALESCE(signed_at, updated_at, created_at) > NOW() - INTERVAL '7 days' THEN 1 ELSE 0 END)::int AS approvals_last_7d,
-                SUM(CASE WHEN status = 'REVISION_NEEDED' AND COALESCE(updated_at, created_at) > NOW() - INTERVAL '7 days' THEN 1 ELSE 0 END)::int AS revisions_last_7d
+                SUM(CASE WHEN status = 'APPROVED' AND COALESCE(signed_at, created_at) > NOW() - INTERVAL '7 days' THEN 1 ELSE 0 END)::int AS approvals_last_7d,
+                SUM(CASE WHEN status = 'REVISION_NEEDED' AND created_at > NOW() - INTERVAL '7 days' THEN 1 ELSE 0 END)::int AS revisions_last_7d
              FROM di_submissions
              WHERE (workspace_id = $1 OR workspace_id IS NULL)`,
             [wsId], [{ uploads_last_7d: null, approvals_last_7d: null, revisions_last_7d: null }]
@@ -23536,7 +23508,12 @@ app.post('/api/zoe/retrieve', requirePIRead, async (req, res) => {
 
         // 2) Metadata search — reuse the find-document ILIKE pattern logic.
         //    Tokens come from the retrieval service (broader stopword list).
-        const patterns = (intent.tokens.length > 0 ? intent.tokens : [question.toLowerCase()]).map(t => `%${t}%`);
+        // Phase 4.3: a listing query ("list SOPs", "show data") has mostly
+        //  stopwords, so token-based ILIKE matches nothing. Broaden to a
+        //  wildcard and let the ranker pick by normalized type + recency.
+        const patterns = intent.flags.isListing
+            ? ['%']
+            : (intent.tokens.length > 0 ? intent.tokens : [question.toLowerCase()]).map(t => `%${t}%`);
         const patternParams = patterns.map((_, i) => `$${i + 2}`);
 
         let hasProjCol = false, hasRd = false;
@@ -23649,7 +23626,9 @@ app.post('/api/zoe/retrieve', requirePIRead, async (req, res) => {
             });
             console.log('[ZOE-RETRIEVE] no candidates q="' + question.slice(0, 80) + '"');
             return res.json({
-                question, intent_kinds: intent.kinds, confidence,
+                question, intent_kinds: intent.kinds,
+                intent_flags: intent.flags, confidence,
+                extraction_hint: zoeRetrieval.extractionHintFor(intent),
                 candidates: [], selected: null, extraction: null,
                 trace, took_ms: Date.now() - t0
             });
@@ -23790,19 +23769,27 @@ app.post('/api/zoe/retrieve', requirePIRead, async (req, res) => {
         res.json({
             question,
             intent_kinds: intent.kinds,
+            intent_flags: intent.flags,
             confidence,
+            // Phase 4.3: per-intent rendering hint for the downstream prompt
+            //  (SOP → numbered steps, DATA → summarized tables, PRES → slides).
+            extraction_hint: zoeRetrieval.extractionHintFor(intent),
             candidates: topCandidates.map(c => ({
                 id: c.id, title: c.title,
                 source_kind: c.source_kind, type: c.type,
+                normalized_type: c.normalized_type || null,
                 category: c.category || null,
                 project_name: c.project_name || null,
                 status: c.status || null, date: c.date || null,
                 score: c.score, match_reason: c.match_reason,
+                why_selected: Array.isArray(c.why_selected) ? c.why_selected : null,
                 readable: !!c.readable
             })),
             selected: selected ? {
                 id: selected.id, title: selected.title,
                 source_kind: selected.source_kind,
+                normalized_type: selected.normalized_type || null,
+                why_selected: selected.match_reason || null,
                 project_id: selected.project_id || null,
                 project_name: selected.project_name || null,
                 uploader: selected.uploader || null,

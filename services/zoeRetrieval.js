@@ -82,16 +82,28 @@ function tokenize(q) {
 function classifyIntent(message) {
     const m = String(message || '').toLowerCase();
     const kinds = [];
+    // Phase 4.3: SOP signals split into strong (always SOP) vs weak (could
+    //  overlap with a paper-methods follow-up). Weak signals defer to
+    //  wantsPaper so "methods section of the paper" stays a paper intent.
+    const wantsPaper = /\b(paper|publication|article|journal|manuscript|preprint|doi)\b/.test(m);
+    const sopStrong = /\bsops?\b|\bstandard operating procedures?\b|\bprotocols?\b/.test(m);
+    const sopWeak = /\bprocedures?\b|\bmethods?\b|\bpreps?\b|\bpreparation\b/.test(m);
     const flags = {
-        wantsPaper: /\b(paper|publication|article|journal|manuscript|preprint|doi)\b/.test(m),
-        wantsSop: /\bsop\b|\bstandard operating procedure\b|\bprotocol\b/.test(m),
+        wantsPaper,
+        wantsSop: sopStrong || (sopWeak && !wantsPaper),
         wantsPresentation: /\b(presentation|slides?|deck|ppt|pptx)\b/.test(m),
         wantsReport: /\b(report|summary|overview|brief)\b/.test(m),
-        wantsData: /\b(data|dataset|csv|xls|xlsx|spreadsheet|table|results?)\b/.test(m),
+        // Phase 4.3: add explicit "excel" to data keywords.
+        wantsData: /\b(data|dataset|csv|xls|xlsx|excel|spreadsheet|table|results?)\b/.test(m),
         wantsLatest: /\b(latest|newest|last|most recent|recent|yesterday|today)\b/.test(m),
         isFollowUp: /\b(methods?|results?|discussion|conclusions?|abstract|limitations?|references?|version|compare|same|that one|it|its)\b/.test(m)
             && !/\b(paper|sop|presentation|report|file|document|data)\b/.test(m),
         isCapability: /\b(can you|are you able|do you|will you)\b[\s\S]{0,60}\b(read|access|analyz|search|find|see|retrieve|open)\b/.test(m),
+        // Phase 4.3: listing intent ("list SOPs", "show data", "recent presentations").
+        // When set, callers should broaden the search (no token filter) and return
+        // multiple ranked candidates rather than selecting a single document.
+        isListing: /^\s*(list|show( me)?|all|recent|latest|any|give me|what)\s+[a-z0-9]+/i.test(m)
+            || /\b(list|show all|all the)\s+(sops?|protocols?|procedures?|data|datasets?|presentations?|slides?|decks?|reports?|papers?|documents?|files?)\b/i.test(m),
     };
     if (flags.wantsPaper) kinds.push('paper');
     if (flags.wantsSop) kinds.push('sop');
@@ -143,6 +155,70 @@ function isLikelyTemplate(row) {
     const title = String((row && (row.title || row.filename)) || '');
     const cat = String((row && (row.category || '')) || '');
     return TEMPLATE_HINTS.test(title) || TEMPLATE_HINTS.test(cat);
+}
+
+// Phase 4.3: canonical document-type taxonomy. All sources (di_submissions,
+// di_group_documents, rd_documents, internal_docs) collapse to one of:
+//   SOP | DATA | PRESENTATION | REPORT | PAPER | OTHER
+// This lets the ranker and the prompt steer consistently regardless of how
+// the file was originally tagged. Pure inspection — no DB or R2 access.
+function normalizeDocType(row) {
+    if (!row) return 'OTHER';
+    const type = String(row.type || row.file_type || '').toLowerCase().trim();
+    const category = String(row.category || '').toLowerCase().trim();
+    const title = String(row.title || row.filename || '').toLowerCase();
+    const ext = extOf(row.filename || row.title);
+    const sourceKind = String(row.source_kind || '').toLowerCase();
+
+    // rd_documents carry an explicit document_type tag set by the uploader.
+    // Values from migration 046: 'SOP', 'DATA', 'PRES', 'REPORT', 'DOCS'.
+    if (sourceKind === 'rd_document') {
+        if (type === 'sop' || category === 'sop') return 'SOP';
+        if (type === 'data' || category === 'data') return 'DATA';
+        if (type === 'pres' || type === 'presentation' || category === 'pres') return 'PRESENTATION';
+        if (type === 'report' || category === 'report') return 'REPORT';
+    }
+    // Internal-docs: 'papers/' folder maps to PAPER; others keep their labels.
+    if (sourceKind === 'internal_doc' && (category === 'papers' || type === 'paper')) return 'PAPER';
+
+    // Extension-based inference (fast path for submissions/group docs).
+    if (ext === 'pptx' || /present|slide|deck|\bppt\b/.test(type)) return 'PRESENTATION';
+    if (['xlsx', 'xls', 'csv'].includes(ext) || /spreadsheet|\bexcel\b|\bcsv\b/.test(type)) return 'DATA';
+
+    // Title/category inspection for PDFs and docx (SOPs often live there).
+    if (/\bsop\b|\bprotocols?\b|\bprocedures?\b/.test(title) ||
+        /\bsop\b|\bprotocols?\b/.test(category)) return 'SOP';
+    if (/\breports?\b|\bsummary\b|\boverview\b/.test(title) ||
+        /\breports?\b/.test(category)) return 'REPORT';
+    if (ext === 'pdf' && (PAPER_EVIDENCE.test(title) || PAPER_EVIDENCE.test(category))) return 'PAPER';
+    if (/\bpresentations?\b|\bslides?\b|\bdeck\b/.test(title)) return 'PRESENTATION';
+    if (/\bdata(set)?\b/.test(title)) return 'DATA';
+
+    return 'OTHER';
+}
+
+// Phase 4.3: per-intent extraction hint for the prompt builder. Steers the
+// downstream model to render SOPs as steps, DATA as summarized tables, and
+// PRESENTATIONS as slide outlines — without touching the content itself.
+function extractionHintFor(intent) {
+    const k = (intent && intent.kinds) || ['generic'];
+    const f = (intent && intent.flags) || {};
+    if (k.includes('sop') || f.wantsSop) {
+        return 'sop: render as a numbered step list; keep the original order; surface safety and QC notes at the end';
+    }
+    if (k.includes('data') || f.wantsData) {
+        return 'data: summarize each sheet; list key columns and the first few rows; call out totals, ranges, or obvious outliers';
+    }
+    if (k.includes('presentation') || f.wantsPresentation) {
+        return 'presentation: list slide titles with one-line bullets each; preserve slide order';
+    }
+    if (k.includes('report') || f.wantsReport) {
+        return 'report: give a 3-5 sentence executive summary; list key findings as bullets';
+    }
+    if (k.includes('paper') || f.wantsPaper) {
+        return 'paper: cite by section (abstract / methods / results / discussion); keep citations to sections present in the extract';
+    }
+    return null;
 }
 
 // Phase 4.1: minimum score a candidate must clear before /api/zoe/retrieve
@@ -197,6 +273,7 @@ function scoreCandidate(row, intent, opts) {
     );
     const extStr = extOf(row.filename || row.title);
     const template = isLikelyTemplate(row);
+    const normalizedType = normalizeDocType(row);
 
     if (intent.flags.wantsPaper) {
         const paperEvidence = PAPER_EVIDENCE.test(typeStr) || extStr === 'pdf';
@@ -233,6 +310,30 @@ function scoreCandidate(row, intent, opts) {
         if (template) { s -= 12; reasons.push('template (data query)'); }
     }
 
+    // (c2) Phase 4.3: additive normalized-type boosts. Complements the
+    //     evidence checks above by rewarding candidates that canonicalize
+    //     to the requested type even when their file extension or filename
+    //     doesn't match the legacy regexes (e.g. an rd_document tagged
+    //     document_type='SOP' that happens to be a DOCX).
+    if (intent.flags.wantsSop && normalizedType === 'SOP') {
+        s += 4; reasons.push('SOP type');
+    }
+    if (intent.flags.wantsData && normalizedType === 'DATA') {
+        s += 4; reasons.push('DATA type');
+    }
+    if (intent.flags.wantsPresentation && normalizedType === 'PRESENTATION') {
+        s += 4; reasons.push('PRESENTATION type');
+    }
+    if (intent.flags.wantsReport && normalizedType === 'REPORT') {
+        s += 3; reasons.push('REPORT type');
+    }
+    // Project-linked bonus for operational doc queries: any project association
+    // is useful signal (separate from the session projectHintId match below).
+    if ((intent.flags.wantsSop || intent.flags.wantsData || intent.flags.wantsPresentation)
+        && row.project_id) {
+        s += 1; reasons.push('project-linked');
+    }
+
     // (d) readability bonus — smaller than before so it cannot by itself
     //     elevate a wrong-kind file above a right-kind unreadable one.
     if (row.r2_object_key && isReadableFormat(row.filename || row.title, row.type || row.file_type)) {
@@ -262,6 +363,13 @@ function scoreCandidate(row, intent, opts) {
         const recencyPts = Math.max(0, 5 - (ageDays / 36));
         s += recencyPts;
         if (intent.flags.wantsLatest) s += Math.min(recencyPts, 3);
+        // Phase 4.3: for purely generic queries ("what's new", "anything
+        //  recent") we lean harder on freshness — +3 for items ≤7d old.
+        const isPureGeneric = Array.isArray(intent.kinds)
+            && intent.kinds.length === 1 && intent.kinds[0] === 'generic';
+        if (isPureGeneric && intent.flags.wantsLatest && ageDays <= 7) {
+            s += 3; reasons.push('fresh (≤7d)');
+        }
     }
 
     // (h) missing R2 key — we can't actually read the file
@@ -272,7 +380,7 @@ function scoreCandidate(row, intent, opts) {
         s += 5; reasons.push('matches active project');
     }
 
-    return { score: Math.round(s * 100) / 100, reasons };
+    return { score: Math.round(s * 100) / 100, reasons, normalized_type: normalizedType };
 }
 
 // Rank a list of candidates and attach score + reasons. Returns a new sorted
@@ -283,6 +391,10 @@ function rankCandidates(rows, intent, opts) {
         return Object.assign({}, r, {
             score: sc.score,
             match_reason: sc.reasons.slice(0, 3).join('; ') || 'field match',
+            // Phase 4.3: carry the ranker's verdict on the canonical document
+            //  type and a compact "why selected" reason list up to the caller.
+            normalized_type: sc.normalized_type || normalizeDocType(r),
+            why_selected: sc.reasons.slice(0, 5),
             readable: !!r.r2_object_key && isReadableFormat(
                 r.filename || r.title, r.type || r.file_type
             )
@@ -558,7 +670,19 @@ function chunkForPrompt(extracted, intent) {
     const wantPresentation = kinds.includes('presentation');
     const wantData = kinds.includes('data');
 
-    if (sections.length === 0) return extracted.text;
+    // Phase 4.3: per-intent extraction preamble. A short, labeled header the
+    //  downstream model can treat as a rendering hint without changing the
+    //  underlying content. Paper queries keep their existing behavior.
+    const hintSop = '[FORMAT] SOP — render as numbered steps; preserve order; call out safety/QC last.\n\n';
+    const hintData = '[FORMAT] DATA — summarize each sheet; list headers and preview rows.\n\n';
+    const hintPres = '[FORMAT] PRESENTATION — slide titles with bullets; keep slide order.\n\n';
+
+    if (sections.length === 0) {
+        if (wantSop) return hintSop + extracted.text;
+        if (wantData) return hintData + extracted.text;
+        if (wantPresentation) return hintPres + extracted.text;
+        return extracted.text;
+    }
 
     // Paper: prefer abstract/methods/results/discussion/limitations
     if (wantPaper) {
@@ -570,14 +694,14 @@ function chunkForPrompt(extracted, intent) {
     if (wantSop) {
         const pick = ['title','scope','purpose','materials','reagents','equipment','procedure','steps','safety','qc','quality control','version'];
         const chosen = sections.filter(s => pick.some(p => s.kind.startsWith(p)));
-        if (chosen.length) return chosen.map(s => `## ${s.kind.toUpperCase()}\n${s.content}`).join('\n\n');
+        if (chosen.length) return hintSop + chosen.map(s => `## ${s.kind.toUpperCase()}\n${s.content}`).join('\n\n');
     }
     // Presentation: already a slide-by-slide outline
     if (wantPresentation) {
-        return sections.map(s => s.content).join('\n\n');
+        return hintPres + sections.map(s => s.content).join('\n\n');
     }
     // Data: sheet list + headers + small previews (already formatted that way)
-    if (wantData) return extracted.text;
+    if (wantData) return hintData + extracted.text;
 
     // Default: outline + first few sections
     return sections.slice(0, 6).map(s => `## ${s.kind.toUpperCase()}\n${s.content}`).join('\n\n');
@@ -599,12 +723,17 @@ function buildTrace({ intent, candidates, selected, extraction, fallbackUsed, pr
         candidates: (candidates || []).slice(0, 5).map(c => ({
             id: c.id, title: (c.title || '').slice(0, 120),
             source_kind: c.source_kind || null,
+            // Phase 4.3: surface canonical type + why it scored as it did.
+            normalized_type: c.normalized_type || normalizeDocType(c),
             score: c.score, match_reason: c.match_reason,
             readable: !!c.readable
         })),
         selected: selected ? {
             id: selected.id, title: (selected.title || '').slice(0, 120),
             source_kind: selected.source_kind || null,
+            normalized_type: selected.normalized_type || normalizeDocType(selected),
+            why_selected: selected.match_reason
+                || (Array.isArray(selected.why_selected) ? selected.why_selected.join('; ') : null),
             r2_key_present: !!selected.r2_object_key,
         } : null,
         extraction: extraction ? {
@@ -618,6 +747,7 @@ function buildTrace({ intent, candidates, selected, extraction, fallbackUsed, pr
         fallback_used: !!fallbackUsed,
         prompt_size: promptSize || null,
         confidence: confidence || null,
+        extraction_hint: extractionHintFor(intent),
     };
 }
 
@@ -629,6 +759,8 @@ module.exports = {
     classifyIntent,
     isReadableFormat,
     isLikelyTemplate,
+    normalizeDocType,
+    extractionHintFor,
     minScoreForIntent,
     scoreCandidate,
     rankCandidates,
