@@ -35,19 +35,47 @@ const ZOE_DOC_MAX_CHARS = 18000;
 // Also returns the token list to feed into ranking, and a handful of
 // low-level flags the ranker uses directly.
 
+// Stopwords (Phase 4.1: widened).
+// We drop short connective words plus domain nouns the user asks about
+// directly ("paper", "sop", "data") — the intent flags already capture those,
+// and keeping them as tokens just inflates ILIKE recall with noise like
+// "%in%" matching every filename.
 const STOPWORDS = new Set([
-    'the','and','from','with','what','does','read','show','tell','find',
-    'summarize','summarise','analyze','analyse','give','please','about','that',
-    'this','these','those','here','there','paper','papers','file','files',
-    'sop','sops','report','reports','presentation','presentations','data',
-    'doc','docs','document','documents','latest','newest','last','recent',
-    'for','was','are','any','our','have','has','had','can','could','would'
+    // articles / determiners
+    'the','a','an','this','that','these','those','some','any','every','each','all','many','most','few','several','such','own',
+    // conjunctions / prepositions / common glue
+    'and','or','but','nor','so','for','yet','if','as','at','by','in','of','on','to','up','via','per','vs',
+    'into','onto','over','under','above','below','with','without','within','about','around','between','during','since','until','upon','along','against','through',
+    // pronouns
+    'i','me','my','mine','we','us','our','ours','you','your','yours','he','him','his','she','her','hers','it','its','they','them','their','theirs',
+    // copulas / auxiliaries / common verbs
+    'is','am','are','was','were','be','been','being','have','has','had','having','do','does','did','done','doing','will','shall','should','would','could','may','might','must','ought','can',
+    // wh-words / discourse
+    'who','whom','whose','which','what','when','where','why','how','here','there','then','than','while',
+    // zoe-verbs — the user's action word, not about the content
+    'read','show','tell','find','open','fetch','give','please','summarize','summarise','analyze','analyse','explain','describe','compare','review','locate','search','display',
+    // domain nouns already captured by intent.flags
+    'paper','papers','publication','publications','article','articles','journal','journals','manuscript','preprint',
+    'sop','sops','protocol','protocols','procedure','procedures',
+    'presentation','presentations','slides','slide','deck','ppt','pptx',
+    'report','reports','summary','overview','brief',
+    'data','dataset','datasets','spreadsheet','csv','xls','xlsx','results','result',
+    'doc','docs','document','documents','file','files','pdf',
+    // recency words
+    'latest','newest','last','recent','today','yesterday',
+    // meta-words people use in prompts
+    'one','two','three','sentence','sentences','paragraph','paragraphs','line','lines','word','words','point','points','bullet','bullets','short','long','quick','brief','detail','details','more','less','very','really','just','only','also','even','still','already','again','simply','basically','actually','generally','usually','often','sometimes',
+    'thing','things','item','items','case','cases','way','ways','kind','kinds','type','types','part','parts'
 ]);
 
+// Tokenize (Phase 4.1): raise the min-length bar to 3 so junk tokens like
+// "in", "on", "to" can't leak through into the ILIKE search and match
+// everything. Keep numerics at length 2 (e.g. "A5") by allowing any token
+// that contains a digit.
 function tokenize(q) {
     return String(q || '').toLowerCase()
         .split(/[^a-z0-9]+/)
-        .filter(t => t.length >= 2 && !STOPWORDS.has(t))
+        .filter(t => t.length >= 3 && !STOPWORDS.has(t))
         .slice(0, 12);
 }
 
@@ -104,8 +132,34 @@ function isReadableFormat(filename, fileType) {
 
 // Templates / admin / form filenames — penalized when the user asks for a
 // scientific paper, SOP, report, or data file.
-const TEMPLATE_HINTS = /\b(template|form|blank|empty|example|draft\-?template|checklist)\b/i;
-const ADMIN_HINTS = /\b(admin|invoice|receipt|order|ticket|signoff|sign\-?off)\b/i;
+// Phase 4.1: also match "SOP Template 7" and "form-blank" variants.
+const TEMPLATE_HINTS = /\b(templates?|forms?|blank|empty|example|draft[- ]?template|checklist|placeholders?|stub)\b/i;
+const ADMIN_HINTS = /\b(admin|invoice|receipt|order|ticket|signoff|sign[- ]?off)\b/i;
+const PAPER_EVIDENCE = /\b(paper|publication|journal|article|manuscript|preprint|abstract|doi|authors?|references?|bibliography)\b/i;
+const SOP_EVIDENCE = /\b(sop|protocol|procedure|sop[-_ ]?[0-9]+|procedure[-_ ]?[0-9]+)\b/i;
+
+// Strong test: "Template 7", "SOP Template", "blank form" etc.
+function isLikelyTemplate(row) {
+    const title = String((row && (row.title || row.filename)) || '');
+    const cat = String((row && (row.category || '')) || '');
+    return TEMPLATE_HINTS.test(title) || TEMPLATE_HINTS.test(cat);
+}
+
+// Phase 4.1: minimum score a candidate must clear before /api/zoe/retrieve
+// is willing to auto-select it. If no candidate clears the bar we return
+// selected=null — the prompt then tells Zoe to say "no matching file" rather
+// than forcing an irrelevant document.
+// Paper queries demand real paper evidence; generic "what's new" queries
+// demand nothing.
+function minScoreForIntent(intent) {
+    if (!intent || !intent.flags) return 0;
+    if (intent.flags.wantsPaper) return 14;
+    if (intent.flags.wantsSop) return 10;
+    if (intent.flags.wantsPresentation) return 10;
+    if (intent.flags.wantsReport) return 8;
+    if (intent.flags.wantsData) return 8;
+    return 0;
+}
 
 function scoreCandidate(row, intent, opts) {
     opts = opts || {};
@@ -133,31 +187,56 @@ function scoreCandidate(row, intent, opts) {
         else if (hay.includes(t)) { s += 3; }
     }
 
-    // (c) intent hints
+    // (c) intent hints — Phase 4.1: evidence-based. A paper query only
+    //     rewards candidates with positive paper evidence, and actively
+    //     pushes templates to the bottom. Evidence is checked against title,
+    //     category, type, and filename.
     const typeStr = norm(
         (row.type || row.file_type || '') + ' ' + (row.category || '') + ' ' +
         (row.filename || row.title || '')
     );
-    if (intent.flags.wantsPaper && /paper|publication|journal|article|manuscript|\.pdf|preprint/.test(typeStr)) {
-        s += 8; reasons.push('matches "paper" hint');
+    const extStr = extOf(row.filename || row.title);
+    const template = isLikelyTemplate(row);
+
+    if (intent.flags.wantsPaper) {
+        const paperEvidence = PAPER_EVIDENCE.test(typeStr) || extStr === 'pdf';
+        if (paperEvidence && !template) {
+            s += 14; reasons.push('paper evidence');
+        }
+        if (template) {
+            s -= 25; reasons.push('template (paper query)');
+        }
+        // Non-PDF, non-paper-evidence files are very unlikely to be papers
+        if (!paperEvidence && !template && extStr && !['pdf'].includes(extStr)) {
+            s -= 4; reasons.push('no paper evidence');
+        }
     }
-    if (intent.flags.wantsSop && /sop|protocol|procedure/.test(typeStr)) {
-        s += 10; reasons.push('matches "SOP" hint');
+    if (intent.flags.wantsSop) {
+        const sopEvidence = SOP_EVIDENCE.test(typeStr);
+        if (sopEvidence && !template) { s += 12; reasons.push('SOP evidence'); }
+        // A SOP template is still somewhat relevant to a SOP query, but a
+        // named SOP should outrank the template.
+        if (sopEvidence && template) { s += 3; reasons.push('SOP template (mild)'); }
+        if (!sopEvidence && template) { s -= 10; reasons.push('non-SOP template'); }
     }
     if (intent.flags.wantsPresentation && /present|slide|deck|ppt/.test(typeStr)) {
-        s += 10; reasons.push('matches "presentation" hint');
+        s += 10; reasons.push('presentation evidence');
     }
-    if (intent.flags.wantsReport && /report|summary|overview/.test(typeStr)) {
-        s += 6; reasons.push('matches "report" hint');
+    if (intent.flags.wantsReport) {
+        if (/report|summary|overview/.test(typeStr)) { s += 6; reasons.push('report evidence'); }
+        if (template) { s -= 15; reasons.push('template (report query)'); }
     }
-    if (intent.flags.wantsData && /data|csv|xls|spreadsheet|\.xlsx/.test(typeStr)) {
-        s += 8; reasons.push('matches "data" hint');
+    if (intent.flags.wantsData) {
+        if (/data|csv|xls|spreadsheet|\.xlsx/.test(typeStr) || ['csv','xls','xlsx'].includes(extStr)) {
+            s += 8; reasons.push('data evidence');
+        }
+        if (template) { s -= 12; reasons.push('template (data query)'); }
     }
 
-    // (d) readability bonus — a file whose content we can actually extract
-    //     is much more useful than a binary we can only see metadata for.
+    // (d) readability bonus — smaller than before so it cannot by itself
+    //     elevate a wrong-kind file above a right-kind unreadable one.
     if (row.r2_object_key && isReadableFormat(row.filename || row.title, row.type || row.file_type)) {
-        s += 4; reasons.push('readable');
+        s += 2; reasons.push('readable');
     }
 
     // (e) approved / active status bonus (SOPs especially should be approved)
@@ -170,26 +249,19 @@ function scoreCandidate(row, intent, opts) {
     }
     if (row.status === 'DISCARDED') s -= 100; // effectively excludes
 
-    // (f) template / admin penalty when the user asked for a scientific
-    //     artefact (paper, SOP content, report, data)
-    const looksTemplate = TEMPLATE_HINTS.test(title);
-    const looksAdmin = ADMIN_HINTS.test(title);
-    if (looksTemplate && (intent.flags.wantsPaper || intent.flags.wantsSop ||
-                          intent.flags.wantsReport || intent.flags.wantsData)) {
-        s -= 6; reasons.push('looks like template/form');
-    }
-    if (looksAdmin) {
-        s -= 3;
-    }
+    // (f) admin penalty — small across the board.
+    if (ADMIN_HINTS.test(title)) { s -= 3; reasons.push('admin-like'); }
 
-    // (g) recency — linear decay over 180d, doubled if user asked "latest"
+    // (g) recency — linear decay over 180d. Doubled if user asked "latest",
+    //     but capped so recency alone cannot lift a wrong-kind candidate
+    //     past the intent threshold.
     const now = opts.now || Date.now();
     const t = row.date ? new Date(row.date).getTime() : 0;
     if (t) {
         const ageDays = Math.max(0, (now - t) / (1000 * 3600 * 24));
         const recencyPts = Math.max(0, 5 - (ageDays / 36));
         s += recencyPts;
-        if (intent.flags.wantsLatest) s += recencyPts;
+        if (intent.flags.wantsLatest) s += Math.min(recencyPts, 3);
     }
 
     // (h) missing R2 key — we can't actually read the file
@@ -556,6 +628,8 @@ module.exports = {
     tokenize,
     classifyIntent,
     isReadableFormat,
+    isLikelyTemplate,
+    minScoreForIntent,
     scoreCandidate,
     rankCandidates,
     confidenceOf,

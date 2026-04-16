@@ -175,6 +175,53 @@ async function streamToBuffer(stream) {
   return Buffer.concat(chunks);
 }
 
+// ---------------------------------------------------------------------------
+// r2BodyToBuffer — normalize any R2 GetObject response body into a Buffer.
+//
+// The AWS S3 SDK v3 used by R2 returns a `Body` that, on Node.js, is a
+// readable stream (a `ChecksumStream` wrapping a `Readable`). Passing that
+// directly to pdf-parse / mammoth / xlsx yields:
+//   "The first argument must be of type string or an instance of Buffer,
+//    ArrayBuffer, or Array or an Array-like Object. Received an instance of
+//    ChecksumStream"
+// This helper accepts anything the SDK might hand back and always returns a
+// Buffer — or throws a clear error so callers can skip that candidate and
+// try the next one.
+// ---------------------------------------------------------------------------
+async function r2BodyToBuffer(body) {
+  if (body == null) throw new Error('empty R2 body');
+  if (Buffer.isBuffer(body)) return body;
+  if (typeof body === 'string') return Buffer.from(body, 'utf8');
+  if (body instanceof Uint8Array) return Buffer.from(body);
+  if (typeof ArrayBuffer !== 'undefined' && body instanceof ArrayBuffer) {
+    return Buffer.from(new Uint8Array(body));
+  }
+  // SDK v3 exposes transformToByteArray() on stream bodies — cheapest path.
+  if (typeof body.transformToByteArray === 'function') {
+    const arr = await body.transformToByteArray();
+    return Buffer.from(arr);
+  }
+  // Node Readable / ChecksumStream / any async-iterable stream.
+  if (typeof body.pipe === 'function' || typeof body[Symbol.asyncIterator] === 'function') {
+    return await streamToBuffer(body);
+  }
+  // As a last resort, if it looks array-like, let Buffer.from try it.
+  if (typeof body.length === 'number') {
+    try { return Buffer.from(body); } catch (_) { /* fall through */ }
+  }
+  throw new Error('Unsupported R2 body type: '
+    + (body && body.constructor && body.constructor.name || typeof body));
+}
+
+// Thin wrapper — fetch an R2 object by key and return a fully-materialised
+// Buffer. Used by Zoe Phase 4 retrieval + document endpoints. Never touches
+// AWS S3 backup; reads live R2 only via downloadFromR2.
+async function fetchR2ObjectAsBuffer(key) {
+  const obj = await downloadFromR2(key);
+  const body = (obj && (obj.Body != null ? obj.Body : obj.body != null ? obj.body : obj));
+  return await r2BodyToBuffer(body);
+}
+
 function isR2Id(value) {
   return typeof value === 'string' && /^r2:/i.test(value);
 }
@@ -23128,16 +23175,14 @@ app.get('/api/zoe/document/:id', requirePIRead, async (req, res) => {
             });
         }
 
-        // Extract — bounded by ZOE_DOC_MAX_CHARS
+        // Extract — bounded by ZOE_DOC_MAX_CHARS.
+        // Phase 4 fix: always materialise the R2 body into a real Buffer via
+        // fetchR2ObjectAsBuffer, which handles Node streams / ChecksumStream
+        // / Uint8Array / string (the SDK-v3 Body is a stream, not a Buffer).
         try {
             const normKey = typeof normalizeR2Key === 'function' ? normalizeR2Key(r2Key) : r2Key;
-            const obj = await downloadFromR2(normKey);
-            const buf = obj && (obj.Body || obj.body || obj) && Buffer.isBuffer(obj.Body) ? obj.Body
-                        : Buffer.isBuffer(obj) ? obj
-                        : Buffer.isBuffer(obj?.body) ? obj.body
-                        : null;
-            const buffer = buf || (obj?.Body ? Buffer.from(obj.Body) : null);
-            if (!buffer) throw new Error('Empty buffer from storage');
+            const buffer = await fetchR2ObjectAsBuffer(normKey);
+            if (!buffer || !buffer.length) throw new Error('Empty buffer from storage');
             const out = await zoeExtractFromBuffer(buffer, fileType, filename);
             if (out && out.text != null) {
                 return res.json({
@@ -23307,31 +23352,74 @@ app.post('/api/zoe/retrieve', requirePIRead, async (req, res) => {
             });
         }
 
+        // Phase 4.1: minimum-score guard per intent. Prevents selecting an
+        // irrelevant readable file (e.g. "SOP Template 7" for a paper query)
+        // just because the top candidate was the only thing the ILIKE search
+        // matched. If nothing clears the bar we return selected=null and the
+        // candidate list, so the prompt falls back to "I could not find a
+        // matching file" rather than hallucinating an answer.
+        const minScore = zoeRetrieval.minScoreForIntent(intent);
         for (let i = 0; i < topCandidates.length; i++) {
             const cand = topCandidates[i];
             if (!cand.r2_object_key) {
-                attemptLog.push({ id: cand.id, skipped: true, reason: 'no r2 key' });
+                attemptLog.push({ id: cand.id, title: cand.title, skipped: true, reason: 'no_r2_key' });
+                continue;
+            }
+            if (typeof cand.score === 'number' && cand.score < minScore) {
+                attemptLog.push({
+                    id: cand.id, title: cand.title, skipped: true,
+                    reason: 'score_below_threshold',
+                    score: cand.score, threshold: minScore
+                });
+                continue;
+            }
+            if (zoeRetrieval.isLikelyTemplate(cand) &&
+                (intent.flags.wantsPaper || intent.flags.wantsReport || intent.flags.wantsData)) {
+                attemptLog.push({
+                    id: cand.id, title: cand.title, skipped: true,
+                    reason: 'template_penalty_for_scientific_query'
+                });
+                continue;
+            }
+            if (!cand.readable) {
+                attemptLog.push({
+                    id: cand.id, title: cand.title, skipped: true, reason: 'unreadable_format'
+                });
                 continue;
             }
             try {
                 const normKey = typeof normalizeR2Key === 'function'
                     ? normalizeR2Key(cand.r2_object_key) : cand.r2_object_key;
-                const obj = await downloadFromR2(normKey);
-                const buf = Buffer.isBuffer(obj) ? obj
-                    : (obj && Buffer.isBuffer(obj.Body)) ? obj.Body
-                    : (obj && Buffer.isBuffer(obj.body)) ? obj.body
-                    : (obj && obj.Body) ? Buffer.from(obj.Body)
-                    : null;
-                if (!buf) {
-                    attemptLog.push({ id: cand.id, skipped: true, reason: 'empty buffer' });
+                let buffer;
+                try {
+                    buffer = await fetchR2ObjectAsBuffer(normKey);
+                } catch (streamErr) {
+                    attemptLog.push({
+                        id: cand.id, title: cand.title, success: false,
+                        reason: 'stream_normalization_failed',
+                        error: streamErr.message
+                    });
+                    continue;
+                }
+                if (!buffer || !buffer.length) {
+                    attemptLog.push({
+                        id: cand.id, title: cand.title, skipped: true,
+                        reason: 'empty_buffer'
+                    });
                     continue;
                 }
                 const ext = await zoeRetrieval.extractContent(
-                    buf, cand.type || cand.file_type, cand.filename || cand.title
+                    buffer, cand.type || cand.file_type, cand.filename || cand.title
                 );
                 attemptLog.push({
-                    id: cand.id, success: !!ext.success, readable: !!ext.readable,
-                    parser: ext.parser, quality: ext.quality || null, error: ext.error || null
+                    id: cand.id, title: cand.title,
+                    success: !!ext.success, readable: !!ext.readable,
+                    parser: ext.parser, quality: ext.quality || null,
+                    reason: ext.success
+                        ? (ext.readable ? 'selected' : 'extracted_empty_text')
+                        : 'extraction_failed',
+                    error: ext.error || null,
+                    stream_normalized: true
                 });
                 if (ext && ext.success && ext.readable) {
                     selected = cand;
@@ -23340,7 +23428,10 @@ app.post('/api/zoe/retrieve', requirePIRead, async (req, res) => {
                     break;
                 }
             } catch (err) {
-                attemptLog.push({ id: cand.id, success: false, error: err.message });
+                attemptLog.push({
+                    id: cand.id, title: cand.title, success: false,
+                    reason: 'unexpected_error', error: err.message
+                });
                 continue;
             }
         }
