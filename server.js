@@ -22833,6 +22833,177 @@ function zoeDocCanReadContent(filename, fileType) {
     return /pdf|text|csv|json|excel|spreadsheet|markdown|word|document|presentation|powerpoint/.test(t);
 }
 
+// ---------------------------------------------------------------------------
+// Phase 4.2 — additional candidate sources for Zoe retrieval.
+//
+// The PI-visible Document Intelligence Cards expose three document sources:
+//   1. di_submissions (PI portal + researcher uploads)  — already wired
+//   2. di_group_documents (shared lab files)            — already wired
+//   3. Internal-docs on R2 (group-docs/internal/<cat>/) — NEW here
+//   4. rd_documents (R&D project documents, with rd_projects) — NEW here
+// Source 3 is where "Papers" (/api/internal-docs/list?category=papers) are
+// read from. These files have no database row — metadata is derived from the
+// R2 listing alone. Source 4 mirrors how /api/rd/documents resolves project
+// files. Both additions are purely additive: no schema change, no migration.
+//
+// Permissions: both helpers are called from Zoe endpoints that already carry
+// requirePIRead (PI + AI_bot). Neither broadens visibility beyond what the
+// same user can see via the existing PI Dashboard endpoints.
+// AWS S3 backup is NEVER touched — we read live R2 via listR2Prefix/
+// downloadFromR2 only.
+// ---------------------------------------------------------------------------
+
+// Map an internal-docs category slug to the "type" label used by Zoe's
+// ranker. Categories other than "papers" are general folders the PI uses
+// for grants/projects/collaborators/other.
+const INTDOC_TYPE_MAP = {
+    papers: 'PAPER',
+    projects: 'PROJECT_DOC',
+    grants: 'GRANT_DOC',
+    collaborators: 'COLLAB_DOC',
+    other: 'OTHER'
+};
+
+// List all files under group-docs/internal/ (excluding trash + .keep
+// placeholders) and shape them as Zoe candidate rows. For "papers" the
+// category is rendered as type='PAPER' so the ranker's paper-evidence test
+// matches. No DB hit — just an S3 ListObjects against the R2 bucket.
+async function zoeListInternalDocs() {
+    try {
+        if (typeof listR2Prefix !== 'function') return [];
+        const objects = await listR2Prefix(INTDOC_PREFIX);
+        const validSlugs = Object.values(INTDOC_CATEGORIES);
+        const rows = [];
+        for (const o of (objects || [])) {
+            const key = o.Key || '';
+            if (!key || key.endsWith('/.keep')) continue;
+            if (key.startsWith(INTDOC_TRASH)) continue;
+            const rel = key.substring(INTDOC_PREFIX.length);
+            const parts = rel.split('/');
+            const catSlug = parts[0] || '';
+            if (!validSlugs.includes(catSlug)) continue;
+            // Skip category/folder-root placeholders (no filename component)
+            const filename = parts[parts.length - 1];
+            if (!filename) continue;
+            const folderHint = (parts.length > 2 ? parts[1] : '');
+            rows.push({
+                // Opaque ID: the R2 key is the authoritative pointer. base64url
+                // keeps it URL-safe for GET /api/zoe/document/:id.
+                id: 'idp:' + Buffer.from(key, 'utf8').toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''),
+                title: filename,
+                filename,
+                type: INTDOC_TYPE_MAP[catSlug] || 'OTHER',
+                category: catSlug,
+                status: 'ACTIVE',
+                uploader: null,
+                date: o.LastModified || null,
+                project_id: null,
+                project_name: folderHint || null,
+                r2_object_key: key,
+                source_kind: 'internal_doc'
+            });
+        }
+        return rows;
+    } catch (e) {
+        console.warn('[ZOE] internal-docs listing failed (non-fatal):', e.message);
+        return [];
+    }
+}
+
+// ILIKE search across rd_documents joined to rd_projects. Workspace-scoped
+// with the same wsId used by /api/rd/documents. Column name is r2_key (not
+// r2_object_key), so we alias it on the way out so the rest of the pipeline
+// doesn't need to special-case.
+async function zoeSearchRdDocuments(wsId, patterns) {
+    try {
+        if (!patterns || patterns.length === 0) return [];
+        const hasRd = await checkRdTables().catch(() => false);
+        if (!hasRd) return [];
+        const placeholders = patterns.map((_, i) => '$' + (i + 2)).join(',');
+        const sql = `
+            SELECT d.id, d.title, d.filename, d.file_type, d.document_type,
+                   d.r2_key AS r2_object_key, d.uploaded_by, d.created_at,
+                   d.project_id, p.title AS project_name
+            FROM rd_documents d
+            LEFT JOIN rd_projects p ON p.id = d.project_id
+            WHERE d.workspace_id = $1
+              AND (
+                COALESCE(d.title, '')         ILIKE ANY (ARRAY[${placeholders}])
+                OR COALESCE(d.filename, '')   ILIKE ANY (ARRAY[${placeholders}])
+                OR COALESCE(d.document_type,'') ILIKE ANY (ARRAY[${placeholders}])
+                OR COALESCE(p.title, '')      ILIKE ANY (ARRAY[${placeholders}])
+              )
+            ORDER BY d.created_at DESC NULLS LAST
+            LIMIT 40`;
+        const r = await pool.query(sql, [wsId, ...patterns]);
+        return (r.rows || []).map(row => ({
+            id: 'rdd:' + row.id,
+            title: row.title || row.filename,
+            filename: row.filename,
+            type: row.document_type || row.file_type,
+            category: row.document_type || null,
+            status: 'ACTIVE',
+            uploader: row.uploaded_by,
+            date: row.created_at,
+            project_id: row.project_id || null,
+            project_name: row.project_name || null,
+            r2_object_key: row.r2_object_key,
+            source_kind: 'rd_document'
+        }));
+    } catch (e) {
+        console.warn('[ZOE] rd_documents search failed (non-fatal):', e.message);
+        return [];
+    }
+}
+
+// List-mode helper: return recent rd_documents without a search filter, used
+// by /api/zoe/documents. Workspace-scoped.
+async function zoeListRdDocuments(wsId, limit) {
+    try {
+        const hasRd = await checkRdTables().catch(() => false);
+        if (!hasRd) return [];
+        const cap = Math.max(1, Math.min(80, parseInt(limit, 10) || 20));
+        const r = await pool.query(
+            `SELECT d.id, d.title, d.filename, d.document_type, d.file_type,
+                    d.r2_key AS r2_object_key, d.uploaded_by, d.created_at,
+                    d.project_id, p.title AS project_name
+             FROM rd_documents d
+             LEFT JOIN rd_projects p ON p.id = d.project_id
+             WHERE d.workspace_id = $1
+             ORDER BY d.created_at DESC NULLS LAST
+             LIMIT ${cap}`,
+            [wsId]
+        );
+        return (r.rows || []).map(row => ({
+            id: 'rdd:' + row.id,
+            title: row.title || row.filename,
+            filename: row.filename,
+            type: row.document_type || row.file_type,
+            category: row.document_type || null,
+            status: 'ACTIVE',
+            uploader: row.uploaded_by,
+            date: row.created_at,
+            project_id: row.project_id || null,
+            project_name: row.project_name || null,
+            r2_object_key: row.r2_object_key,
+            source_kind: 'rd_document'
+        }));
+    } catch (e) {
+        console.warn('[ZOE] rd_documents listing failed (non-fatal):', e.message);
+        return [];
+    }
+}
+
+// Decode an 'idp:<b64url>' ID back to the R2 key.
+function zoeDecodeIdpKey(raw) {
+    try {
+        const b = String(raw || '').replace(/^idp:/, '');
+        const pad = b.length % 4 === 0 ? '' : '='.repeat(4 - (b.length % 4));
+        const std = b.replace(/-/g, '+').replace(/_/g, '/') + pad;
+        return Buffer.from(std, 'base64').toString('utf8');
+    } catch (_) { return null; }
+}
+
 // GET /api/zoe/documents — compact list of recent portal docs Zoe can read.
 app.get('/api/zoe/documents', requirePIRead, async (req, res) => {
     try {
@@ -22923,9 +23094,35 @@ app.get('/api/zoe/documents', requirePIRead, async (req, res) => {
             }));
         } catch (_) { /* table may be absent */ }
 
-        const documents = [...subItems, ...grpItems]
+        // Phase 4.2: also surface rd_documents (workspace-scoped) and
+        // internal-docs (R2-prefix listing, PI-visible), so manual doc
+        // selection in the Zoe tab mirrors the PI Dashboard DIC view.
+        let rdItems = [];
+        try {
+            const rdRows = await zoeListRdDocuments(wsId, recent ? 15 : 40);
+            rdItems = rdRows.map(r => ({
+                id: r.id, title: r.title, type: r.type, category: r.category,
+                uploader: r.uploader, date: r.date, status: r.status,
+                project_id: r.project_id, project_name: r.project_name,
+                source_kind: 'rd_document',
+                can_read_content: zoeDocCanReadContent(r.filename || r.title, r.type)
+            }));
+        } catch (_) {}
+        let intdocItems = [];
+        try {
+            const rows = await zoeListInternalDocs();
+            intdocItems = rows.slice(0, recent ? 15 : 40).map(r => ({
+                id: r.id, title: r.title, type: r.type, category: r.category,
+                uploader: r.uploader, date: r.date, status: r.status,
+                project_id: r.project_id, project_name: r.project_name,
+                source_kind: 'internal_doc',
+                can_read_content: zoeDocCanReadContent(r.filename || r.title, r.type)
+            }));
+        } catch (_) {}
+
+        const documents = [...subItems, ...grpItems, ...rdItems, ...intdocItems]
             .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))
-            .slice(0, recent ? 25 : 80);
+            .slice(0, recent ? 25 : 120);
 
         res.json({ count: documents.length, documents });
     } catch (err) {
@@ -23024,6 +23221,18 @@ app.get('/api/zoe/find-document', requirePIRead, async (req, res) => {
         // retrieval service. This adds readability bonus, template/admin
         // penalties, and a session project-continuity bonus (when provided).
         const intent = zoeRetrieval.classifyIntent(rawQ);
+        // Phase 4.2: also pull from rd_documents + internal-docs R2 prefix
+        // (the "Papers" source), so the resolver mirrors PI DIC visibility.
+        const [rdExtra, intdocAll] = await Promise.all([
+            zoeSearchRdDocuments(wsId, patterns),
+            zoeListInternalDocs(),
+        ]);
+        const lcTokens = (intent.tokens || []).map(t => t.toLowerCase());
+        const intdocExtra = intdocAll.filter(c => {
+            if (lcTokens.length === 0) return true;
+            const hay = (c.title + ' ' + (c.project_name || '') + ' ' + (c.category || '')).toLowerCase();
+            return lcTokens.some(t => hay.includes(t));
+        });
         // Blend in the legacy frontend "type hints" so callers still get the
         // old flags in the response for diagnostic continuity.
         const rows = [
@@ -23044,6 +23253,8 @@ app.get('/api/zoe/find-document', requirePIRead, async (req, res) => {
                 r2_object_key: r.r2_object_key,
                 source_kind: 'group_document',
             })),
+            ...rdExtra,
+            ...intdocExtra,
         ];
         const projectHintId = req.query.active_project_id
             ? parseInt(req.query.active_project_id, 10) : null;
@@ -23089,6 +23300,8 @@ app.get('/api/zoe/document/:id', requirePIRead, async (req, res) => {
         let key = raw;
         if (raw.startsWith('sub:')) { kind = 'submission'; key = raw.slice(4); }
         else if (raw.startsWith('grp:')) { kind = 'group_document'; key = raw.slice(4); }
+        else if (raw.startsWith('rdd:')) { kind = 'rd_document'; key = raw.slice(4); }
+        else if (raw.startsWith('idp:')) { kind = 'internal_doc'; key = raw; /* keep full id for decoder */ }
         else if (/^\d+$/.test(raw)) { kind = 'group_document'; key = raw; }
 
         let meta = null;
@@ -23135,6 +23348,70 @@ app.get('/api/zoe/document/:id', requirePIRead, async (req, res) => {
             r2Key = row.r2_object_key;
             filename = row.original_filename;
             fileType = row.file_type;
+        } else if (kind === 'rd_document') {
+            // Phase 4.2: R&D project documents.
+            const wsId = req.session.user.workspace_id || DEFAULT_WORKSPACE_ID;
+            const q = await pool.query(
+                `SELECT d.id, d.title, d.filename, d.document_type, d.file_type,
+                        d.r2_key, d.uploaded_by, d.created_at,
+                        d.workspace_id, d.project_id, p.title AS project_name
+                 FROM rd_documents d
+                 LEFT JOIN rd_projects p ON p.id = d.project_id
+                 WHERE d.id = $1`,
+                [key]
+            );
+            if (q.rows.length === 0) return res.status(404).json({ error: 'Document not found' });
+            const row = q.rows[0];
+            if (row.workspace_id != null && wsId != null &&
+                String(row.workspace_id) !== String(wsId)) {
+                return res.status(403).json({ error: 'Document outside workspace scope' });
+            }
+            meta = {
+                id: raw,
+                title: row.title || row.filename,
+                type: row.document_type || row.file_type,
+                category: row.document_type || null,
+                uploader: row.uploaded_by,
+                date: row.created_at,
+                status: 'ACTIVE',
+                project_id: row.project_id || null,
+                project_name: row.project_name || null,
+                source_kind: 'rd_document'
+            };
+            r2Key = row.r2_key;
+            filename = row.filename;
+            fileType = row.document_type || row.file_type;
+        } else if (kind === 'internal_doc') {
+            // Phase 4.2: PI-managed R2-native internal docs (Papers, etc.).
+            // No DB row — the R2 key itself is the pointer. Permissions are
+            // already enforced by requirePIRead on this endpoint.
+            const r2KeyDecoded = zoeDecodeIdpKey(raw);
+            if (!r2KeyDecoded || !r2KeyDecoded.startsWith(INTDOC_PREFIX)
+                || r2KeyDecoded.startsWith(INTDOC_TRASH)) {
+                return res.status(404).json({ error: 'Document not found' });
+            }
+            const rel = r2KeyDecoded.substring(INTDOC_PREFIX.length);
+            const parts = rel.split('/');
+            const catSlug = parts[0] || '';
+            const fname = parts[parts.length - 1];
+            if (!INTDOC_CATEGORIES[catSlug]) {
+                return res.status(404).json({ error: 'Document not found' });
+            }
+            meta = {
+                id: raw,
+                title: fname,
+                type: INTDOC_TYPE_MAP[catSlug] || 'OTHER',
+                category: catSlug,
+                uploader: null,
+                date: null,
+                status: 'ACTIVE',
+                project_id: null,
+                project_name: parts.length > 2 ? parts[1] : null,
+                source_kind: 'internal_doc'
+            };
+            r2Key = r2KeyDecoded;
+            filename = fname;
+            fileType = INTDOC_TYPE_MAP[catSlug] || null;
         } else {
             const q = await pool.query(
                 `SELECT id, title, category, description, filename, file_type, r2_object_key,
@@ -23310,6 +23587,25 @@ app.post('/api/zoe/retrieve', requirePIRead, async (req, res) => {
             grpRows = (await pool.query(grpSql, patterns)).rows;
         } catch (_) {}
 
+        // Phase 4.2 additional sources — parallel fetch, safe on failure.
+        // (a) rd_documents: R&D project docs, workspace-scoped, joined to
+        //     rd_projects for project_name.
+        // (b) internal-docs: flat R2 listing under group-docs/internal/,
+        //     filtered in-process by the token patterns (no DB to query).
+        const [rdRowsRaw, intdocRowsAll] = await Promise.all([
+            zoeSearchRdDocuments(wsId, patterns),
+            zoeListInternalDocs(),
+        ]);
+        // In-process filter for internal-docs: keep files whose filename or
+        // folder hint matches at least one token. Papers always stay in
+        // contention (flat folder), folders are filtered per token.
+        const lcTokens = (intent.tokens || []).map(t => t.toLowerCase());
+        const intdocRows = intdocRowsAll.filter(c => {
+            if (lcTokens.length === 0) return true;
+            const hay = (c.title + ' ' + (c.project_name || '') + ' ' + (c.category || '')).toLowerCase();
+            return lcTokens.some(t => hay.includes(t));
+        });
+
         // 3) Rank
         const normalizedRows = [
             ...subRows.map(r => ({
@@ -23326,7 +23622,14 @@ app.post('/api/zoe/retrieve', requirePIRead, async (req, res) => {
                 project_id: null, project_name: null,
                 r2_object_key: r.r2_object_key, source_kind: 'group_document',
             })),
+            ...rdRowsRaw,       // already normalized by zoeSearchRdDocuments
+            ...intdocRows,      // already normalized by zoeListInternalDocs
         ];
+        console.log('[ZOE-RETRIEVE] sources:'
+            + ' di_submissions=' + subRows.length
+            + ' di_group_documents=' + grpRows.length
+            + ' rd_documents=' + rdRowsRaw.length
+            + ' internal_docs=' + intdocRows.length + '/' + intdocRowsAll.length);
         const projectHintId = sessionMemory.currentProjectId
             ? parseInt(sessionMemory.currentProjectId, 10) : null;
         const ranked = zoeRetrieval.rankCandidates(normalizedRows, intent, { projectHintId });
@@ -23491,6 +23794,7 @@ app.post('/api/zoe/retrieve', requirePIRead, async (req, res) => {
             candidates: topCandidates.map(c => ({
                 id: c.id, title: c.title,
                 source_kind: c.source_kind, type: c.type,
+                category: c.category || null,
                 project_name: c.project_name || null,
                 status: c.status || null, date: c.date || null,
                 score: c.score, match_reason: c.match_reason,
