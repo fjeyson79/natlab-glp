@@ -13927,6 +13927,14 @@ function dicBuildPdfViewerSrc(fileUrl) {
         activeDocId: null,  // Manually selected document (sticky)
         resolvedDocId: null, // Auto-resolved by find-document (sticky until topic switch)
         resolvedDocTitle: null,
+        // --- Phase 4 working memory (tab-local, conversation-scoped) -----
+        currentWorkspace: null,         // slug or id, best-effort
+        currentProjectId: null,         // live rd_projects.id if known
+        currentProjectName: null,
+        currentDocument: null,          // { id, title, source_kind, project_name }
+        previousCandidates: [],         // last /api/zoe/retrieve candidate list
+        recentAnswerSummary: null,      // first ~320 chars of the last Zoe reply
+        lastTrace: null,                // last retrieval trace (debug only)
     };
 
     // Detect document-oriented intents. Intentionally permissive — false
@@ -14170,39 +14178,108 @@ function dicBuildPdfViewerSrc(fileUrl) {
         if (zoeShouldClearResolved(msg)) {
             ZOE.resolvedDocId = null; ZOE.resolvedDocTitle = null; zoeRefreshResolvedBanner();
         }
-        let resolverResult = null; // { confidence, matches } — only set when we called find-document this turn
+        let resolverResult = null; // { confidence, matches } — only set when we called the resolver this turn
         let selectedDoc = null;
+        let retrieveTrace = null;
+        let fallbackUsed = false;
         const docIntent = zoeDetectDocIntent(msg);
         if (ZOE.activeDocId) {
             try {
                 const dr = await fetch('/api/zoe/document/' + encodeURIComponent(ZOE.activeDocId), { credentials: 'include' });
                 if (dr.ok) selectedDoc = await dr.json();
             } catch (_) {}
-        } else if (docIntent || (!docIntent && ZOE.resolvedDocId)) {
-            // Doc-intent: try to resolve fresh. Otherwise, follow-up on resolved doc.
-            if (docIntent) {
-                try {
-                    const fr = await fetch('/api/zoe/find-document?q=' + encodeURIComponent(msg), { credentials: 'include' });
-                    if (fr.ok) resolverResult = await fr.json();
-                } catch (_) {}
-                if (resolverResult && Array.isArray(resolverResult.matches) && resolverResult.matches.length > 0) {
-                    if (resolverResult.confidence === 'high') {
-                        // Auto-pick top
-                        ZOE.resolvedDocId = resolverResult.matches[0].id;
-                        ZOE.resolvedDocTitle = resolverResult.matches[0].title;
+        } else if (docIntent) {
+            // Phase 4: unified retrieve endpoint does intent + rank + R2 fetch
+            // + extract + unreadable-fallback in one shot and returns the
+            // selected doc + trace. Passes session memory so the ranker can
+            // apply project continuity.
+            try {
+                const rr = await fetch('/api/zoe/retrieve', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        question: msg,
+                        max_candidates: 5,
+                        memory: {
+                            currentProjectId: ZOE.currentProjectId,
+                            currentProject: ZOE.currentProjectName,
+                            currentDocument: ZOE.currentDocument,
+                            recentAnswerSummary: ZOE.recentAnswerSummary
+                        }
+                    })
+                });
+                if (rr.ok) {
+                    const data = await rr.json();
+                    retrieveTrace = data.trace || null;
+                    fallbackUsed = !!data.fallback_used;
+                    ZOE.previousCandidates = data.candidates || [];
+                    // Preserve legacy resolverResult shape for the existing
+                    // "candidates" / "no matches" prompt paths below.
+                    resolverResult = {
+                        query: msg,
+                        confidence: data.confidence,
+                        matches: (data.candidates || []).map(c => ({
+                            id: c.id, title: c.title, type: c.type,
+                            date: c.date, source_kind: c.source_kind,
+                            score: c.score, match_reason: c.match_reason
+                        }))
+                    };
+                    if (data.selected && data.extraction) {
+                        ZOE.resolvedDocId = data.selected.id;
+                        ZOE.resolvedDocTitle = data.selected.title;
+                        ZOE.currentDocument = {
+                            id: data.selected.id, title: data.selected.title,
+                            source_kind: data.selected.source_kind,
+                            project_name: data.selected.project_name || null
+                        };
+                        if (data.selected.project_id) {
+                            ZOE.currentProjectId = data.selected.project_id;
+                            ZOE.currentProjectName = data.selected.project_name || ZOE.currentProjectName;
+                        }
                         zoeRefreshResolvedBanner();
+                        // Shape selectedDoc like /api/zoe/document/:id so the
+                        // existing prompt-assembly path works unchanged.
+                        selectedDoc = {
+                            id: data.selected.id,
+                            title: data.selected.title,
+                            type: data.extraction.parser,
+                            status: data.selected.status,
+                            uploader: data.selected.uploader,
+                            date: data.selected.date,
+                            project_id: data.selected.project_id || null,
+                            project_name: data.selected.project_name || null,
+                            source_kind: data.selected.source_kind,
+                            text_content: data.extraction.chunked_text || data.extraction.text,
+                            content_truncated: !!data.extraction.content_truncated,
+                            extraction_method: data.extraction.parser,
+                            text_length: data.extraction.text_length || 0,
+                            pages: data.extraction.pages || null,
+                            sheets: data.extraction.sheets || null,
+                            slides: data.extraction.slides || null,
+                            quality: data.extraction.quality || null,
+                            fallback_used: fallbackUsed,
+                            notes: data.extraction.content_truncated
+                                ? 'Content truncated — showing beginning of document.'
+                                : (fallbackUsed ? 'Top-ranked candidate was unreadable; used next readable candidate.' : null)
+                        };
                     } else {
-                        // Medium/low: don't auto-pick. Keep any prior resolved doc, but
-                        // pass candidate list to Zoe so she can ask the user to choose.
+                        // No readable selection. Keep candidate list for disambiguation.
                     }
                 }
-            }
-            if (ZOE.resolvedDocId) {
-                try {
-                    const dr = await fetch('/api/zoe/document/' + encodeURIComponent(ZOE.resolvedDocId), { credentials: 'include' });
-                    if (dr.ok) selectedDoc = await dr.json();
-                } catch (_) {}
-            }
+            } catch (_) { /* non-fatal — fall through to legacy resolved-doc follow-up */ }
+        } else if (!docIntent && ZOE.resolvedDocId) {
+            // Follow-up on a previously resolved doc (no new doc intent).
+            try {
+                const dr = await fetch('/api/zoe/document/' + encodeURIComponent(ZOE.resolvedDocId), { credentials: 'include' });
+                if (dr.ok) selectedDoc = await dr.json();
+            } catch (_) {}
+        }
+        ZOE.lastTrace = retrieveTrace;
+        if (retrieveTrace) {
+            try {
+                console.log('[Zoe/trace]', JSON.stringify(retrieveTrace));
+            } catch (_) {}
         }
 
         // projects_derived=true means the project overview was reconstructed
@@ -14237,6 +14314,8 @@ function dicBuildPdfViewerSrc(fileUrl) {
             // ---- Document grounding rules -------------------------------
             selectedDoc ? 'Document grounding: the ' + (ZOE.activeDocId ? 'SELECTED' : 'RESOLVED') + ' DOCUMENT is authoritative. Base your answer on its "text_content". Mention the document title naturally. Analyzer style for scientific papers: (a) what the file says, (b) key interpretation / main innovation / mechanism / key result, (c) relevance to current projects and "draft_projects" (e.g. TOUCAN), (d) suggested next step if useful.' : '',
             selectedDoc ? 'Truncation: if "content_truncated" is true, state explicitly that you only have the beginning of the document — do not claim to have read the full file. If "text_content" is null, say "I found the document but its readable content is not available" and reason only from metadata; do NOT ask for the file location.' : '',
+            (selectedDoc && selectedDoc.fallback_used) ? 'FALLBACK USED: the top-ranked candidate was unreadable; you are reading the next-best readable candidate. Mention this briefly ("noting: the top match was unreadable, so I used the next candidate") so the PI knows.' : '',
+            (selectedDoc && selectedDoc.quality) ? ('EXTRACTION QUALITY: ' + selectedDoc.quality + '. Scale your confidence accordingly — "high" = analyze freely; "medium" = grounded but hedge where text is thin; "low" = flag explicitly that the extracted content is too sparse for a strong conclusion.') : '',
             hasCandidates ? 'CANDIDATE DOCUMENTS are included. Say: "I found likely matches; please confirm which one you want", list the top candidates by title + date, and let the user pick. If one has a noticeably higher score, you may proceed with it and state which one you chose and why.' : '',
             noMatchesAtAll ? 'NO MATCHES were found for the file the user asked about. Say plainly: "I could not find a matching file in the portal" and offer 1–2 refinement suggestions. Do NOT ask for a file path or upload.' : '',
             capabilityQ ? 'CAPABILITY QUESTION: the user is asking about your abilities. Answer affirmatively and concretely: yes, you can search for and read documents stored in the portal when they are retrievable and in a readable format; you can analyze papers, SOPs, presentations, reports, and common data files (PDF, TXT/MD, JSON, CSV/XLS/XLSX); image-only or unsupported binaries fall back to metadata. Do NOT list limitations as if they were the default.' : ''
@@ -14273,7 +14352,14 @@ function dicBuildPdfViewerSrc(fileUrl) {
                 else zoeAppendMsg('zoe', 'Zoe is unavailable right now (' + r.status + '). ' + (data.error || ''));
                 return;
             }
-            zoeAppendMsg('zoe', data.reply || data.error || '(no reply)');
+            const reply = data.reply || data.error || '(no reply)';
+            zoeAppendMsg('zoe', reply);
+            // Phase 4: short working memory — remember a compact summary of
+            // the most recent answer so follow-ups ("compare with the SOP",
+            // "tell me the methods") can be grounded in context continuity.
+            try {
+                ZOE.recentAnswerSummary = String(reply).slice(0, 320).replace(/\s+/g, ' ').trim();
+            } catch (_) {}
         } catch (err) {
             thinking.remove();
             zoeAppendMsg('zoe', 'Could not reach Zoe. Check your connection and try again.');

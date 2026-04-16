@@ -21917,7 +21917,25 @@ app.post('/api/investroom/boxes/:id/move', requireCSO, async (req, res) => {
 //   TELEGRAM_WEBHOOK_SECRET     optional, checked against ?secret= query param
 // =====================================================
 
-const ZOE_SYSTEM_READ = "You are Zoe, the personal scientific and lab operations assistant to a PI in molecular medicine. In Read mode, you are analytical, careful, evidence based, thoughtful, and honest about uncertainty. You analyze files, discuss experiments, review data, answer questions about researchers and lab activity, and provide useful scientific feedback without taking actions.";
+// Phase 4 retrieval service — unified intent classification, candidate
+// ranking, R2-only extraction (PDF/DOCX/PPTX/XLSX/CSV/TXT), structure-aware
+// chunking, and trace object. Additive to the legacy helpers below.
+const zoeRetrieval = require('./services/zoeRetrieval');
+const ZOE_SYSTEM_READ = [
+    "You are Zoe, the personal scientific and lab-operations assistant to a PI in molecular medicine.",
+    "In Read mode you are analytical, grounded, critical, evidence-first, and honest about uncertainty.",
+    "Evidence first: ground every claim in retrieved portal metadata or extracted document text; do not guess.",
+    "Source awareness: know whether a statement comes from portal metadata, document content, or a combination. Say so when it matters.",
+    "Critical reading: surface limitations, ambiguity, missing details, version uncertainty, or contradictions you notice.",
+    "Comparative reasoning: when multiple candidates or files are plausible, compare and explain briefly why one is more likely correct.",
+    "Scientific framing (papers, reports): identify objective, methods, main findings, limitations, relevance to the PI's projects.",
+    "Operational framing (SOPs, project files): identify purpose, current status, linked project, version cues, execution implications.",
+    "Confidence expression: signal high / moderate / low confidence based on retrieval + extraction quality; never fake certainty.",
+    "Fallback intelligence: if the best file is unreadable or weak, acknowledge it and continue with the next readable source.",
+    "Context continuity: use the session's active document and recent answers when the user asks follow-ups (\"methods?\", \"compare with the SOP\").",
+    "Concise judgment: a concise first answer, then analytical points if useful — what matters, what is missing, what needs attention. Avoid filler.",
+    "Mention the source file when relevant. Never claim actions were executed in Read mode."
+].join(' ');
 const ZOE_SYSTEM_WORK = "You are Zoe, the personal scientific and lab operations copilot to a PI in molecular medicine. In Work mode, you are proactive, organized, thoughtful, and operationally helpful. You can suggest actions, prepare structured follow up, draft supervision notes, draft feedback, recommend next steps, and support lab workflows within the PI permissions. You must remain transparent, grounded, and never claim actions were executed unless confirmed by the system.";
 
 // In-memory store for Zoe session-uploaded files (ephemeral; not persisted to DB).
@@ -21934,6 +21952,29 @@ const zoeFileStore = new Map();
 // ---------------------------------------------------------------------------
 const ZOE_DOC_MAX_CHARS = 18000;
 async function zoeExtractFromBuffer(buffer, contentType, filename) {
+    // Phase 4: prefer the unified retrieval service, which adds DOCX + PPTX
+    // and returns structure-aware sections. If it fails or returns
+    // unsupported, fall through to the legacy PDF/XLSX/text path below so we
+    // never regress existing callers.
+    try {
+        const out = await zoeRetrieval.extractContent(buffer, contentType, filename);
+        if (out && out.success && out.text != null) {
+            return {
+                text: out.text,
+                extraction_method: out.parser,
+                content_truncated: !!out.content_truncated,
+                pages: out.pages || null,
+                sheets: out.sheets || null,
+                slides: out.slides || null,
+                sections: out.sections || null,
+                quality: out.quality || null,
+            };
+        }
+        // Service returned a structured failure — surface it up unless the
+        // legacy path can handle this mime/ext.
+    } catch (svcErr) {
+        console.warn('[ZOE] retrieval service extract failed, falling back:', svcErr.message);
+    }
     const ext = (filename || '').toLowerCase().split('.').pop();
     const mime = (contentType || '').toLowerCase();
     const clip = (s) => {
@@ -22735,12 +22776,14 @@ app.delete('/api/zoe/project-drafts/:id', requirePI, async (req, res) => {
 // IDs are namespaced as `sub:<submission_id>` and `grp:<id>` so either
 // source can be resolved through the same /api/zoe/document/:id route.
 // ---------------------------------------------------------------------------
-const ZOE_READABLE_EXTS = new Set(['pdf', 'txt', 'md', 'markdown', 'json', 'log', 'csv', 'xls', 'xlsx']);
+// Phase 4: widened readability set to include DOCX + PPTX (now parsed by
+// services/zoeRetrieval). Fallback regex on fileType also widened.
+const ZOE_READABLE_EXTS = new Set(['pdf', 'txt', 'md', 'markdown', 'json', 'log', 'csv', 'xls', 'xlsx', 'docx', 'pptx']);
 function zoeDocCanReadContent(filename, fileType) {
     const ext = (filename || '').toLowerCase().split('.').pop();
     if (ZOE_READABLE_EXTS.has(ext)) return true;
     const t = (fileType || '').toLowerCase();
-    return /pdf|text|csv|json|excel|spreadsheet|markdown/.test(t);
+    return /pdf|text|csv|json|excel|spreadsheet|markdown|word|document|presentation|powerpoint/.test(t);
 }
 
 // GET /api/zoe/documents — compact list of recent portal docs Zoe can read.
@@ -22930,94 +22973,47 @@ app.get('/api/zoe/find-document', requirePIRead, async (req, res) => {
             grpRows = (await pool.query(grpSql, patterns)).rows;
         } catch (_) {}
 
-        const norm = (s) => String(s || '').toLowerCase();
-        const now = Date.now();
-        const score = (row, kind) => {
-            const hay = [
-                norm(row.title), norm(row.filename), norm(row.type),
-                norm(row.category), norm(row.uploader), norm(row.project_name)
-            ].join(' | ');
-            let s = 0;
-            const reasons = [];
-            // Exact full-query substring = strong
-            if (qLower.length >= 3 && hay.includes(qLower)) { s += 40; reasons.push('exact query match'); }
-            // Each token that hits title/filename = 6; other fields = 3
-            const titleHay = norm(row.title || row.filename);
-            for (const t of tokens) {
-                if (!t) continue;
-                if (titleHay.includes(t)) { s += 6; reasons.push(`"${t}" in title`); }
-                else if (hay.includes(t)) { s += 3; }
-            }
-            // Type hints
-            const typeStr = norm((row.type || '') + ' ' + (row.category || '') + ' ' + (row.filename || row.title || ''));
-            if (wantsPaper && /paper|publication|journal|article|\.pdf/.test(typeStr)) { s += 8; reasons.push('matches "paper" hint'); }
-            if (wantsSop && /sop/.test(typeStr)) { s += 8; reasons.push('matches "SOP" hint'); }
-            if (wantsPresentation && /present|slide|deck|ppt/.test(typeStr)) { s += 8; reasons.push('matches "presentation" hint'); }
-            if (wantsReport && /report/.test(typeStr)) { s += 6; reasons.push('matches "report" hint'); }
-            if (wantsData && /data|csv|xls/.test(typeStr)) { s += 6; reasons.push('matches "data" hint'); }
-            // Recency boost (scaled — newest doc gets ~5 points, decays linearly over 180d)
-            const t = row.date ? new Date(row.date).getTime() : 0;
-            if (t) {
-                const ageDays = Math.max(0, (now - t) / (1000 * 3600 * 24));
-                const recencyPts = Math.max(0, 5 - (ageDays / 36));
-                s += recencyPts;
-                if (wantsLatest) s += recencyPts; // double-weight when user asked for latest
-            }
-            // No object key = can't actually read — penalize
-            if (!row.r2_object_key) { s -= 6; reasons.push('no stored object'); }
-            return { s, reasons };
-        };
-
-        const scored = [];
-        for (const r of subRows) {
-            const sc = score(r, 'submission');
-            scored.push({
-                id: `sub:${r.id}`,
-                title: r.title,
-                type: r.type,
-                category: r.type,
-                date: r.date,
-                uploader: r.uploader,
+        // Phase 4: delegate scoring + ranking + confidence to the unified
+        // retrieval service. This adds readability bonus, template/admin
+        // penalties, and a session project-continuity bonus (when provided).
+        const intent = zoeRetrieval.classifyIntent(rawQ);
+        // Blend in the legacy frontend "type hints" so callers still get the
+        // old flags in the response for diagnostic continuity.
+        const rows = [
+            ...subRows.map(r => ({
+                id: `sub:${r.id}`, title: r.title, filename: r.title,
+                type: r.type, category: r.type, date: r.date,
+                uploader: r.uploader, status: r.status,
                 project_id: r.project_id || null,
                 project_name: r.project_name || null,
+                r2_object_key: r.r2_object_key,
                 source_kind: 'submission',
-                score: sc.s,
-                match_reason: sc.reasons.slice(0, 3).join('; ') || 'field match',
-                can_read_content: !!r.r2_object_key && zoeDocCanReadContent(r.title, r.type)
-            });
-        }
-        for (const r of grpRows) {
-            const sc = score({ ...r, title: r.title || r.filename, type: r.file_type, date: r.created_at, uploader: r.uploaded_by }, 'group');
-            scored.push({
-                id: `grp:${r.id}`,
-                title: r.title || r.filename,
-                type: r.file_type,
-                category: r.category,
-                date: r.created_at,
-                uploader: r.uploaded_by,
-                project_id: null,
-                project_name: null,
+            })),
+            ...grpRows.map(r => ({
+                id: `grp:${r.id}`, title: r.title || r.filename,
+                filename: r.filename, type: r.file_type, category: r.category,
+                date: r.created_at, uploader: r.uploaded_by, status: 'ACTIVE',
+                project_id: null, project_name: null,
+                r2_object_key: r.r2_object_key,
                 source_kind: 'group_document',
-                score: sc.s,
-                match_reason: sc.reasons.slice(0, 3).join('; ') || 'field match',
-                can_read_content: !!r.r2_object_key && zoeDocCanReadContent(r.filename, r.file_type)
-            });
-        }
-
-        scored.sort((a, b) => b.score - a.score || new Date(b.date || 0) - new Date(a.date || 0));
-        const top = scored.slice(0, 5);
-
-        // Confidence buckets (for UI auto-read threshold):
-        //   high: best score ≥ 15 AND (top gap ≥ 8 OR only one match)
-        //   medium: best score ≥ 8
-        //   low: otherwise
-        let confidence = 'low';
-        if (top.length > 0) {
-            const best = top[0].score;
-            const second = top[1] ? top[1].score : 0;
-            if (best >= 15 && (top.length === 1 || (best - second) >= 8)) confidence = 'high';
-            else if (best >= 8) confidence = 'medium';
-        }
+            })),
+        ];
+        const projectHintId = req.query.active_project_id
+            ? parseInt(req.query.active_project_id, 10) : null;
+        const ranked = zoeRetrieval.rankCandidates(rows, intent, { projectHintId });
+        const top = ranked.slice(0, 5).map(c => ({
+            id: c.id, title: c.title, type: c.type, category: c.category,
+            date: c.date, uploader: c.uploader,
+            project_id: c.project_id || null, project_name: c.project_name || null,
+            source_kind: c.source_kind,
+            score: c.score, match_reason: c.match_reason,
+            can_read_content: !!c.r2_object_key && zoeDocCanReadContent(c.filename || c.title, c.type),
+            readable: !!c.readable,
+        }));
+        const confidence = zoeRetrieval.confidenceOf(top);
+        console.log('[ZOE-FIND] q="' + rawQ.slice(0, 80) + '" kinds=' + intent.kinds.join(',')
+            + ' results=' + top.length + ' confidence=' + confidence
+            + (top[0] ? ' top="' + (top[0].title || '').slice(0, 60) + '" (score=' + top[0].score + ')' : ''));
 
         res.json({
             query: rawQ,
@@ -23026,6 +23022,7 @@ app.get('/api/zoe/find-document', requirePIRead, async (req, res) => {
                 paper: wantsPaper, sop: wantsSop, presentation: wantsPresentation,
                 report: wantsReport, data: wantsData, latest: wantsLatest
             },
+            intent_kinds: intent.kinds,
             confidence,
             matches: top
         });
@@ -23178,6 +23175,266 @@ app.get('/api/zoe/document/:id', requirePIRead, async (req, res) => {
     } catch (err) {
         console.error('[ZOE-DOC] get error:', err.message);
         res.status(500).json({ error: 'Failed to load document' });
+    }
+});
+
+// ---------------------------------------------------------------------------
+// Phase 4: POST /api/zoe/retrieve
+// ---------------------------------------------------------------------------
+// Unified, one-shot Zoe retrieval pipeline. Given a user question (+ optional
+// session memory hints) this endpoint:
+//   1. Classifies the intent (paper / sop / presentation / data / report).
+//   2. Searches portal metadata that the caller is authorized to see
+//      (di_submissions + di_group_documents, workspace-scoped for subs).
+//   3. Ranks candidates via services/zoeRetrieval (multi-signal scoring with
+//      readability, template/admin penalties, recency, project continuity).
+//   4. Walks the top candidates in score order, fetching each from R2 and
+//      extracting. If a candidate is unreadable (wrong format, empty text,
+//      parser error) it is skipped and the next readable one is tried.
+//   5. Returns { selected, extraction, candidates[], trace } — the caller
+//      (Zoe tab) assembles the prompt. This endpoint does NOT call OpenClaw
+//      itself; it is composable with the existing /api/zoe/chat flow.
+//
+// Permissions: requirePIRead (PI + AI_bot). Workspace scoping identical to
+// the existing /api/zoe/documents and /api/zoe/find-document endpoints.
+// AWS S3 backup is never touched — R2 live only.
+// ---------------------------------------------------------------------------
+app.post('/api/zoe/retrieve', requirePIRead, async (req, res) => {
+    const t0 = Date.now();
+    try {
+        const body = req.body || {};
+        const question = String(body.question || body.q || '').trim();
+        if (!question) return res.status(400).json({ error: 'question required' });
+        const wsId = req.session.user.workspace_id || DEFAULT_WORKSPACE_ID;
+        const sessionMemory = body.memory && typeof body.memory === 'object' ? body.memory : {};
+        const maxCandidates = Math.min(8, Math.max(1, parseInt(body.max_candidates, 10) || 5));
+
+        // 1) Intent classification
+        const intent = zoeRetrieval.classifyIntent(question);
+
+        // 2) Metadata search — reuse the find-document ILIKE pattern logic.
+        //    Tokens come from the retrieval service (broader stopword list).
+        const patterns = (intent.tokens.length > 0 ? intent.tokens : [question.toLowerCase()]).map(t => `%${t}%`);
+        const patternParams = patterns.map((_, i) => `$${i + 2}`);
+
+        let hasProjCol = false, hasRd = false;
+        try { hasProjCol = await hasRdProjectIdCol(); } catch (_) {}
+        try { hasRd = await checkRdTables(); } catch (_) {}
+        const joinable = hasProjCol && hasRd;
+
+        const subOr = [
+            `s.original_filename ILIKE ANY (ARRAY[${patternParams.join(',')}])`,
+            `COALESCE(s.file_type, '') ILIKE ANY (ARRAY[${patternParams.join(',')}])`,
+            `COALESCE(s.uploader_researcher_id, '') ILIKE ANY (ARRAY[${patternParams.join(',')}])`,
+            joinable ? `COALESCE(rp.title, '') ILIKE ANY (ARRAY[${patternParams.join(',')}])` : null
+        ].filter(Boolean).join(' OR ');
+
+        const subSql = joinable
+            ? `SELECT s.submission_id AS id, s.original_filename AS title, s.file_type AS type,
+                      s.status, s.uploader_researcher_id AS uploader, s.created_at AS date,
+                      s.r2_object_key, s.rd_project_id AS project_id, rp.title AS project_name
+               FROM di_submissions s
+               LEFT JOIN rd_projects rp ON rp.id = s.rd_project_id
+               WHERE (s.workspace_id = $1 OR s.workspace_id IS NULL)
+                 AND s.status <> 'DISCARDED'
+                 AND (${subOr})
+               ORDER BY s.created_at DESC NULLS LAST LIMIT 40`
+            : `SELECT s.submission_id AS id, s.original_filename AS title, s.file_type AS type,
+                      s.status, s.uploader_researcher_id AS uploader, s.created_at AS date,
+                      s.r2_object_key, NULL::int AS project_id, NULL::text AS project_name
+               FROM di_submissions s
+               WHERE (s.workspace_id = $1 OR s.workspace_id IS NULL)
+                 AND s.status <> 'DISCARDED'
+                 AND (${subOr})
+               ORDER BY s.created_at DESC NULLS LAST LIMIT 40`;
+        let subRows = [];
+        try { subRows = (await pool.query(subSql, [wsId, ...patterns])).rows; }
+        catch (e) { console.error('[ZOE-RETRIEVE] subs query:', e.message); }
+
+        let grpRows = [];
+        try {
+            const grpSql = `SELECT id, title, category, filename, file_type, created_at, uploaded_by, r2_object_key
+                            FROM di_group_documents
+                            WHERE is_active = true
+                              AND (
+                                COALESCE(title, '') ILIKE ANY (ARRAY[${patterns.map((_,i)=>'$'+(i+1)).join(',')}])
+                                OR COALESCE(filename, '') ILIKE ANY (ARRAY[${patterns.map((_,i)=>'$'+(i+1)).join(',')}])
+                                OR COALESCE(category, '') ILIKE ANY (ARRAY[${patterns.map((_,i)=>'$'+(i+1)).join(',')}])
+                              )
+                            ORDER BY created_at DESC NULLS LAST LIMIT 40`;
+            grpRows = (await pool.query(grpSql, patterns)).rows;
+        } catch (_) {}
+
+        // 3) Rank
+        const normalizedRows = [
+            ...subRows.map(r => ({
+                id: `sub:${r.id}`, title: r.title, filename: r.title,
+                type: r.type, category: r.type, date: r.date,
+                uploader: r.uploader, status: r.status,
+                project_id: r.project_id || null, project_name: r.project_name || null,
+                r2_object_key: r.r2_object_key, source_kind: 'submission',
+            })),
+            ...grpRows.map(r => ({
+                id: `grp:${r.id}`, title: r.title || r.filename,
+                filename: r.filename, type: r.file_type, category: r.category,
+                date: r.created_at, uploader: r.uploaded_by, status: 'ACTIVE',
+                project_id: null, project_name: null,
+                r2_object_key: r.r2_object_key, source_kind: 'group_document',
+            })),
+        ];
+        const projectHintId = sessionMemory.currentProjectId
+            ? parseInt(sessionMemory.currentProjectId, 10) : null;
+        const ranked = zoeRetrieval.rankCandidates(normalizedRows, intent, { projectHintId });
+        const topCandidates = ranked.slice(0, maxCandidates);
+        const confidence = zoeRetrieval.confidenceOf(topCandidates);
+
+        // 4) Walk candidates in score order; skip unreadable ones.
+        let selected = null;
+        let extraction = null;
+        let fallbackUsed = false;
+        const attemptLog = []; // per-attempt status for the trace
+
+        if (topCandidates.length === 0) {
+            const trace = zoeRetrieval.buildTrace({
+                intent, candidates: [], selected: null, extraction: null,
+                fallbackUsed: false, promptSize: 0, confidence
+            });
+            console.log('[ZOE-RETRIEVE] no candidates q="' + question.slice(0, 80) + '"');
+            return res.json({
+                question, intent_kinds: intent.kinds, confidence,
+                candidates: [], selected: null, extraction: null,
+                trace, took_ms: Date.now() - t0
+            });
+        }
+
+        for (let i = 0; i < topCandidates.length; i++) {
+            const cand = topCandidates[i];
+            if (!cand.r2_object_key) {
+                attemptLog.push({ id: cand.id, skipped: true, reason: 'no r2 key' });
+                continue;
+            }
+            try {
+                const normKey = typeof normalizeR2Key === 'function'
+                    ? normalizeR2Key(cand.r2_object_key) : cand.r2_object_key;
+                const obj = await downloadFromR2(normKey);
+                const buf = Buffer.isBuffer(obj) ? obj
+                    : (obj && Buffer.isBuffer(obj.Body)) ? obj.Body
+                    : (obj && Buffer.isBuffer(obj.body)) ? obj.body
+                    : (obj && obj.Body) ? Buffer.from(obj.Body)
+                    : null;
+                if (!buf) {
+                    attemptLog.push({ id: cand.id, skipped: true, reason: 'empty buffer' });
+                    continue;
+                }
+                const ext = await zoeRetrieval.extractContent(
+                    buf, cand.type || cand.file_type, cand.filename || cand.title
+                );
+                attemptLog.push({
+                    id: cand.id, success: !!ext.success, readable: !!ext.readable,
+                    parser: ext.parser, quality: ext.quality || null, error: ext.error || null
+                });
+                if (ext && ext.success && ext.readable) {
+                    selected = cand;
+                    extraction = ext;
+                    fallbackUsed = (i > 0);
+                    break;
+                }
+            } catch (err) {
+                attemptLog.push({ id: cand.id, success: false, error: err.message });
+                continue;
+            }
+        }
+
+        // 5) Assemble prompt payload (chunked when structure is available).
+        const chunk = extraction && extraction.readable
+            ? zoeRetrieval.chunkForPrompt(extraction, intent)
+            : null;
+        const promptPayload = {
+            question,
+            intent_kinds: intent.kinds,
+            confidence,
+            portal_summary: sessionMemory.portalSummary || null,
+            session_memory: {
+                current_project: sessionMemory.currentProject || null,
+                current_document: sessionMemory.currentDocument || null,
+                recent_answer: sessionMemory.recentAnswerSummary || null
+            },
+            selected_document: selected ? {
+                id: selected.id, title: selected.title,
+                source_kind: selected.source_kind,
+                project_name: selected.project_name || null,
+                uploader: selected.uploader || null,
+                status: selected.status || null,
+                date: selected.date || null
+            } : null,
+            selected_content: chunk ? chunk.slice(0, zoeRetrieval.ZOE_DOC_MAX_CHARS) : null,
+            extraction_notes: extraction ? {
+                parser: extraction.parser,
+                quality: extraction.quality,
+                content_truncated: !!extraction.content_truncated,
+                readable: !!extraction.readable
+            } : null
+        };
+        const promptSize = JSON.stringify(promptPayload).length;
+
+        const trace = zoeRetrieval.buildTrace({
+            intent, candidates: topCandidates, selected,
+            extraction, fallbackUsed, promptSize, confidence
+        });
+        trace.attempts = attemptLog;
+
+        console.log('[ZOE-RETRIEVE] q="' + question.slice(0, 60) + '"'
+            + ' kinds=' + intent.kinds.join(',')
+            + ' candidates=' + topCandidates.length
+            + ' selected=' + (selected ? selected.id : 'none')
+            + ' parser=' + (extraction ? extraction.parser : 'n/a')
+            + ' readable=' + (extraction ? !!extraction.readable : false)
+            + ' fallback=' + fallbackUsed
+            + ' prompt_size=' + promptSize
+            + ' took_ms=' + (Date.now() - t0));
+
+        res.json({
+            question,
+            intent_kinds: intent.kinds,
+            confidence,
+            candidates: topCandidates.map(c => ({
+                id: c.id, title: c.title,
+                source_kind: c.source_kind, type: c.type,
+                project_name: c.project_name || null,
+                status: c.status || null, date: c.date || null,
+                score: c.score, match_reason: c.match_reason,
+                readable: !!c.readable
+            })),
+            selected: selected ? {
+                id: selected.id, title: selected.title,
+                source_kind: selected.source_kind,
+                project_id: selected.project_id || null,
+                project_name: selected.project_name || null,
+                uploader: selected.uploader || null,
+                status: selected.status || null,
+                date: selected.date || null
+            } : null,
+            extraction: extraction ? {
+                parser: extraction.parser,
+                readable: !!extraction.readable,
+                content_truncated: !!extraction.content_truncated,
+                quality: extraction.quality,
+                pages: extraction.pages || null,
+                sheets: extraction.sheets || null,
+                slides: extraction.slides || null,
+                preview: extraction.preview || null,
+                text_length: extraction.text ? extraction.text.length : 0,
+                text: extraction.text || null,
+                chunked_text: chunk || null,
+                error: extraction.error || null
+            } : null,
+            fallback_used: fallbackUsed,
+            trace,
+            took_ms: Date.now() - t0
+        });
+    } catch (err) {
+        console.error('[ZOE-RETRIEVE] error:', err.message, err.stack);
+        res.status(500).json({ error: 'Zoe retrieval failed' });
     }
 });
 
