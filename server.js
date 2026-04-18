@@ -22221,7 +22221,10 @@ async function zoeBuildContextSummary(userId, workspaceId) {
 }
 
 // Internal helper reused by /api/zoe/chat and Telegram webhook.
-async function zoeHandleChat({ userId, workspaceId, message, mode, selectedFileId, glpContext }) {
+// Accepts an optional controlSessionId so the /api/zoe/chat caller (portal web)
+// can thread its registered Zoe control session through to open_file_in_portal.
+// Telegram callers simply omit it; the tool dispatcher refuses to invent one.
+async function zoeHandleChat({ userId, workspaceId, message, mode, selectedFileId, glpContext, controlSessionId }) {
     const system = mode === 'work' ? ZOE_SYSTEM_WORK : ZOE_SYSTEM_READ;
     const summary = await zoeBuildContextSummary(userId, workspaceId);
     let fileContext = null;
@@ -22255,18 +22258,25 @@ async function zoeHandleChat({ userId, workspaceId, message, mode, selectedFileI
         glp_context: glpContext || null,
         portal_summary: summary,
     };
+    // Env-gated tool-use path. When ZOE_TOOLS_ENABLED=1, route through the
+    // Portal Assistant API tool loop instead of the plain /chat/completions
+    // call. Everything else stays identical.
+    if (process.env.ZOE_TOOLS_ENABLED === '1') {
+        const { runZoeToolAwareChat } = require('./services/zoeTools');
+        return await runZoeToolAwareChat(payload, { controlSessionId });
+    }
     return await callOpenClaw(payload);
 }
 
 // 1) POST /api/zoe/chat
 app.post('/api/zoe/chat', requirePI, async (req, res) => {
     try {
-        const { message, mode, selectedFileId, glpContext } = req.body || {};
+        const { message, mode, selectedFileId, glpContext, controlSessionId } = req.body || {};
         if (!message || typeof message !== 'string') return res.status(400).json({ error: 'message required' });
         const out = await zoeHandleChat({
             userId: req.session.user.id,
             workspaceId: req.session.user.workspace_id || DEFAULT_WORKSPACE_ID,
-            message, mode, selectedFileId, glpContext,
+            message, mode, selectedFileId, glpContext, controlSessionId,
         });
         // TODO: audit log Work-mode interactions once the audit table is available.
         res.json({ reply: out.reply });
@@ -23724,9 +23734,19 @@ app.post('/api/zoe/retrieve', requirePIRead, async (req, res) => {
             + (researcherHint ? ' researcher=' + (researcherHint.researcher_id || researcherHint.name) : ''));
         const projectHintId = sessionMemory.currentProjectId
             ? parseInt(sessionMemory.currentProjectId, 10) : null;
-        const ranked = zoeRetrieval.rankCandidates(normalizedRows, intent, {
+        // Phase 4.7: drop candidates whose R2 key is on the default-ignore
+        //  list (glp-status/, system_versions/, /Studio/, /trash/, .keep).
+        //  These are archival or working-state artifacts, not lab documents,
+        //  so they should never reach the ranker unless a caller later opts
+        //  in explicitly.
+        const prunedRows = normalizedRows.filter(r => {
+            if (!r.r2_object_key) return true; // keep metadata-only rows
+            return !zoeRetrieval.shouldIgnoreR2Path(r.r2_object_key);
+        });
+        const ranked = zoeRetrieval.rankCandidates(prunedRows, intent, {
             projectHintId,
             researcherHint,
+            workspaceHint: intent.workspaceHint || null,
         });
         // Phase 4.4: when a researcher is explicitly named AND the user asks
         //  for an operational doc (SOP / DATA / PRES / REPORT), drop
@@ -23994,6 +24014,13 @@ app.post('/api/zoe/retrieve', requirePIRead, async (req, res) => {
                 status: selected.status || null,
                 date: selected.date || null
             } : null,
+            // Phase 4.7: up to 3 alternatives drawn from the ranked pool,
+            //  each with a short human-readable relationship reason. Only
+            //  populated in single-file mode — batch mode already surfaces
+            //  multiple documents via the `batch.documents` array.
+            alternatives: (!wantsBatch && selected)
+                ? zoeRetrieval.buildAlternatives(selected, filtered, { researcherHint }, 3)
+                : null,
             // Phase 4.4: detected researcher (null if none) — helps the
             //  frontend label responses ("Showing Frank's SOPs") and gives
             //  debug visibility into why a candidate got boosted.
@@ -24266,6 +24293,14 @@ app.post('/api/telegram/webhook', async (req, res) => {
 // =====================================================
 // END ZOE
 // =====================================================
+
+// Portal Assistant API — Zoe (Phase 1: status endpoint)
+app.use('/api/assistant/status',      require('./routes/assistant/status')(pool));
+app.use('/api/assistant/files',       require('./routes/assistant/files')(pool));
+app.use('/api/assistant/researchers', require('./routes/assistant/researchers')(pool));
+app.use('/api/assistant/attention',   require('./routes/assistant/attention')(pool));
+app.use('/api/assistant/sessions',    require('./routes/assistant/sessions')(pool));
+app.use('/api/assistant/viewer',      require('./routes/assistant/viewer')(pool));
 
 app.listen(PORT, "0.0.0.0", async () => {
     console.log("[STARTUP] Server listening on port " + PORT);
