@@ -190,11 +190,12 @@ module.exports = function assistantFilesRouter(pool) {
     // Route ordering matters: '/search' is defined above so '/:id' only matches
     // UUID-shaped ids; we additionally constrain the path param to a UUID regex
     // to be defensive against accidental matches on future sibling routes.
-    router.get('/:id([0-9a-fA-F-]{36})', async (req, res) => {
+    router.get('/:id', async (req, res) => {
         const fileId = (req.params.id || '').toString().trim();
         const wsSlug = (req.query.ws || '').toString().trim();
         if (!wsSlug) return res.status(400).json({ error: 'ws query parameter is required' });
         if (!fileId) return res.status(400).json({ error: 'file id is required' });
+        if (!/^[0-9a-fA-F-]{36}$/.test(fileId)) return res.status(404).json({ error: 'File not found in workspace' });
 
         try {
             // Resolve workspace slug -> id (same pattern as /search)
