@@ -52,7 +52,7 @@ module.exports = function assistantResearchersRouter(pool) {
             //    every workspace researcher).
             const who = await pool.query(
                 `SELECT w.id AS workspace_id, w.slug AS workspace_slug,
-                        a.researcher_id, a.name
+                        a.researcher_id, a.name, a.affiliation
                    FROM workspaces w
                    JOIN workspace_users wu ON wu.workspace_id = w.id
                    JOIN di_allowlist a     ON a.researcher_id = wu.user_id
@@ -75,7 +75,7 @@ module.exports = function assistantResearchersRouter(pool) {
                 return res.status(404).json({ error: 'Researcher not found in workspace' });
             }
             const { workspace_id: workspaceId, workspace_slug: workspaceSlug,
-                    researcher_id: rid, name: researcherName } = who.rows[0];
+                    researcher_id: rid, name: researcherName, affiliation } = who.rows[0];
 
             // 2. Pull researcher-linked rd_documents with their LATEST di_submissions
             //    status (same LATERAL LIMIT 1 pattern as files/search — di_submissions
@@ -112,12 +112,38 @@ module.exports = function assistantResearchersRouter(pool) {
             const docsRes = await pool.query(docsSql, [workspaceId, interval, rid]);
             const docs = docsRes.rows;
 
+            const priorUploadsRes = await pool.query(
+                `SELECT COUNT(*)::int AS uploads
+                   FROM rd_documents d
+                  WHERE d.workspace_id = $1
+                    AND d.created_at >= NOW() - ($2::interval * 2)
+                    AND d.created_at <  NOW() - $2::interval
+                    AND EXISTS (
+                        SELECT 1 FROM di_submissions s3
+                         WHERE s3.workspace_id  = d.workspace_id
+                           AND s3.r2_object_key = d.r2_key
+                           AND s3.researcher_id = $3
+                    )`,
+                [workspaceId, interval, rid]
+            );
+            const priorUploads = priorUploadsRes.rows[0].uploads || 0;
+
             // 3. Metrics (latest status per document)
             const metrics = {
                 uploads:         docs.length,
                 approved:        docs.filter(d => d.glp_status === 'APPROVED').length,
                 pending:         docs.filter(d => d.glp_status === 'PENDING').length,
-                revision_needed: docs.filter(d => d.glp_status === 'REVISION_NEEDED').length
+                revision_needed: docs.filter(d => d.glp_status === 'REVISION_NEEDED').length,
+                activity_trend: (() => {
+                    const cur = docs.length;
+                    const prev = priorUploads;
+                    if (cur < 3 && prev < 3) return 'flat';
+                    if (prev === 0) return cur > 0 ? 'up' : 'flat';
+                    const ratio = cur / prev;
+                    if (ratio >= 1.20) return 'up';
+                    if (ratio <= 0.80) return 'down';
+                    return 'flat';
+                })()
             };
 
             // 4. Flags — simple, transparent thresholds
@@ -144,7 +170,13 @@ module.exports = function assistantResearchersRouter(pool) {
             const push = (d, reason) => {
                 if (priority.length >= 3 || seen.has(d.id)) return;
                 seen.add(d.id);
-                priority.push({ file_id: d.id, reason });
+                priority.push({
+                    file_id:    d.id,
+                    filename:   d.filename || d.title || null,
+                    status:     d.glp_status || null,
+                    created_at: d.created_at || null,
+                    reason
+                });
             };
             docs.filter(d => d.glp_status === 'REVISION_NEEDED')
                 .forEach(d => push(d, 'GLP status REVISION_NEEDED'));
@@ -154,6 +186,25 @@ module.exports = function assistantResearchersRouter(pool) {
                           && d.created_at
                           && (nowMs - new Date(d.created_at).getTime()) > staleMs)
                 .forEach(d => push(d, 'Pending review for more than 7 days'));
+
+            // 5b. Momentum — derived from metrics.activity_trend + uploads
+            metrics.momentum = (metrics.uploads === 0)                  ? 'flat'
+                             : (metrics.activity_trend === 'up')        ? 'building'
+                             : (metrics.activity_trend === 'down')      ? 'declining'
+                             : 'steady';
+
+            // 5c. Derivations from docs (no new queries)
+            //     - latest_activity: most recent rd_documents.created_at in window
+            //     - projects: unique non-null rd_documents.project_id values
+            //     - recent_files: up to 5 most recent files (docs is already DESC)
+            const latestActivity = (docs.length && docs[0].created_at) ? docs[0].created_at : null;
+            const projects = Array.from(new Set(docs.map(d => d.project_id).filter(Boolean)));
+            const recentFiles = docs.slice(0, 5).map(d => ({
+                id:         d.id,
+                filename:   d.filename || d.title || null,
+                status:     d.glp_status || null,
+                created_at: d.created_at || null
+            }));
 
             // 6. Compliance signal — simple, explainable rule-based scoring
             //    strong   : approval >= 70% AND no revisions
@@ -179,12 +230,16 @@ module.exports = function assistantResearchersRouter(pool) {
             });
 
             res.json({
-                researcher: { id: rid, name: researcherName },
+                researcher: { id: rid, name: researcherName, affiliation },
                 workspace: workspaceSlug,
+                period: windowDays <= 7 ? 'weekly' : (windowDays >= 30 ? 'monthly' : 'recent'),
                 compliance_signal,
                 metrics,
                 flags,
                 priority_review: priority,
+                latest_activity: latestActivity,
+                projects,
+                recent_files: recentFiles,
                 summary
             });
         } catch (err) {

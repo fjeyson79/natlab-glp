@@ -114,6 +114,12 @@ function classifyIntent(message) {
             || /\b(review all|compare|comparison|comparing|compared|evaluate all|analys[ez]e all|audit all|list and (review|evaluate|analys[ez]e))\b/i.test(m)
             || /\bwhich (one|ones|files?|docs?|sops?|datasets?|presentations?|papers?|documents?)\b/i.test(m)
             || /\bacross\s+(researchers?|files?|docs?|sops?|datasets?|presentations?|papers?|(the )?lab|(the )?team)\b/i.test(m),
+        // Phase 4.7: status flags. Useful for "approved UNAV SOPs",
+        //  "pending submissions", "legacy data" etc. Each adds a small
+        //  scoring bump when the candidate's parsed status_from_path matches.
+        wantsApproved: /\b(approved|signed|sealed|final(ized)?)\b/i.test(m),
+        wantsSubmitted: /\b(submitted|pending|draft|awaiting)\b/i.test(m),
+        wantsLegacy: /\blegacy\b/i.test(m),
     };
     if (flags.wantsPaper) kinds.push('paper');
     if (flags.wantsSop) kinds.push('sop');
@@ -121,8 +127,18 @@ function classifyIntent(message) {
     if (flags.wantsReport) kinds.push('report');
     if (flags.wantsData) kinds.push('data');
     if (kinds.length === 0) kinds.push('generic');
+    // Phase 4.7: workspace / organization hint. Detected case-insensitively
+    //  against the raw query so queries like "approved UNAV SOPs" or
+    //  "theralia board meetings" can steer path-aware ranking. Null when no
+    //  known workspace token is present. Values match the `organization`
+    //  value returned by parseR2Path so the ranker can compare directly.
+    let workspaceHint = null;
+    if (/\bunav\b/i.test(message || '')) workspaceHint = 'UNAV';
+    else if (/\bliu\b/i.test(message || '')) workspaceHint = 'LiU';
+    else if (/\btheralia\b/i.test(message || '')) workspaceHint = 'theralia';
+    else if (/\bnatlab\b/i.test(message || '')) workspaceHint = 'natlab';
     const tokens = tokenize(m);
-    return { kinds, tokens, flags, raw: String(message || '') };
+    return { kinds, tokens, flags, workspaceHint, raw: String(message || '') };
 }
 
 // ---- 2. Candidate ranking ------------------------------------------------
@@ -147,9 +163,38 @@ function normAscii(s) {
     return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 }
 
-// Phase 4.4: parse an R2 key into searchable parts. All operational files
-// are PDFs stored under an org/researcher/date/filename-ish prefix, but
-// every source uses a slightly different layout:
+// Phase 4.7: structural segment + filename-token maps. The same parser can
+// read both: "rd/{ws}/{proj}/SOP/…" (segment-based) and the embedded-in-
+// filename convention "YYYY-MM-DD_{INITIALS}_{TYPE}_{topic}.pdf".
+const _PATH_TYPE_SEGMENTS = {
+    SOP: 'SOP', sop: 'SOP',
+    DATA: 'DATA', data: 'DATA',
+    PRES: 'PRESENTATION', PRESENTATION: 'PRESENTATION', Presentation: 'PRESENTATION',
+    REPORT: 'REPORT', Report: 'REPORT', REPORTS: 'REPORT',
+    PAPER: 'PAPER', papers: 'PAPER', Papers: 'PAPER',
+};
+const _PATH_STATUS_SEGMENTS = {
+    Submitted: 'SUBMITTED', submitted: 'SUBMITTED',
+    Approved: 'APPROVED', approved: 'APPROVED',
+    Training: 'TRAINING', training: 'TRAINING',
+};
+const _FILENAME_TYPE_TOKENS = {
+    sop: 'SOP', protocol: 'SOP', protocols: 'SOP',
+    data: 'DATA', dataflash: 'DATA', dataset: 'DATA',
+    pres: 'PRESENTATION', presentation: 'PRESENTATION',
+    slides: 'PRESENTATION', deck: 'PRESENTATION',
+    report: 'REPORT', summary: 'REPORT',
+    paper: 'PAPER', preprint: 'PAPER',
+};
+const _RX_ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+// Researcher initials: 2–5 uppercase letters, optional 1–2 digit suffix
+// (FJH, BAB, HJM, SKP, FJH2). We keep the bar at 2+ letters to avoid
+// triggering on stray single-letter joiners.
+const _RX_INITIALS = /^[A-Z]{2,5}\d{0,2}$/;
+
+// Phase 4.4/4.7: parse an R2 key into searchable parts. All operational
+// files are PDFs stored under an org/researcher/date/filename-ish prefix,
+// but every source uses a slightly different layout:
 //   di/{aff}/Submitted/{year}/{dateStamp}_{researcher_id}_{safeOriginal}
 //   di/{aff}/Approved/Training/{year}/{ts}_{safeName}
 //   rd/{workspace}/{projectId}/{docType}/{ts}_{safeName}
@@ -158,6 +203,14 @@ function normAscii(s) {
 //   theralia/..., oligo/..., system_versions/..., glp-status/...
 // This parser is intentionally lenient: it returns whatever it can, plus a
 // lowercase haystack joining every segment for path-aware ranking.
+//
+// Phase 4.7 additive fields (all optional — null when not detected):
+//   type_from_path      : SOP|DATA|PRESENTATION|REPORT|PAPER
+//   type_from_filename  : same set, parsed from the filename convention
+//   status_from_path    : SUBMITTED|APPROVED|TRAINING|LEGACY
+//   iso_date            : 'YYYY-MM-DD' from the filename, if present
+//   researcher_code     : uppercase initials token from the filename
+//   topic               : description tail of the filename, or null
 function parseR2Path(key) {
     if (!key) return null;
     const s = String(key);
@@ -174,10 +227,50 @@ function parseR2Path(key) {
         if (RX_YEAR.test(p) || RX_DATE.test(p)) chronoSegments.push(p);
         else if (RX_TS.test(p)) chronoSegments.push(p.slice(0, 10));
     }
+    // Phase 4.7: scan segments for high-confidence type + status markers.
+    let type_from_path = null;
+    let status_from_path = null;
+    for (const p of parts) {
+        if (!type_from_path && _PATH_TYPE_SEGMENTS[p]) type_from_path = _PATH_TYPE_SEGMENTS[p];
+        if (!status_from_path && _PATH_STATUS_SEGMENTS[p]) status_from_path = _PATH_STATUS_SEGMENTS[p];
+    }
     // For di/{aff}/Submitted/{year}/{dateStamp}_{researcher_id}_... the
     // researcher_id is embedded in the filename; we surface the filename
     // stem as an additional haystack bucket.
     const stem = String(filename).replace(/\.[a-z0-9]{2,5}$/i, '');
+    // Phase 4.7: parse the filename convention DATE_RESEARCHER_TYPE_TOPIC.
+    //  Each slot is optional and parsed in order. Tokens that don't match
+    //  a slot shift into the topic remainder.
+    let iso_date = null;
+    let researcher_code = null;
+    let type_from_filename = null;
+    let topic = null;
+    // Split on underscore/space only — dashes are preserved inside ISO
+    // dates (2026-03-17) and hyphenated descriptors (nuclease-activity).
+    const stemTokens = stem.split(/[_\s]+/).filter(Boolean);
+    if (stemTokens.length) {
+        let idx = 0;
+        if (_RX_ISO_DATE.test(stemTokens[0])) {
+            iso_date = stemTokens[0];
+            idx += 1;
+        }
+        if (idx < stemTokens.length && _RX_INITIALS.test(stemTokens[idx])) {
+            researcher_code = stemTokens[idx];
+            idx += 1;
+        }
+        if (idx < stemTokens.length) {
+            const t = stemTokens[idx].toLowerCase();
+            if (_FILENAME_TYPE_TOKENS[t]) {
+                type_from_filename = _FILENAME_TYPE_TOKENS[t];
+                idx += 1;
+            }
+        }
+        const rest = stemTokens.slice(idx).join(' ').trim();
+        topic = rest || null;
+    }
+    // Legacy marker in filename (not in path).
+    if (!status_from_path && /\bLEGACY\b/.test(stem)) status_from_path = 'LEGACY';
+
     const hay = normAscii(parts.join(' ') + ' ' + stem);
     return {
         organization,
@@ -186,7 +279,30 @@ function parseR2Path(key) {
         stem,
         chrono_segments: chronoSegments,
         hay, // lowercase ascii-folded join for substring tests
+        // Phase 4.7 additive fields — null when not detectable.
+        type_from_path,
+        type_from_filename,
+        status_from_path,
+        iso_date,
+        researcher_code,
+        topic,
     };
+}
+
+// Phase 4.7: default-ignore list. These prefixes/substrings surface non-
+// document artifacts (weekly snapshots, system-version archives, Studio
+// working state, trash) that Zoe should skip unless the caller explicitly
+// opts in. Callers filter candidate rows through this helper before
+// ranking; no scoring penalty needed.
+const _R2_IGNORE_PREFIXES = ['glp-status/', 'system_versions/', 'trash/'];
+const _R2_IGNORE_SUBSTRINGS = ['/trash/', '/Studio/', '/rs-studio/', '/Studio_v1/'];
+function shouldIgnoreR2Path(key) {
+    if (!key) return false;
+    const s = String(key);
+    if (s.endsWith('/.keep')) return true;
+    for (const p of _R2_IGNORE_PREFIXES) if (s.startsWith(p)) return true;
+    for (const p of _R2_IGNORE_SUBSTRINGS) if (s.includes(p)) return true;
+    return false;
 }
 
 // Phase 4.4: detect a researcher reference in a free-text question.
@@ -572,6 +688,55 @@ function scoreCandidate(row, intent, opts) {
             if (stemHits > 0) {
                 s += Math.min(6, stemHits * 3);
                 reasons.push(`filename stem×${stemHits}`);
+            }
+        }
+    }
+
+    // (m) Phase 4.7: path- and filename-structural type boost. When the
+    //     query is operational (SOP/DATA/PRES/REPORT/PAPER) and the parsed
+    //     path segment or filename token resolves to the same canonical
+    //     type, reward it above the general type-evidence check. Mirrors
+    //     rd/*/SOP/ and DATE_XX_TYPE_topic.pdf conventions.
+    if (row.r2_path) {
+        const tp = row.r2_path.type_from_path;
+        const tf = row.r2_path.type_from_filename;
+        const wantedType =
+            intent.flags.wantsSop ? 'SOP' :
+            intent.flags.wantsData ? 'DATA' :
+            intent.flags.wantsPresentation ? 'PRESENTATION' :
+            intent.flags.wantsReport ? 'REPORT' :
+            intent.flags.wantsPaper ? 'PAPER' : null;
+        if (wantedType && tp === wantedType) {
+            s += 8; reasons.push('type in path segment');
+        }
+        if (wantedType && tf === wantedType) {
+            s += 6; reasons.push('type in filename token');
+        }
+        // (n) Phase 4.7: status match from path/filename (Submitted,
+        //     Approved, LEGACY). Fires only when the user's query mentioned
+        //     the corresponding status; otherwise ignored so it doesn't
+        //     bias generic queries toward any particular folder.
+        const sp = row.r2_path.status_from_path;
+        if (intent.flags.wantsApproved && sp === 'APPROVED') {
+            s += 6; reasons.push('approved path');
+        }
+        if (intent.flags.wantsSubmitted && sp === 'SUBMITTED') {
+            s += 5; reasons.push('submitted path');
+        }
+        if (intent.flags.wantsLegacy && sp === 'LEGACY') {
+            s += 6; reasons.push('legacy marker');
+        }
+        // (o) Phase 4.7: workspace / organization hint. Reward when the
+        //     R2 path starts with the named workspace/org.
+        if (opts.workspaceHint && row.r2_path.organization) {
+            const want = String(opts.workspaceHint).toLowerCase();
+            const have = String(row.r2_path.organization).toLowerCase();
+            // Also match nested workspace names (rd/natlab/... or
+            // rd/theralia/...) where the organization is 'rd' but the
+            // workspace follows — check segments[1] too.
+            const segWs = (row.r2_path.segments && row.r2_path.segments[1] || '').toLowerCase();
+            if (have === want || segWs === want) {
+                s += 5; reasons.push('workspace match');
             }
         }
     }
@@ -1111,6 +1276,69 @@ function aggregateFindings(entries) {
     };
 }
 
+// ---- 4d. Phase 4.7: alternatives renderer --------------------------------
+//
+// When a single file is selected, callers often want to show 2–5 "you might
+// also mean..." alternatives. This helper takes the ranked list (after the
+// selected candidate has been chosen) and produces up to `max` alternatives
+// with a short human-readable relationship label. Pure inspection — no DB
+// or R2 access. Preserves ranking order.
+function buildAlternatives(selected, ranked, opts, max) {
+    const cap = Math.max(0, Math.min(5, parseInt(max, 10) || 3));
+    if (!selected || !Array.isArray(ranked) || cap === 0) return [];
+    const sel = selected;
+    const selTokens = new Set(
+        String((sel.title || sel.filename || '')).toLowerCase()
+            .split(/[^a-z0-9]+/).filter(t => t.length >= 4)
+    );
+    const selDate = sel.date ? new Date(sel.date).getTime() : 0;
+    const out = [];
+    for (const cand of ranked) {
+        if (!cand || cand.id === sel.id) continue;
+        if (out.length >= cap) break;
+        const reason = _alternativeReason(sel, cand, selTokens, selDate, opts);
+        out.push({
+            id: cand.id,
+            title: cand.title,
+            source_kind: cand.source_kind || null,
+            normalized_type: cand.normalized_type
+                || (cand.r2_path && cand.r2_path.type_from_path)
+                || normalizeDocType(cand),
+            date: cand.date || null,
+            score: cand.score,
+            reason,
+        });
+    }
+    return out;
+}
+
+function _alternativeReason(sel, cand, selTokens, selDate, opts) {
+    const hint = opts && opts.researcherHint;
+    const sameResearcher =
+        (cand.researcher_match && cand.researcher_match.any)
+        || (hint && sel.uploader && cand.uploader && sel.uploader === cand.uploader);
+    const sameType = cand.normalized_type
+        && sel.normalized_type
+        && cand.normalized_type === sel.normalized_type;
+    const candDate = cand.date ? new Date(cand.date).getTime() : 0;
+    const isOlder = selDate && candDate && candDate < selDate;
+    // Topic overlap: count long tokens (≥4 chars) shared with the selected title.
+    const candText = String(cand.title || cand.filename || '').toLowerCase();
+    let topicHits = 0;
+    for (const t of selTokens) { if (candText.includes(t)) topicHits++; }
+    const sameTopic = topicHits >= 2;
+
+    if (sameResearcher && sameType && isOlder) return 'same researcher & type (older)';
+    if (sameResearcher && sameType) return 'same researcher & type';
+    if (sameResearcher && sameTopic) return 'same researcher, related topic';
+    if (sameResearcher) return 'same researcher, different type';
+    if (sameType && sameTopic) return 'same type, related topic';
+    if (sameType) return `same type (${cand.normalized_type || 'document'})`;
+    if (sameTopic) return 'related topic';
+    if (isOlder) return 'earlier version';
+    return 'also ranked';
+}
+
 // ---- 4c. Phase 4.6: deterministic batch narrative ------------------------
 //
 // Produce a structured, markdown-formatted answer from the batch payload
@@ -1445,4 +1673,7 @@ module.exports = {
     aggregateFindings,
     // Phase 4.6
     formatBatchNarrative,
+    // Phase 4.7
+    shouldIgnoreR2Path,
+    buildAlternatives,
 };

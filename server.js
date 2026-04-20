@@ -24301,6 +24301,8 @@ app.use('/api/assistant/researchers', require('./routes/assistant/researchers')(
 app.use('/api/assistant/attention',   require('./routes/assistant/attention')(pool));
 app.use('/api/assistant/sessions',    require('./routes/assistant/sessions')(pool));
 app.use('/api/assistant/viewer',      require('./routes/assistant/viewer')(pool));
+app.use('/api/assistant/workspace',   require('./routes/assistant/workspace')(pool));
+app.use('/api/assistant/review-queue', require('./routes/assistant/reviewQueue')(pool));
 
 app.listen(PORT, "0.0.0.0", async () => {
     console.log("[STARTUP] Server listening on port " + PORT);
