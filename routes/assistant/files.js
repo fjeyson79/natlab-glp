@@ -1,9 +1,21 @@
 // Portal Assistant API — Zoe
 // GET /api/assistant/files/search
 //
-// Simple ranked file search against rd_documents, optionally enriched with
-// GLP status from di_submissions (linked via r2_key == r2_object_key).
+// Ranked file search against di_submissions (NAT-Lab's canonical upload
+// table), enriched with optional title / project metadata from rd_documents
+// when the file was also ingested via the R&D path.
+//
+// Why di_submissions is primary:
+//   NAT-Lab's main DI upload flow writes di_submissions ONLY. rd_documents
+//   is populated only by the R&D path (one INSERT site in server.js). A
+//   search that queries rd_documents as its primary table cannot see the
+//   bulk of NAT-Lab files. We query di_submissions first and LEFT JOIN
+//   rd_documents for enrichment.
+//
 // Additive: no auth layer, no caching, no embeddings, no full-text index.
+// Response contract is preserved (best_match / alternatives; all existing
+// item fields retained). New field: submission_id — carries the DI id for
+// files that have no rd_documents row, so Zoe can still reference them.
 //
 // Exported as a factory so we reuse the existing pg Pool from server.js.
 
@@ -45,49 +57,85 @@ module.exports = function assistantFilesRouter(pool) {
             const params = [];
             const push = (v) => { params.push(v); return '$' + params.length; };
 
-            const pWs      = push(workspaceId);   // $1
-            const pExact   = push(q);             // $2 — for title = q (case-insensitive)
-            const pWrap    = push('%' + q + '%'); // $3 — for ILIKE wrapped match
+            const pWs      = push(workspaceId);      // $1
+            const pExact   = push(q);                // $2 — for exact-match bonuses (case-insensitive)
+            const pExactUp = push(q.toUpperCase());  // $3 — for file_type exact match ('SOP', 'DATA', ...)
+            const pWrap    = push('%' + q + '%');    // $4 — for ILIKE wrapped match
 
-            // di_submissions has no UNIQUE(workspace_id, r2_object_key): revisions and
-            // resubmissions can produce multiple rows for the same R2 key. We use a
-            // LATERAL subquery with LIMIT 1 to pick the most recent submission per
-            // document so rd_documents rows are not duplicated in the result set.
+            // Primary source: di_submissions (the canonical NAT-Lab upload table).
+            // rd_documents is LEFT JOIN'd (via r2_key or filename+timestamp fallback)
+            // only to enrich title / rd_documents.id / project_id when they exist.
+            // The filename+timestamp fallback handles the case where a revision or
+            // discard nulled di_submissions.r2_object_key — rd_documents.r2_key is
+            // still set, and rd_documents + its initial di_submissions row were
+            // written in the same transaction, so their created_at timestamps match
+            // within ms.
+            //
+            // di_allowlist join provides a trustworthy submitted_by_name (the
+            // researcher's canonical name), not the free-text uploaded_by field.
             let sql = `
-                SELECT d.id, d.title, d.filename, d.document_type, d.file_type,
-                       d.r2_key, d.uploaded_by, d.created_at, d.project_id,
+                SELECT s.submission_id,
+                       s.original_filename,
+                       s.file_type         AS submission_file_type,
+                       s.r2_object_key,
                        s.status            AS glp_status,
                        s.created_at        AS submission_created_at,
+                       s.signed_at         AS submission_signed_at,
+                       s.discarded_at      AS submission_discarded_at,
                        s.researcher_id     AS submission_researcher_id,
                        s.affiliation       AS submission_affiliation,
                        s.revision_comments AS submission_revision_comments,
                        s.discard_reason    AS submission_discard_reason,
+                       a.name              AS submitter_name,
+                       d.id                AS rd_id,
+                       d.title             AS rd_title,
+                       d.filename          AS rd_filename,
+                       d.document_type     AS rd_document_type,
+                       d.project_id        AS rd_project_id,
+                       d.uploaded_by       AS rd_uploaded_by,
+                       d.created_at        AS rd_created_at,
                        (
-                           (CASE WHEN LOWER(COALESCE(d.title,'')) = LOWER(${pExact}) THEN 10 ELSE 0 END)
-                         + (CASE WHEN COALESCE(d.title,'')    ILIKE ${pWrap} THEN 6 ELSE 0 END)
-                         + (CASE WHEN COALESCE(d.filename,'') ILIKE ${pWrap} THEN 4 ELSE 0 END)
+                           -- file_type exact match (e.g. "sop" → type SOP) is the
+                           -- strongest signal for NAT-Lab intent queries
+                           (CASE WHEN UPPER(COALESCE(s.file_type,'')) = ${pExactUp} THEN 12 ELSE 0 END)
+                         -- title/filename exact/substring matches
+                         + (CASE WHEN LOWER(COALESCE(d.title,'')) = LOWER(${pExact}) THEN 10 ELSE 0 END)
+                         + (CASE WHEN LOWER(COALESCE(s.original_filename,'')) = LOWER(${pExact}) THEN 8 ELSE 0 END)
+                         + (CASE WHEN COALESCE(d.title,'')             ILIKE ${pWrap} THEN 6 ELSE 0 END)
+                         + (CASE WHEN COALESCE(s.original_filename,'') ILIKE ${pWrap} THEN 5 ELSE 0 END)
+                         -- state & recency bonuses
                          + (CASE WHEN s.status = 'APPROVED' THEN 2 ELSE 0 END)
-                         + (CASE WHEN d.created_at >= NOW() - INTERVAL '30 days' THEN 1 ELSE 0 END)
+                         + (CASE WHEN s.created_at >= NOW() - INTERVAL '30 days' THEN 1 ELSE 0 END)
                        ) AS score
-                  FROM rd_documents d
+                  FROM di_submissions s
+                  LEFT JOIN di_allowlist a ON a.researcher_id = s.researcher_id
                   LEFT JOIN LATERAL (
-                      SELECT s2.status, s2.created_at, s2.researcher_id,
-                             s2.affiliation, s2.revision_comments, s2.discard_reason
-                        FROM di_submissions s2
-                       WHERE s2.workspace_id  = d.workspace_id
-                         AND s2.r2_object_key = d.r2_key
-                       ORDER BY s2.created_at DESC
+                      SELECT d2.id, d2.title, d2.filename, d2.document_type,
+                             d2.project_id, d2.uploaded_by, d2.created_at
+                        FROM rd_documents d2
+                       WHERE d2.workspace_id = s.workspace_id
+                         AND (
+                               d2.r2_key = s.r2_object_key
+                               OR (
+                                   s.r2_object_key IS NULL
+                                   AND d2.filename = s.original_filename
+                                   AND d2.created_at BETWEEN s.created_at - INTERVAL '5 seconds'
+                                                         AND s.created_at + INTERVAL '5 seconds'
+                               )
+                         )
+                       ORDER BY
+                           CASE WHEN d2.r2_key = s.r2_object_key THEN 0 ELSE 1 END ASC,
+                           d2.created_at DESC
                        LIMIT 1
-                  ) s ON TRUE
-                 WHERE d.workspace_id = ${pWs}
-                   AND (COALESCE(d.title,'') ILIKE ${pWrap}
-                        OR COALESCE(d.filename,'') ILIKE ${pWrap})`;
+                  ) d ON TRUE
+                 WHERE s.workspace_id = ${pWs}
+                   AND (
+                         COALESCE(s.original_filename,'') ILIKE ${pWrap}
+                         OR COALESCE(d.title,'')          ILIKE ${pWrap}
+                         OR UPPER(COALESCE(s.file_type,'')) = ${pExactUp}
+                   )`;
 
             // Exclude discarded material by default; only include it if status explicitly asks.
-            // Note: when an explicit status is supplied (e.g. ?status=APPROVED), rows whose
-            // latest submission is NULL (no di_submissions row for this rd_document) are
-            // excluded — `NULL = 'APPROVED'` evaluates to NULL and is filtered out. That is
-            // the intended behavior: "filter by GLP status" means "must have that status".
             if (status === 'DISCARDED') {
                 sql += ` AND s.status = 'DISCARDED'`;
             } else {
@@ -97,21 +145,24 @@ module.exports = function assistantFilesRouter(pool) {
                 }
             }
 
-            // rd_documents.uploaded_by is a TEXT display name (e.g. "Jane Doe"), not a
-            // researcher ID or FK — see the INSERT path in server.js which writes
-            // req.session.user.name. Substring ILIKE matches that free-text label.
+            // Researcher filter: match either the researcher_id (authoritative code
+            // e.g. "HJM") or the di_allowlist display name via substring ILIKE.
             if (researcher) {
-                sql += ` AND COALESCE(d.uploaded_by,'') ILIKE ${push('%' + researcher + '%')}`;
+                const pRes = push(researcher);
+                const pResWrap = push('%' + researcher + '%');
+                sql += ` AND (s.researcher_id = ${pRes}
+                           OR COALESCE(a.name,'') ILIKE ${pResWrap})`;
             }
             if (projectId) {
+                // project_id is optional metadata in NAT-Lab — enforce only when
+                // rd_documents row exists (otherwise filter excludes by NULL semantics).
                 sql += ` AND d.project_id = ${push(projectId)}`;
             }
             if (fileType) {
-                sql += ` AND (UPPER(COALESCE(d.file_type,'')) = ${push(fileType)}
-                           OR UPPER(COALESCE(d.document_type,'')) = $${params.length})`;
+                sql += ` AND UPPER(COALESCE(s.file_type,'')) = ${push(fileType)}`;
             }
 
-            sql += ` ORDER BY score DESC, d.created_at DESC NULLS LAST
+            sql += ` ORDER BY score DESC, s.created_at DESC NULLS LAST
                      LIMIT ${push(limit)}`;
 
             const r = await pool.query(sql, params);
@@ -119,12 +170,15 @@ module.exports = function assistantFilesRouter(pool) {
 
             const toItem = (row) => {
                 const matchReason = buildReason(row, q);
-                // review_state: normalized human-readable label derived from GLP status
-                // plus staleness. Distinct from raw `status` (which stays as-is for
-                // backward compatibility).
-                const ageMs = row.created_at
-                    ? Date.now() - new Date(row.created_at).getTime()
-                    : null;
+                // Canonical timestamps: use the submission row as the time authority
+                // (it's the primary table). rd_documents.created_at is a secondary
+                // fallback if present.
+                const createdAt = row.submission_created_at || row.rd_created_at || null;
+                const updatedAt = row.submission_discarded_at
+                               || row.submission_signed_at
+                               || createdAt;
+
+                const ageMs = createdAt ? Date.now() - new Date(createdAt).getTime() : null;
                 let reviewState;
                 if      (!row.glp_status)                      reviewState = 'not_submitted';
                 else if (row.glp_status === 'DISCARDED')       reviewState = 'discarded';
@@ -133,33 +187,43 @@ module.exports = function assistantFilesRouter(pool) {
                 else if (row.glp_status === 'PENDING')         reviewState = (ageMs && ageMs > 7  * 24 * 3600 * 1000) ? 'stalled' : 'awaiting_review';
                 else                                           reviewState = String(row.glp_status).toLowerCase();
 
-                // revision_reason: only meaningful when a revision was actually asked
-                // for. Fall back to discard_reason for DISCARDED rows so Zoe can
-                // explain why something is out of the flow.
                 let revisionReason = null;
                 if (row.glp_status === 'REVISION_NEEDED')      revisionReason = row.submission_revision_comments || null;
                 else if (row.glp_status === 'DISCARDED')       revisionReason = row.submission_discard_reason    || null;
 
+                // file_id remains the rd_documents.id when that row exists (so
+                // open_file_in_portal keeps working). When the file was ingested
+                // via the DI-only path, file_id is null and callers should use
+                // submission_id for reference.
+                const fileId   = row.rd_id || null;
+                const title    = row.rd_title || row.original_filename || null;
+                const filename = row.original_filename || row.rd_filename || null;
+                const fileType = row.submission_file_type || row.rd_document_type || null;
+
                 return {
                     // --- existing contract (kept verbatim for backward compat) ---
-                    file_id:   row.id,
-                    title:     row.title || row.filename,
-                    file_type: row.document_type || row.file_type || null,
+                    file_id:   fileId,
+                    title,
+                    file_type: fileType,
                     status:    row.glp_status || null,
                     reason:    matchReason,
                     // --- enrichment (Priority 3) ---
-                    id:                row.id,
-                    filename:          row.filename || null,
+                    id:                fileId,
+                    filename,
                     review_state:      reviewState,
                     revision_reason:   revisionReason,
-                    created_at:        row.created_at || null,
-                    updated_at:        row.submission_created_at || row.created_at || null,
-                    submitted_by_name: row.uploaded_by || null,
+                    created_at:        createdAt ? new Date(createdAt).toISOString() : null,
+                    updated_at:        updatedAt ? new Date(updatedAt).toISOString() : null,
+                    submitted_by_name: row.submitter_name || row.rd_uploaded_by || null,
                     researcher_id:     row.submission_researcher_id || null,
                     affiliation:       row.submission_affiliation   || null,
-                    r2_object_key:     row.r2_key || null,
-                    project_id:        row.project_id || null,
-                    match_reason:      matchReason
+                    r2_object_key:     row.r2_object_key || null,
+                    project_id:        row.rd_project_id || null,
+                    match_reason:      matchReason,
+                    // --- new: always-available DI reference for files without an
+                    //     rd_documents row. Lets Zoe reference DI-only uploads
+                    //     without inventing a file_id.
+                    submission_id:     row.submission_id || null
                 };
             };
 
@@ -400,16 +464,23 @@ module.exports = function assistantFilesRouter(pool) {
 };
 
 // Short human-readable reason string for why this row ranked where it did.
+// Reads from the di_submissions-primary column set (with rd_documents title
+// as optional enrichment). Falls back gracefully when fields are missing.
 function buildReason(row, q) {
     const parts = [];
-    const title = (row.title || '').toLowerCase();
-    const fname = (row.filename || '').toLowerCase();
     const needle = q.toLowerCase();
-    if (title && title === needle)         parts.push('exact title match');
-    else if (title.includes(needle))       parts.push('title contains query');
-    else if (fname.includes(needle))       parts.push('filename contains query');
-    if (row.glp_status === 'APPROVED')     parts.push('APPROVED');
-    if (row.created_at && (Date.now() - new Date(row.created_at).getTime()) < 30 * 24 * 3600 * 1000) {
+    const title    = (row.rd_title || '').toLowerCase();
+    const filename = (row.original_filename || row.rd_filename || '').toLowerCase();
+    const fileType = (row.submission_file_type || row.rd_document_type || '').toUpperCase();
+    const qUp = q.toUpperCase();
+
+    if (fileType && fileType === qUp)            parts.push(`file_type = ${fileType}`);
+    if (title && title === needle)               parts.push('exact title match');
+    else if (title.includes(needle))             parts.push('title contains query');
+    else if (filename.includes(needle))          parts.push('filename contains query');
+    if (row.glp_status === 'APPROVED')           parts.push('APPROVED');
+    const createdAt = row.submission_created_at || row.rd_created_at;
+    if (createdAt && (Date.now() - new Date(createdAt).getTime()) < 30 * 24 * 3600 * 1000) {
         parts.push('recent upload');
     }
     return parts.length ? parts.join('; ') : 'matched search term';
