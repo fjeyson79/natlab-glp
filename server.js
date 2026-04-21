@@ -24303,6 +24303,7 @@ app.use('/api/assistant/sessions',    require('./routes/assistant/sessions')(poo
 app.use('/api/assistant/viewer',      require('./routes/assistant/viewer')(pool));
 app.use('/api/assistant/workspace',   require('./routes/assistant/workspace')(pool));
 app.use('/api/assistant/review-queue', require('./routes/assistant/reviewQueue')(pool));
+app.use('/api/assistant/activity',    require('./routes/assistant/activity')(pool));
 
 app.listen(PORT, "0.0.0.0", async () => {
     console.log("[STARTUP] Server listening on port " + PORT);

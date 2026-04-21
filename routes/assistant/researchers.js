@@ -229,6 +229,66 @@ module.exports = function assistantResearchersRouter(pool) {
                 name: researcherName, windowDays, metrics, compliance_signal, flags
             });
 
+            // 8. File-type activity (DI-first, additive).
+            //    Counts live di_submissions (status <> 'DISCARDED') by file_type,
+            //    independent of the docs[] list above (which is rd_documents-scoped
+            //    and windowed). This is the ground-truth activity for NAT-Lab —
+            //    rd_documents misses the bulk of uploads. Fixed windows: total,
+            //    last 30 days, last 7 days. file_type values are stored exactly
+            //    as 'DATA' / 'SOP' / 'PRESENTATION' (CHECK constraint on di_submissions).
+            const ftRes = await pool.query(
+                `SELECT
+                    COUNT(*) FILTER (WHERE file_type = 'DATA')::int         AS data_total,
+                    COUNT(*) FILTER (WHERE file_type = 'SOP')::int          AS sop_total,
+                    COUNT(*) FILTER (WHERE file_type = 'PRESENTATION')::int AS presentation_total,
+                    COUNT(*) FILTER (
+                        WHERE file_type = 'DATA'
+                          AND created_at >= NOW() - INTERVAL '30 days'
+                    )::int AS data_30d,
+                    COUNT(*) FILTER (
+                        WHERE file_type = 'SOP'
+                          AND created_at >= NOW() - INTERVAL '30 days'
+                    )::int AS sop_30d,
+                    COUNT(*) FILTER (
+                        WHERE file_type = 'PRESENTATION'
+                          AND created_at >= NOW() - INTERVAL '30 days'
+                    )::int AS presentation_30d,
+                    COUNT(*) FILTER (
+                        WHERE file_type = 'DATA'
+                          AND created_at >= NOW() - INTERVAL '7 days'
+                    )::int AS data_7d,
+                    COUNT(*) FILTER (
+                        WHERE file_type = 'SOP'
+                          AND created_at >= NOW() - INTERVAL '7 days'
+                    )::int AS sop_7d,
+                    COUNT(*) FILTER (
+                        WHERE file_type = 'PRESENTATION'
+                          AND created_at >= NOW() - INTERVAL '7 days'
+                    )::int AS presentation_7d
+                   FROM di_submissions
+                  WHERE workspace_id  = $1
+                    AND researcher_id = $2
+                    AND status <> 'DISCARDED'
+                    AND file_type IN ('DATA', 'SOP', 'PRESENTATION')`,
+                [workspaceId, rid]
+            );
+            const ft = ftRes.rows[0];
+            const file_type_totals = {
+                data:         ft.data_total,
+                sop:          ft.sop_total,
+                presentation: ft.presentation_total
+            };
+            const file_type_30d = {
+                data:         ft.data_30d,
+                sop:          ft.sop_30d,
+                presentation: ft.presentation_30d
+            };
+            const file_type_7d = {
+                data:         ft.data_7d,
+                sop:          ft.sop_7d,
+                presentation: ft.presentation_7d
+            };
+
             res.json({
                 researcher: { id: rid, name: researcherName, affiliation },
                 workspace: workspaceSlug,
@@ -240,6 +300,9 @@ module.exports = function assistantResearchersRouter(pool) {
                 latest_activity: latestActivity,
                 projects,
                 recent_files: recentFiles,
+                file_type_totals,
+                file_type_30d,
+                file_type_7d,
                 summary
             });
         } catch (err) {
