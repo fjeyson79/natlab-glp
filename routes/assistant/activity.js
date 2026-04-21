@@ -41,6 +41,13 @@ module.exports = function assistantActivityRouter(pool) {
         const wsSlug = (req.query.ws || '').toString().trim();
         if (!wsSlug) return res.status(400).json({ error: 'ws query parameter is required' });
 
+        // By default, drop researchers whose nine tracked counts are all zero —
+        // they clutter the ranking and make Telegram reports noisy. Escape hatch:
+        // include_zero=true returns every active workspace member (original shape).
+        const includeZero = ['1', 'true', 'yes'].includes(
+            (req.query.include_zero || '').toString().trim().toLowerCase()
+        );
+
         try {
             // Resolve workspace slug -> id
             const wsRow = await pool.query(
@@ -151,7 +158,7 @@ module.exports = function assistantActivityRouter(pool) {
                 )
             ]);
 
-            const researcherActivityRanked = researcherRows.rows.map(r => ({
+            const researcherActivityRankedAll = researcherRows.rows.map(r => ({
                 researcher_id:      r.researcher_id,
                 researcher_name:    r.researcher_name || null,
                 affiliation:        r.affiliation     || null,
@@ -165,6 +172,13 @@ module.exports = function assistantActivityRouter(pool) {
                 sop_7d:             r.sop_7d,
                 presentation_7d:    r.presentation_7d
             }));
+            const researcherActivityRanked = includeZero
+                ? researcherActivityRankedAll
+                : researcherActivityRankedAll.filter(r =>
+                    r.data_total + r.sop_total + r.presentation_total +
+                    r.data_30d  + r.sop_30d  + r.presentation_30d +
+                    r.data_7d   + r.sop_7d   + r.presentation_7d > 0
+                  );
 
             // Pad LiU / UNAV rows with zeros when the aggregate returned nothing,
             // so Zoe always gets both affiliations in the response.
@@ -203,6 +217,7 @@ module.exports = function assistantActivityRouter(pool) {
                 workspace: workspaceSlug,
                 source: 'di_submissions',
                 counted_file_types: ['DATA', 'SOP', 'PRESENTATION'],
+                include_zero: includeZero,
                 researcher_activity_ranked: researcherActivityRanked,
                 affiliation_activity: affiliationActivity,
                 updated_at: new Date().toISOString()
