@@ -2162,10 +2162,15 @@ app.get('/api/di/my-files', requireAuth, async (req, res) => {
             ]
         };
 
-        // Use di_revision_requests for accurate revision count (self-cleaning)
+        // Use di_revision_requests for accurate revision count (self-cleaning).
+        // Exclude requests whose underlying submission is DISCARDED/ARCHIVED so the
+        // badge matches what /api/di/revision-requests/open actually shows.
         if (await checkRevisionRequestsTable()) {
             const rrResult = await pool.query(
-                `SELECT COUNT(*)::int as count FROM di_revision_requests WHERE researcher_id = $1 AND status = 'open'`,
+                `SELECT COUNT(*)::int as count FROM di_revision_requests rr
+                 LEFT JOIN di_submissions s ON rr.file_id = s.submission_id
+                 WHERE rr.researcher_id = $1 AND rr.status = 'open'
+                   AND (s.status IS NULL OR s.status NOT IN ('DISCARDED','ARCHIVED'))`,
                 [user.researcher_id]
             );
             revisionCount = rrResult.rows[0].count;
@@ -3193,7 +3198,9 @@ app.post('/api/di/revise/:id', async (req, res) => {
 // =====================================================
 
 // GET /api/di/revision-requests/open-count
-// Lightweight count for current researcher (or all for PI)
+// Lightweight count for current researcher (or all for PI).
+// Hides requests whose underlying submission is DISCARDED/ARCHIVED so the count
+// matches what the revision UI actually renders (orphan-safe).
 app.get('/api/di/revision-requests/open-count', requireAuth, async (req, res) => {
     try {
         if (!await checkRevisionRequestsTable()) {
@@ -3201,11 +3208,19 @@ app.get('/api/di/revision-requests/open-count', requireAuth, async (req, res) =>
         }
         const user = req.session.user;
         const isPI = user.role === 'pi';
+        const liveFilter = `(s.status IS NULL OR s.status NOT IN ('DISCARDED','ARCHIVED'))`;
         let result;
         if (isPI) {
-            result = await pool.query(`SELECT COUNT(*)::int as count FROM di_revision_requests WHERE status = 'open'`);
+            result = await pool.query(
+                `SELECT COUNT(*)::int as count FROM di_revision_requests rr
+                 LEFT JOIN di_submissions s ON rr.file_id = s.submission_id
+                 WHERE rr.status = 'open' AND ${liveFilter}`);
         } else {
-            result = await pool.query(`SELECT COUNT(*)::int as count FROM di_revision_requests WHERE researcher_id = $1 AND status = 'open'`, [user.researcher_id]);
+            result = await pool.query(
+                `SELECT COUNT(*)::int as count FROM di_revision_requests rr
+                 LEFT JOIN di_submissions s ON rr.file_id = s.submission_id
+                 WHERE rr.researcher_id = $1 AND rr.status = 'open' AND ${liveFilter}`,
+                [user.researcher_id]);
         }
         res.json({ open_count: result.rows[0].count });
     } catch (err) {
@@ -3215,7 +3230,8 @@ app.get('/api/di/revision-requests/open-count', requireAuth, async (req, res) =>
 });
 
 // GET /api/di/revision-requests/open
-// Researcher's own open revision requests (for dropdown)
+// Researcher's own open revision requests (for dropdown).
+// Hides requests whose underlying submission is DISCARDED/ARCHIVED.
 app.get('/api/di/revision-requests/open', requireAuth, async (req, res) => {
     try {
         if (!await checkRevisionRequestsTable()) {
@@ -3223,10 +3239,13 @@ app.get('/api/di/revision-requests/open', requireAuth, async (req, res) => {
         }
         const user = req.session.user;
         const result = await pool.query(
-            `SELECT id, file_id, researcher_id, year, doc_type, filename, pi_comment, created_at
-             FROM di_revision_requests
-             WHERE researcher_id = $1 AND status = 'open'
-             ORDER BY created_at DESC`,
+            `SELECT rr.id, rr.file_id, rr.researcher_id, rr.year, rr.doc_type, rr.filename,
+                    rr.pi_comment, rr.created_at
+             FROM di_revision_requests rr
+             LEFT JOIN di_submissions s ON rr.file_id = s.submission_id
+             WHERE rr.researcher_id = $1 AND rr.status = 'open'
+               AND (s.status IS NULL OR s.status NOT IN ('DISCARDED','ARCHIVED'))
+             ORDER BY rr.created_at DESC`,
             [user.researcher_id]
         );
         res.json({ requests: result.rows });
@@ -3237,7 +3256,9 @@ app.get('/api/di/revision-requests/open', requireAuth, async (req, res) => {
 });
 
 // GET /api/di/revision-requests/all
-// All open revision requests for PI Lab Files view
+// All open revision requests for PI Lab Files view.
+// Hides requests whose underlying submission is DISCARDED/ARCHIVED — the discard
+// flow doesn't close the revision-request row, so filter at read time.
 app.get('/api/di/revision-requests/all', requirePIRead, async (req, res) => {
     try {
         if (!await checkRevisionRequestsTable()) {
@@ -3249,7 +3270,9 @@ app.get('/api/di/revision-requests/all', requirePIRead, async (req, res) => {
                     COALESCE(a.name, rr.researcher_id) as researcher_name
              FROM di_revision_requests rr
              LEFT JOIN di_allowlist a ON rr.researcher_id = a.researcher_id
+             LEFT JOIN di_submissions s ON rr.file_id = s.submission_id
              WHERE rr.status = 'open'
+               AND (s.status IS NULL OR s.status NOT IN ('DISCARDED','ARCHIVED'))
              ORDER BY rr.created_at DESC`
         );
         res.json({ requests: result.rows });
@@ -5649,10 +5672,15 @@ app.get('/api/di/metrics', requirePIRead, async (req, res) => {
              WHERE created_at >= date_trunc('month', CURRENT_DATE) AND status != 'DISCARDED'`
         );
 
-        // Get open revision requests count (from dedicated table)
+        // Get open revision requests count (from dedicated table).
+        // Exclude requests whose underlying submission is DISCARDED/ARCHIVED.
         let openRevisionRequests = null;
         if (await checkRevisionRequestsTable()) {
-            const rrResult = await pool.query(`SELECT COUNT(*)::int as count FROM di_revision_requests WHERE status = 'open'`);
+            const rrResult = await pool.query(
+                `SELECT COUNT(*)::int as count FROM di_revision_requests rr
+                 LEFT JOIN di_submissions s ON rr.file_id = s.submission_id
+                 WHERE rr.status = 'open'
+                   AND (s.status IS NULL OR s.status NOT IN ('DISCARDED','ARCHIVED'))`);
             openRevisionRequests = rrResult.rows[0].count;
         }
 
@@ -6071,10 +6099,14 @@ app.get('/api/di/supervision/researchers/:researcher_id/files', requireSuperviso
             }
         }
 
-        // Use di_revision_requests for accurate revision count (self-cleaning)
+        // Use di_revision_requests for accurate revision count (self-cleaning).
+        // Exclude requests whose underlying submission is DISCARDED/ARCHIVED.
         if (await checkRevisionRequestsTable()) {
             const rrResult = await pool.query(
-                `SELECT COUNT(*)::int as count FROM di_revision_requests WHERE researcher_id = $1 AND status = 'open'`,
+                `SELECT COUNT(*)::int as count FROM di_revision_requests rr
+                 LEFT JOIN di_submissions s ON rr.file_id = s.submission_id
+                 WHERE rr.researcher_id = $1 AND rr.status = 'open'
+                   AND (s.status IS NULL OR s.status NOT IN ('DISCARDED','ARCHIVED'))`,
                 [researcher_id]
             );
             revisionCount = rrResult.rows[0].count;
@@ -12133,8 +12165,10 @@ async function buildGlpSnapshot(userId) {
 
         pool.query(`
             SELECT COUNT(*)::int AS open_count
-            FROM di_revision_requests
-            WHERE researcher_id = $1 AND status = 'open'
+            FROM di_revision_requests rr
+            LEFT JOIN di_submissions s ON rr.file_id = s.submission_id
+            WHERE rr.researcher_id = $1 AND rr.status = 'open'
+              AND (s.status IS NULL OR s.status NOT IN ('DISCARDED','ARCHIVED'))
         `, [userId]).catch(() => ({ rows: [{ open_count: 0 }] }))
     ]);
 
@@ -12852,12 +12886,14 @@ app.get('/api/glp/status/user-facts/:userId', async (req, res) => {
                      WHERE is_active = TRUE AND requirement_rule = 'Always') AS required_docs
             `, [userId]) : Promise.resolve({ rows: [{}] }),
 
-            // Revisions
+            // Revisions — exclude requests whose underlying submission is DISCARDED/ARCHIVED
             pool.query(`
                 SELECT COUNT(*)::int AS open_count,
-                       EXTRACT(DAY FROM NOW() - MIN(created_at))::int AS oldest_open_days
-                FROM di_revision_requests
-                WHERE researcher_id = $1 AND status = 'open'
+                       EXTRACT(DAY FROM NOW() - MIN(rr.created_at))::int AS oldest_open_days
+                FROM di_revision_requests rr
+                LEFT JOIN di_submissions s ON rr.file_id = s.submission_id
+                WHERE rr.researcher_id = $1 AND rr.status = 'open'
+                  AND (s.status IS NULL OR s.status NOT IN ('DISCARDED','ARCHIVED'))
             `, [userId]).catch(() => ({ rows: [{ open_count: 0, oldest_open_days: null }] })),
 
             // Purchases
@@ -19297,8 +19333,8 @@ app.get('/api/rd/glp/files', requireAuth, requireInvestorTabAny('rnd', 'glp_visi
 
 // GET /api/rd/glp/researchers — List researchers with submissions in this workspace
 app.get('/api/rd/glp/researchers', requireAuth, requireInvestorTabAny('rnd', 'glp_vision'), async (req, res) => {
+    const ws = req.workspace_id;
     try {
-        const ws = req.workspace_id;
         // Only show researchers who are members of this workspace AND have submissions in it
         const r = await pool.query(
             `SELECT DISTINCT s.researcher_id, a.name as researcher_name, COUNT(*)::int as file_count
@@ -19308,22 +19344,51 @@ app.get('/api/rd/glp/researchers', requireAuth, requireInvestorTabAny('rnd', 'gl
              WHERE s.workspace_id = $1 AND s.workspace_id IS NOT NULL AND s.status NOT IN ('ARCHIVED')
              GROUP BY s.researcher_id, a.name ORDER BY a.name`,
             [ws]);
+        try {
+            // Temporary diagnostics: log exactly why each researcher is in the list.
+            // Remove once cross-workspace leakage is fully ruled out.
+            console.info('[RD-GLP] researchers primary ws=%s count=%d rows=%j',
+                ws, r.rows.length,
+                r.rows.map(x => ({ id: x.researcher_id, name: x.researcher_name, files: x.file_count })));
+            for (const row of r.rows) {
+                const mem = await pool.query(
+                    `SELECT is_active, is_workspace_master FROM workspace_users
+                     WHERE user_id = $1 AND workspace_id = $2`, [row.researcher_id, ws]);
+                const subs = await pool.query(
+                    `SELECT COUNT(*)::int AS n FROM di_submissions
+                     WHERE researcher_id = $1 AND workspace_id = $2 AND status NOT IN ('ARCHIVED')`,
+                    [row.researcher_id, ws]);
+                console.info('[RD-GLP]   %s name=%j membership=%j subs=%d',
+                    row.researcher_id, row.researcher_name, mem.rows[0] || null, subs.rows[0].n);
+            }
+        } catch (diagErr) {
+            console.warn('[RD-GLP] diagnostics skipped:', diagErr.message);
+        }
         res.json({ researchers: r.rows });
     } catch (err) {
-        // Fallback: if workspace_users table doesn't exist, use original query
-        try {
-            const ws = req.workspace_id;
-            const r = await pool.query(
-                `SELECT DISTINCT s.researcher_id, a.name as researcher_name, COUNT(*)::int as file_count
-                 FROM di_submissions s LEFT JOIN di_allowlist a ON s.researcher_id = a.researcher_id
-                 WHERE s.workspace_id = $1 AND s.workspace_id IS NOT NULL AND s.status NOT IN ('ARCHIVED')
-                 GROUP BY s.researcher_id, a.name ORDER BY a.name`,
-                [ws]);
-            res.json({ researchers: r.rows });
-        } catch (err2) {
-            console.error('[RD-GLP] researchers error:', err2.message);
-            res.status(500).json({ error: 'Failed' });
+        // Only fall back when workspace_users truly does not exist (pg 42P01 = undefined_table).
+        // Any other error must surface instead of silently dropping the workspace-membership
+        // check and leaking cross-workspace researchers.
+        if (err && err.code === '42P01') {
+            console.warn('[RD-GLP] workspace_users missing; falling back to submissions-only query ws=%s', ws);
+            try {
+                const r = await pool.query(
+                    `SELECT DISTINCT s.researcher_id, a.name as researcher_name, COUNT(*)::int as file_count
+                     FROM di_submissions s LEFT JOIN di_allowlist a ON s.researcher_id = a.researcher_id
+                     WHERE s.workspace_id = $1 AND s.workspace_id IS NOT NULL AND s.status NOT IN ('ARCHIVED')
+                     GROUP BY s.researcher_id, a.name ORDER BY a.name`,
+                    [ws]);
+                console.info('[RD-GLP] researchers fallback ws=%s count=%d rows=%j',
+                    ws, r.rows.length,
+                    r.rows.map(x => ({ id: x.researcher_id, name: x.researcher_name, files: x.file_count })));
+                return res.json({ researchers: r.rows });
+            } catch (err2) {
+                console.error('[RD-GLP] researchers fallback error:', err2.message);
+                return res.status(500).json({ error: 'Failed' });
+            }
         }
+        console.error('[RD-GLP] researchers error ws=%s code=%s msg=%s', ws, err && err.code, err && err.message);
+        return res.status(500).json({ error: 'Failed' });
     }
 });
 
