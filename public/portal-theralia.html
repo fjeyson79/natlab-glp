@@ -5371,6 +5371,10 @@
                 r.style.pointerEvents = _isUpdateMode ? '' : 'none';
                 r.style.opacity = _isUpdateMode ? '' : '0';
             });
+
+            // Re-render dash subsections so per-item Edit/Delete buttons and
+            // the "Rich edit" link reflect the current mode.
+            if (typeof dashSubLoadForMeeting === 'function') dashSubLoadForMeeting();
         });
 
         // Hide edit buttons and add-rows initially (View mode default)
@@ -5403,52 +5407,277 @@
 
         /* ============================================== */
         /* INLINE SUBSECTION EDITING                      */
+        /* R&D Focus + Business & Investors — scoped per  */
+        /* board meeting; Agenda-parity item list + rich  */
+        /* text via the shared RTB helpers.               */
         /* ============================================== */
         const DASH_SUB_STORAGE_PREFIX = 'theralia_dash_sub_';
+        const DASH_SUB_KEYS = [
+            'rnd-milestone', 'rnd-validation', 'rnd-ip',
+            'biz-collab', 'biz-investor', 'biz-funding'
+        ];
+        const DASH_SUB_LABELS = {
+            'rnd-milestone': 'Milestone', 'rnd-validation': 'Validation', 'rnd-ip': 'IP',
+            'biz-collab': 'Collaboration', 'biz-investor': 'Investors', 'biz-funding': 'Funding'
+        };
+        // Per-key inline editor tracker: null = append, number = replace at idx.
+        const _dashSubEditIdx = {
+            'rnd-milestone': null, 'rnd-validation': null, 'rnd-ip': null,
+            'biz-collab': null, 'biz-investor': null, 'biz-funding': null
+        };
 
-        // Load saved subsection values on page load
-        document.querySelectorAll('.dash-sub-val').forEach(el => {
-            const key = el.id.replace('subVal-', '');
-            const saved = localStorage.getItem(DASH_SUB_STORAGE_PREFIX + key);
-            if (saved) {
-                el.textContent = saved;
-                el.style.color = '#555a66';
-                el.style.fontStyle = 'normal';
+        function dashSubStorageKey(key) {
+            if (!bmCurrentMeeting || !bmCurrentMeeting.id) return null;
+            return DASH_SUB_STORAGE_PREFIX + 'mtg_' + bmCurrentMeeting.id + '_' + key;
+        }
+
+        // One-time cleanup: remove legacy unscoped dashboard keys from before
+        // we moved R&D Focus + Business & Investors to meeting-scoped storage.
+        (function cleanLegacyDashKeys() {
+            try {
+                const keys = Object.keys(localStorage || {});
+                const legacy = keys.filter(k =>
+                    k.startsWith('theralia_dash_sub_') && !k.includes('_mtg_')
+                );
+                if (legacy.length > 0) {
+                    console.warn('[Theralia] Removing legacy unscoped dashboard keys:', legacy);
+                    legacy.forEach(k => localStorage.removeItem(k));
+                    console.info('[Theralia] Dashboard content is now meeting-specific. Legacy entries cleared.');
+                }
+            } catch (e) {
+                console.warn('[Theralia] Legacy cleanup failed:', e);
             }
-        });
+        })();
 
+        // Read items array from meeting-scoped storage.
+        // Handles legacy scoped format (plain string) as a single-item array.
+        // Enforces single-mode invariant: a row is either ONE rich item
+        // (RTB_MARK-prefixed) or a list of plain strings — never mixed.
+        // Mixed data is normalized to the first rich item found.
+        function dashSubGetItems(key) {
+            const sk = dashSubStorageKey(key);
+            if (!sk) return [];
+            const raw = localStorage.getItem(sk);
+            if (!raw) return [];
+            let items;
+            try {
+                const parsed = JSON.parse(raw);
+                items = (parsed && Array.isArray(parsed.items)) ? parsed.items : [raw];
+            } catch (_) {
+                items = [raw];
+            }
+            const richIdx = items.findIndex(it =>
+                typeof it === 'string' && it.startsWith(RTB_MARK)
+            );
+            if (richIdx === -1) return items;
+            if (items.length === 1) return items;
+            console.warn('[Theralia] Mixed mode detected in dashSub, normalizing to single mode', { key, itemCount: items.length });
+            return [items[richIdx]];
+        }
+
+        function dashSubSaveItems(key, items) {
+            const sk = dashSubStorageKey(key);
+            if (!sk) return false;
+            if (!items || items.length === 0) {
+                localStorage.removeItem(sk);
+            } else {
+                localStorage.setItem(sk, JSON.stringify({ items }));
+            }
+            dashSubRenderRow(key);
+            return true;
+        }
+
+        function dashSubCanEdit() {
+            return _isUpdateMode && !!bmCurrentMeeting && !bmIsLocked();
+        }
+
+        // Render a single sub-row: list of items (plain or rich) with Agenda-style
+        // Edit/Delete controls. Rich-mode hides the kv-row and shows an rtb-host
+        // below it, matching the Agenda pattern exactly.
+        function dashSubRenderRow(key) {
+            const valEl = document.getElementById('subVal-' + key);
+            const row = valEl ? valEl.closest('.dash-sub') : null;
+            if (!row) return;
+            const kvRow = row.querySelector('.kv-row');
+            const addRow = row.querySelector('.add-row');
+            const canEdit = dashSubCanEdit();
+            const items = dashSubGetItems(key);
+
+            // Ensure rtb-host exists once, inserted after kv-row
+            let host = row.querySelector('.rtb-host[data-dash-key="' + key + '"]');
+            if (!host) {
+                host = document.createElement('div');
+                host.className = 'rtb-host';
+                host.setAttribute('data-dash-key', key);
+                if (kvRow && kvRow.nextSibling) row.insertBefore(host, kvRow.nextSibling);
+                else row.appendChild(host);
+            }
+            // Ensure "Rich edit" link exists once, inserted before add-row
+            let richBtn = row.querySelector('.rtb-edit-link[data-dash-key="' + key + '"]');
+            if (!richBtn) {
+                richBtn = document.createElement('button');
+                richBtn.type = 'button';
+                richBtn.className = 'rtb-edit-link';
+                richBtn.setAttribute('data-dash-key', key);
+                richBtn.textContent = 'Rich edit';
+                richBtn.addEventListener('click', () => dashSubOpenRichEditor(key));
+                if (addRow) row.insertBefore(richBtn, addRow);
+                else row.appendChild(richBtn);
+            }
+
+            // Rich-mode branch
+            if (rtbIsRich(items)) {
+                if (kvRow) kvRow.style.display = 'none';
+                if (addRow) addRow.style.display = 'none';
+                richBtn.style.display = 'none';
+                host.style.display = '';
+                rtbRender(host, rtbExtract(items), {
+                    editable: canEdit,
+                    onEdit: () => dashSubOpenRichEditor(key),
+                    onDelete: canEdit ? () => dashSubDeleteRich(key) : null
+                });
+                return;
+            }
+
+            // Plain-mode branch
+            if (kvRow) kvRow.style.display = '';
+            if (addRow) addRow.style.display = '';
+            host.style.display = 'none';
+            richBtn.style.display = canEdit ? '' : 'none';
+
+            if (!items.length) {
+                valEl.innerHTML = '&mdash;';
+                valEl.style.color = '#b0b4be';
+                valEl.style.fontStyle = 'italic';
+                return;
+            }
+            valEl.style.color = '';
+            valEl.style.fontStyle = '';
+            const actions = (i) => canEdit
+                ? '<span class="bm-item-actions">' +
+                    '<button type="button" class="bm-item-btn" onclick="dashSubEditItem(\'' + key + '\',' + i + ')">Edit</button>' +
+                    '<button type="button" class="bm-item-btn bm-item-del" onclick="dashSubDeleteItem(\'' + key + '\',' + i + ')">Delete</button>' +
+                  '</span>'
+                : '';
+            valEl.innerHTML = '<ul class="compact-list dash-sub-items">' + items.map((t, i) =>
+                '<li class="bm-item-row"><span class="bm-item-text">' + dashSubEsc(t) + '</span>' + actions(i) + '</li>'
+            ).join('') + '</ul>';
+        }
+
+        function dashSubRenderEmpty() {
+            DASH_SUB_KEYS.forEach(key => {
+                const el = document.getElementById('subVal-' + key);
+                if (!el) return;
+                el.innerHTML = '&mdash;';
+                el.style.color = '#b0b4be';
+                el.style.fontStyle = 'italic';
+            });
+        }
+
+        function dashSubLoadForMeeting() {
+            dashSubRenderEmpty();
+            if (!bmCurrentMeeting || !bmCurrentMeeting.id) return;
+            const meetingId = bmCurrentMeeting.id;
+            DASH_SUB_KEYS.forEach(key => {
+                if (!bmCurrentMeeting || bmCurrentMeeting.id !== meetingId) return;
+                dashSubRenderRow(key);
+            });
+        }
+
+        // Empty by default until a meeting loads.
+        dashSubRenderEmpty();
+
+        // --- Inline editor: append (add-row) or replace (per-item Edit) ---
         function dashSubOpen(key) {
-            if (!_isUpdateMode) return;
-            // Close any other open inline editor
+            if (!dashSubCanEdit()) return;
             document.querySelectorAll('.sub-inline-edit.open').forEach(el => el.classList.remove('open'));
+            _dashSubEditIdx[key] = null;
             const editor = document.getElementById('subEdit-' + key);
             const input = document.getElementById('subInput-' + key);
-            const current = localStorage.getItem(DASH_SUB_STORAGE_PREFIX + key) || '';
-            input.value = current;
+            input.value = '';
             editor.classList.add('open');
             input.focus();
         }
 
-        function dashSubSave(key) {
+        function dashSubEditItem(key, idx) {
+            if (!dashSubCanEdit()) return;
+            const items = dashSubGetItems(key);
+            if (rtbIsRich(items)) { dashSubOpenRichEditor(key); return; }
+            const current = items[idx];
+            if (current === undefined) return;
+            document.querySelectorAll('.sub-inline-edit.open').forEach(el => el.classList.remove('open'));
+            _dashSubEditIdx[key] = idx;
+            const editor = document.getElementById('subEdit-' + key);
             const input = document.getElementById('subInput-' + key);
-            const val = input.value.trim();
-            const display = document.getElementById('subVal-' + key);
-            if (val) {
-                localStorage.setItem(DASH_SUB_STORAGE_PREFIX + key, val);
-                display.textContent = val;
-                display.style.color = '#555a66';
-                display.style.fontStyle = 'normal';
-            } else {
-                localStorage.removeItem(DASH_SUB_STORAGE_PREFIX + key);
-                display.innerHTML = '&mdash;';
-                display.style.color = '#b0b4be';
-                display.style.fontStyle = 'italic';
+            input.value = current;
+            editor.classList.add('open');
+            input.focus();
+            input.select();
+        }
+
+        function dashSubDeleteItem(key, idx) {
+            if (!dashSubCanEdit()) return;
+            const items = dashSubGetItems(key);
+            if (rtbIsRich(items)) return;
+            if (idx < 0 || idx >= items.length) return;
+            if (!confirm('Delete this item?')) return;
+            const next = items.slice();
+            next.splice(idx, 1);
+            dashSubSaveItems(key, next);
+        }
+
+        function dashSubSave(key) {
+            const editor = document.getElementById('subEdit-' + key);
+            if (!dashSubCanEdit()) {
+                if (editor) editor.classList.remove('open');
+                _dashSubEditIdx[key] = null;
+                return;
             }
-            document.getElementById('subEdit-' + key).classList.remove('open');
+            const input = document.getElementById('subInput-' + key);
+            const val = (input.value || '').trim();
+            const editIdx = _dashSubEditIdx[key];
+            const current = dashSubGetItems(key);
+            let items;
+            if (editIdx !== null && editIdx !== undefined) {
+                // Replace mode — rich content is edited via the rich editor, never this input
+                if (rtbIsRich(current)) { _dashSubEditIdx[key] = null; editor.classList.remove('open'); return; }
+                items = current.slice();
+                if (!val) items.splice(editIdx, 1); else items[editIdx] = val;
+            } else {
+                // Append mode — single-mode invariant: a plain add against a rich
+                // row overwrites the rich block with [val] (never mixes).
+                if (!val) { _dashSubEditIdx[key] = null; editor.classList.remove('open'); return; }
+                items = rtbIsRich(current) ? [val] : [...current, val];
+            }
+            _dashSubEditIdx[key] = null;
+            dashSubSaveItems(key, items);
+            editor.classList.remove('open');
         }
 
         function dashSubCancel(key) {
+            _dashSubEditIdx[key] = null;
             document.getElementById('subEdit-' + key).classList.remove('open');
+        }
+
+        // --- Rich text flow (mirrors bmOpenRichEditor / bmDeleteRich) ---
+        // Single-mode invariant: saving rich content always replaces the row
+        // with exactly one RTB_MARK-prefixed entry (or an empty list if empty).
+        async function dashSubOpenRichEditor(key) {
+            if (!dashSubCanEdit()) return;
+            const items = dashSubGetItems(key);
+            const initial = rtbIsRich(items) ? rtbExtract(items) : bmItemsToHtml(items);
+            const label = DASH_SUB_LABELS[key] || 'Item';
+            const html = await rtbOpen('Edit ' + label, initial);
+            if (html === null) return;
+            const clean = rtbSanitize(html || '');
+            const next = rtbIsEffectivelyEmpty(clean) ? [] : [RTB_MARK + clean];
+            dashSubSaveItems(key, next);
+        }
+
+        async function dashSubDeleteRich(key) {
+            if (!dashSubCanEdit()) return;
+            if (!confirm('Delete all content in this section?')) return;
+            dashSubSaveItems(key, []);
         }
 
         // Legacy stub
@@ -6275,6 +6504,12 @@
         // Hook pnLoad into bmRenderUI via a post-render call
         const _origBmRenderUI = bmRenderUI;
         bmRenderUI = function() { _origBmRenderUI(); pnLoad(); };
+
+        // Meeting-scoped reload for R&D Focus + Business & Investors subsections.
+        // Clears display first, then loads values for the current meeting.
+        // If no meeting is selected, stays empty.
+        const _origBmRenderUI_dashSub = bmRenderUI;
+        bmRenderUI = function() { _origBmRenderUI_dashSub(); dashSubLoadForMeeting(); };
 
         // Close panel on outside click
         document.addEventListener('click', (e) => {
