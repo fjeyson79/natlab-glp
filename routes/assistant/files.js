@@ -735,16 +735,27 @@ module.exports = function assistantFilesRouter(pool, deps) {
         const params = [];
         const push = (v) => { params.push(v); return '$' + params.length; };
 
-        // q-derived placeholders. We push them up front so they keep stable
-        // numbers regardless of which filter clauses fire.
+        // q-derived placeholders. Only push when the corresponding clause
+        // will actually reference the placeholder — Postgres validates the
+        // Bind parameter count against the SQL's max $N reference and 500s
+        // the request when they disagree.
+        //
+        // Specifically: pQFirst is ONLY referenced inside the optional
+        // first-token boost score clause, which runs only for multi-token
+        // queries (`qFirst !== q`). For single-token queries the boost
+        // would be redundant with the full-q ILIKE match anyway, so we skip
+        // the push entirely. Earlier versions pushed it unconditionally,
+        // which produced an unreferenced $3 and a "bind message supplies N
+        // parameters, but prepared statement requires M" error on every
+        // single-token search (e.g. an exact-filename lookup with no spaces).
         const qWrap   = q ? '%' + q + '%' : null;
         const qLower  = q ? q.toLowerCase() : null;
         const qFirst  = q ? q.split(/\s+/)[0] : null;
-        const qFirstWrap = qFirst ? '%' + qFirst + '%' : null;
+        const useFirstTokenBoost = !!(qFirst && qFirst !== q);
 
         const pQ      = qWrap   ? push(qWrap)   : null;
         const pQLower = qLower  ? push(qLower)  : null;
-        const pQFirst = qFirstWrap ? push(qFirstWrap) : null;
+        const pQFirst = useFirstTokenBoost ? push('%' + qFirst + '%') : null;
 
         const where = [];
         if (filters.workspace_slug)  where.push(`i.workspace_slug  = ${push(filters.workspace_slug)}`);
@@ -790,7 +801,7 @@ module.exports = function assistantFilesRouter(pool, deps) {
             if (scope !== 'metadata') {
                 scoreParts.push(`(CASE WHEN COALESCE(t.full_text,'')   ILIKE ${pQ} THEN 3 ELSE 0 END)`);
             }
-            if (qFirst && qFirst !== q) {
+            if (useFirstTokenBoost) {
                 scoreParts.push(`(CASE WHEN COALESCE(i.filename,'')    ILIKE ${pQFirst} THEN 2 ELSE 0 END)`);
             }
         }
@@ -872,7 +883,23 @@ module.exports = function assistantFilesRouter(pool, deps) {
                 results
             });
         } catch (err) {
-            console.error('[ASSISTANT] indexed-search error:', err.message);
+            // Surface the FULL pg error context so prod logs let us
+            // diagnose without redeploying. node-pg attaches `code`,
+            // `position`, `detail`, `hint`, `where` on `DatabaseError`.
+            // We include the raw query + params (no secrets — this index
+            // table holds metadata only) so any future 500 here is
+            // self-explanatory.
+            console.error('[ASSISTANT] indexed-search error:',
+                          err && err.message);
+            if (err && err.code) {
+                console.error('[ASSISTANT] indexed-search PG code=' + err.code,
+                              'detail=' + (err.detail || '-'),
+                              'hint=' + (err.hint || '-'),
+                              'position=' + (err.position || '-'));
+            }
+            console.error('[ASSISTANT] indexed-search SQL:', sql);
+            console.error('[ASSISTANT] indexed-search params:', JSON.stringify(params));
+            if (err && err.stack) console.error('[ASSISTANT] indexed-search stack:', err.stack);
             res.status(500).json({ error: 'Failed to run indexed search' });
         }
     }
