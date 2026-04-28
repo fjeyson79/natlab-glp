@@ -539,6 +539,88 @@ module.exports = function assistantFilesRouter(pool, deps) {
         }
     });
 
+    // GET /api/assistant/files/indexed/:id/text?max_chars=12000
+    //
+    // Phase 1.2 — read the extracted text Zoe already has on file. Returns
+    // the full assistant_file_index metadata plus the extracted text from
+    // assistant_file_text, truncated to `max_chars` (default 12000, hard
+    // cap 200000 so a paranoid caller can't OOM us).
+    //
+    // Designed to fail soft on every "no usable text" path:
+    //   text_status='pending'     → has_full_text=false, full_text=null
+    //   text_status='failed'      → has_full_text=false, full_text=null
+    //   text_status='empty'       → has_full_text=false, full_text=null
+    //   text_status='unsupported' → has_full_text=false, full_text=null
+    //   no assistant_file_text row → has_full_text=false, full_text=null
+    // The text_status field tells the caller WHY there's no text; we don't
+    // 4xx — the file genuinely exists in the index, just hasn't been (or
+    // can't be) extracted yet.
+    //
+    // Defined BEFORE /indexed/:id so the more-specific 3-segment route is
+    // registered first. (Express segment-counts the routes anyway, so the
+    // 2-segment /indexed/:id can't shadow this; the ordering is for human
+    // readers.)
+    router.get('/indexed/:id/text', async (req, res) => {
+        if (!(await ensureIndexTables())) {
+            return res.status(503).json({ error: 'assistant_file_index not ready (migration 065 pending)' });
+        }
+        const id = String(req.params.id || '').trim();
+        if (!/^[0-9a-fA-F-]{36}$/.test(id)) {
+            return res.status(404).json({ error: 'Indexed file not found' });
+        }
+        let maxChars = parseInt(req.query.max_chars, 10);
+        if (!Number.isFinite(maxChars) || maxChars < 1) maxChars = 12000;
+        if (maxChars > 200000) maxChars = 200000;
+
+        try {
+            const r = await pool.query(
+                `SELECT i.id, i.r2_key, i.filename, i.workspace_slug,
+                        i.researcher_code, i.researcher_name, i.affiliation,
+                        i.file_type, i.year, i.status,
+                        i.text_status, i.text_preview, i.text_char_count,
+                        t.full_text
+                   FROM assistant_file_index i
+                   LEFT JOIN assistant_file_text t ON t.file_id = i.id
+                  WHERE i.id = $1
+                  LIMIT 1`,
+                [id]
+            );
+            if (r.rows.length === 0) {
+                return res.status(404).json({ error: 'Indexed file not found' });
+            }
+            const row = r.rows[0];
+            const stored = row.full_text || null;
+            const hasFullText = !!(stored && stored.length > 0);
+            const truncated = hasFullText && stored.length > maxChars;
+            const fullText = hasFullText
+                ? (truncated ? stored.slice(0, maxChars) : stored)
+                : null;
+
+            res.json({
+                id:               row.id,
+                filename:         row.filename,
+                r2_key:           row.r2_key,
+                workspace_slug:   row.workspace_slug,
+                researcher_code:  row.researcher_code,
+                researcher_name:  row.researcher_name,
+                affiliation:      row.affiliation,
+                file_type:        row.file_type,
+                year:             row.year,
+                status:           row.status,
+                text_status:      row.text_status,
+                text_char_count:  row.text_char_count,
+                text_preview:     row.text_preview,
+                has_full_text:    hasFullText,
+                full_text:        fullText,
+                truncated:        truncated,
+                max_chars:        maxChars
+            });
+        } catch (err) {
+            console.error('[ASSISTANT] files/indexed/:id/text error:', err.message);
+            res.status(500).json({ error: 'Failed to load indexed file text' });
+        }
+    });
+
     // GET /api/assistant/files/indexed/:id
     //
     // Full metadata for one assistant_file_index row. Separate path from the
