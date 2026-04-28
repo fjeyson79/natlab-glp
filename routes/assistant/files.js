@@ -28,18 +28,80 @@ const express = require('express');
 // giving Zoe enough material for ALCOA / SOP-anatomy review on long files.
 const DEFAULT_TEXT_MAX = 30000;
 
-// `r2` carries the server.js-scoped R2 helpers needed by the text-extract
-// route. They are not exported from server.js, so the mount site passes them
-// through here. If absent, the text route fails closed with 503 — every other
-// route in this file ignores the parameter.
-module.exports = function assistantFilesRouter(pool, r2) {
+// `deps` (originally named `r2`, kept that way for backward compat with the
+// /text route added earlier) carries the server.js-scoped helpers this router
+// can't reach on its own. Phase 1 additions: requirePI middleware, r2Client +
+// r2Bucket for the reindex route, and the indexer module. Each is optional;
+// routes that need a missing dep fail closed with 503.
+module.exports = function assistantFilesRouter(pool, deps) {
     const router = express.Router();
-    const fetchR2ObjectAsBuffer = r2 && r2.fetchR2ObjectAsBuffer;
-    const normalizeR2Key        = r2 && r2.normalizeR2Key;
+    const r2 = deps || {};
+    const fetchR2ObjectAsBuffer = r2.fetchR2ObjectAsBuffer;
+    const normalizeR2Key        = r2.normalizeR2Key;
+    // Phase 1 additions:
+    const r2Client              = r2.r2Client;
+    const r2Bucket               = r2.r2Bucket;
+    const requirePI             = r2.requirePI || ((req, res, next) => next()); // soft no-op if absent
+    const indexer               = r2.indexer;
+
+    // Cached existence check for the assistant_file_index / assistant_file_text
+    // tables (migration 065). Same pattern as checkRoleColumn / checkOligo* in
+    // server.js — cheap, refreshed periodically. Endpoints that depend on the
+    // index fail fast with 503 when the migration hasn't been applied yet
+    // instead of throwing a confusing relation-not-found error.
+    let _idxTablesReady = null;
+    let _idxTablesChecked = 0;
+    const IDX_TABLE_TTL_MS = 60 * 1000;
+    async function ensureIndexTables() {
+        const now = Date.now();
+        if (_idxTablesReady === true && (now - _idxTablesChecked) < IDX_TABLE_TTL_MS) return true;
+        try {
+            const r = await pool.query(`
+                SELECT
+                    to_regclass('public.assistant_file_index') AS i,
+                    to_regclass('public.assistant_file_text')  AS t
+            `);
+            _idxTablesReady = (r.rows[0].i !== null && r.rows[0].t !== null);
+        } catch {
+            _idxTablesReady = false;
+        }
+        _idxTablesChecked = now;
+        return _idxTablesReady;
+    }
 
     router.get('/search', async (req, res) => {
         const wsSlug = (req.query.ws || '').toString().trim();
         const q = (req.query.q || '').toString().trim();
+
+        // Phase 1 search extension. Routing contract:
+        //   LEGACY (di_submissions, returns best_match + alternatives):
+        //     fires only when ws + q are the ONLY meaningful query params.
+        //     This is what the original search_files Zoe tool sends.
+        //   INDEXED (assistant_file_index + assistant_file_text):
+        //     fires when ANY of these are present in the request:
+        //       search_scope, researcher, affiliation, year, file_type,
+        //       status, workspace, indexed
+        //     `ws` is mapped to `workspace` inside the indexed handler, so
+        //     callers may send either or both.
+        // Be liberal about "present": treat a non-empty value or even a bare
+        // `?indexed` (empty string) as enough to opt in. We check for the
+        // KEY's presence on req.query rather than just its value, so the new
+        // flow triggers reliably even with empty values.
+        const NEW_PARAM_KEYS = [
+            'search_scope',
+            'researcher',
+            'affiliation',
+            'year',
+            'file_type',
+            'status',
+            'workspace',
+            'indexed',
+        ];
+        const hasNewParams = NEW_PARAM_KEYS.some(k => Object.prototype.hasOwnProperty.call(req.query, k));
+        if (hasNewParams) {
+            return handleIndexedSearch(req, res);
+        }
+
         if (!wsSlug) return res.status(400).json({ error: 'ws query parameter is required' });
         if (!q)      return res.status(400).json({ error: 'q query parameter is required' });
 
@@ -259,6 +321,479 @@ module.exports = function assistantFilesRouter(pool, r2) {
             res.status(500).json({ error: 'Failed to search files' });
         }
     });
+
+    // ---------------------------------------------------------------------
+    // Phase 1 — Zoe file map / advanced search / researcher view / detail.
+    // All routes are read-only and rely on assistant_file_index +
+    // assistant_file_text (migration 065). They fail fast with 503 when the
+    // tables aren't there, so deployments missing the migration get a clean
+    // signal rather than a 500.
+    //
+    // Defined before /:submission_id/text and /:id so the parameterised
+    // routes don't shadow them. (`/map`, `/reindex`, `/researcher/...`,
+    // `/indexed/...` are all non-UUID and would already fail the UUID guard
+    // on /:id, but explicit ordering is friendlier to future maintainers.)
+    // ---------------------------------------------------------------------
+
+    // -- helpers shared by the new routes ----------------------------------
+    function parseFiltersFromQuery(q) {
+        const trim = (v) => (v == null ? null : String(v).trim() || null);
+        const upper = (v) => { const t = trim(v); return t ? t.toUpperCase() : null; };
+        const yr = parseInt(q.year, 10);
+        return {
+            workspace_slug:  trim(q.workspace) || trim(q.ws),
+            affiliation:     trim(q.affiliation),
+            researcher_code: q.researcher ? String(q.researcher).trim().toUpperCase() : null,
+            year:            Number.isFinite(yr) && yr >= 1990 && yr <= 2100 ? yr : null,
+            file_type:       upper(q.file_type),
+            status:          upper(q.status),
+        };
+    }
+
+    // GET /api/assistant/files/map
+    //
+    // Grouped counts + representative filenames. Workspace and affiliation
+    // filters supported; everything else is left wide so callers see the
+    // whole shape on first call.
+    router.get('/map', async (req, res) => {
+        if (!(await ensureIndexTables())) {
+            return res.status(503).json({ error: 'assistant_file_index not ready (migration 065 pending)' });
+        }
+        const filters = parseFiltersFromQuery(req.query || {});
+
+        // Build a single base WHERE so the four aggregates stay consistent.
+        const where = [];
+        const params = [];
+        const push = (v) => { params.push(v); return '$' + params.length; };
+        if (filters.workspace_slug)  where.push(`workspace_slug  = ${push(filters.workspace_slug)}`);
+        if (filters.affiliation)     where.push(`affiliation     = ${push(filters.affiliation)}`);
+        if (filters.researcher_code) where.push(`researcher_code = ${push(filters.researcher_code)}`);
+        if (filters.year !== null)   where.push(`year            = ${push(filters.year)}`);
+        if (filters.file_type)       where.push(`file_type       = ${push(filters.file_type)}`);
+        if (filters.status)          where.push(`status          = ${push(filters.status)}`);
+        const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+        try {
+            // Total count + per-axis grouped counts. We materialise rep filenames
+            // via a window function over each group so the result is one query
+            // per axis rather than N+1 lookups.
+            const groupQ = (col) => `
+                SELECT ${col} AS key, COUNT(*)::int AS count,
+                       (ARRAY_AGG(filename ORDER BY indexed_at DESC NULLS LAST))[1:3] AS samples
+                  FROM assistant_file_index
+                  ${whereSql}
+                 GROUP BY ${col}
+                 ORDER BY count DESC, key ASC NULLS LAST
+            `;
+            const [total, byWs, byAff, byRes, byYear, byType] = await Promise.all([
+                pool.query(`SELECT COUNT(*)::int AS n FROM assistant_file_index ${whereSql}`, params),
+                pool.query(groupQ('workspace_slug'),  params),
+                pool.query(groupQ('affiliation'),     params),
+                pool.query(groupQ('researcher_code'), params),
+                pool.query(groupQ('year'),            params),
+                pool.query(groupQ('file_type'),       params),
+            ]);
+
+            const fmt = (rows) => rows.map(r => ({
+                key:      r.key,
+                count:    r.count,
+                samples:  Array.isArray(r.samples) ? r.samples.filter(Boolean) : []
+            }));
+
+            res.json({
+                filters,
+                total_files: total.rows[0].n,
+                by_workspace:  fmt(byWs.rows),
+                by_affiliation: fmt(byAff.rows),
+                by_researcher: fmt(byRes.rows),
+                by_year:       fmt(byYear.rows),
+                by_file_type:  fmt(byType.rows),
+                generated_at:  new Date().toISOString()
+            });
+        } catch (err) {
+            console.error('[ASSISTANT] files/map error:', err.message);
+            res.status(500).json({ error: 'Failed to build file map' });
+        }
+    });
+
+    // POST /api/assistant/files/reindex
+    //
+    // Kicks the indexer in the background and returns immediately. Subsequent
+    // calls while a run is active return 409 with the live job status. Body
+    // (JSON, all optional):
+    //   { "metadata_only": bool, "text_only": bool, "concurrency": int, "limit": int }
+    //
+    // Auth: requirePI — same model as the DI backup-download endpoints. PI
+    // session is the only role allowed to trigger an R2 scan from the API.
+    router.post('/reindex', requirePI, async (req, res) => {
+        if (!indexer || typeof indexer.runJob !== 'function') {
+            return res.status(503).json({ error: 'Indexer module not wired into assistant files router' });
+        }
+        if (!r2Client || !r2Bucket) {
+            return res.status(503).json({ error: 'R2 client not available' });
+        }
+        if (!(await ensureIndexTables())) {
+            return res.status(503).json({ error: 'assistant_file_index not ready (migration 065 pending)' });
+        }
+        const current = indexer.getJobStatus();
+        if (current.state === 'running') {
+            return res.status(409).json({ error: 'Indexer already running', job: current });
+        }
+        const body = req.body || {};
+        const opts = {
+            metadataOnly: !!body.metadata_only,
+            textOnly:     !!body.text_only,
+            concurrency:  Number.isFinite(parseInt(body.concurrency, 10)) ? parseInt(body.concurrency, 10) : 4,
+            limit:        Number.isFinite(parseInt(body.limit, 10))       ? parseInt(body.limit, 10)       : 0
+        };
+        // Run in the background. Errors flow into job.state = 'failed' so
+        // the operator can poll /reindex/status — we don't need to await.
+        indexer.runJob({ pool, r2Client, r2Bucket, log: console }, opts).catch((e) => {
+            console.error('[ASSISTANT] reindex job threw:', e && e.message || e);
+        });
+        res.status(202).json({
+            ok: true,
+            message: 'Reindex started',
+            job: indexer.getJobStatus(),
+            poll: '/api/assistant/files/reindex/status'
+        });
+    });
+
+    // GET /api/assistant/files/reindex/status
+    // Read-only probe of the in-process job state. Useful while a long
+    // first-run is in flight.
+    router.get('/reindex/status', async (req, res) => {
+        if (!indexer || typeof indexer.getJobStatus !== 'function') {
+            return res.status(503).json({ error: 'Indexer module not wired into assistant files router' });
+        }
+        res.json({ job: indexer.getJobStatus() });
+    });
+
+    // GET /api/assistant/files/researcher/:code
+    //
+    // All indexed files for one researcher_code, grouped by year + file_type.
+    // The path param is the di_allowlist short code (e.g. 'MC', 'HJM') —
+    // case-insensitive on the way in, normalised to upper.
+    router.get('/researcher/:code', async (req, res) => {
+        if (!(await ensureIndexTables())) {
+            return res.status(503).json({ error: 'assistant_file_index not ready (migration 065 pending)' });
+        }
+        const code = String(req.params.code || '').trim().toUpperCase();
+        if (!code) return res.status(400).json({ error: 'researcher code is required' });
+
+        try {
+            // LATERAL join exposes rd_documents.id (when the file is also in
+            // the R&D path), so callers can hand it to open_file_in_portal.
+            const r = await pool.query(
+                `SELECT i.id, i.r2_key, i.filename, i.file_ext, i.file_type, i.workspace_slug,
+                        i.researcher_code, i.researcher_name, i.affiliation,
+                        i.year, i.date_detected, i.status, i.source_area, i.topic,
+                        i.text_status, i.text_preview, i.text_char_count,
+                        i.indexed_at,
+                        d.id AS portal_file_id
+                   FROM assistant_file_index i
+                   LEFT JOIN LATERAL (
+                       SELECT id
+                         FROM rd_documents
+                        WHERE r2_key = i.r2_key
+                        ORDER BY created_at DESC
+                        LIMIT 1
+                   ) d ON TRUE
+                  WHERE i.researcher_code = $1
+                  ORDER BY i.year DESC NULLS LAST, i.indexed_at DESC`,
+                [code]
+            );
+            // Zero hits is a valid answer (researcher exists but no files yet),
+            // so we still return 200 with an empty listing rather than 404.
+            const rows = r.rows;
+            // Group: year → file_type → [files]
+            const byYearType = {};
+            for (const row of rows) {
+                const y = row.year == null ? 'unknown' : String(row.year);
+                const t = row.file_type || 'UNTYPED';
+                byYearType[y] = byYearType[y] || {};
+                byYearType[y][t] = byYearType[y][t] || [];
+                byYearType[y][t].push({
+                    id:                 row.id,
+                    filename:           row.filename,
+                    r2_key:             row.r2_key,
+                    workspace_slug:     row.workspace_slug,
+                    affiliation:        row.affiliation,
+                    status:             row.status,
+                    text_status:        row.text_status,
+                    portal_file_id:     row.portal_file_id || null,
+                    can_open_in_portal: !!row.portal_file_id,
+                    indexed_at:         row.indexed_at ? new Date(row.indexed_at).toISOString() : null
+                });
+            }
+            res.json({
+                researcher_code: code,
+                researcher_name: rows[0] ? rows[0].researcher_name : null,
+                affiliation:     rows[0] ? rows[0].affiliation : null,
+                total: rows.length,
+                grouped: byYearType
+            });
+        } catch (err) {
+            console.error('[ASSISTANT] files/researcher error:', err.message);
+            res.status(500).json({ error: 'Failed to load researcher files' });
+        }
+    });
+
+    // GET /api/assistant/files/indexed/:id
+    //
+    // Full metadata for one assistant_file_index row. Separate path from the
+    // existing /:id (which serves rd_documents.id-shaped detail) so neither
+    // contract clobbers the other.
+    router.get('/indexed/:id', async (req, res) => {
+        if (!(await ensureIndexTables())) {
+            return res.status(503).json({ error: 'assistant_file_index not ready (migration 065 pending)' });
+        }
+        const id = String(req.params.id || '').trim();
+        if (!/^[0-9a-fA-F-]{36}$/.test(id)) {
+            return res.status(404).json({ error: 'Indexed file not found' });
+        }
+        try {
+            // LATERAL join surfaces rd_documents.id when the file is also
+            // ingested via the R&D path. Same shape used by /search and
+            // /researcher so callers see consistent fields everywhere.
+            const r = await pool.query(
+                `SELECT i.*,
+                        (t.full_text IS NOT NULL) AS has_full_text,
+                        d.id AS portal_file_id
+                   FROM assistant_file_index i
+                   LEFT JOIN assistant_file_text t ON t.file_id = i.id
+                   LEFT JOIN LATERAL (
+                       SELECT id
+                         FROM rd_documents
+                        WHERE r2_key = i.r2_key
+                        ORDER BY created_at DESC
+                        LIMIT 1
+                   ) d ON TRUE
+                  WHERE i.id = $1
+                  LIMIT 1`,
+                [id]
+            );
+            if (r.rows.length === 0) {
+                return res.status(404).json({ error: 'Indexed file not found' });
+            }
+            const row = r.rows[0];
+            res.json({
+                id:                 row.id,
+                r2_key:             row.r2_key,
+                filename:           row.filename,
+                file_ext:           row.file_ext,
+                file_type:          row.file_type,
+                workspace_slug:     row.workspace_slug,
+                researcher_code:    row.researcher_code,
+                researcher_name:    row.researcher_name,
+                affiliation:        row.affiliation,
+                year:               row.year,
+                date_detected:      row.date_detected,
+                status:             row.status,
+                source_area:        row.source_area,
+                topic:              row.topic,
+                tags:               row.tags || [],
+                mime_type:          row.mime_type,
+                size_bytes:         row.size_bytes,
+                text_status:        row.text_status,
+                text_preview:       row.text_preview,
+                text_char_count:    row.text_char_count,
+                text_extracted_at:  row.text_extracted_at ? new Date(row.text_extracted_at).toISOString() : null,
+                has_full_text:      !!row.has_full_text,
+                portal_file_id:     row.portal_file_id || null,
+                can_open_in_portal: !!row.portal_file_id,
+                created_at:         row.created_at ? new Date(row.created_at).toISOString() : null,
+                updated_at:         row.updated_at ? new Date(row.updated_at).toISOString() : null,
+                indexed_at:         row.indexed_at ? new Date(row.indexed_at).toISOString() : null
+            });
+        } catch (err) {
+            console.error('[ASSISTANT] files/indexed/:id error:', err.message);
+            res.status(500).json({ error: 'Failed to load indexed file' });
+        }
+    });
+
+    // ---------------------------------------------------------------------
+    // The new search flow used when /search is called with new-mode params.
+    // Lives below the route definitions so /search can hand off to it. The
+    // ranking is deterministic and reads:
+    //   +12  exact researcher_code match
+    //   +10  exact filename match (case-insensitive)
+    //   + 8  exact file_type match
+    //   + 6  exact year match
+    //   + 5  filename ILIKE %q%
+    //   + 4  topic ILIKE %q% OR text_preview ILIKE %q%
+    //   + 3  full_text ILIKE %q%      (only when scope ∈ {content, all})
+    //   + 2  filename ILIKE % q's first token %  (cheap phrase prefix)
+    //   + 1  indexed within last 14 days
+    // Plus a strong-phrase bonus when the literal q appears in filename or
+    // full_text — separately, so callers can see it in match_reasons.
+    // ---------------------------------------------------------------------
+    async function handleIndexedSearch(req, res) {
+        if (!(await ensureIndexTables())) {
+            return res.status(503).json({ error: 'assistant_file_index not ready (migration 065 pending)' });
+        }
+        const filters = parseFiltersFromQuery(req.query || {});
+        const q = (req.query.q || '').toString().trim();
+        let scope = (req.query.search_scope || 'all').toString().trim().toLowerCase();
+        if (!['metadata', 'content', 'all'].includes(scope)) scope = 'all';
+
+        let limit = parseInt(req.query.limit, 10);
+        if (!Number.isFinite(limit) || limit < 1) limit = 10;
+        if (limit > 50) limit = 50;
+
+        // Allow filter-only listing (no q). If neither q nor any filter is
+        // present, refuse — otherwise we'd dump the whole index.
+        const anyFilter = Object.values(filters).some(v => v !== null);
+        if (!q && !anyFilter) {
+            return res.status(400).json({
+                error: 'At least one of q, workspace, affiliation, researcher, year, file_type, or status is required'
+            });
+        }
+
+        const params = [];
+        const push = (v) => { params.push(v); return '$' + params.length; };
+
+        // q-derived placeholders. We push them up front so they keep stable
+        // numbers regardless of which filter clauses fire.
+        const qWrap   = q ? '%' + q + '%' : null;
+        const qLower  = q ? q.toLowerCase() : null;
+        const qFirst  = q ? q.split(/\s+/)[0] : null;
+        const qFirstWrap = qFirst ? '%' + qFirst + '%' : null;
+
+        const pQ      = qWrap   ? push(qWrap)   : null;
+        const pQLower = qLower  ? push(qLower)  : null;
+        const pQFirst = qFirstWrap ? push(qFirstWrap) : null;
+
+        const where = [];
+        if (filters.workspace_slug)  where.push(`i.workspace_slug  = ${push(filters.workspace_slug)}`);
+        if (filters.affiliation)     where.push(`i.affiliation     = ${push(filters.affiliation)}`);
+        if (filters.researcher_code) where.push(`i.researcher_code = ${push(filters.researcher_code)}`);
+        if (filters.year !== null)   where.push(`i.year            = ${push(filters.year)}`);
+        if (filters.file_type)       where.push(`i.file_type       = ${push(filters.file_type)}`);
+        if (filters.status)          where.push(`i.status          = ${push(filters.status)}`);
+
+        // Match clause (only when q is present). We OR across the haystacks
+        // permitted by `scope`. With no q, `where` already narrows results
+        // via filters and we skip the match clause entirely.
+        if (q) {
+            const matchOr = [];
+            if (scope !== 'content') {
+                matchOr.push(`i.filename     ILIKE ${pQ}`);
+                matchOr.push(`i.r2_key       ILIKE ${pQ}`);
+                matchOr.push(`COALESCE(i.topic,'')        ILIKE ${pQ}`);
+                matchOr.push(`COALESCE(i.text_preview,'') ILIKE ${pQ}`);
+                // Tags JSONB substring match — cast text and ILIKE.
+                matchOr.push(`COALESCE(i.tags::text,'')   ILIKE ${pQ}`);
+            }
+            if (scope !== 'metadata') {
+                matchOr.push(`COALESCE(t.full_text,'') ILIKE ${pQ}`);
+            }
+            where.push('(' + matchOr.join(' OR ') + ')');
+        }
+
+        const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
+
+        // Score expression. Each component contributes only when the
+        // corresponding parameter is present, so the same query template
+        // works whether or not q / specific filters were passed.
+        const scoreParts = [];
+        if (filters.researcher_code) scoreParts.push(`(CASE WHEN i.researcher_code = ${push(filters.researcher_code)} THEN 12 ELSE 0 END)`);
+        if (filters.file_type)       scoreParts.push(`(CASE WHEN i.file_type       = ${push(filters.file_type)} THEN 8 ELSE 0 END)`);
+        if (filters.year !== null)   scoreParts.push(`(CASE WHEN i.year            = ${push(filters.year)} THEN 6 ELSE 0 END)`);
+        if (q) {
+            scoreParts.push(`(CASE WHEN LOWER(COALESCE(i.filename,'')) = ${pQLower} THEN 10 ELSE 0 END)`);
+            scoreParts.push(`(CASE WHEN COALESCE(i.filename,'')        ILIKE ${pQ} THEN 5 ELSE 0 END)`);
+            scoreParts.push(`(CASE WHEN COALESCE(i.topic,'')           ILIKE ${pQ} THEN 4 ELSE 0 END)`);
+            scoreParts.push(`(CASE WHEN COALESCE(i.text_preview,'')    ILIKE ${pQ} THEN 4 ELSE 0 END)`);
+            if (scope !== 'metadata') {
+                scoreParts.push(`(CASE WHEN COALESCE(t.full_text,'')   ILIKE ${pQ} THEN 3 ELSE 0 END)`);
+            }
+            if (qFirst && qFirst !== q) {
+                scoreParts.push(`(CASE WHEN COALESCE(i.filename,'')    ILIKE ${pQFirst} THEN 2 ELSE 0 END)`);
+            }
+        }
+        scoreParts.push(`(CASE WHEN i.indexed_at >= NOW() - INTERVAL '14 days' THEN 1 ELSE 0 END)`);
+        const scoreSql = scoreParts.join(' + ');
+
+        // LATERAL join to rd_documents lets us surface a portal-openable id
+        // when the file was also ingested via the R&D path. r2_key is the
+        // bridge — it's globally unique per object in the bucket. ORDER BY
+        // created_at DESC + LIMIT 1 picks the most recent rd_documents row
+        // when there are duplicates (revisions).
+        const sql = `
+            SELECT i.id, i.r2_key, i.filename, i.file_ext, i.file_type,
+                   i.workspace_slug, i.researcher_code, i.researcher_name,
+                   i.affiliation, i.year, i.date_detected, i.status,
+                   i.source_area, i.topic, i.text_status, i.text_preview,
+                   i.indexed_at,
+                   d.id AS portal_file_id,
+                   (${scoreSql}) AS score,
+                   (t.file_id IS NOT NULL) AS has_full_text,
+                   (CASE WHEN ${q ? `LOWER(COALESCE(i.filename,''))    LIKE '%' || ${pQLower} || '%'` : 'FALSE'} THEN 1 ELSE 0 END) AS match_filename,
+                   (CASE WHEN ${q && scope !== 'metadata' ? `LOWER(COALESCE(t.full_text,''))   LIKE '%' || ${pQLower} || '%'` : 'FALSE'} THEN 1 ELSE 0 END) AS match_content
+              FROM assistant_file_index i
+              LEFT JOIN assistant_file_text t ON t.file_id = i.id
+              LEFT JOIN LATERAL (
+                  SELECT id
+                    FROM rd_documents
+                   WHERE r2_key = i.r2_key
+                   ORDER BY created_at DESC
+                   LIMIT 1
+              ) d ON TRUE
+              ${whereSql}
+              ORDER BY score DESC, i.indexed_at DESC
+              LIMIT ${push(limit)}
+        `;
+
+        try {
+            const r = await pool.query(sql, params);
+            const results = r.rows.map(row => {
+                const reasons = [];
+                if (filters.researcher_code && row.researcher_code === filters.researcher_code) reasons.push('researcher exact match');
+                if (filters.file_type && row.file_type === filters.file_type) reasons.push('file_type exact match');
+                if (filters.year !== null && row.year === filters.year) reasons.push('year exact match');
+                if (row.match_filename) reasons.push('filename contains query');
+                if (row.match_content)  reasons.push('content match');
+                if (!reasons.length) reasons.push('matched filter');
+                return {
+                    id:                 row.id,
+                    r2_key:             row.r2_key,
+                    filename:           row.filename,
+                    file_type:          row.file_type,
+                    workspace_slug:     row.workspace_slug,
+                    researcher_code:    row.researcher_code,
+                    researcher_name:    row.researcher_name,
+                    affiliation:        row.affiliation,
+                    year:               row.year,
+                    status:             row.status,
+                    topic:              row.topic,
+                    text_status:        row.text_status,
+                    text_preview:       row.text_preview,
+                    has_full_text:      !!row.has_full_text,
+                    // Portal openability: rd_documents.id when the file was
+                    // also ingested via the R&D path. Null otherwise (e.g.
+                    // pure DI uploads). open_file_in_portal needs this id —
+                    // not assistant_file_index.id — to succeed.
+                    portal_file_id:     row.portal_file_id || null,
+                    can_open_in_portal: !!row.portal_file_id,
+                    indexed_at:         row.indexed_at ? new Date(row.indexed_at).toISOString() : null,
+                    score:              Number(row.score) || 0,
+                    match_reasons:      reasons
+                };
+            });
+            res.json({
+                workspace_slug: filters.workspace_slug,
+                query:          q || null,
+                search_scope:   scope,
+                filters,
+                count:          results.length,
+                results
+            });
+        } catch (err) {
+            console.error('[ASSISTANT] indexed-search error:', err.message);
+            res.status(500).json({ error: 'Failed to run indexed search' });
+        }
+    }
 
     // GET /api/assistant/files/:submission_id/text?ws=natlab
     //

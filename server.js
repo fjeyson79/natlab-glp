@@ -24361,7 +24361,16 @@ app.post('/api/telegram/webhook', async (req, res) => {
 
 // Portal Assistant API — Zoe (Phase 1: status endpoint)
 app.use('/api/assistant/status',      require('./routes/assistant/status')(pool));
-app.use('/api/assistant/files',       require('./routes/assistant/files')(pool, { fetchR2ObjectAsBuffer, normalizeR2Key }));
+app.use('/api/assistant/files',       require('./routes/assistant/files')(pool, {
+    fetchR2ObjectAsBuffer,
+    normalizeR2Key,
+    // Phase 1 — file visibility / keyword search index. The reindex route
+    // needs raw R2 access; the indexer module owns the actual work.
+    r2Client: r2Enabled() ? getR2Client() : null,
+    r2Bucket: process.env.R2_BUCKET || null,
+    requirePI,
+    indexer: require('./services/assistantFileIndexer'),
+}));
 app.use('/api/assistant/researchers', require('./routes/assistant/researchers')(pool));
 app.use('/api/assistant/attention',   require('./routes/assistant/attention')(pool));
 app.use('/api/assistant/sessions',    require('./routes/assistant/sessions')(pool));
