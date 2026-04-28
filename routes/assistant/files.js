@@ -43,6 +43,9 @@ module.exports = function assistantFilesRouter(pool, deps) {
     const r2Bucket               = r2.r2Bucket;
     const requirePI             = r2.requirePI || ((req, res, next) => next()); // soft no-op if absent
     const indexer               = r2.indexer;
+    // Phase 2 — file reading layer. Extractor runs per-page text + chunks +
+    // summary. Routes that need it 503 when absent.
+    const extractor             = r2.extractor;
 
     // Cached existence check for the assistant_file_index / assistant_file_text
     // tables (migration 065). Same pattern as checkRoleColumn / checkOligo* in
@@ -67,6 +70,30 @@ module.exports = function assistantFilesRouter(pool, deps) {
         }
         _idxTablesChecked = now;
         return _idxTablesReady;
+    }
+
+    // Phase 2 — pages / chunks / summaries tables (migration 066). Checked
+    // separately so /indexed/:id can return Phase 1 fields gracefully on a
+    // deploy where 066 hasn't been applied yet (page_count/chunk_count/
+    // summary_* fields just come back null in that case, no crash).
+    let _phase2TablesReady = null;
+    let _phase2TablesChecked = 0;
+    async function ensurePhase2Tables() {
+        const now = Date.now();
+        if (_phase2TablesReady === true && (now - _phase2TablesChecked) < IDX_TABLE_TTL_MS) return true;
+        try {
+            const r = await pool.query(`
+                SELECT
+                    to_regclass('public.assistant_file_pages')     AS p,
+                    to_regclass('public.assistant_file_chunks')    AS c,
+                    to_regclass('public.assistant_file_summaries') AS s
+            `);
+            _phase2TablesReady = (r.rows[0].p !== null && r.rows[0].c !== null && r.rows[0].s !== null);
+        } catch {
+            _phase2TablesReady = false;
+        }
+        _phase2TablesChecked = now;
+        return _phase2TablesReady;
     }
 
     router.get('/search', async (req, res) => {
@@ -621,6 +648,215 @@ module.exports = function assistantFilesRouter(pool, deps) {
         }
     });
 
+    // ---------------------------------------------------------------------
+    // Phase 2 — file reading layer.
+    //
+    // POST /indexed/:id/extract    runs the per-page + chunks + summary pass
+    // GET  /indexed/:id/chunks     lists chunks (optionally ILIKE q-filtered)
+    // GET  /search-text            cross-file ILIKE search over chunk_text
+    //
+    // All three depend on migration 066. ensurePhase2Tables() returns false
+    // until that migration is applied, which we surface as 503.
+    //
+    // POST is gated with requirePI to match /reindex. The two GET endpoints
+    // are unauthenticated, matching the rest of /api/assistant/files/*.
+    // ---------------------------------------------------------------------
+
+    // POST /api/assistant/files/indexed/:id/extract
+    // Body (JSON, optional): { force: boolean }. Without force, an unchanged
+    // file (same SHA-256 hash + summary_ready already true) is short-circuited.
+    router.post('/indexed/:id/extract', requirePI, async (req, res) => {
+        if (!(await ensureIndexTables()))   return res.status(503).json({ error: 'assistant_file_index not ready (migration 065 pending)' });
+        if (!(await ensurePhase2Tables()))  return res.status(503).json({ error: 'Phase 2 tables not ready (migration 066 pending)' });
+        if (!extractor || typeof extractor.extractOne !== 'function') {
+            return res.status(503).json({ error: 'Extractor not wired into assistant files router' });
+        }
+        if (!r2Client || !r2Bucket) return res.status(503).json({ error: 'R2 client not available' });
+
+        const id = String(req.params.id || '').trim();
+        if (!/^[0-9a-fA-F-]{36}$/.test(id)) {
+            return res.status(404).json({ error: 'Indexed file not found' });
+        }
+        const body = req.body || {};
+        const force = !!body.force;
+
+        try {
+            const result = await extractor.extractOne(
+                { pool, r2Client, r2Bucket, log: console },
+                id,
+                { force }
+            );
+            res.json(result);
+        } catch (err) {
+            if (err && err.status === 404) {
+                return res.status(404).json({ error: 'Indexed file not found' });
+            }
+            console.error('[ASSISTANT] extract error:', err && err.message);
+            if (err && err.code) console.error('[ASSISTANT] extract PG code=' + err.code, 'detail=' + (err.detail || '-'));
+            if (err && err.stack) console.error('[ASSISTANT] extract stack:', err.stack);
+            res.status(500).json({ error: 'Extraction failed', detail: err && err.message });
+        }
+    });
+
+    // GET /api/assistant/files/indexed/:id/chunks?q=&limit=
+    router.get('/indexed/:id/chunks', async (req, res) => {
+        if (!(await ensureIndexTables()))   return res.status(503).json({ error: 'assistant_file_index not ready (migration 065 pending)' });
+        if (!(await ensurePhase2Tables()))  return res.status(503).json({ error: 'Phase 2 tables not ready (migration 066 pending)' });
+        const id = String(req.params.id || '').trim();
+        if (!/^[0-9a-fA-F-]{36}$/.test(id)) {
+            return res.status(404).json({ error: 'Indexed file not found' });
+        }
+        const q = (req.query.q || '').toString().trim();
+        let limit = parseInt(req.query.limit, 10);
+        if (!Number.isFinite(limit) || limit < 1) limit = 20;
+        if (limit > 200) limit = 200;
+        try {
+            const params = [id];
+            let sql = `
+                SELECT chunk_index, page_start, page_end, chunk_text, token_estimate
+                  FROM assistant_file_chunks
+                 WHERE file_id = $1`;
+            if (q) {
+                params.push('%' + q + '%');
+                sql += `\n                   AND chunk_text ILIKE $${params.length}`;
+            }
+            params.push(limit);
+            sql += `\n                 ORDER BY chunk_index ASC\n                 LIMIT $${params.length}`;
+            const r = await pool.query(sql, params);
+            res.json({
+                file_id: id,
+                query:   q || null,
+                count:   r.rows.length,
+                chunks:  r.rows
+            });
+        } catch (err) {
+            console.error('[ASSISTANT] chunks error:', err && err.message);
+            if (err && err.code) console.error('[ASSISTANT] chunks PG code=' + err.code, 'detail=' + (err.detail || '-'));
+            res.status(500).json({ error: 'Failed to load chunks' });
+        }
+    });
+
+    // GET /api/assistant/files/search-text?ws=&q=&researcher=&affiliation=&year=&type=&status=&limit=
+    //
+    // Substring-match search over assistant_file_chunks.chunk_text, joined
+    // to assistant_file_index for metadata filters. Ranking (per spec):
+    //   +12  filename exact match
+    //   +10  researcher exact match
+    //   + 6  filename ILIKE %q% / file_type / year exact
+    //   + 4  chunk_text ILIKE %q%
+    //   + 1  recent indexed_at (last 14d)
+    // The same chunk row may appear multiple times across files; we cap at
+    // `limit` rows total (default 20, hard cap 100).
+    //
+    // Accepts both `type` (per spec) and `file_type` (consistent with the
+    // existing /search filters) — they alias to the same column.
+    router.get('/search-text', async (req, res) => {
+        if (!(await ensureIndexTables()))   return res.status(503).json({ error: 'assistant_file_index not ready (migration 065 pending)' });
+        if (!(await ensurePhase2Tables()))  return res.status(503).json({ error: 'Phase 2 tables not ready (migration 066 pending)' });
+
+        // Accept `type` as an alias for `file_type` (per spec).
+        const queryBag = Object.assign({}, req.query);
+        if (queryBag.type && !queryBag.file_type) queryBag.file_type = queryBag.type;
+
+        const filters = parseFiltersFromQuery(queryBag);
+        const q = (queryBag.q || '').toString().trim();
+        let limit = parseInt(queryBag.limit, 10);
+        if (!Number.isFinite(limit) || limit < 1) limit = 20;
+        if (limit > 100) limit = 100;
+
+        const anyFilter = Object.values(filters).some(v => v !== null);
+        if (!q && !anyFilter) {
+            return res.status(400).json({
+                error: 'q or at least one filter (workspace, researcher, affiliation, year, type, status) is required'
+            });
+        }
+
+        const params = [];
+        const push = (v) => { params.push(v); return '$' + params.length; };
+
+        // q-derived placeholders pushed up front so their positions are
+        // stable. Same pattern + same single-token-boost guard as
+        // handleIndexedSearch — pushing pQFirst only when we'd reference it
+        // avoids the bind-count mismatch we hit earlier in Phase 1.2.
+        const qWrap   = q ? '%' + q + '%'  : null;
+        const qLower  = q ? q.toLowerCase() : null;
+        const pQ      = qWrap   ? push(qWrap)  : null;
+        const pQLower = qLower  ? push(qLower) : null;
+
+        const where = [];
+        if (filters.workspace_slug)  where.push(`i.workspace_slug  = ${push(filters.workspace_slug)}`);
+        if (filters.affiliation)     where.push(`i.affiliation     = ${push(filters.affiliation)}`);
+        if (filters.researcher_code) where.push(`i.researcher_code = ${push(filters.researcher_code)}`);
+        if (filters.year !== null)   where.push(`i.year            = ${push(filters.year)}`);
+        if (filters.file_type)       where.push(`i.file_type       = ${push(filters.file_type)}`);
+        if (filters.status)          where.push(`i.status          = ${push(filters.status)}`);
+
+        if (q) {
+            // Either the chunk text or the filename has to mention q for the
+            // row to be a candidate. Filters above are AND-applied first.
+            where.push(`(c.chunk_text ILIKE ${pQ} OR i.filename ILIKE ${pQ})`);
+        }
+
+        const scoreParts = [];
+        if (q) {
+            scoreParts.push(`(CASE WHEN LOWER(COALESCE(i.filename,'')) = ${pQLower} THEN 12 ELSE 0 END)`);
+            scoreParts.push(`(CASE WHEN COALESCE(i.filename,'')        ILIKE ${pQ} THEN 6 ELSE 0 END)`);
+            scoreParts.push(`(CASE WHEN c.chunk_text                   ILIKE ${pQ} THEN 4 ELSE 0 END)`);
+        }
+        if (filters.researcher_code) scoreParts.push(`(CASE WHEN i.researcher_code = ${push(filters.researcher_code)} THEN 10 ELSE 0 END)`);
+        if (filters.file_type)       scoreParts.push(`(CASE WHEN i.file_type       = ${push(filters.file_type)} THEN 6 ELSE 0 END)`);
+        if (filters.year !== null)   scoreParts.push(`(CASE WHEN i.year            = ${push(filters.year)} THEN 6 ELSE 0 END)`);
+        scoreParts.push(`(CASE WHEN i.indexed_at >= NOW() - INTERVAL '14 days' THEN 1 ELSE 0 END)`);
+        const scoreSql = scoreParts.join(' + ');
+
+        const sql = `
+            SELECT i.id           AS file_id,
+                   i.r2_key, i.filename, i.file_type, i.workspace_slug,
+                   i.researcher_code, i.researcher_name, i.affiliation,
+                   i.year, i.status, i.indexed_at,
+                   c.chunk_index, c.page_start, c.page_end,
+                   LEFT(c.chunk_text, 400) AS chunk_snippet,
+                   (${scoreSql}) AS score
+              FROM assistant_file_chunks c
+              JOIN assistant_file_index  i ON i.id = c.file_id
+              ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+              ORDER BY score DESC, i.indexed_at DESC, c.chunk_index ASC
+              LIMIT ${push(limit)}
+        `;
+        try {
+            const r = await pool.query(sql, params);
+            res.json({
+                query:        q || null,
+                filters,
+                count:        r.rows.length,
+                results:      r.rows.map(row => ({
+                    file_id:         row.file_id,
+                    r2_key:          row.r2_key,
+                    filename:        row.filename,
+                    file_type:       row.file_type,
+                    workspace_slug:  row.workspace_slug,
+                    researcher_code: row.researcher_code,
+                    researcher_name: row.researcher_name,
+                    affiliation:     row.affiliation,
+                    year:            row.year,
+                    status:          row.status,
+                    chunk_index:     row.chunk_index,
+                    page_start:      row.page_start,
+                    page_end:        row.page_end,
+                    chunk_snippet:   row.chunk_snippet,
+                    score:           Number(row.score) || 0,
+                    indexed_at:      row.indexed_at ? new Date(row.indexed_at).toISOString() : null,
+                }))
+            });
+        } catch (err) {
+            console.error('[ASSISTANT] search-text error:', err && err.message);
+            if (err && err.code) console.error('[ASSISTANT] search-text PG code=' + err.code, 'detail=' + (err.detail || '-'));
+            console.error('[ASSISTANT] search-text SQL:', sql);
+            console.error('[ASSISTANT] search-text params:', JSON.stringify(params));
+            res.status(500).json({ error: 'search-text failed' });
+        }
+    });
+
     // GET /api/assistant/files/indexed/:id
     //
     // Full metadata for one assistant_file_index row. Separate path from the
@@ -659,6 +895,44 @@ module.exports = function assistantFilesRouter(pool, deps) {
                 return res.status(404).json({ error: 'Indexed file not found' });
             }
             const row = r.rows[0];
+
+            // Phase 2 enrichment — page_count, chunk_count, summary fields.
+            // Done as a separate query (not joined into the SELECT above) so
+            // /indexed/:id keeps working when migration 066 hasn't been
+            // applied: the Phase 2 fields just come back null in that case.
+            let phase2 = null;
+            if (await ensurePhase2Tables()) {
+                try {
+                    const p2 = await pool.query(
+                        `SELECT
+                             (SELECT COUNT(*)::int FROM assistant_file_pages  WHERE file_id = $1) AS page_count,
+                             (SELECT COUNT(*)::int FROM assistant_file_chunks WHERE file_id = $1) AS chunk_count,
+                             s.summary_short, s.summary_detailed,
+                             s.key_methods, s.key_results, s.key_data_types,
+                             s.detected_entities, s.detected_assays,
+                             s.detected_controls, s.detected_gaps,
+                             s.updated_at AS summary_updated_at
+                           FROM assistant_file_summaries s
+                          WHERE s.file_id = $1
+                          UNION ALL
+                          SELECT
+                             (SELECT COUNT(*)::int FROM assistant_file_pages  WHERE file_id = $1) AS page_count,
+                             (SELECT COUNT(*)::int FROM assistant_file_chunks WHERE file_id = $1) AS chunk_count,
+                             NULL, NULL, NULL, NULL, NULL,
+                             '{}'::jsonb, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb,
+                             NULL
+                          WHERE NOT EXISTS (SELECT 1 FROM assistant_file_summaries WHERE file_id = $1)
+                          LIMIT 1`,
+                        [id]
+                    );
+                    phase2 = p2.rows[0] || null;
+                } catch (e) {
+                    // Tables exist but query failed (very unlikely) — surface
+                    // null Phase 2 fields rather than 500 the whole route.
+                    console.warn('[ASSISTANT] indexed/:id phase2 enrichment failed:', e.message);
+                }
+            }
+
             res.json({
                 id:                 row.id,
                 r2_key:             row.r2_key,
@@ -684,6 +958,24 @@ module.exports = function assistantFilesRouter(pool, deps) {
                 has_full_text:      !!row.has_full_text,
                 portal_file_id:     row.portal_file_id || null,
                 can_open_in_portal: !!row.portal_file_id,
+                // Phase 2 fields — null when migration 066 not yet applied.
+                summary_ready:      row.summary_ready === true,
+                file_hash:          row.file_hash || null,
+                extraction_error:   row.extraction_error || null,
+                page_count:         phase2 ? phase2.page_count : null,
+                chunk_count:        phase2 ? phase2.chunk_count : null,
+                summary:            phase2 && phase2.summary_short ? {
+                    summary_short:     phase2.summary_short,
+                    summary_detailed:  phase2.summary_detailed,
+                    key_methods:       phase2.key_methods,
+                    key_results:       phase2.key_results,
+                    key_data_types:    phase2.key_data_types,
+                    detected_entities: phase2.detected_entities || {},
+                    detected_assays:   phase2.detected_assays   || [],
+                    detected_controls: phase2.detected_controls || [],
+                    detected_gaps:     phase2.detected_gaps     || [],
+                    updated_at:        phase2.summary_updated_at ? new Date(phase2.summary_updated_at).toISOString() : null,
+                } : null,
                 created_at:         row.created_at ? new Date(row.created_at).toISOString() : null,
                 updated_at:         row.updated_at ? new Date(row.updated_at).toISOString() : null,
                 indexed_at:         row.indexed_at ? new Date(row.indexed_at).toISOString() : null

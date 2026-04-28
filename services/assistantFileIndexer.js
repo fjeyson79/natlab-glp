@@ -653,4 +653,7 @@ module.exports = {
     inferFileType,
     inferStatus,
     fileExtOf,
+    // Phase 2 — reused by services/assistantFileExtractor for the per-page
+    // sanitization pass. Same helper, single source of truth.
+    sanitizeExtractedText,
 };

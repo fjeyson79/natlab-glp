@@ -24370,6 +24370,10 @@ app.use('/api/assistant/files',       require('./routes/assistant/files')(pool, 
     r2Bucket: process.env.R2_BUCKET || null,
     requirePI,
     indexer: require('./services/assistantFileIndexer'),
+    // Phase 2 — file reading layer. The extract route runs per-page PDF
+    // text extraction + chunking + rule-based summary; same R2 client and
+    // bucket as the indexer.
+    extractor: require('./services/assistantFileExtractor'),
 }));
 app.use('/api/assistant/researchers', require('./routes/assistant/researchers')(pool));
 app.use('/api/assistant/attention',   require('./routes/assistant/attention')(pool));
