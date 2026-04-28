@@ -199,39 +199,66 @@ const _FILENAME_TYPE_PATTERNS = [
     [/\bslides?\b/,                   'PRESENTATION'],
     [/\bdeck\b/,                      'PRESENTATION'],
     [/\bpres\b/,                      'PRESENTATION'],
-    // Tier 3 — DATA. Includes domain-specific markers we observed in the
-    // bucket (CFU counts, fluorescence images, raw measurement dumps) so
-    // researchers don't have to rename existing files.
+    // Tier 3 — DATA. Mix of generic descriptors and domain markers we
+    // actually see in NAT-Lab filenames (CFU counts, fluorescence images,
+    // raw measurement dumps, ML's microbiology data shorthand). The
+    // narrower compounds come BEFORE their bare-word variants so first-
+    // match-wins reports the most specific signal.
     [/\bdata\s*flash\b/,              'DATA'],
     [/\bdataset\b/,                   'DATA'],
     [/\bdata\b/,                      'DATA'],
     [/\bcfu\b/,                       'DATA'],
     [/\bmeasurements?\b/,             'DATA'],
     [/\bfluorescence\b/,              'DATA'],
-    // Tier 4 — PAPER
+    // Phase 1.1b — ML's microbiology vocabulary. NAA = nuclease activity
+    // assay, CellSus/CellSup = cell suspension / cell supernatant;
+    // ContaminationCheck and Meat are recurring ML experiment markers.
+    [/\bnuclease\s*activity\b/,       'DATA'],
+    [/\bnaa\b/,                       'DATA'],
+    [/\bcell\s*suspensions?\b/,       'DATA'],
+    [/\bcell\s*sus\b/,                'DATA'],
+    [/\bcell\s*sup\b/,                'DATA'],
+    [/\bsupernatants?\b/,             'DATA'],
+    [/\bmetabolic\s*activity\b/,      'DATA'],
+    [/\bmetabolic\b/,                 'DATA'],
+    [/\bcontamination\s*check\b/,     'DATA'],
+    [/\bmeat\b/,                      'DATA'],
+    // Tier 4 — PAPER and REPORT (equal-tier per Phase 1.1b spec).
+    // Compound forms first so they beat the bare word.
     [/\bpreprint\b/,                  'PAPER'],
     [/\bpaper\b/,                     'PAPER'],
-    // Tier 5 — REPORT (kept as the "existing type" fallback for files that
-    // don't fall into the priority tiers). Includes a dedicated typo line
-    // for "Eperimental" (sic) which appears in real bucket filenames.
     [/\bexperimental\s*reports?\b/,   'REPORT'],
-    [/\beperimental\s*reports?\b/,    'REPORT'],
+    [/\beperimental\s*reports?\b/,    'REPORT'],   // intentional typo
     [/\breports?\b/,                  'REPORT'],
     [/\bsummary\b/,                   'REPORT'],
+    // Tier 5 — CERTIFICATE / DOCUMENT. Catches "ML_v1_certificate.pdf"
+    // and similar approval / training certificate exports. Lower priority
+    // than DATA / PAPER / REPORT so a "certificate of analysis" filename
+    // that also says "data" still classifies as DATA.
+    [/\bcertificates?\b/,             'CERTIFICATE'],
+    [/\bcert\b/,                      'CERTIFICATE'],
 ];
 
 // Normalise a filename stem so `\b` word boundaries fire reliably between
-// every token. JS regex treats `_` as a word char, so `\bsop\b` does NOT
-// match `mc_sop_xyz` — we have to replace non-letters with spaces. Steps:
-//   1. Split CamelCase joins (DataFlash → "data Flash") with a space.
-//   2. Replace any run of non-alphanumeric chars (including underscores and
-//      hyphens) with a single space.
-//   3. Lowercase + trim.
-// After this, "MC_PosterPresentation_xyz", "MC poster-presentation xyz",
-// and "mc_poster_presentation_xyz" all become "mc poster presentation xyz".
+// every token. JS regex treats `_` and digits as word chars, so naive
+// patterns like `\bsop\b` don't fire next to `_` and `\bdata\s*flash\b`
+// doesn't fire inside `Week16DataFlash`. Steps (order matters):
+//   1. ALL-CAPS-then-CamelCase: "NAAOnSalmonella" → "NAA OnSalmonella" so
+//      "NAA" stands alone for `\bnaa\b`.
+//   2. CamelCase: "DataFlash" → "Data Flash".
+//   3. Letter→digit: "Salmonella14028" → "Salmonella 14028".
+//   4. Digit→letter: "16Data" → "16 Data", "8hSup" → "8 hSup" (then
+//      step 2 already cleaned "hS" earlier — both run on the whole string).
+//   5. Any run of non-alphanumerics → single space.
+//   6. Lowercase + trim.
+// After this, "Week16DataFlash" becomes "week 16 data flash", and
+// "NAAOnSalmonella14028Meat" becomes "naa on salmonella 14028 meat".
 function _normalizeForTypeMatch(s) {
     return String(s || '')
+        .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
         .replace(/([a-z])([A-Z])/g, '$1 $2')
+        .replace(/([A-Za-z])(\d)/g, '$1 $2')
+        .replace(/(\d)([A-Za-z])/g, '$1 $2')
         .replace(/[^A-Za-z0-9]+/g, ' ')
         .toLowerCase()
         .trim();
@@ -248,11 +275,15 @@ function inferFileTypeFromStem(stem) {
 }
 
 // Combine filename + path signals into a single canonical type using the
-// priority order specified in the Phase 1.1 brief. The PRIORITY tiers cover
-// SOP → PRESENTATION → DATA → PAPER; anything else (REPORT) falls into the
-// "existing type" tier and is only returned when none of the priority
-// signals fired on either side.
-const _PRIORITY_TYPES = ['SOP', 'PRESENTATION', 'DATA', 'PAPER'];
+// Phase 1.1b priority order:
+//   1. SOP   2. PRESENTATION   3. DATA   4. PAPER/REPORT
+//   5. CERTIFICATE/DOCUMENT    6. existing type    7. null
+// The walk treats PAPER and REPORT as same-tier (whichever is detected
+// first wins), and same for CERTIFICATE/DOCUMENT. "existing type" is the
+// raw type_from_path or type_from_filename when none of the priority tiers
+// fired (kept so unusual but legitimate types we haven't enumerated still
+// flow through).
+const _PRIORITY_TYPES = ['SOP', 'PRESENTATION', 'DATA', 'PAPER', 'REPORT', 'CERTIFICATE'];
 function resolveFileType(parsed) {
     if (!parsed) return null;
     const fromName = parsed.type_from_filename || null;
@@ -260,7 +291,7 @@ function resolveFileType(parsed) {
     for (const tier of _PRIORITY_TYPES) {
         if (fromName === tier || fromPath === tier) return tier;
     }
-    // Tier 5 — existing type. Path beats filename (curator's intent in
+    // Existing-type fallback. Path beats filename (curator's intent in
     // segments like /SOP/, /Reports/), and we fall back to whatever the
     // filename had if no path segment classified the file.
     return fromPath || fromName || null;
