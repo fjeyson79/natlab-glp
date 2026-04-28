@@ -38,7 +38,7 @@
 'use strict';
 
 const { ListObjectsV2Command, GetObjectCommand } = require('@aws-sdk/client-s3');
-const { parseR2Path, shouldIgnoreR2Path } = require('./zoeRetrieval');
+const { parseR2Path, shouldIgnoreR2Path, resolveFileType } = require('./zoeRetrieval');
 
 // Char cap for text_preview (kept short — this is the snippet shown in
 // /map and /search hit summaries, NOT the full document).
@@ -139,11 +139,14 @@ function inferDateDetected(parsed) {
     return parsed.iso_date;
 }
 
-// File type: parseR2Path returns both type_from_path and type_from_filename.
-// Path beats filename when both fire (path is the curator's intent).
+// File type: delegated to zoeRetrieval.resolveFileType so the indexer and
+// any other caller (Zoe's retrieval ranker, future tools) agree on the
+// canonical type. Priority order (1 highest):
+//   1. SOP   2. PRESENTATION   3. DATA   4. PAPER   5. existing type   6. null
+// resolveFileType walks both type_from_filename (substring inference over
+// the stem) and type_from_path (segment inference) at each tier.
 function inferFileType(parsed) {
-    if (!parsed) return null;
-    return parsed.type_from_path || parsed.type_from_filename || null;
+    return resolveFileType(parsed);
 }
 
 function inferStatus(parsed) {

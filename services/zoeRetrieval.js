@@ -178,14 +178,94 @@ const _PATH_STATUS_SEGMENTS = {
     Approved: 'APPROVED', approved: 'APPROVED',
     Training: 'TRAINING', training: 'TRAINING',
 };
-const _FILENAME_TYPE_TOKENS = {
-    sop: 'SOP', protocol: 'SOP', protocols: 'SOP',
-    data: 'DATA', dataflash: 'DATA', dataset: 'DATA',
-    pres: 'PRESENTATION', presentation: 'PRESENTATION',
-    slides: 'PRESENTATION', deck: 'PRESENTATION',
-    report: 'REPORT', summary: 'REPORT',
-    paper: 'PAPER', preprint: 'PAPER',
-};
+// Phase 1.1 file_type inference — replaces the old positional
+// _FILENAME_TYPE_TOKENS dictionary with priority-ordered substring matching
+// on a normalised stem. The change makes the same inference work whether the
+// type keyword is the third token of a DATE_INITIALS_TYPE_TOPIC filename or
+// embedded mid-name (CamelCase, abbreviations like CFU, mis-typed words).
+//
+// Tier ordering (1 highest, 4 lowest of the priority types) is encoded by
+// position in the list. resolveFileType() walks tiers across BOTH filename
+// and path signals so the result follows the documented precedence:
+//   1. SOP   2. PRESENTATION   3. DATA   4. PAPER   5. existing type   6. null
+const _FILENAME_TYPE_PATTERNS = [
+    // Tier 1 — SOP
+    [/\bsop\b/,                       'SOP'],
+    [/\bprotocols?\b/,                'SOP'],
+    // Tier 2 — PRESENTATION
+    [/\bposter\s*presentation\b/,     'PRESENTATION'],
+    [/\bpresentation\b/,              'PRESENTATION'],
+    [/\bposter\b/,                    'PRESENTATION'],
+    [/\bslides?\b/,                   'PRESENTATION'],
+    [/\bdeck\b/,                      'PRESENTATION'],
+    [/\bpres\b/,                      'PRESENTATION'],
+    // Tier 3 — DATA. Includes domain-specific markers we observed in the
+    // bucket (CFU counts, fluorescence images, raw measurement dumps) so
+    // researchers don't have to rename existing files.
+    [/\bdata\s*flash\b/,              'DATA'],
+    [/\bdataset\b/,                   'DATA'],
+    [/\bdata\b/,                      'DATA'],
+    [/\bcfu\b/,                       'DATA'],
+    [/\bmeasurements?\b/,             'DATA'],
+    [/\bfluorescence\b/,              'DATA'],
+    // Tier 4 — PAPER
+    [/\bpreprint\b/,                  'PAPER'],
+    [/\bpaper\b/,                     'PAPER'],
+    // Tier 5 — REPORT (kept as the "existing type" fallback for files that
+    // don't fall into the priority tiers). Includes a dedicated typo line
+    // for "Eperimental" (sic) which appears in real bucket filenames.
+    [/\bexperimental\s*reports?\b/,   'REPORT'],
+    [/\beperimental\s*reports?\b/,    'REPORT'],
+    [/\breports?\b/,                  'REPORT'],
+    [/\bsummary\b/,                   'REPORT'],
+];
+
+// Normalise a filename stem so `\b` word boundaries fire reliably between
+// every token. JS regex treats `_` as a word char, so `\bsop\b` does NOT
+// match `mc_sop_xyz` — we have to replace non-letters with spaces. Steps:
+//   1. Split CamelCase joins (DataFlash → "data Flash") with a space.
+//   2. Replace any run of non-alphanumeric chars (including underscores and
+//      hyphens) with a single space.
+//   3. Lowercase + trim.
+// After this, "MC_PosterPresentation_xyz", "MC poster-presentation xyz",
+// and "mc_poster_presentation_xyz" all become "mc poster presentation xyz".
+function _normalizeForTypeMatch(s) {
+    return String(s || '')
+        .replace(/([a-z])([A-Z])/g, '$1 $2')
+        .replace(/[^A-Za-z0-9]+/g, ' ')
+        .toLowerCase()
+        .trim();
+}
+
+// First-match-wins inference against a filename stem (no extension).
+function inferFileTypeFromStem(stem) {
+    if (!stem) return null;
+    const norm = _normalizeForTypeMatch(stem);
+    for (const [rx, type] of _FILENAME_TYPE_PATTERNS) {
+        if (rx.test(norm)) return type;
+    }
+    return null;
+}
+
+// Combine filename + path signals into a single canonical type using the
+// priority order specified in the Phase 1.1 brief. The PRIORITY tiers cover
+// SOP → PRESENTATION → DATA → PAPER; anything else (REPORT) falls into the
+// "existing type" tier and is only returned when none of the priority
+// signals fired on either side.
+const _PRIORITY_TYPES = ['SOP', 'PRESENTATION', 'DATA', 'PAPER'];
+function resolveFileType(parsed) {
+    if (!parsed) return null;
+    const fromName = parsed.type_from_filename || null;
+    const fromPath = parsed.type_from_path     || null;
+    for (const tier of _PRIORITY_TYPES) {
+        if (fromName === tier || fromPath === tier) return tier;
+    }
+    // Tier 5 — existing type. Path beats filename (curator's intent in
+    // segments like /SOP/, /Reports/), and we fall back to whatever the
+    // filename had if no path segment classified the file.
+    return fromPath || fromName || null;
+}
+
 const _RX_ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 // Researcher initials: 2–5 uppercase letters, optional 1–2 digit suffix
 // (FJH, BAB, HJM, SKP, FJH2). We keep the bar at 2+ letters to avoid
@@ -243,7 +323,6 @@ function parseR2Path(key) {
     //  a slot shift into the topic remainder.
     let iso_date = null;
     let researcher_code = null;
-    let type_from_filename = null;
     let topic = null;
     // Split on underscore/space only — dashes are preserved inside ISO
     // dates (2026-03-17) and hyphenated descriptors (nuclease-activity).
@@ -258,16 +337,29 @@ function parseR2Path(key) {
             researcher_code = stemTokens[idx];
             idx += 1;
         }
+        // The third positional slot used to be parsed as type — we now run
+        // a substring-based inference over the whole stem (see
+        // inferFileTypeFromStem), which is a strict superset of that
+        // behaviour. Keep the topic remainder calculation; if the third
+        // token IS a known type keyword, drop it from the topic so the
+        // remainder doesn't repeat the type.
+        let topicSkip = 0;
         if (idx < stemTokens.length) {
             const t = stemTokens[idx].toLowerCase();
-            if (_FILENAME_TYPE_TOKENS[t]) {
-                type_from_filename = _FILENAME_TYPE_TOKENS[t];
-                idx += 1;
+            if (/^(sop|protocols?|presentation|pres|poster|slides?|deck|data|dataflash|dataset|cfu|measurements?|fluorescence|preprint|paper|reports?|summary)$/.test(t)) {
+                topicSkip = 1;
             }
         }
-        const rest = stemTokens.slice(idx).join(' ').trim();
+        const rest = stemTokens.slice(idx + topicSkip).join(' ').trim();
         topic = rest || null;
     }
+    // Phase 1.1 file_type inference — substring-based, priority-ordered.
+    // Catches CamelCase joins (DataFlash, PosterPresentation), embedded
+    // domain markers (CFU, fluorescence, measurements), and the duplicated
+    // SOP_SOP_ prefix pattern that real filenames use. resolveFileType()
+    // (below) combines this with type_from_path under the documented
+    // priority order.
+    const type_from_filename = inferFileTypeFromStem(stem);
     // Legacy marker in filename (not in path).
     if (!status_from_path && /\bLEGACY\b/.test(stem)) status_from_path = 'LEGACY';
 
@@ -1676,4 +1768,8 @@ module.exports = {
     // Phase 4.7
     shouldIgnoreR2Path,
     buildAlternatives,
+    // Phase 1.1 file_type inference (used by the assistant_file_index
+    // metadata pass and any future caller that needs canonical types).
+    inferFileTypeFromStem,
+    resolveFileType,
 };
