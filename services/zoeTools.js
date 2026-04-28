@@ -108,6 +108,63 @@ const ZOE_TOOLS = [
                 required: ['ws', 'control_session_id', 'file_id']
             }
         }
+    },
+    // ---- Phase 1 file-visibility tools (assistant_file_index) -------------
+    // These hit the new /map, /search (extended), and /researcher endpoints.
+    // search_files (above) is preserved for the original di_submissions flow
+    // so existing behavior is untouched.
+    {
+        type: 'function',
+        function: {
+            name: 'list_files_map',
+            description: "Grouped overview of every R2 file Zoe knows about: counts by workspace, affiliation, researcher, year, and file_type. Read-only. Use when the user wants a structural answer ('how many DATA files do we have', 'which years have SOPs', 'what is in the Theralia bucket'). All filters optional — pass them when the user pre-narrows the scope.",
+            parameters: {
+                type: 'object',
+                properties: {
+                    workspace:   { type: 'string', description: "Workspace slug filter (e.g. 'natlab', 'theralia')." },
+                    affiliation: { type: 'string', description: "Affiliation filter (LiU, UNAV, EXTERNAL, THERALIA)." },
+                    researcher:  { type: 'string', description: "Researcher short code, e.g. 'MC', 'HJM'." },
+                    year:        { type: 'integer', description: "Four-digit year filter, e.g. 2026." },
+                    file_type:   { type: 'string', description: "DATA | SOP | PRESENTATION | REPORT | PAPER | TRAINING | INVENTORY." },
+                    status:      { type: 'string', description: "SUBMITTED | APPROVED | REVISION_NEEDED | DISCARDED | TRAINING | LEGACY." }
+                }
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'search_files_indexed',
+            description: "Keyword + metadata search across the assistant file index. Searches filename, r2_key, topic, text_preview, tags and (when search_scope ∈ {content, all}) the full extracted PDF text. Returns ranked results with score + match_reasons. Use this — NOT search_files — whenever the user asks about file content (\"find files about chicken embryo\", \"SOPs mentioning RNA extraction\") or wants to filter on workspace / affiliation / year. q is optional when at least one filter is supplied (e.g. all LiU DATA from 2026).",
+            parameters: {
+                type: 'object',
+                properties: {
+                    q:            { type: 'string',  description: "Free-text query. Optional when filters are provided." },
+                    search_scope: { type: 'string',  enum: ['metadata', 'content', 'all'], description: "Where to look. Default 'all'." },
+                    workspace:    { type: 'string',  description: "Workspace slug filter." },
+                    affiliation:  { type: 'string',  description: "Affiliation filter (LiU, UNAV, EXTERNAL, THERALIA)." },
+                    researcher:   { type: 'string',  description: "Researcher short code, e.g. 'MC'." },
+                    year:         { type: 'integer', description: "Four-digit year filter." },
+                    file_type:    { type: 'string',  description: "DATA | SOP | PRESENTATION | REPORT | PAPER | TRAINING | INVENTORY." },
+                    status:       { type: 'string',  description: "SUBMITTED | APPROVED | REVISION_NEEDED | DISCARDED | TRAINING | LEGACY." },
+                    limit:        { type: 'integer', minimum: 1, maximum: 50, description: "Max results; default 10, server caps at 50." }
+                }
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'list_researcher_files',
+            description: "All indexed files for one researcher, grouped by year and file_type. Path-style lookup: takes the researcher short code (e.g. 'MC' for Marina Chandrou) — resolve display names to codes before calling.",
+            parameters: {
+                type: 'object',
+                properties: {
+                    code: { type: 'string', description: "Researcher short code, e.g. 'MC' or 'HJM'." }
+                },
+                required: ['code']
+            }
+        }
     }
 ];
 
@@ -119,7 +176,13 @@ const ZOE_TOOLS_SYSTEM_NOTE =
     '- Use get_workspace_attention when the user asks what is urgent.\n' +
     '- Always call search_files before open_file_in_portal — never guess a file_id.\n' +
     '- Never invent control_session_id. If it is missing from context (e.g. Telegram), say you can only open files when the user is on the portal, instead of calling open_file_in_portal.\n' +
-    '- Do not call open_file_in_portal twice for the same file_id in the same intent. If the user says "open it again", tell them it is already queued.';
+    '- Do not call open_file_in_portal twice for the same file_id in the same intent. If the user says "open it again", tell them it is already queued.\n' +
+    '- For content-aware questions ("find files mentioning X", "what does the chicken embryo SOP say"), use search_files_indexed — NOT search_files. search_files only matches filename/title.\n' +
+    '- For structural questions ("how many DATA files do we have", "what years have UNAV SOPs"), use list_files_map.\n' +
+    '- For "all files from researcher X", use list_researcher_files with their short code (MC, HJM, etc.). If the user says a full name, map it to the short code before calling.\n' +
+    '- Indexed-flow contract (search_files_indexed, list_researcher_files, /api/assistant/files/indexed/:id): each result carries `id` (assistant_file_index id, NOT openable), `portal_file_id` (rd_documents id, the one open_file_in_portal needs), and `can_open_in_portal`. Only call open_file_in_portal when can_open_in_portal is true; pass portal_file_id as file_id. When can_open_in_portal is false, tell the user the file was found in R2 but is not linked to a portal-openable document.\n' +
+    '- list_files_map returns counts only — no file ids. Use it for structural answers, not for opening.\n' +
+    '- Briefly explain what you found and why; do not act like a search box. When ambiguous, mention the strongest match plus useful alternatives.';
 
 // ---- 3. Tool dispatcher ---------------------------------------------------
 // Hits the same server over localhost. Assistant routes resolve the workspace
@@ -175,6 +238,33 @@ async function dispatchZoeToolCall(name, args, ctx) {
             const id = encodeURIComponent(String(args.id || ''));
             return await callPortal('GET', '/api/assistant/researchers/' + id + '/report'
                 + qs({ ws: args.ws, window: args.window }));
+        }
+        case 'list_files_map': {
+            return await callPortal('GET', '/api/assistant/files/map' + qs({
+                workspace: args.workspace, affiliation: args.affiliation,
+                researcher: args.researcher, year: args.year,
+                file_type: args.file_type, status: args.status
+            }));
+        }
+        case 'search_files_indexed': {
+            // search_scope is always set so the route's new-flow trigger
+            // fires even when the model omits every filter and passes only q.
+            // Without it, /search would fall through to the legacy
+            // di_submissions handler — which is reserved for search_files.
+            return await callPortal('GET', '/api/assistant/files/search' + qs({
+                q: args.q, search_scope: args.search_scope || 'all',
+                workspace: args.workspace, affiliation: args.affiliation,
+                researcher: args.researcher, year: args.year,
+                file_type: args.file_type, status: args.status,
+                limit: args.limit,
+                // ws is sent as a no-op anchor; the new flow ignores it,
+                // and the legacy flow won't run because search_scope is set.
+                ws: args.workspace || 'natlab'
+            }));
+        }
+        case 'list_researcher_files': {
+            const code = encodeURIComponent(String(args.code || '').trim().toUpperCase());
+            return await callPortal('GET', '/api/assistant/files/researcher/' + code);
         }
         case 'open_file_in_portal': {
             // Prefer an explicit arg; fall back to the control_session_id the
