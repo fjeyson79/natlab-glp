@@ -24361,7 +24361,7 @@ app.post('/api/telegram/webhook', async (req, res) => {
 
 // Portal Assistant API — Zoe (Phase 1: status endpoint)
 app.use('/api/assistant/status',      require('./routes/assistant/status')(pool));
-app.use('/api/assistant/files',       require('./routes/assistant/files')(pool));
+app.use('/api/assistant/files',       require('./routes/assistant/files')(pool, { fetchR2ObjectAsBuffer, normalizeR2Key }));
 app.use('/api/assistant/researchers', require('./routes/assistant/researchers')(pool));
 app.use('/api/assistant/attention',   require('./routes/assistant/attention')(pool));
 app.use('/api/assistant/sessions',    require('./routes/assistant/sessions')(pool));

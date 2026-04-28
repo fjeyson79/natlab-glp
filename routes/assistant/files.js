@@ -23,8 +23,19 @@
 
 const express = require('express');
 
-module.exports = function assistantFilesRouter(pool) {
+// Soft cap on extracted PDF text returned by /:submission_id/text. Picked to
+// keep responses well under typical upstream LLM payload limits while still
+// giving Zoe enough material for ALCOA / SOP-anatomy review on long files.
+const DEFAULT_TEXT_MAX = 30000;
+
+// `r2` carries the server.js-scoped R2 helpers needed by the text-extract
+// route. They are not exported from server.js, so the mount site passes them
+// through here. If absent, the text route fails closed with 503 — every other
+// route in this file ignores the parameter.
+module.exports = function assistantFilesRouter(pool, r2) {
     const router = express.Router();
+    const fetchR2ObjectAsBuffer = r2 && r2.fetchR2ObjectAsBuffer;
+    const normalizeR2Key        = r2 && r2.normalizeR2Key;
 
     router.get('/search', async (req, res) => {
         const wsSlug = (req.query.ws || '').toString().trim();
@@ -246,6 +257,198 @@ module.exports = function assistantFilesRouter(pool) {
         } catch (err) {
             console.error('[ASSISTANT] files/search error:', err.message);
             res.status(500).json({ error: 'Failed to search files' });
+        }
+    });
+
+    // GET /api/assistant/files/:submission_id/text?ws=natlab
+    //
+    // Read-only text extraction for one DI submission. Zoe needs PDF text for
+    // DATA ALCOA review and SOP Anatomy review without ever touching R2
+    // credentials directly — the portal backend owns R2 and exposes only the
+    // metadata + extracted text here.
+    //
+    // Behaviour:
+    //   - Looks up di_submissions by submission_id (canonical NAT-Lab id).
+    //   - Returns 404 if not found in this workspace.
+    //   - Pulls the PDF bytes from R2 via the server.js-scoped helper, runs
+    //     pdf-parse, returns text capped at DEFAULT_TEXT_MAX chars.
+    //   - On scanned/image-only PDFs (pdf-parse error or empty text) returns
+    //     text_available=false with extraction.error="scanned_pdf_or_unreadable".
+    //   - No signed URLs, no R2 keys/credentials leaked beyond r2_object_key
+    //     (which is already exposed by /search and /:id).
+    //
+    // Defined before /:id so Express route ordering stays explicit, even
+    // though the two paths differ by segment count.
+    router.get('/:submission_id/text', async (req, res) => {
+        const submissionId = (req.params.submission_id || '').toString().trim();
+        const wsSlug       = (req.query.ws || '').toString().trim();
+        if (!wsSlug)       return res.status(400).json({ error: 'ws query parameter is required' });
+        if (!submissionId) return res.status(400).json({ error: 'submission_id is required' });
+        // Defensive: the submission_id column is a UUID. Reject other shapes
+        // up front rather than scanning di_submissions.
+        if (!/^[0-9a-fA-F-]{36}$/.test(submissionId)) {
+            return res.status(404).json({ error: 'Submission not found in workspace' });
+        }
+        if (typeof fetchR2ObjectAsBuffer !== 'function' || typeof normalizeR2Key !== 'function') {
+            return res.status(503).json({ error: 'R2 helpers not wired into assistant files router' });
+        }
+
+        try {
+            const wsRow = await pool.query(
+                `SELECT id, slug FROM workspaces WHERE slug = $1 AND is_active = TRUE LIMIT 1`,
+                [wsSlug]
+            );
+            if (wsRow.rows.length === 0) {
+                return res.status(404).json({ error: 'Workspace not found' });
+            }
+            const workspaceId   = wsRow.rows[0].id;
+            const workspaceSlug = wsRow.rows[0].slug;
+
+            // di_submissions is the source of truth for NAT-Lab uploads. We
+            // join di_allowlist for a trustworthy submitter display name (same
+            // pattern as /search and /review-queue).
+            const r = await pool.query(
+                `SELECT s.submission_id,
+                        s.original_filename,
+                        s.file_type,
+                        s.r2_object_key,
+                        s.status,
+                        s.created_at,
+                        s.signed_at,
+                        s.discarded_at,
+                        s.researcher_id,
+                        s.affiliation,
+                        a.name AS submitter_name
+                   FROM di_submissions s
+                   LEFT JOIN di_allowlist a ON a.researcher_id = s.researcher_id
+                  WHERE s.workspace_id = $1
+                    AND s.submission_id = $2
+                  LIMIT 1`,
+                [workspaceId, submissionId]
+            );
+            if (r.rows.length === 0) {
+                return res.status(404).json({ error: 'Submission not found in workspace' });
+            }
+            const row = r.rows[0];
+
+            // Review state + updated_at — same rules as /search and /:id so
+            // Zoe sees consistent values across endpoints. di_submissions has
+            // no updated_at column in production, so fall back to
+            // discarded_at -> signed_at -> created_at.
+            const ageMs = row.created_at ? Date.now() - new Date(row.created_at).getTime() : null;
+            let reviewState;
+            if      (!row.status)                      reviewState = 'not_submitted';
+            else if (row.status === 'DISCARDED')       reviewState = 'discarded';
+            else if (row.status === 'APPROVED')        reviewState = 'approved';
+            else if (row.status === 'REVISION_NEEDED') reviewState = (ageMs && ageMs > 14 * 24 * 3600 * 1000) ? 'blocked' : 'needs_revision';
+            else if (row.status === 'PENDING')         reviewState = (ageMs && ageMs > 7  * 24 * 3600 * 1000) ? 'stalled' : 'awaiting_review';
+            else                                       reviewState = String(row.status).toLowerCase();
+            const updatedAt = row.discarded_at || row.signed_at || row.created_at;
+
+            const meta = {
+                workspace:         workspaceSlug,
+                submission_id:     row.submission_id,
+                filename:          row.original_filename || null,
+                file_type:         row.file_type || null,
+                researcher_id:     row.researcher_id || null,
+                submitted_by_name: row.submitter_name || null,
+                affiliation:       row.affiliation || null,
+                status:            row.status || null,
+                review_state:      reviewState,
+                created_at:        row.created_at ? new Date(row.created_at).toISOString() : null,
+                updated_at:        updatedAt ? new Date(updatedAt).toISOString() : null,
+                r2_object_key:     row.r2_object_key || null
+            };
+
+            // r2_object_key is nulled when di_submissions transitions to
+            // REVISION_NEEDED or DISCARDED — there's nothing to extract in
+            // that case. Return metadata + a clean failure shape.
+            const r2Key = normalizeR2Key(row.r2_object_key);
+            if (!r2Key) {
+                return res.json({
+                    ...meta,
+                    text_available: false,
+                    extracted_text: '',
+                    extraction: { method: 'pdf-parse', error: 'no_r2_object_key' }
+                });
+            }
+
+            // Only attempt PDF text extraction for files that look like PDFs.
+            // Other file types (xlsx, images, etc.) return a clean failure;
+            // OCR / non-PDF parsing is intentionally out of scope for this
+            // endpoint per the patch brief.
+            const filenameLower = (row.original_filename || '').toLowerCase();
+            if (!filenameLower.endsWith('.pdf')) {
+                return res.json({
+                    ...meta,
+                    text_available: false,
+                    extracted_text: '',
+                    extraction: { method: 'pdf-parse', error: 'unsupported_file_type' }
+                });
+            }
+
+            let buffer;
+            try {
+                buffer = await fetchR2ObjectAsBuffer(r2Key);
+            } catch (e) {
+                console.error('[ASSISTANT] files/:submission_id/text R2 fetch failed:', e.message);
+                return res.json({
+                    ...meta,
+                    text_available: false,
+                    extracted_text: '',
+                    extraction: { method: 'pdf-parse', error: 'r2_fetch_failed' }
+                });
+            }
+
+            let parsed;
+            try {
+                const pdfParse = require('pdf-parse');
+                parsed = await pdfParse(buffer);
+            } catch (e) {
+                console.error('[ASSISTANT] files/:submission_id/text pdf-parse failed:', e.message);
+                return res.json({
+                    ...meta,
+                    text_available: false,
+                    extracted_text: '',
+                    extraction: { method: 'pdf-parse', error: 'scanned_pdf_or_unreadable' }
+                });
+            }
+
+            const rawText = (parsed.text || '').replace(/\s+\n/g, '\n').trim();
+            // pdf-parse on a scanned/image-only PDF parses fine but yields an
+            // empty string. Surface that as the documented failure shape.
+            if (!rawText) {
+                return res.json({
+                    ...meta,
+                    text_available: false,
+                    extracted_text: '',
+                    extraction: {
+                        method: 'pdf-parse',
+                        pages:  parsed.numpages || null,
+                        error:  'scanned_pdf_or_unreadable'
+                    }
+                });
+            }
+
+            const charsTotal = rawText.length;
+            const truncated  = charsTotal > DEFAULT_TEXT_MAX;
+            const out        = truncated ? rawText.slice(0, DEFAULT_TEXT_MAX) : rawText;
+
+            res.json({
+                ...meta,
+                text_available: true,
+                extracted_text: out,
+                extraction: {
+                    method:         'pdf-parse',
+                    pages:          parsed.numpages || null,
+                    chars_total:    charsTotal,
+                    chars_returned: out.length,
+                    truncated
+                }
+            });
+        } catch (err) {
+            console.error('[ASSISTANT] files/:submission_id/text error:', err.message);
+            res.status(500).json({ error: 'Failed to extract submission text' });
         }
     });
 
