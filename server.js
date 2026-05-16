@@ -114,6 +114,25 @@ const inventoryUpload = multer({
     }
 });
 
+// Multer config for REPORT uploads — distinct from `upload` (which is PDF-only)
+// because REPORT accepts PDF, DOC, and DOCX. 20 MB cap per spec.
+const reportUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 20 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+        const name = (file.originalname || '').toLowerCase();
+        const mt   = (file.mimetype    || '').toLowerCase();
+        const okExt = name.endsWith('.pdf') || name.endsWith('.doc') || name.endsWith('.docx');
+        const okMime = mt === 'application/pdf'
+                    || mt === 'application/msword'
+                    || mt === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                    || mt === 'application/octet-stream'
+                    || mt === 'binary/octet-stream';
+        if (okExt && okMime) return cb(null, true);
+        return cb(new Error('Only PDF, DOC, or DOCX files are accepted for REPORT uploads'), false);
+    }
+});
+
 
 // =====================================================
 // R2 STORAGE (S3-compatible) - minimal implementation
@@ -2309,6 +2328,200 @@ app.post('/api/di/upload', requireAuth, upload.single('file'), async (req, res) 
     } catch (err) {
         console.error('[UPLOAD] Upload error:', err);
         return res.status(500).json({ error: 'UPLOAD_FAILED', message: err.message });
+    }
+});
+
+// ============================================================================
+// POST /api/di/upload-report
+//
+// Dedicated upload route for the REPORT file category. Separate from
+// /api/di/upload because:
+//   1. The default `upload` multer rejects DOC/DOCX, and we don't want to
+//      widen its fileFilter (every other route depends on PDF-only).
+//   2. REPORT carries its own metadata block (subcategory, project,
+//      reporting period, related DATA/SOP ids, supervisor, report_status)
+//      that would clutter the SOP/DATA/PRESENTATION code path.
+//
+// File: PDF / DOC / DOCX, max 20 MB (enforced by `reportUpload` multer).
+// db: writes to di_submissions with file_type='REPORT'; per-report columns
+// were added in migration 067. n8n webhook is fired (same as
+// /api/di/upload) so PI notifications work for REPORT too.
+// ============================================================================
+const REPORT_SUBCATEGORIES = [
+    'INTERNAL_REPORT', 'UNDERGRADUATE_REPORT', 'MASTER_REPORT', 'PHD_REPORT',
+    'THESIS_CHAPTER',  'MANUSCRIPT_DRAFT',     'GLP_REPORT',    'OTHER_REPORT'
+];
+const REPORT_STATUSES = ['DRAFT', 'SUBMITTED', 'APPROVED', 'REVISION_NEEDED'];
+
+// Cached column-existence check. Migration 067 may not have run yet on a
+// stale deploy; in that case the route 503s cleanly instead of failing the
+// INSERT with a confusing relation-error.
+let _reportColsReady = null;
+let _reportColsChecked = 0;
+async function checkReportColumns() {
+    const now = Date.now();
+    if (_reportColsReady === true && (now - _reportColsChecked) < 60_000) return true;
+    try {
+        const r = await pool.query(`
+            SELECT COUNT(*)::int AS n
+              FROM information_schema.columns
+             WHERE table_name = 'di_submissions'
+               AND column_name IN ('report_subcategory','report_project','report_period_start',
+                                   'report_period_end','report_related_data_ids','report_related_sop_ids',
+                                   'report_supervisor','report_status')`);
+        _reportColsReady = (r.rows[0].n >= 8);
+    } catch {
+        _reportColsReady = false;
+    }
+    _reportColsChecked = now;
+    return _reportColsReady;
+}
+
+// Parse JSON array of UUIDs from a form field. Accepts an already-array JSON
+// string or a comma-separated string. Drops anything that isn't UUID-shaped.
+function parseIdArray(v) {
+    if (!v) return [];
+    let arr;
+    if (typeof v === 'string') {
+        const t = v.trim();
+        if (!t) return [];
+        if (t.startsWith('[')) {
+            try { arr = JSON.parse(t); } catch { return []; }
+        } else {
+            arr = t.split(',');
+        }
+    } else if (Array.isArray(v)) {
+        arr = v;
+    } else {
+        return [];
+    }
+    const uuidRe = /^[0-9a-fA-F-]{36}$/;
+    return arr.map(x => String(x || '').trim()).filter(x => uuidRe.test(x));
+}
+
+app.post('/api/di/upload-report', requireAuth, reportUpload.single('file'), async (req, res) => {
+    try {
+        const file = req.file;
+        if (!file) return res.status(400).json({ error: 'No file uploaded' });
+
+        if (!(await checkReportColumns())) {
+            return res.status(503).json({ error: 'REPORT columns not migrated yet (migration 067 pending)' });
+        }
+
+        // 20 MB hard cap is already enforced by multer; double-check defensively.
+        if (file.size > 20 * 1024 * 1024) {
+            return res.status(400).json({ error: 'File exceeds 20 MB limit' });
+        }
+
+        const subcategoryRaw = (req.body.report_subcategory || '').toString().trim().toUpperCase();
+        if (!REPORT_SUBCATEGORIES.includes(subcategoryRaw)) {
+            return res.status(400).json({
+                error: 'report_subcategory is required',
+                allowed: REPORT_SUBCATEGORIES
+            });
+        }
+
+        const project      = (req.body.report_project    || '').toString().trim() || null;
+        const supervisor   = (req.body.report_supervisor || '').toString().trim() || null;
+        const periodStart  = (req.body.report_period_start || '').toString().trim() || null;
+        const periodEnd    = (req.body.report_period_end   || '').toString().trim() || null;
+        const relatedData  = parseIdArray(req.body.report_related_data_ids);
+        const relatedSops  = parseIdArray(req.body.report_related_sop_ids);
+
+        let reportStatus = (req.body.report_status || 'DRAFT').toString().trim().toUpperCase();
+        // accept "Revision needed" / "revision_needed" / etc.
+        reportStatus = reportStatus.replace(/[\s-]+/g, '_');
+        if (!REPORT_STATUSES.includes(reportStatus)) {
+            return res.status(400).json({
+                error: 'report_status must be one of ' + REPORT_STATUSES.join(', ')
+            });
+        }
+
+        // Validate date strings if provided (YYYY-MM-DD); reject anything else
+        // up front so Postgres doesn't reject and turn into a 500.
+        const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+        if (periodStart && !dateRe.test(periodStart)) return res.status(400).json({ error: 'report_period_start must be YYYY-MM-DD' });
+        if (periodEnd   && !dateRe.test(periodEnd))   return res.status(400).json({ error: 'report_period_end must be YYYY-MM-DD'   });
+
+        const user = req.session.user;
+        const year = new Date().getFullYear();
+
+        if (!r2Enabled()) {
+            console.error('[UPLOAD-REPORT] R2 not configured');
+            return res.status(503).json({ error: 'R2 storage not configured' });
+        }
+
+        const safeOriginal = (file.originalname || 'report.pdf').replace(/[^\w.\-]+/g, '_');
+        const dateStamp = new Date().toISOString().slice(0, 10);
+        const key = 'di/' + user.affiliation + '/Submitted/' + year + '/REPORT/' +
+                    dateStamp + '_' + user.researcher_id + '_' + safeOriginal;
+
+        console.log('[UPLOAD-REPORT] Uploading: key=' + key + ', size=' + file.size + ', sub=' + subcategoryRaw);
+        await uploadToR2(file.buffer, key, file.mimetype || 'application/octet-stream');
+
+        // file_type='REPORT' was already accepted in di_submissions_file_type_check
+        // as of migration 048/049 — no constraint widening needed.
+        const ins = await pool.query(
+            `INSERT INTO di_submissions
+                (researcher_id, affiliation, file_type, original_filename, r2_object_key,
+                 report_subcategory, report_project,
+                 report_period_start, report_period_end,
+                 report_related_data_ids, report_related_sop_ids,
+                 report_supervisor, report_status, workspace_id)
+             VALUES ($1, $2, 'REPORT', $3, $4,
+                     $5, $6,
+                     $7::date, $8::date,
+                     $9::jsonb, $10::jsonb,
+                     $11, $12,
+                     (SELECT id FROM workspaces WHERE slug = 'natlab'))
+             RETURNING submission_id`,
+            [
+                user.researcher_id, user.affiliation,
+                file.originalname, key,
+                subcategoryRaw, project,
+                periodStart, periodEnd,
+                JSON.stringify(relatedData), JSON.stringify(relatedSops),
+                supervisor, reportStatus
+            ]
+        );
+        const submissionId = ins.rows[0].submission_id;
+
+        // n8n webhook (same shape as /api/di/upload). Best-effort.
+        const webhookUrl = process.env.N8N_DI_WEBHOOK_URL;
+        if (webhookUrl) {
+            try {
+                const formData = new FormData();
+                formData.append('researcher_id', user.researcher_id);
+                formData.append('affiliation', user.affiliation);
+                formData.append('fileType', 'REPORT');
+                formData.append('report_subcategory', subcategoryRaw);
+                formData.append('report_status', reportStatus);
+                formData.append('original_filename', file.originalname);
+                formData.append('submission_id', submissionId);
+                formData.append('r2_object_key', key);
+                formData.append('file', file.buffer, { filename: file.originalname, contentType: file.mimetype || 'application/octet-stream' });
+                const webhookRes = await fetch(webhookUrl, { method: 'POST', body: formData, headers: formData.getHeaders() });
+                console.log('[UPLOAD-REPORT] Webhook response status:', webhookRes.status);
+            } catch (webhookErr) {
+                console.error('[UPLOAD-REPORT] Webhook error:', webhookErr.message);
+            }
+        }
+
+        return res.json({
+            success: true,
+            submission_id: submissionId,
+            r2_object_key: key,
+            file_type: 'REPORT',
+            report_subcategory: subcategoryRaw,
+            report_status: reportStatus,
+            view_url: '/api/di/download/' + submissionId,
+            download_url: '/api/di/download/' + submissionId + '?download=true',
+            message: 'Report uploaded successfully'
+        });
+    } catch (err) {
+        console.error('[UPLOAD-REPORT] error:', err && err.message);
+        if (err && err.code) console.error('[UPLOAD-REPORT] PG code=' + err.code, 'detail=' + (err.detail || '-'));
+        return res.status(500).json({ error: 'UPLOAD_FAILED', message: err && err.message });
     }
 });
 

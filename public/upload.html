@@ -1339,6 +1339,7 @@
                         <option value="SOP">SOP (Standard Operating Procedure)</option>
                         <option value="DATA">DATA (Research Data)</option>
                         <option value="PRESENTATION">PRESENTATION (Research Presentation)</option>
+                        <option value="REPORT">REPORT (Scientific Report)</option>
                     </select>
 
                     <div id="presentationTypeGroup" style="display:none;margin-bottom:12px;">
@@ -1357,6 +1358,59 @@
                     <div id="presentationOtherGroup" style="display:none;margin-bottom:12px;">
                         <label for="presentationOther">Specify Presentation Type <span style="color:#c0392b;">*</span></label>
                         <input type="text" id="presentationOther" placeholder="Enter presentation type..." style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;font-size:14px;box-sizing:border-box;">
+                    </div>
+
+                    <!-- REPORT metadata block (shown only when fileType === 'REPORT') -->
+                    <div id="reportMetaGroup" style="display:none;margin-bottom:12px;">
+                        <label for="reportSubcategory">Report Type <span style="color:#c0392b;">*</span></label>
+                        <select id="reportSubcategory" style="margin-bottom:10px;">
+                            <option value="">Select report type...</option>
+                            <option value="INTERNAL_REPORT">Internal report</option>
+                            <option value="UNDERGRADUATE_REPORT">Undergraduate report</option>
+                            <option value="MASTER_REPORT">Master report</option>
+                            <option value="PHD_REPORT">PhD report</option>
+                            <option value="THESIS_CHAPTER">Thesis chapter</option>
+                            <option value="MANUSCRIPT_DRAFT">Manuscript draft</option>
+                            <option value="GLP_REPORT">GLP report</option>
+                            <option value="OTHER_REPORT">Other report</option>
+                        </select>
+
+                        <label for="reportProject" style="margin-top:4px;">Project</label>
+                        <input type="text" id="reportProject" placeholder="Project name or code (optional)" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;font-size:14px;box-sizing:border-box;margin-bottom:10px;">
+
+                        <div style="display:flex;gap:8px;margin-bottom:10px;">
+                            <div style="flex:1;">
+                                <label for="reportPeriodStart">Reporting period — start</label>
+                                <input type="date" id="reportPeriodStart" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;font-size:14px;box-sizing:border-box;">
+                            </div>
+                            <div style="flex:1;">
+                                <label for="reportPeriodEnd">Reporting period — end</label>
+                                <input type="date" id="reportPeriodEnd" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;font-size:14px;box-sizing:border-box;">
+                            </div>
+                        </div>
+
+                        <label for="reportSupervisor">Supervisor</label>
+                        <input type="text" id="reportSupervisor" placeholder="Supervisor name (optional)" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;font-size:14px;box-sizing:border-box;margin-bottom:10px;">
+
+                        <label for="reportStatusSelect">Report status</label>
+                        <select id="reportStatusSelect" style="margin-bottom:10px;">
+                            <option value="DRAFT">Draft</option>
+                            <option value="SUBMITTED">Submitted</option>
+                            <option value="APPROVED">Approved</option>
+                            <option value="REVISION_NEEDED">Revision needed</option>
+                        </select>
+
+                        <label for="reportRelatedData">Related DATA files (optional)</label>
+                        <select id="reportRelatedData" multiple size="3" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;font-size:13px;box-sizing:border-box;margin-bottom:10px;">
+                            <!-- populated from /api/di/my-files on field show -->
+                        </select>
+
+                        <label for="reportRelatedSop">Related SOPs (optional)</label>
+                        <select id="reportRelatedSop" multiple size="3" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;font-size:13px;box-sizing:border-box;margin-bottom:4px;">
+                            <!-- populated from /api/di/my-files on field show -->
+                        </select>
+
+                        <div style="font-size:11px;color:#666;margin-top:6px;">Hold &#8984;/Ctrl to select multiple. Accepted file types for REPORT: PDF, DOC, DOCX (max 20&nbsp;MB).</div>
                     </div>
 
                     <div id="submissionTypeGroup" style="display:none;margin-bottom:12px;">
@@ -1425,6 +1479,7 @@
                         <button class="inv-toggle-btn" data-filter="SOP" onclick="setFileFilter(this)">SOP</button>
                         <button class="inv-toggle-btn" data-filter="DATA" onclick="setFileFilter(this)">DATA</button>
                         <button class="inv-toggle-btn" data-filter="PRESENTATION" onclick="setFileFilter(this)">PRES</button>
+                        <button class="inv-toggle-btn" data-filter="REPORT" onclick="setFileFilter(this)">REPORT</button>
                         <select id="intdocsSelect" class="inv-toggle-btn" style="display:none;cursor:pointer;" onchange="intdocsChanged(this)">
                             <option value="">InternalDocs</option>
                             <option value="papers">Papers</option>
@@ -3060,17 +3115,87 @@
         const uploadLoading = document.getElementById('uploadLoading');
         const uploadMessage = document.getElementById('uploadMessage');
 
-        // Reset file input on type change; toggle presentation fields
+        // Reset file input on type change; toggle presentation / report fields.
+        // REPORT accepts PDF/DOC/DOCX; SOP/DATA/PRESENTATION remain PDF-only.
         document.getElementById('fileType').addEventListener('change', function() {
             fileInput.value = '';
             fileNameDisplay.textContent = '';
             fileUploadArea.classList.remove('has-file');
             const isPres = this.value === 'PRESENTATION';
+            const isReport = this.value === 'REPORT';
             document.getElementById('presentationTypeGroup').style.display = isPres ? 'block' : 'none';
             document.getElementById('presentationOtherGroup').style.display = 'none';
             document.getElementById('presentationType').value = '';
             document.getElementById('presentationOther').value = '';
+            document.getElementById('reportMetaGroup').style.display = isReport ? 'block' : 'none';
+            // Restrict the file input by accepted extensions per file type.
+            // We still enforce mime/extension server-side regardless of this hint.
+            fileInput.accept = isReport
+                ? '.pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                : '.pdf,application/pdf';
+            if (isReport) populateReportRelatedSelects();
         });
+
+        // Populate Related DATA / SOP dropdowns from the researcher's own
+        // /api/di/my-files. Best-effort: failure leaves the selects empty so
+        // the user can still submit a report without linked files.
+        async function populateReportRelatedSelects() {
+            const dataSel = document.getElementById('reportRelatedData');
+            const sopSel  = document.getElementById('reportRelatedSop');
+            if (!dataSel || !sopSel) return;
+            // Avoid refetching if already populated this session.
+            if (dataSel.dataset.populated === '1' && sopSel.dataset.populated === '1') return;
+            try {
+                const r = await fetch('/api/di/my-files', { credentials: 'include' });
+                if (!r.ok) return;
+                const j = await r.json();
+                const flatten = (arr) => {
+                    // /api/di/my-files returns a tree-shaped object; we want
+                    // every file node regardless of folder.
+                    const out = [];
+                    const walk = (n) => {
+                        if (!n) return;
+                        if (Array.isArray(n)) return n.forEach(walk);
+                        if (n.type === 'file') return out.push(n);
+                        if (n.children) walk(n.children);
+                        if (n.files)    walk(n.files);
+                        if (typeof n === 'object') {
+                            for (const k of Object.keys(n)) {
+                                if (['name','type','id','status','fileType','date','signedAt','r2ObjectKey','viewUrl','downloadUrl','sharedAt','sharedBy','ownerResearcherId'].includes(k)) continue;
+                                walk(n[k]);
+                            }
+                        }
+                    };
+                    walk(arr);
+                    return out;
+                };
+                const files = flatten(j);
+                const fill = (sel, type) => {
+                    sel.innerHTML = '';
+                    const matching = files.filter(f => (f.fileType || '').toUpperCase() === type);
+                    if (matching.length === 0) {
+                        const o = document.createElement('option');
+                        o.value = '';
+                        o.textContent = 'No ' + type + ' files yet';
+                        o.disabled = true;
+                        sel.appendChild(o);
+                    } else {
+                        for (const f of matching) {
+                            const o = document.createElement('option');
+                            o.value = f.id;
+                            const dt = f.date ? new Date(f.date).toISOString().slice(0,10) : '';
+                            o.textContent = (dt ? dt + ' — ' : '') + (f.name || f.id);
+                            sel.appendChild(o);
+                        }
+                    }
+                    sel.dataset.populated = '1';
+                };
+                fill(dataSel, 'DATA');
+                fill(sopSel,  'SOP');
+            } catch (e) {
+                // ignore — fields can stay empty
+            }
+        }
 
         document.getElementById('presentationType').addEventListener('change', function() {
             document.getElementById('presentationOtherGroup').style.display = this.value === 'Other' ? 'block' : 'none';
@@ -3145,6 +3270,24 @@
                 }
             }
 
+            // REPORT-specific validation
+            if (fileType === 'REPORT') {
+                const sub = document.getElementById('reportSubcategory').value;
+                if (!sub) {
+                    showMessage('uploadMessage', 'Please select a report type.', 'error');
+                    return;
+                }
+                const lname = file.name.toLowerCase();
+                if (!(lname.endsWith('.pdf') || lname.endsWith('.doc') || lname.endsWith('.docx'))) {
+                    showMessage('uploadMessage', 'Reports must be PDF, DOC, or DOCX.', 'error');
+                    return;
+                }
+                if (file.size > 20 * 1024 * 1024) {
+                    showMessage('uploadMessage', 'Report file exceeds 20 MB limit.', 'error');
+                    return;
+                }
+            }
+
             uploadBtn.disabled = true;
             uploadForm.style.display = 'none';
             uploadLoading.style.display = 'block';
@@ -3161,6 +3304,27 @@
                 if (presOther) formData.append('presentation_other', presOther);
             }
 
+            // Include REPORT metadata
+            if (fileType === 'REPORT') {
+                formData.append('report_subcategory', document.getElementById('reportSubcategory').value);
+                const proj  = document.getElementById('reportProject').value.trim();
+                const sup   = document.getElementById('reportSupervisor').value.trim();
+                const pstrt = document.getElementById('reportPeriodStart').value;
+                const pend  = document.getElementById('reportPeriodEnd').value;
+                const st    = document.getElementById('reportStatusSelect').value;
+                if (proj)  formData.append('report_project', proj);
+                if (sup)   formData.append('report_supervisor', sup);
+                if (pstrt) formData.append('report_period_start', pstrt);
+                if (pend)  formData.append('report_period_end',   pend);
+                if (st)    formData.append('report_status', st);
+                const collect = (id) => Array.from(document.getElementById(id).selectedOptions)
+                                              .map(o => o.value).filter(Boolean);
+                const relData = collect('reportRelatedData');
+                const relSop  = collect('reportRelatedSop');
+                if (relData.length) formData.append('report_related_data_ids', JSON.stringify(relData));
+                if (relSop.length)  formData.append('report_related_sop_ids',  JSON.stringify(relSop));
+            }
+
             // Include revision request ID if this is a resubmission
             const submissionTypeEl = document.getElementById('submissionType');
             const rrSelectEl = document.getElementById('revisionRequestSelect');
@@ -3169,7 +3333,9 @@
             }
 
             try {
-                const uploadUrl = '/api/di/upload';
+                // REPORT has its own route (accepts PDF/DOC/DOCX + report metadata).
+                // Other types continue to use /api/di/upload (PDF-only).
+                const uploadUrl = fileType === 'REPORT' ? '/api/di/upload-report' : '/api/di/upload';
                 const response = await fetch(uploadUrl, {
                     method: 'POST',
                     body: formData,
@@ -3205,6 +3371,15 @@
                     // Reset presentation fields
                     document.getElementById('presentationTypeGroup').style.display = 'none';
                     document.getElementById('presentationOtherGroup').style.display = 'none';
+
+                    // Reset REPORT fields
+                    document.getElementById('reportMetaGroup').style.display = 'none';
+                    document.getElementById('reportSubcategory').value = '';
+                    document.getElementById('reportProject').value = '';
+                    document.getElementById('reportSupervisor').value = '';
+                    document.getElementById('reportPeriodStart').value = '';
+                    document.getElementById('reportPeriodEnd').value = '';
+                    document.getElementById('reportStatusSelect').value = 'DRAFT';
 
                     // Refresh file list and revision requests
                     loadMyFiles();

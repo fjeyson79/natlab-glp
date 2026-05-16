@@ -581,7 +581,13 @@ module.exports = function assistantFilesRouter(pool, deps) {
     //   portal counts, and LEFT JOINs assistant_file_index for the
     //   extraction-status enrichment Zoe needs.
     //
-    // Counted file_types: DATA, SOP, PRESENTATION (matches activity.js).
+    // Counted file_types: DATA, SOP, PRESENTATION, REPORT.
+    //   /activity (the performance counter) still tracks only DATA/SOP/
+    //   PRESENTATION — REPORT is intentionally excluded from performance
+    //   metrics. The canonical listing carries REPORT for Zoe so the
+    //   assistant can list/search them, but breakdown totals here will not
+    //   match /activity for researchers who have uploaded REPORTs.
+    //
     // INVENTORY is excluded; DISCARDED submissions are excluded.
     //
     // Always 200 — an unknown / inactive researcher returns an empty group
@@ -597,6 +603,20 @@ module.exports = function assistantFilesRouter(pool, deps) {
         // When not, those fields come back as null but the di_submissions
         // listing itself is still returned.
         const idxReady = await ensureIndexTables();
+
+        // Migration 067 introduced report_* columns. We probe their presence
+        // so this endpoint stays compatible with pre-067 deploys: when the
+        // columns are absent the response simply omits report_subcategory.
+        let reportColsReady = false;
+        try {
+            const rc = await pool.query(`
+                SELECT COUNT(*)::int AS n
+                  FROM information_schema.columns
+                 WHERE table_name='di_submissions'
+                   AND column_name IN ('report_subcategory','report_status','report_project',
+                                       'report_period_start','report_period_end','report_supervisor')`);
+            reportColsReady = (rc.rows[0].n >= 6);
+        } catch { reportColsReady = false; }
 
         try {
             const wsRow = await pool.query(
@@ -634,6 +654,24 @@ module.exports = function assistantFilesRouter(pool, deps) {
                         NULL::int  AS text_char_count,
                         FALSE      AS has_full_text,`;
 
+            // REPORT-specific columns (migration 067). Selected only when the
+            // columns exist — otherwise NULL placeholders keep the SELECT shape
+            // stable for callers.
+            const reportCols = reportColsReady ? `
+                        s.report_subcategory,
+                        s.report_status      AS report_status_field,
+                        s.report_project,
+                        s.report_period_start,
+                        s.report_period_end,
+                        s.report_supervisor,`
+                : `
+                        NULL::text AS report_subcategory,
+                        NULL::text AS report_status_field,
+                        NULL::text AS report_project,
+                        NULL::date AS report_period_start,
+                        NULL::date AS report_period_end,
+                        NULL::text AS report_supervisor,`;
+
             const r = await pool.query(
                 `SELECT s.submission_id,
                         s.original_filename,
@@ -645,6 +683,7 @@ module.exports = function assistantFilesRouter(pool, deps) {
                         s.r2_object_key,
                         a.name AS researcher_name,
                         ${indexedCols}
+                        ${reportCols}
                         EXTRACT(YEAR FROM s.created_at)::int AS year
                    FROM di_submissions s
                    LEFT JOIN di_allowlist a ON a.researcher_id = s.researcher_id
@@ -652,7 +691,7 @@ module.exports = function assistantFilesRouter(pool, deps) {
                   WHERE s.workspace_id  = $1
                     AND s.researcher_id = $2
                     AND s.status <> 'DISCARDED'
-                    AND s.file_type IN ('DATA', 'SOP', 'PRESENTATION')
+                    AND s.file_type IN ('DATA', 'SOP', 'PRESENTATION', 'REPORT')
                   ORDER BY s.created_at DESC NULLS LAST`,
                 [workspaceId, code]
             );
@@ -660,17 +699,20 @@ module.exports = function assistantFilesRouter(pool, deps) {
 
             // Aggregate by year -> file_type -> [files].
             const grouped = {};
-            const byType = { DATA: 0, SOP: 0, PRESENTATION: 0 };
+            const byType = { DATA: 0, SOP: 0, PRESENTATION: 0, REPORT: 0 };
             for (const row of rows) {
                 const filename = row.original_filename || null;
-                const isPdfName = !!(filename && filename.toLowerCase().endsWith('.pdf'));
+                const lname = (filename || '').toLowerCase();
+                const isPdfName = lname.endsWith('.pdf');
                 const textStatus = row.text_status || null;
                 const hasFullText = !!row.has_full_text;
                 // can_read_now: assistant has the body text on file right now.
                 // can_attempt_extract: PDF that the assistant could pull and
                 // parse on demand via POST /indexed/:id/extract. We treat
                 // 'unsupported' (non-PDF) and rows without an indexed_file_id
-                // as not-extractable.
+                // as not-extractable. REPORTs uploaded as DOC/DOCX therefore
+                // come back with can_attempt_extract=false (intentional — the
+                // PDF extractor cannot read them).
                 const canReadNow = hasFullText;
                 const canAttemptExtract = !canReadNow
                                        && isPdfName
@@ -694,6 +736,16 @@ module.exports = function assistantFilesRouter(pool, deps) {
                     can_read_now:     canReadNow,
                     can_attempt_extract: canAttemptExtract
                 };
+                // REPORT-only enrichment, surfaced uniformly so Zoe can rely
+                // on the field being present (null) on non-REPORT rows.
+                if (row.file_type === 'REPORT') {
+                    file.report_subcategory   = row.report_subcategory   || null;
+                    file.report_status        = row.report_status_field  || null;
+                    file.report_project       = row.report_project       || null;
+                    file.report_period_start  = row.report_period_start  ? new Date(row.report_period_start).toISOString().slice(0,10) : null;
+                    file.report_period_end    = row.report_period_end    ? new Date(row.report_period_end).toISOString().slice(0,10)   : null;
+                    file.report_supervisor    = row.report_supervisor    || null;
+                }
 
                 const yKey = row.year == null ? 'unknown' : String(row.year);
                 const tKey = row.file_type || 'UNTYPED';
@@ -728,14 +780,20 @@ module.exports = function assistantFilesRouter(pool, deps) {
                 researcher_name: researcherName,
                 affiliation:     researcherAff,
                 source:          'di_submissions',
-                counted_file_types: ['DATA', 'SOP', 'PRESENTATION'],
+                counted_file_types: ['DATA', 'SOP', 'PRESENTATION', 'REPORT'],
+                // REPORT was added in migration 067; /api/assistant/activity
+                // intentionally still excludes REPORT so performance counters
+                // are unchanged.
+                performance_counted_file_types: ['DATA', 'SOP', 'PRESENTATION'],
                 total:           rows.length,
                 totals_by_file_type: {
                     DATA:         byType.DATA,
                     SOP:          byType.SOP,
-                    PRESENTATION: byType.PRESENTATION
+                    PRESENTATION: byType.PRESENTATION,
+                    REPORT:       byType.REPORT
                 },
-                index_enrichment: idxReady,
+                index_enrichment:    idxReady,
+                report_enrichment:   reportColsReady,
                 grouped,
                 generated_at:    new Date().toISOString()
             });

@@ -1143,6 +1143,33 @@ async function migrate() {
             `CREATE INDEX IF NOT EXISTS idx_theralia_audit_action ON theralia_audit_log(action)`,
             `CREATE INDEX IF NOT EXISTS idx_theralia_audit_created ON theralia_audit_log(created_at)`,
 
+            // ==================== MIGRATION 067 — REPORT category metadata ====================
+            // Adds nullable per-report fields to di_submissions. REPORT was already
+            // accepted in di_submissions_file_type_check via migration 048/049, so
+            // no constraint widening is needed here.
+            `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS report_subcategory TEXT`,
+            `ALTER TABLE di_submissions DROP CONSTRAINT IF EXISTS di_submissions_report_subcategory_check`,
+            `ALTER TABLE di_submissions ADD CONSTRAINT di_submissions_report_subcategory_check
+                CHECK (report_subcategory IS NULL OR report_subcategory IN (
+                    'INTERNAL_REPORT','UNDERGRADUATE_REPORT','MASTER_REPORT','PHD_REPORT',
+                    'THESIS_CHAPTER','MANUSCRIPT_DRAFT','GLP_REPORT','OTHER_REPORT'
+                ))`,
+            `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS report_project TEXT`,
+            `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS report_period_start DATE`,
+            `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS report_period_end DATE`,
+            `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS report_related_data_ids JSONB DEFAULT '[]'::jsonb`,
+            `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS report_related_sop_ids JSONB DEFAULT '[]'::jsonb`,
+            `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS report_supervisor TEXT`,
+            `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS report_status TEXT`,
+            `ALTER TABLE di_submissions DROP CONSTRAINT IF EXISTS di_submissions_report_status_check`,
+            `ALTER TABLE di_submissions ADD CONSTRAINT di_submissions_report_status_check
+                CHECK (report_status IS NULL OR report_status IN (
+                    'DRAFT','SUBMITTED','APPROVED','REVISION_NEEDED'
+                ))`,
+            `CREATE INDEX IF NOT EXISTS idx_di_submissions_report_subcategory
+                ON di_submissions (researcher_id, report_subcategory)
+                WHERE file_type = 'REPORT'`,
+
         ];
 
         for (const sql of migrations) {
