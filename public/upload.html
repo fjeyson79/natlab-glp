@@ -6735,7 +6735,7 @@ credentials: 'include'
                 case 'Awaiting PI review':         return 'rt-pill-awaiting-pi';
                 case 'Awaiting student revision':  return 'rt-pill-awaiting-stu';
                 case 'Approved':                   return 'rt-pill-approved';
-                case 'Re-opened':                  return 'rt-pill-reopened';
+                // 'Re-opened' is no longer emitted in the simplified workflow.
                 case 'Discarded':                  return 'rt-pill-discarded';
                 default:                           return 'rt-pill-open';
             }
@@ -6808,10 +6808,10 @@ credentials: 'include'
                 ? '<div class="rt-helper">Download the PI feedback file, revise your report, and upload a new revised version below.</div>'
                 : '';
             const closedNote = (t.thread_status === 'CLOSED')
-                ? '<div class="rt-helper" style="background:#ecfdf5;border-color:#a7f3d0;color:#065f46;">This report has been approved and closed.</div>'
+                ? '<div class="rt-helper" style="background:#ecfdf5;border-color:#a7f3d0;color:#065f46;">This report has been finalized and archived. To continue, upload a NEW REPORT (it will start a new thread).</div>'
                 : '';
             const discardedNote = (t.thread_status === 'DISCARDED')
-                ? '<div class="rt-helper" style="background:#fef2f2;border-color:#fecaca;color:#991b1b;">This thread has been discarded.</div>'
+                ? '<div class="rt-helper" style="background:#fef2f2;border-color:#fecaca;color:#991b1b;">This report has been discarded and archived.</div>'
                 : '';
 
             const timeline = (t.revisions || []).map(rev => {
@@ -6834,7 +6834,11 @@ credentials: 'include'
                     </div>`;
             }).join('');
 
-            const canUpload = (t.thread_status === 'OPEN' || t.thread_status === 'REOPENED');
+            // REPORT approval is final. Uploads are allowed only while
+            // the thread is OPEN. Legacy REOPENED rows are mapped to OPEN
+            // at the API boundary so they continue to function during
+            // the transition window.
+            const canUpload = (t.thread_status === 'OPEN');
             const studentForm = canUpload ? `
                 <div class="rt-pi-upload-form">
                     <div style="font-weight:600;color:#0f172a;margin-bottom:8px;">Upload revised version</div>

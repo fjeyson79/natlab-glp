@@ -4518,7 +4518,9 @@ app.get('/api/di/pending-approvals', requirePIRead, async (req, res) => {
         );
 
         // Compute derived_thread_status_label client-friendly here so the
-        // dashboard doesn't reimplement the rule.
+        // dashboard doesn't reimplement the rule. Legacy REOPENED rows
+        // are also normalised to OPEN at the wire boundary — the
+        // simplified workflow exposes only OPEN/CLOSED/DISCARDED.
         const { deriveThreadLabel } = require('./routes/di/reportThread');
         const submissions = result.rows.map(row => {
             if (row.file_type === 'REPORT' && threadColsReady) {
@@ -4527,6 +4529,7 @@ app.get('/api/di/pending-approvals', requirePIRead, async (req, res) => {
                 row.derived_thread_status_label = deriveThreadLabel(
                     row.report_thread_status, lastRole, row.report_reopened_at, lastAt
                 );
+                if (row.report_thread_status === 'REOPENED') row.report_thread_status = 'OPEN';
             } else {
                 row.derived_thread_status_label = null;
             }

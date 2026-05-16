@@ -873,7 +873,11 @@ module.exports = function assistantFilesRouter(pool, deps) {
                     file.report_thread_root_id       = row.report_thread_root_id      || null;
                     file.report_parent_submission_id = row.report_parent_submission_id || null;
                     file.report_thread_role          = row.report_thread_role         || null;
-                    file.report_thread_status        = row.report_thread_status       || null;
+                    // Legacy REOPENED rows are surfaced as OPEN — the simplified
+                    // workflow no longer recognises REOPENED as a distinct state.
+                    file.report_thread_status        = (row.report_thread_status === 'REOPENED'
+                                                        ? 'OPEN'
+                                                        : row.report_thread_status) || null;
                     file.is_final_report             = !!row.is_final_report;
                     file.is_discarded                = !!row.is_discarded;
                     file.report_thread_comment       = row.report_thread_comment     || null;

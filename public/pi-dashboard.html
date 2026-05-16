@@ -6088,8 +6088,8 @@ function dicInitEmbedModeFromUrl() {
                 case 'Awaiting PI review':         return 'rt-pill-awaiting-pi';
                 case 'Awaiting student revision':  return 'rt-pill-awaiting-stu';
                 case 'Approved':                   return 'rt-pill-approved';
-                case 'Re-opened':                  return 'rt-pill-reopened';
                 case 'Discarded':                  return 'rt-pill-discarded';
+                // 'Re-opened' is no longer emitted; left out of the switch.
                 default:                           return 'rt-pill-open';
             }
         }
@@ -6244,10 +6244,10 @@ function dicInitEmbedModeFromUrl() {
                 </div>` : '';
 
             const closedNote = (t.thread_status === 'CLOSED')
-                ? '<div class="rt-helper" style="background:#ecfdf5;border-color:#a7f3d0;color:#065f46;">This report has been approved and closed.</div>'
+                ? '<div class="rt-helper" style="background:#ecfdf5;border-color:#a7f3d0;color:#065f46;">This report has been finalized and archived.</div>'
                 : '';
             const discardedNote = (t.thread_status === 'DISCARDED')
-                ? '<div class="rt-helper" style="background:#fef2f2;border-color:#fecaca;color:#991b1b;">This thread has been discarded.</div>'
+                ? '<div class="rt-helper" style="background:#fef2f2;border-color:#fecaca;color:#991b1b;">This report has been discarded and archived.</div>'
                 : '';
 
             return header + helper + closedNote + discardedNote +
@@ -6325,18 +6325,9 @@ function dicInitEmbedModeFromUrl() {
                 rtRefreshActiveList();
             } catch (e) { alert('Network error'); }
         }
-        async function rtReopen(rootId) {
-            if (!confirm('Re-open this approved REPORT thread so new revisions can be added?')) return;
-            try {
-                const r = await fetch('/api/di/report-thread/' + encodeURIComponent(rootId) + '/reopen', {
-                    method: 'POST', credentials: 'include',
-                    headers: { 'Content-Type':'application/json' },
-                    body: JSON.stringify({})
-                });
-                if (!r.ok) { const j = await r.json().catch(() => ({})); alert(j.error || 'Failed'); return; }
-                rtRefreshActiveList();
-            } catch (e) { alert('Network error'); }
-        }
+        // rtReopen was removed when REPORT approval became final. Old
+        // approved threads are immutable archives; researchers continue
+        // by uploading a NEW REPORT (a new thread).
 
         // --- Approve modal ---
         let paApproveTargetId = null;

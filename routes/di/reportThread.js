@@ -28,26 +28,27 @@ const ALL_ROLES     = new Set([
 
 const UUID_RE = /^[0-9a-fA-F-]{36}$/;
 
-// Server-side label derivation. Mirrors the rules in the spec so the
-// same label shows up everywhere — canonical endpoint, thread view, PI
-// dashboard cards. Pure function so it stays trivially testable.
-function deriveThreadLabel(rootStatus, lastRole, reopenedAt, lastUploadAt) {
+// Server-side label derivation. Mirrors the new simplified rules:
+// CLOSED → Approved, DISCARDED → Discarded; everything else falls
+// through to the last-upload-role check (REOPENED is no longer a state
+// we surface, but legacy rows with that status are treated as OPEN so
+// the dashboard / modal continue to work without a migration).
+function deriveThreadLabel(rootStatus, lastRole, _reopenedAt, _lastUploadAt) {
     if (rootStatus === 'DISCARDED') return 'Discarded';
     if (rootStatus === 'CLOSED')    return 'Approved';
-    // REOPENED but no upload since the reopen → keep "Re-opened"; once a
-    // new revision arrives we hand off to the role-based label so the next
-    // actor (PI or student) sees the right call to action.
-    if (rootStatus === 'REOPENED') {
-        const reopenedT = reopenedAt ? new Date(reopenedAt).getTime() : 0;
-        const lastT     = lastUploadAt ? new Date(lastUploadAt).getTime() : 0;
-        if (lastT <= reopenedT) return 'Re-opened';
-    }
     if (lastRole === 'STUDENT_SUBMISSION' || lastRole === 'STUDENT_REVISED_VERSION')
         return 'Awaiting PI review';
     if (lastRole === 'PI_ANNOTATED_VERSION' || lastRole === 'PI_REVISED_VERSION')
         return 'Awaiting student revision';
     if (lastRole === 'FINAL_REPORT') return 'Approved';
     return 'Open';
+}
+
+// Normalize the wire value of report_thread_status. REOPENED was a
+// historical state we no longer generate; legacy rows are reported as
+// OPEN to clients so the simplified UI doesn't need to handle it.
+function normalizeThreadStatus(s) {
+    return s === 'REOPENED' ? 'OPEN' : s;
 }
 
 module.exports = function reportThreadRouter(pool, deps) {
@@ -210,7 +211,7 @@ module.exports = function reportThreadRouter(pool, deps) {
                     reporting_period_start:      row.report_period_start ? new Date(row.report_period_start).toISOString().slice(0,10) : null,
                     reporting_period_end:        row.report_period_end   ? new Date(row.report_period_end).toISOString().slice(0,10)   : null,
                     supervisor:                  row.report_supervisor,
-                    thread_status:               row.report_thread_status || 'OPEN',
+                    thread_status:               normalizeThreadStatus(row.report_thread_status) || 'OPEN',
                     is_final_report:             !!row.is_final_report,
                     is_discarded:                !!row.is_discarded,
                     closed_at:                   row.report_closed_at    ? new Date(row.report_closed_at).toISOString()    : null,
@@ -321,7 +322,7 @@ module.exports = function reportThreadRouter(pool, deps) {
             reporting_period_start:     root.report_period_start ? new Date(root.report_period_start).toISOString().slice(0,10) : null,
             reporting_period_end:       root.report_period_end   ? new Date(root.report_period_end).toISOString().slice(0,10)   : null,
             supervisor:                 root.report_supervisor,
-            thread_status:              root.report_thread_status,
+            thread_status:              normalizeThreadStatus(root.report_thread_status),
             is_final_report:            !!root.is_final_report,
             is_discarded:               !!root.is_discarded,
             closed_at:                  root.report_closed_at    ? new Date(root.report_closed_at).toISOString()    : null,
@@ -634,45 +635,17 @@ module.exports = function reportThreadRouter(pool, deps) {
     });
 
     // -------------------------------------------------------------
-    // POST /:root_id/reopen  — PI moves an APPROVED thread back to
-    // REOPENED so new revisions can be added. Prior FINAL_REPORT row is
-    // kept in history but is_final_report is cleared so it doesn't
-    // misrepresent the live state.
+    // POST /:root_id/reopen  — DEPRECATED.
+    // The simplified REPORT workflow treats CLOSED as final and
+    // archived. Researchers needing to continue a workflow upload a
+    // NEW REPORT (which becomes a new thread). The endpoint is kept
+    // mounted for compatibility with any old caller, but it now
+    // returns 410 Gone without mutating state. No UI exposes it.
     // -------------------------------------------------------------
     router.post('/:root_id/reopen', requirePI, async (req, res) => {
-        try {
-            const rootId = String(req.params.root_id || '').trim();
-            const root = await loadRoot(rootId);
-            if (!root) return res.status(404).json({ error: 'Report thread not found' });
-            if (root.report_thread_status !== 'CLOSED') {
-                return res.status(409).json({ error: 'Only closed/approved threads can be reopened' });
-            }
-
-            await pool.query(
-                `UPDATE di_submissions
-                    SET report_thread_status = 'REOPENED',
-                        report_reopened_at   = NOW(),
-                        report_closed_at     = NULL,
-                        is_final_report      = FALSE,
-                        status               = 'PENDING',
-                        signed_at            = NULL
-                  WHERE submission_id = $1`,
-                [rootId]
-            );
-            // Children keep their is_final_report flags cleared so the new
-            // round of revisions starts from a clean state.
-            await pool.query(
-                `UPDATE di_submissions
-                    SET is_final_report = FALSE
-                  WHERE report_thread_root_id = $1`,
-                [rootId]
-            );
-
-            res.json({ success: true, root_submission_id: rootId, thread_status: 'REOPENED' });
-        } catch (err) {
-            console.error('[REPORT-THREAD] reopen error:', err && err.message);
-            res.status(500).json({ error: 'Failed to reopen thread' });
-        }
+        return res.status(410).json({
+            error: 'Reopen is no longer supported — REPORT approval is final. Upload a new REPORT submission to start a new thread.'
+        });
     });
 
     return router;
