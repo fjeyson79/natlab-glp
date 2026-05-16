@@ -4413,31 +4413,130 @@ app.delete('/api/di/group-documents/:id', requirePIorCap('delete_files'), async 
 // =====================================================
 
 // GET /api/di/pending-approvals
-// List pending submissions for PI review
+// List pending submissions for PI review.
+//
+// REPORT rows are returned alongside DATA/SOP/PRESENTATION so the PI
+// dashboard can render them as inline cards with thread-aware actions.
+// The pending-approvals filter is widened to "active threads" for REPORT:
+//   - non-REPORT rows: status='PENDING' (unchanged)
+//   - REPORT rows: report_thread_status IN ('OPEN','REOPENED') AND row is
+//     the thread ROOT (one row per thread). Closed/discarded REPORTs drop
+//     out of the active dashboard automatically.
+// The query also surfaces a few thread fields so the client can compute
+// the derived label without a second round trip.
 app.get('/api/di/pending-approvals', requirePIRead, async (req, res) => {
     try {
         const hasLegacy = await checkLegacyColumns();
         const legacyCols = hasLegacy
             ? ', s.record_origin, s.original_created_at'
             : ', NULL as record_origin, NULL as original_created_at';
-        const result = await pool.query(
-            `SELECT s.submission_id, s.researcher_id, s.original_filename, s.file_type,
-                    s.status, s.created_at, s.ai_review,
-                    a.name as researcher_name
-                    ${legacyCols}
-             FROM di_submissions s
-             LEFT JOIN di_allowlist a ON s.researcher_id = a.researcher_id
+        // Thread columns may not exist on a pre-migration-070 deploy. The
+        // schema-ensure helper runs at startup so this check is for the
+        // narrow window after deploy before the ensure has finished.
+        const tc = await pool.query(`
+            SELECT COUNT(*)::int AS n
+              FROM information_schema.columns
+             WHERE table_schema='public' AND table_name='di_submissions'
+               AND column_name IN ('report_thread_root_id','report_thread_role',
+                                   'report_thread_status','is_final_report',
+                                   'is_discarded','report_reopened_at')`);
+        const threadColsReady = (tc.rows[0].n >= 6);
+
+        // Two-branch query: (a) non-REPORT pending rows as before, (b)
+        // REPORT thread ROOTs whose thread is OPEN or REOPENED.
+        const reportSelectCols = threadColsReady ? `
+                       s.report_thread_root_id,
+                       s.report_thread_role,
+                       s.report_thread_status,
+                       s.is_final_report,
+                       s.is_discarded,
+                       s.report_reopened_at,
+                       s.report_subcategory,
+                       s.report_supervisor,
+                       s.report_project,
+                       tl.last_role  AS thread_last_role,
+                       tl.last_uploaded_at AS thread_last_uploaded_at`
+            : `
+                       NULL::uuid AS report_thread_root_id,
+                       NULL::text AS report_thread_role,
+                       NULL::text AS report_thread_status,
+                       FALSE      AS is_final_report,
+                       FALSE      AS is_discarded,
+                       NULL::timestamptz AS report_reopened_at,
+                       NULL::text AS report_subcategory,
+                       NULL::text AS report_supervisor,
+                       NULL::text AS report_project,
+                       NULL::text AS thread_last_role,
+                       NULL::timestamptz AS thread_last_uploaded_at`;
+
+        const threadJoin = threadColsReady ? `
+                  LEFT JOIN LATERAL (
+                      SELECT report_thread_role AS last_role,
+                             created_at         AS last_uploaded_at
+                        FROM di_submissions
+                       WHERE report_thread_root_id = s.submission_id
+                         AND submission_id <> s.submission_id
+                       ORDER BY created_at DESC
+                       LIMIT 1
+                  ) tl ON s.file_type = 'REPORT'` : '';
+
+        // Non-REPORT branch: legacy behaviour (status='PENDING').
+        const nonReportSql = `
+            SELECT s.submission_id, s.researcher_id, s.original_filename, s.file_type,
+                   s.status, s.created_at, s.ai_review,
+                   a.name as researcher_name
+                   ${legacyCols},
+                   ${reportSelectCols}
+              FROM di_submissions s
+              LEFT JOIN di_allowlist a ON s.researcher_id = a.researcher_id
+              ${threadJoin}
              WHERE s.status = 'PENDING'
+               AND s.file_type <> 'REPORT'
                AND s.workspace_id = $1
-               AND s.workspace_id IS NOT NULL
-             ORDER BY s.created_at DESC`,
+               AND s.workspace_id IS NOT NULL`;
+        // REPORT branch: thread roots in OPEN/REOPENED.
+        const reportSql = threadColsReady ? `
+            UNION ALL
+            SELECT s.submission_id, s.researcher_id, s.original_filename, s.file_type,
+                   s.status, s.created_at, s.ai_review,
+                   a.name as researcher_name
+                   ${legacyCols},
+                   ${reportSelectCols}
+              FROM di_submissions s
+              LEFT JOIN di_allowlist a ON s.researcher_id = a.researcher_id
+              ${threadJoin}
+             WHERE s.file_type = 'REPORT'
+               AND s.report_thread_root_id = s.submission_id
+               AND COALESCE(s.report_thread_status,'OPEN') IN ('OPEN','REOPENED')
+               AND COALESCE(s.is_discarded, FALSE) = FALSE
+               AND s.workspace_id = $1
+               AND s.workspace_id IS NOT NULL` : '';
+
+        const result = await pool.query(
+            nonReportSql + reportSql + ` ORDER BY created_at DESC`,
             [req.workspace_id]
         );
 
+        // Compute derived_thread_status_label client-friendly here so the
+        // dashboard doesn't reimplement the rule.
+        const { deriveThreadLabel } = require('./routes/di/reportThread');
+        const submissions = result.rows.map(row => {
+            if (row.file_type === 'REPORT' && threadColsReady) {
+                const lastRole = row.thread_last_role || row.report_thread_role;
+                const lastAt   = row.thread_last_uploaded_at || row.created_at;
+                row.derived_thread_status_label = deriveThreadLabel(
+                    row.report_thread_status, lastRole, row.report_reopened_at, lastAt
+                );
+            } else {
+                row.derived_thread_status_label = null;
+            }
+            return row;
+        });
+
         res.json({
             success: true,
-            count: result.rows.length,
-            submissions: result.rows
+            count: submissions.length,
+            submissions
         });
 
     } catch (err) {

@@ -2340,40 +2340,28 @@
             </div>
         </div>
 
-        <!-- ==================== REPORT THREADS (Migration 070) ==================== -->
-        <div class="panel" id="reportThreadsPanel" style="margin-top:16px;">
-            <div class="panel-header">
-                <h2 style="display:flex;align-items:center;gap:8px;">
-                    <span class="icon">&#128221;</span> REPORT Threads
-                    <span id="reportThreadsCount" style="font-size:12px;color:#666;font-weight:500;"></span>
-                </h2>
-                <div style="display:flex;gap:6px;align-items:center;">
-                    <button class="rt-filter-btn active" data-rt-filter="ACTIVE" onclick="rtSetFilter(this)">Active</button>
-                    <button class="rt-filter-btn" data-rt-filter="CLOSED" onclick="rtSetFilter(this)">Approved</button>
-                    <button class="rt-filter-btn" data-rt-filter="DISCARDED" onclick="rtSetFilter(this)">Discarded</button>
-                    <button class="btn btn-sm btn-secondary" onclick="rtLoadThreads()">Refresh</button>
-                </div>
-            </div>
-            <div class="panel-content" style="padding:14px;">
-                <div id="reportThreadsCards" class="rt-cards-grid">
-                    <div class="loading"><div class="spinner"></div>Loading threads...</div>
-                </div>
-            </div>
-        </div>
+        <!-- REPORT Threads panel removed — REPORTs now render inline in
+             Pending Approvals with thread-aware actions. Approved /
+             discarded threads fall out of the active dashboard
+             automatically; use existing filters / canonical endpoint to
+             surface archived/historical REPORT threads. -->
     </div>
 
-    <!-- REPORT thread drawer (modal) — sits at body level so it works from any tab -->
-    <div class="modal-overlay" id="rtThreadModal">
-        <div class="modal" style="max-width:760px;width:92%;">
-            <div class="modal-header" style="display:flex;align-items:center;justify-content:space-between;">
-                <h3 id="rtThreadTitle" style="margin:0;">REPORT thread</h3>
-                <button class="modal-close" onclick="rtCloseThread()" aria-label="Close">&times;</button>
+    <!-- REPORT thread modal — fully hidden by default; rtOpenThread()
+         flips display via the `.active` class. Body content is cleared
+         on close so no leftover loading spinner ever lingers. -->
+    <div id="rtThreadModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(15,23,42,0.55);z-index:9999;align-items:center;justify-content:center;" onclick="rtBackdropClick(event)">
+        <div class="rt-modal-card" style="background:#fff;border-radius:10px;max-width:780px;width:92%;max-height:85vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 16px 40px rgba(15,23,42,0.28);" onclick="event.stopPropagation();">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid #e6eaf0;">
+                <h3 id="rtThreadTitle" style="margin:0;font-size:16px;color:#0f172a;">REPORT thread</h3>
+                <button onclick="rtCloseThread()" aria-label="Close" style="background:none;border:none;font-size:24px;cursor:pointer;color:#94a3b8;line-height:1;padding:0 4px;">&times;</button>
             </div>
-            <div class="modal-body" id="rtThreadBody" style="max-height:75vh;overflow:auto;">
-                <div class="loading"><div class="spinner"></div>Loading...</div>
-            </div>
+            <div id="rtThreadBody" style="padding:14px 18px;overflow:auto;flex:1;"></div>
         </div>
     </div>
+    <style>
+        #rtThreadModal.active { display:flex !important; }
+    </style>
 
     <style>
         .rt-cards-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:14px; }
@@ -5992,8 +5980,9 @@ function dicInitEmbedModeFromUrl() {
                 const data = await response.json();
 
                 // Filter out INVENTORY submissions — they are reviewed in Purchases & Inventory tab.
-                // Filter out REPORT submissions too — they have their own thread workflow card grid below.
-                data.submissions = (data.submissions || []).filter(s => s.file_type !== 'INVENTORY' && s.file_type !== 'REPORT');
+                // REPORT submissions are kept in the table and rendered with thread-aware
+                // actions (Open / Approve / Discard hooked to the thread endpoints).
+                data.submissions = (data.submissions || []).filter(s => s.file_type !== 'INVENTORY');
                 // Cache for modal lookups (avoids single-quote injection in onclick)
                 window._paSubmissions = {};
                 data.submissions.forEach(s => { window._paSubmissions[s.submission_id] = s; });
@@ -6032,6 +6021,26 @@ function dicInitEmbedModeFromUrl() {
                                 const isLegacy = s.record_origin === 'legacy_pre2026';
                                 const originDate = isLegacy && s.original_created_at ? new Date(s.original_created_at).toLocaleDateString() : '-';
                                 const legacyBadge = isLegacy ? '<span class="legacy-badge">LEGACY</span>' : '';
+                                const isReport = s.file_type === 'REPORT';
+                                // For REPORT rows: show the derived thread label in
+                                // the AI-Review column slot (REPORTs don't carry an
+                                // ai_review.score) and swap action buttons to the
+                                // thread workflow (Open / Approve / Discard hooks
+                                // call /api/di/report-thread/:root_id/*).
+                                const reportStatusPill = isReport && s.derived_thread_status_label
+                                    ? `<span class="rt-pill ${rtPillClassForLabel(s.derived_thread_status_label)}">${escapeHtml(s.derived_thread_status_label)}</span>`
+                                    : null;
+                                const aiCell = isReport
+                                    ? (reportStatusPill || '<span style="color:#999;">-</span>')
+                                    : (aiScore !== undefined ? `<span class="ai-score ${aiClass}">${aiScore}%</span>` : '<span style="color:#999;">-</span>');
+                                const actions = isReport
+                                    ? `<button class="btn btn-sm btn-primary" onclick="rtOpenThread('${s.submission_id}')">Open</button>
+                                       <button class="btn btn-sm btn-success" onclick="rtApprove('${s.submission_id}')">Approve</button>
+                                       <button class="btn btn-sm btn-danger" onclick="rtDiscard('${s.submission_id}')">Discard</button>`
+                                    : `<button class="btn btn-sm btn-primary" onclick="viewFile('${s.submission_id}')">View</button>
+                                       <button class="btn btn-sm btn-success" onclick="quickApprove('${s.submission_id}')">Approve</button>
+                                       <button class="btn btn-sm btn-warning" onclick="quickRevise('${s.submission_id}')">Revise</button>
+                                       <button class="btn btn-sm btn-danger" onclick="quickDiscard('${s.submission_id}')">Discard</button>`;
                                 return `
                                     <tr>
                                         <td title="${escapeHtml(s.original_filename)}" style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(s.original_filename)}</td>
@@ -6039,14 +6048,9 @@ function dicInitEmbedModeFromUrl() {
                                         <td><span class="type-badge ${s.file_type?.toLowerCase()}">${s.file_type}</span>${legacyBadge}</td>
                                         <td>${originDate}</td>
                                         <td>${date}</td>
-                                        <td>${aiScore !== undefined ? `<span class="ai-score ${aiClass}">${aiScore}%</span>` : '<span style="color:#999;">-</span>'}</td>
+                                        <td>${aiCell}</td>
                                         <td>
-                                            <div class="actions">
-                                                <button class="btn btn-sm btn-primary" onclick="viewFile('${s.submission_id}')">View</button>
-                                                <button class="btn btn-sm btn-success" onclick="quickApprove('${s.submission_id}')">Approve</button>
-                                                <button class="btn btn-sm btn-warning" onclick="quickRevise('${s.submission_id}')">Revise</button>
-                                                <button class="btn btn-sm btn-danger" onclick="quickDiscard('${s.submission_id}')">Discard</button>
-                                            </div>
+                                            <div class="actions">${actions}</div>
                                         </td>
                                     </tr>
                                 `;
@@ -6120,72 +6124,9 @@ function dicInitEmbedModeFromUrl() {
             return '';
         }
 
-        function rtSetFilter(btn) {
-            document.querySelectorAll('#reportThreadsPanel .rt-filter-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            _rtFilter = btn.dataset.rtFilter || 'ACTIVE';
-            rtLoadThreads();
-        }
-
-        async function rtLoadThreads() {
-            const container = document.getElementById('reportThreadsCards');
-            const countEl   = document.getElementById('reportThreadsCount');
-            if (!container) return;
-            container.innerHTML = '<div class="loading"><div class="spinner"></div>Loading threads...</div>';
-            try {
-                const r = await fetch('/api/di/report-thread/?status=' + encodeURIComponent(_rtFilter), { credentials: 'include' });
-                if (!r.ok) throw new Error('http ' + r.status);
-                const data = await r.json();
-                if (countEl) countEl.textContent = data.total ? '(' + data.total + ')' : '';
-                if (!data.threads || data.threads.length === 0) {
-                    container.innerHTML = `<div class="empty-state" style="grid-column:1/-1;">
-                        <div class="empty-state-icon">&#128203;</div>
-                        <div class="empty-state-text">No REPORT threads in this filter</div>
-                    </div>`;
-                    return;
-                }
-                container.innerHTML = data.threads.map(t => rtRenderCard(t)).join('');
-            } catch (err) {
-                container.innerHTML = '<div style="color:#dc3545;padding:8px;">Failed to load REPORT threads.</div>';
-            }
-        }
-
-        function rtRenderCard(t) {
-            const label = t.derived_thread_status_label || 'Open';
-            const pillClass = rtPillClassForLabel(label);
-            const status = t.thread_status || 'OPEN';
-            const isActive = (status === 'OPEN' || status === 'REOPENED');
-            const isApproved = (status === 'CLOSED');
-            const isDiscarded = (status === 'DISCARDED');
-            const period = (t.reporting_period_start || t.reporting_period_end)
-                ? rtEscape((t.reporting_period_start || '') + ' → ' + (t.reporting_period_end || ''))
-                : '';
-            const finalBadge = t.is_final_report
-                ? '<span class="rt-pill rt-final-badge" style="margin-left:6px;">FINAL</span>' : '';
-            const activityTs = t.last_activity_at ? new Date(t.last_activity_at).toLocaleString() : '';
-            const subLabel = rtSubcategoryLabel(t.report_subcategory);
-            return `
-                <div class="rt-card">
-                    <div class="rt-card-title" title="${rtEscape(t.filename)}">${rtEscape(t.filename)}</div>
-                    <div class="rt-card-meta">
-                        <div><strong>${rtEscape(t.researcher_name || t.researcher_id)}</strong> &middot; ${rtEscape(t.affiliation || '')}</div>
-                        ${subLabel ? '<div>'+rtEscape(subLabel)+'</div>' : ''}
-                        ${t.project ? '<div>Project: '+rtEscape(t.project)+'</div>' : ''}
-                        ${period ? '<div>Period: '+period+'</div>' : ''}
-                        <div>Latest activity: ${rtEscape(activityTs)} &middot; ${t.revision_count} versions</div>
-                    </div>
-                    <div>
-                        <span class="rt-pill ${pillClass}">${rtEscape(label)}</span>${finalBadge}
-                    </div>
-                    <div class="rt-card-actions">
-                        <button class="btn btn-sm btn-primary" onclick="rtOpenThread('${t.root_submission_id}')">Open</button>
-                        ${isActive ? '<button class="btn btn-sm btn-success" onclick="rtApprove(\''+t.root_submission_id+'\')">Approve</button>' : ''}
-                        ${isActive ? '<button class="btn btn-sm btn-danger" onclick="rtDiscard(\''+t.root_submission_id+'\')">Discard</button>' : ''}
-                        ${isApproved ? '<button class="btn btn-sm btn-warning" onclick="rtReopen(\''+t.root_submission_id+'\')">Re-open</button>' : ''}
-                    </div>
-                </div>
-            `;
-        }
+        // rtSetFilter / rtLoadThreads / rtRenderCard were removed when the
+        // separate REPORT Threads panel was retired. REPORT threads now
+        // render inline inside Pending Approvals via loadPendingApprovals().
 
         async function rtOpenThread(rootId) {
             _rtCurrentRoot = rootId;
@@ -6208,8 +6149,21 @@ function dicInitEmbedModeFromUrl() {
         }
 
         function rtCloseThread() {
-            document.getElementById('rtThreadModal').classList.remove('active');
+            // Tear down the modal completely so no spinner or stale thread
+            // content lingers behind the overlay. The next rtOpenThread()
+            // call re-fills the body fresh.
+            const modal = document.getElementById('rtThreadModal');
+            const body  = document.getElementById('rtThreadBody');
+            const title = document.getElementById('rtThreadTitle');
+            if (modal) modal.classList.remove('active');
+            if (body) body.innerHTML = '';
+            if (title) title.textContent = 'REPORT thread';
             _rtCurrentRoot = null;
+        }
+        // Backdrop click closes the modal. Inner clicks are stopPropagation'd
+        // on the card so users can interact without dismissing.
+        function rtBackdropClick(e) {
+            if (e.target && e.target.id === 'rtThreadModal') rtCloseThread();
         }
 
         function rtRenderThread(t) {
@@ -6327,7 +6281,7 @@ function dicInitEmbedModeFromUrl() {
                         msg.textContent = 'Uploaded';
                         msg.style.color = '#15803d';
                         await rtOpenThread(rootId);
-                        rtLoadThreads();
+                        rtRefreshActiveList();
                     }
                 } catch (e) {
                     msg.textContent = 'Network error';
@@ -6335,6 +6289,15 @@ function dicInitEmbedModeFromUrl() {
                 }
                 btn.disabled = false;
             };
+        }
+
+        // After a thread action that may change a REPORT's visibility in the
+        // active dashboard (Approve/Discard remove; PI upload keeps visible
+        // but changes derived label), reload the inline Pending Approvals
+        // list. loadStats() updates the dashboard pill counts.
+        function rtRefreshActiveList() {
+            if (typeof loadPendingApprovals === 'function') loadPendingApprovals();
+            if (typeof loadStats === 'function') loadStats();
         }
 
         async function rtApprove(rootId) {
@@ -6346,12 +6309,12 @@ function dicInitEmbedModeFromUrl() {
                     body: JSON.stringify({})
                 });
                 if (!r.ok) { const j = await r.json().catch(() => ({})); alert(j.error || 'Failed'); return; }
-                rtLoadThreads();
+                rtRefreshActiveList();
             } catch (e) { alert('Network error'); }
         }
         async function rtDiscard(rootId) {
             const reason = prompt('Reason for discarding this REPORT thread? (optional)') || '';
-            if (reason === null) return; // shouldn't happen given || '', but defensive
+            if (reason === null) return;
             try {
                 const r = await fetch('/api/di/report-thread/' + encodeURIComponent(rootId) + '/discard', {
                     method: 'POST', credentials: 'include',
@@ -6359,7 +6322,7 @@ function dicInitEmbedModeFromUrl() {
                     body: JSON.stringify({ discard_reason: reason })
                 });
                 if (!r.ok) { const j = await r.json().catch(() => ({})); alert(j.error || 'Failed'); return; }
-                rtLoadThreads();
+                rtRefreshActiveList();
             } catch (e) { alert('Network error'); }
         }
         async function rtReopen(rootId) {
@@ -6371,12 +6334,9 @@ function dicInitEmbedModeFromUrl() {
                     body: JSON.stringify({})
                 });
                 if (!r.ok) { const j = await r.json().catch(() => ({})); alert(j.error || 'Failed'); return; }
-                rtLoadThreads();
+                rtRefreshActiveList();
             } catch (e) { alert('Network error'); }
         }
-
-        // Load on dashboard open
-        document.addEventListener('DOMContentLoaded', () => { setTimeout(rtLoadThreads, 600); });
 
         // --- Approve modal ---
         let paApproveTargetId = null;
