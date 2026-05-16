@@ -2507,6 +2507,50 @@ app.post('/api/di/upload-report', requireAuth, reportUpload.single('file'), asyn
             }
         }
 
+        // ---- REPORT intelligence (rule-based, no LLM, no embeddings) ----
+        // Runs after the DB INSERT, before the response. Wrapped end-to-end
+        // in try/catch so any extraction failure logs but never aborts the
+        // upload. Result is exposed back to the client (intelligence_status
+        // /intelligence_error) so the UI can show "no text extracted yet" if
+        // appropriate, but no client behavior depends on it being 'ready'.
+        let intelOutcome = { extraction_status: 'failed', extraction_error: 'not_run' };
+        try {
+            const wsRow = await pool.query(
+                `SELECT id FROM workspaces WHERE slug = 'natlab' LIMIT 1`
+            );
+            const workspaceId = wsRow.rows[0] ? wsRow.rows[0].id : null;
+            const reportIntelligence = require('./services/reportIntelligence');
+            intelOutcome = await reportIntelligence.run(
+                { pool },
+                {
+                    submissionId,
+                    workspaceId,
+                    researcherId: user.researcher_id,
+                    buffer: file.buffer,
+                    filename: file.originalname,
+                    meta: {
+                        report_subcategory: subcategoryRaw,
+                        report_status:      reportStatus,
+                        report_project:     project,
+                        report_period_start:periodStart,
+                        report_period_end:  periodEnd,
+                        report_supervisor:  supervisor,
+                        report_related_sop_ids:  relatedSops,
+                        report_related_data_ids: relatedData
+                    }
+                }
+            );
+            console.log('[UPLOAD-REPORT] intelligence:', intelOutcome.extraction_status,
+                        intelOutcome.extraction_error ? '(' + intelOutcome.extraction_error + ')' : '');
+        } catch (intelErr) {
+            // Belt-and-braces — services/reportIntelligence.js already swallows
+            // errors internally, but if requiring it failed (e.g. mammoth not
+            // installed yet on a stale container) we still want the upload to
+            // succeed cleanly.
+            console.error('[UPLOAD-REPORT] intelligence threw:', intelErr && intelErr.message);
+            intelOutcome = { extraction_status: 'failed', extraction_error: 'intel_module_threw: ' + (intelErr && intelErr.message) };
+        }
+
         return res.json({
             success: true,
             submission_id: submissionId,
@@ -2516,6 +2560,8 @@ app.post('/api/di/upload-report', requireAuth, reportUpload.single('file'), asyn
             report_status: reportStatus,
             view_url: '/api/di/download/' + submissionId,
             download_url: '/api/di/download/' + submissionId + '?download=true',
+            intelligence_status: intelOutcome.extraction_status,
+            intelligence_error:  intelOutcome.extraction_error,
             message: 'Report uploaded successfully'
         });
     } catch (err) {
@@ -24595,6 +24641,7 @@ app.use('/api/assistant/viewer',      require('./routes/assistant/viewer')(pool)
 app.use('/api/assistant/workspace',   require('./routes/assistant/workspace')(pool));
 app.use('/api/assistant/review-queue', require('./routes/assistant/reviewQueue')(pool));
 app.use('/api/assistant/activity',    require('./routes/assistant/activity')(pool));
+app.use('/api/assistant/reports',     require('./routes/assistant/reports')(pool));
 
 app.listen(PORT, "0.0.0.0", async () => {
     console.log("[STARTUP] Server listening on port " + PORT);

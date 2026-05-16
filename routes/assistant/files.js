@@ -618,6 +618,15 @@ module.exports = function assistantFilesRouter(pool, deps) {
             reportColsReady = (rc.rows[0].n >= 6);
         } catch { reportColsReady = false; }
 
+        // Migration 068 introduced assistant_report_intelligence. Same
+        // graceful-degradation pattern: pre-068 deploys just return null
+        // for has_report_intelligence + report_intelligence_status.
+        let intelReady = false;
+        try {
+            const ri = await pool.query(`SELECT to_regclass('public.assistant_report_intelligence') AS t`);
+            intelReady = (ri.rows[0].t !== null);
+        } catch { intelReady = false; }
+
         try {
             const wsRow = await pool.query(
                 `SELECT id, slug FROM workspaces WHERE slug = $1 AND is_active = TRUE LIMIT 1`,
@@ -672,6 +681,18 @@ module.exports = function assistantFilesRouter(pool, deps) {
                         NULL::date AS report_period_end,
                         NULL::text AS report_supervisor,`;
 
+            // REPORT intelligence join (migration 068). Only emitted when the
+            // table exists; otherwise the SELECT still resolves cleanly.
+            const intelJoin = intelReady
+                ? `LEFT JOIN assistant_report_intelligence ari ON ari.submission_id = s.submission_id`
+                : '';
+            const intelCols = intelReady ? `
+                        (ari.submission_id IS NOT NULL) AS has_report_intelligence,
+                        ari.extraction_status AS report_intelligence_status,`
+                : `
+                        FALSE      AS has_report_intelligence,
+                        NULL::text AS report_intelligence_status,`;
+
             const r = await pool.query(
                 `SELECT s.submission_id,
                         s.original_filename,
@@ -684,10 +705,12 @@ module.exports = function assistantFilesRouter(pool, deps) {
                         a.name AS researcher_name,
                         ${indexedCols}
                         ${reportCols}
+                        ${intelCols}
                         EXTRACT(YEAR FROM s.created_at)::int AS year
                    FROM di_submissions s
                    LEFT JOIN di_allowlist a ON a.researcher_id = s.researcher_id
                    ${indexedJoin}
+                   ${intelJoin}
                   WHERE s.workspace_id  = $1
                     AND s.researcher_id = $2
                     AND s.status <> 'DISCARDED'
@@ -745,6 +768,11 @@ module.exports = function assistantFilesRouter(pool, deps) {
                     file.report_period_start  = row.report_period_start  ? new Date(row.report_period_start).toISOString().slice(0,10) : null;
                     file.report_period_end    = row.report_period_end    ? new Date(row.report_period_end).toISOString().slice(0,10)   : null;
                     file.report_supervisor    = row.report_supervisor    || null;
+                    // assistant_report_intelligence presence + extraction
+                    // status (migration 068). When the intel table isn't
+                    // there yet, both fields fall back to false / null.
+                    file.has_report_intelligence    = !!row.has_report_intelligence;
+                    file.report_intelligence_status = row.report_intelligence_status || null;
                 }
 
                 const yKey = row.year == null ? 'unknown' : String(row.year);
@@ -794,6 +822,7 @@ module.exports = function assistantFilesRouter(pool, deps) {
                 },
                 index_enrichment:    idxReady,
                 report_enrichment:   reportColsReady,
+                report_intelligence_enrichment: intelReady,
                 grouped,
                 generated_at:    new Date().toISOString()
             });
