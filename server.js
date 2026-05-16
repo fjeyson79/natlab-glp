@@ -24765,6 +24765,7 @@ app.use('/api/assistant/workspace',   require('./routes/assistant/workspace')(po
 app.use('/api/assistant/review-queue', require('./routes/assistant/reviewQueue')(pool));
 app.use('/api/assistant/activity',    require('./routes/assistant/activity')(pool));
 app.use('/api/assistant/reports',     require('./routes/assistant/reports')(pool));
+app.use('/api/assistant/memory',      require('./routes/assistant/memory')(pool, { requirePI }));
 
 // REPORT thread workflow (migration 070). Mounted last so existing
 // /api/di/* routes (upload, upload-report, my-files etc.) keep priority.
