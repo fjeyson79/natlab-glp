@@ -14554,14 +14554,21 @@ function dicBuildPdfViewerSrc(fileUrl) {
                 return;
             }
             // Success — surface the numeric counters when present.
+            // Workspace memory is the final step; if it didn't run, the
+            // rebuild was only partial and the message + colour reflect
+            // that so the operator can re-run.
             const stats = (data && data.stats) || {};
-            const parts = [label + ' complete in ' + elapsed + 's.'];
+            const partial = ('workspace' in stats) && !stats.workspace;
+            const headline = partial
+                ? 'Memory rebuilt partially, workspace memory failed'
+                : label + ' complete in ' + elapsed + 's.';
+            const parts = [headline];
             if ('files'       in stats) parts.push('files_processed: '       + stats.files);
             if ('researchers' in stats) parts.push('researchers_processed: ' + stats.researchers);
             if ('projects'    in stats) parts.push('projects_processed: '    + stats.projects);
             if ('workspace'   in stats) parts.push('workspace_processed: '   + (stats.workspace ? 'yes' : 'no'));
             if (data && data.error) parts.push('error: ' + data.error);
-            status.style.color = '#15803d';
+            status.style.color = partial ? '#b45309' : '#15803d';
             status.textContent = parts.join('\n');
         } catch (e) {
             status.style.color = '#b91c1c';
@@ -14572,10 +14579,13 @@ function dicBuildPdfViewerSrc(fileUrl) {
         }
     }
     function zoeMemRebuild() {
-        if (!confirm('Rebuild Zoe scientific memory from scratch? This re-summarises every indexed file (capped at 50 in this call).')) return;
-        _zoeMemCall('Rebuild', '/api/assistant/memory/rebuild?ws=natlab', { limit: 50 });
+        if (!confirm('Rebuild Zoe scientific memory from scratch? This re-summarises every indexed file in the workspace and may take a while.')) return;
+        // 5000 = the backend hard cap inside rebuildAll(); requesting the
+        // ceiling lets a single click process the whole index.
+        _zoeMemCall('Rebuild', '/api/assistant/memory/rebuild?ws=natlab', { limit: 5000 });
     }
     function zoeMemUpdate() {
+        // Incremental — only files modified since the last successful run.
         _zoeMemCall('Update', '/api/assistant/memory/weekly-update?ws=natlab', { limit: 200 });
     }
 

@@ -534,15 +534,28 @@ async function buildWorkspaceMemory(deps, workspaceSlug) {
 
     // Cross-researcher / cross-file aggregates. Single big query so we
     // don't fan out across many round-trips.
+    //
+    // NOTE: assistant_file_memory has no researcher_code / file_type /
+    // project columns of its own — those live inside memory_json. The
+    // GROUP BY here reads them via memory_json->>'researcher_code'.
     const stats = await pool.query(`
-        WITH agg AS (
-            SELECT a.researcher_code,
-                   COUNT(*) AS file_count,
-                   COALESCE(json_agg(DISTINCT a.memory_json->'experimental_methods') FILTER (WHERE a.memory_json ? 'experimental_methods'), '[]'::json) AS methods_blobs,
-                   COALESCE(json_agg(DISTINCT a.memory_json->>'project')              FILTER (WHERE (a.memory_json->>'project') IS NOT NULL), '[]'::json) AS projects
+        WITH base AS (
+            SELECT (a.memory_json->>'researcher_code') AS researcher_code,
+                   a.memory_json
               FROM assistant_file_memory a
              WHERE a.workspace_slug = $1
-             GROUP BY a.researcher_code
+        ),
+        agg AS (
+            SELECT researcher_code,
+                   COUNT(*) AS file_count,
+                   COALESCE(json_agg(DISTINCT memory_json->'experimental_methods')
+                              FILTER (WHERE memory_json ? 'experimental_methods'),
+                            '[]'::json) AS methods_blobs,
+                   COALESCE(json_agg(DISTINCT memory_json->>'project')
+                              FILTER (WHERE (memory_json->>'project') IS NOT NULL),
+                            '[]'::json) AS projects
+              FROM base
+             GROUP BY researcher_code
         )
         SELECT * FROM agg`, [ws]);
 
