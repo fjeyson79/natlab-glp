@@ -1211,6 +1211,25 @@ async function migrate() {
             `CREATE INDEX IF NOT EXISTS idx_ari_status
                 ON assistant_report_intelligence (extraction_status)`,
 
+            // ==================== MIGRATION 069 — file_type CHECK includes REPORT ====================
+            // Earlier inline migration (lines 142-143) re-asserted the CHECK
+            // as ('SOP','DATA','INVENTORY','PRESENTATION'), which excludes
+            // REPORT. That broke /api/di/upload-report on production with
+            // `di_submissions_file_type_check` violations.
+            //
+            // The runtime helper ensureDiSubmissionsConstraints() (server.js)
+            // does set the wider list, but it only fires from the R&D
+            // documents upload route — REPORT uploads never went through it.
+            //
+            // We DROP + re-ADD the same constraint name with REPORT (plus
+            // INVENTORY / DOCS / PRES preserved to match the existing
+            // runtime widener and avoid breaking historical rows in any of
+            // those categories). Idempotent: re-running the migration just
+            // re-asserts the same definition.
+            `ALTER TABLE di_submissions DROP CONSTRAINT IF EXISTS di_submissions_file_type_check`,
+            `ALTER TABLE di_submissions ADD CONSTRAINT di_submissions_file_type_check
+                CHECK (file_type IN ('SOP','DATA','INVENTORY','PRESENTATION','REPORT','DOCS','PRES'))`,
+
         ];
 
         for (const sql of migrations) {
