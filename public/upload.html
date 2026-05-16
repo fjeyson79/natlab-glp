@@ -2487,6 +2487,54 @@
         </div>
     </div>
 
+    <!-- REPORT thread modal for researchers -->
+    <div id="rtThreadModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(15,23,42,0.55);z-index:9999;align-items:center;justify-content:center;">
+        <div style="background:#fff;border-radius:10px;max-width:760px;width:92%;max-height:85vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 12px 32px rgba(15,23,42,0.25);">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid #e6eaf0;">
+                <h3 id="rtThreadTitle" style="margin:0;font-size:16px;">REPORT thread</h3>
+                <button onclick="rtCloseThread()" style="background:none;border:none;font-size:24px;cursor:pointer;color:#94a3b8;">&times;</button>
+            </div>
+            <div id="rtThreadBody" style="padding:14px 18px;overflow:auto;flex:1;">
+                <div class="loading"><div class="spinner"></div>Loading...</div>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        /* REPORT thread modal — researcher view (no Approve/Discard/Re-open) */
+        #rtThreadModal.rt-active { display:flex !important; }
+        .rt-pill { display:inline-block; padding:3px 9px; border-radius:999px; font-size:11px; font-weight:600; }
+        .rt-pill-awaiting-pi  { background:#fff8e1; color:#a86a00; }
+        .rt-pill-awaiting-stu { background:#e8f1ff; color:#1d4ed8; }
+        .rt-pill-approved     { background:#e8f7ee; color:#15803d; }
+        .rt-pill-reopened     { background:#fef3c7; color:#92400e; }
+        .rt-pill-discarded    { background:#fbe7e7; color:#b91c1c; }
+        .rt-pill-open         { background:#eef2f7; color:#475569; }
+        .rt-final-badge       { background:#0f766e; color:#fff; }
+        .rt-thread-header { padding:12px 14px; background:#f8fafc; border:1px solid #e6eaf0; border-radius:10px; margin-bottom:10px; }
+        .rt-thread-header h4 { margin:0 0 4px; font-size:15px; color:#0f172a; }
+        .rt-thread-header .rt-thread-meta { font-size:12px; color:#475569; }
+        .rt-timeline { display:flex; flex-direction:column; gap:10px; }
+        .rt-rev { border:1px solid #e6eaf0; border-radius:8px; padding:12px; background:#fafbfd; }
+        .rt-rev.pi { background:#f4f8ff; border-color:#cfdcf3; }
+        .rt-rev.final { background:#f0faf3; border-color:#bce5cb; }
+        .rt-rev-head { display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; }
+        .rt-rev-role-badge { padding:3px 9px; border-radius:999px; font-size:11px; font-weight:600; background:#eef2f7; color:#475569; }
+        .rt-rev-role-badge.STUDENT { background:#fffbe6; color:#9a6800; }
+        .rt-rev-role-badge.PI { background:#e8f1ff; color:#1d4ed8; }
+        .rt-rev-role-badge.FINAL { background:#0f766e; color:#fff; }
+        .rt-rev-meta { font-size:11px; color:#64748b; }
+        .rt-rev-comment { margin-top:6px; font-size:13px; color:#1e293b; white-space:pre-wrap; }
+        .rt-rev-actions { margin-top:8px; display:flex; gap:8px; flex-wrap:wrap; }
+        .rt-helper { font-size:12px; color:#475569; background:#fff7ed; border:1px solid #fed7aa; border-radius:8px; padding:8px 10px; margin:10px 0; }
+        .rt-pi-upload-form { margin-top:14px; padding:12px; border:1px dashed #cbd5e1; border-radius:8px; background:#fff; }
+        .rt-pi-upload-form label { font-size:12px; color:#475569; display:block; margin-bottom:4px; font-weight:500; }
+        .rt-pi-upload-form input, .rt-pi-upload-form textarea, .rt-pi-upload-form select { width:100%; padding:7px; font-size:13px; box-sizing:border-box; border:1px solid #cbd5e1; border-radius:6px; }
+        .rt-pi-upload-form .rt-form-row { margin-bottom:8px; }
+        .rt-thread-btn { padding:3px 8px; font-size:11px; background:#0f172a; color:white; border:none; border-radius:4px; cursor:pointer; margin-left:6px; }
+        .rt-thread-btn:hover { background:#1e293b; }
+    </style>
+
     <script>
         let currentUserRole = null;
           let currentUserId = null;
@@ -2830,6 +2878,12 @@
                 const hasFile = node.r2ObjectKey || node.viewUrl;
                 const searchText = (node.name || '').toLowerCase();
 
+                // REPORT files get an extra "Thread" button that opens the
+                // researcher-side thread view. We pass the submission_id
+                // because REPORT thread roots are keyed by submission_id.
+                const threadBtn = (node.fileType === 'REPORT' && node.id)
+                    ? `<button class="rt-thread-btn" onclick="rtOpenThread('${node.id}')">Thread</button>`
+                    : '';
                 return `
                     <div class="tree-item tree-file" data-file-type="${node.fileType || ''}" data-search-text="${searchText}" style="padding-left:${level * 20}px">
                         <span class="icon">${isApproved ? '&#9989;' : '&#128196;'}</span>
@@ -2841,6 +2895,7 @@
                             ${hasFile ? `<button class="btn-view" onclick="window.open('${viewUrl}', '_blank')">View</button>
                             <button class="btn-download" onclick="window.location.href='${downloadUrl}'">Download</button>` : '<span style="color:#999;font-size:11px;">File removed</span>'}
                             ${verifyBtn}
+                            ${threadBtn}
                         </div>
                     </div>
                     ${provenanceLine}
@@ -6662,6 +6717,177 @@ credentials: 'include'
                     el.style.display = (data.oligos + data.libraries > 0) ? 'block' : 'none';
                 }
             } catch (_) {}
+        }
+
+        // =====================================================
+        // REPORT THREAD — researcher view (migration 070)
+        // Read-only thread timeline with "Upload revised version"
+        // form when thread is OPEN/REOPENED. No Approve / Discard /
+        // Re-open controls; those are PI-only.
+        // =====================================================
+        function rtEscape(s) {
+            return String(s == null ? '' : s)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+        function rtPillClassForLabel(label) {
+            switch (label) {
+                case 'Awaiting PI review':         return 'rt-pill-awaiting-pi';
+                case 'Awaiting student revision':  return 'rt-pill-awaiting-stu';
+                case 'Approved':                   return 'rt-pill-approved';
+                case 'Re-opened':                  return 'rt-pill-reopened';
+                case 'Discarded':                  return 'rt-pill-discarded';
+                default:                           return 'rt-pill-open';
+            }
+        }
+        function rtRoleLabel(role) {
+            const map = {
+                STUDENT_SUBMISSION: 'Student submission',
+                STUDENT_REVISED_VERSION: 'Student revised version',
+                PI_ANNOTATED_VERSION: 'PI feedback',
+                PI_REVISED_VERSION: 'PI revised version',
+                FINAL_REPORT: 'Final report',
+                NOTE: 'Note',
+                OTHER: 'Other'
+            };
+            return map[role] || role || '';
+        }
+        function rtRoleBucket(role) {
+            if (!role) return '';
+            if (role === 'FINAL_REPORT') return 'FINAL';
+            if (role.startsWith('PI_')) return 'PI';
+            if (role.startsWith('STUDENT_')) return 'STUDENT';
+            return '';
+        }
+
+        async function rtOpenThread(rootId) {
+            const modal = document.getElementById('rtThreadModal');
+            const body  = document.getElementById('rtThreadBody');
+            const title = document.getElementById('rtThreadTitle');
+            body.innerHTML = '<div class="loading"><div class="spinner"></div>Loading thread...</div>';
+            title.textContent = 'REPORT thread';
+            modal.classList.add('rt-active');
+            try {
+                const r = await fetch('/api/di/report-thread/' + encodeURIComponent(rootId), { credentials: 'include' });
+                if (!r.ok) {
+                    const j = await r.json().catch(() => ({}));
+                    body.innerHTML = '<div style="color:#dc3545;padding:8px;">' + rtEscape(j.error || 'Failed to load thread.') + '</div>';
+                    return;
+                }
+                const thread = await r.json();
+                title.textContent = thread.filename || 'REPORT thread';
+                body.innerHTML = rtRenderThread(thread);
+                rtBindStudentForm(rootId);
+            } catch (e) {
+                body.innerHTML = '<div style="color:#dc3545;padding:8px;">Failed to load thread.</div>';
+            }
+        }
+        function rtCloseThread() {
+            document.getElementById('rtThreadModal').classList.remove('rt-active');
+        }
+
+        function rtRenderThread(t) {
+            const label = t.derived_thread_status_label || 'Open';
+            const pillClass = rtPillClassForLabel(label);
+            const finalBadge = t.is_final_report
+                ? '<span class="rt-pill rt-final-badge" style="margin-left:6px;">FINAL</span>' : '';
+            const period = (t.reporting_period_start || t.reporting_period_end)
+                ? rtEscape((t.reporting_period_start || '') + ' → ' + (t.reporting_period_end || '')) : '';
+
+            const header = `
+                <div class="rt-thread-header">
+                    <h4>${rtEscape(t.filename || 'REPORT')} <span class="rt-pill ${pillClass}">${rtEscape(label)}</span>${finalBadge}</h4>
+                    <div class="rt-thread-meta">
+                        ${t.project ? 'Project: ' + rtEscape(t.project) + ' &middot; ' : ''}
+                        ${t.supervisor ? 'Supervisor: ' + rtEscape(t.supervisor) : ''}
+                        ${period ? ' &middot; ' + period : ''}
+                    </div>
+                </div>`;
+            // Researcher-facing helper text.
+            const helper = (label === 'Awaiting student revision')
+                ? '<div class="rt-helper">Download the PI feedback file, revise your report, and upload a new revised version below.</div>'
+                : '';
+            const closedNote = (t.thread_status === 'CLOSED')
+                ? '<div class="rt-helper" style="background:#ecfdf5;border-color:#a7f3d0;color:#065f46;">This report has been approved and closed.</div>'
+                : '';
+            const discardedNote = (t.thread_status === 'DISCARDED')
+                ? '<div class="rt-helper" style="background:#fef2f2;border-color:#fecaca;color:#991b1b;">This thread has been discarded.</div>'
+                : '';
+
+            const timeline = (t.revisions || []).map(rev => {
+                const bucket = rtRoleBucket(rev.role);
+                const cls = 'rt-rev' + (bucket === 'PI' ? ' pi' : '') + (rev.is_final_report ? ' final' : '');
+                const roleBadge = `<span class="rt-rev-role-badge ${bucket}">${rtEscape(rtRoleLabel(rev.role))}</span>`;
+                const dt = rev.created_at ? new Date(rev.created_at).toLocaleString() : '';
+                const finalMark = rev.is_final_report ? '<span class="rt-pill rt-final-badge" style="margin-left:6px;">FINAL</span>' : '';
+                return `
+                    <div class="${cls}">
+                        <div class="rt-rev-head">
+                            <div>${roleBadge}${finalMark}</div>
+                            <div class="rt-rev-meta">${rtEscape(rev.uploader_name || rev.researcher_id || '')} &middot; ${rtEscape(dt)}</div>
+                        </div>
+                        <div style="margin-top:6px;font-size:13px;color:#0f172a;word-break:break-word;">${rtEscape(rev.filename || '')}</div>
+                        ${rev.comment ? '<div class="rt-rev-comment">'+rtEscape(rev.comment)+'</div>' : ''}
+                        <div class="rt-rev-actions">
+                            ${rev.download_url ? '<a class="btn-download" style="text-decoration:none;display:inline-block;" href="'+rev.download_url+'" target="_blank">Download</a>' : ''}
+                        </div>
+                    </div>`;
+            }).join('');
+
+            const canUpload = (t.thread_status === 'OPEN' || t.thread_status === 'REOPENED');
+            const studentForm = canUpload ? `
+                <div class="rt-pi-upload-form">
+                    <div style="font-weight:600;color:#0f172a;margin-bottom:8px;">Upload revised version</div>
+                    <div class="rt-form-row">
+                        <label>File (PDF / DOC / DOCX, max 20 MB)</label>
+                        <input type="file" id="rtStuFile" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+                    </div>
+                    <div class="rt-form-row">
+                        <label>Comment for PI</label>
+                        <textarea id="rtStuComment" rows="2" placeholder="Optional note about what changed"></textarea>
+                    </div>
+                    <button class="upload-btn" style="padding:7px 14px;font-size:13px;" id="rtStuUploadBtn">Upload revised version</button>
+                    <span id="rtStuUploadMsg" style="margin-left:10px;font-size:12px;color:#475569;"></span>
+                </div>` : '';
+
+            return header + helper + closedNote + discardedNote +
+                   '<div class="rt-timeline">' + timeline + '</div>' + studentForm;
+        }
+
+        function rtBindStudentForm(rootId) {
+            const btn = document.getElementById('rtStuUploadBtn');
+            if (!btn) return;
+            btn.onclick = async () => {
+                const f   = document.getElementById('rtStuFile').files[0];
+                const com = document.getElementById('rtStuComment').value;
+                const msg = document.getElementById('rtStuUploadMsg');
+                if (!f) { msg.textContent = 'Select a file.'; msg.style.color='#b91c1c'; return; }
+                msg.textContent = 'Uploading...'; msg.style.color='#475569';
+                btn.disabled = true;
+                try {
+                    const fd = new FormData();
+                    fd.append('file', f);
+                    fd.append('role', 'STUDENT_REVISED_VERSION');
+                    if (com) fd.append('comment', com);
+                    const r = await fetch('/api/di/report-thread/' + encodeURIComponent(rootId) + '/upload-revision', {
+                        method: 'POST', body: fd, credentials: 'include'
+                    });
+                    const j = await r.json().catch(() => ({}));
+                    if (!r.ok) {
+                        msg.textContent = j.error || 'Upload failed';
+                        msg.style.color = '#b91c1c';
+                    } else {
+                        msg.textContent = 'Uploaded';
+                        msg.style.color = '#15803d';
+                        await rtOpenThread(rootId);
+                        if (typeof loadMyFiles === 'function') loadMyFiles();
+                    }
+                } catch (e) {
+                    msg.textContent = 'Network error';
+                    msg.style.color = '#b91c1c';
+                }
+                btn.disabled = false;
+            };
         }
     </script>
 

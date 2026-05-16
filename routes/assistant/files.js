@@ -22,6 +22,7 @@
 'use strict';
 
 const express = require('express');
+const { deriveThreadLabel } = require('../di/reportThread');
 
 // Soft cap on extracted PDF text returned by /:submission_id/text. Picked to
 // keep responses well under typical upstream LLM payload limits while still
@@ -627,6 +628,22 @@ module.exports = function assistantFilesRouter(pool, deps) {
             intelReady = (ri.rows[0].t !== null);
         } catch { intelReady = false; }
 
+        // Migration 070 introduced REPORT thread columns. Same degradation
+        // pattern. When the columns are absent, all thread fields come back
+        // null and derived_thread_status_label is set to null too.
+        let threadColsReady = false;
+        try {
+            const tc = await pool.query(`
+                SELECT COUNT(*)::int AS n
+                  FROM information_schema.columns
+                 WHERE table_name='di_submissions'
+                   AND column_name IN ('report_thread_root_id','report_thread_role',
+                                       'report_thread_status','is_final_report',
+                                       'is_discarded','report_closed_at',
+                                       'report_reopened_at','report_discarded_at')`);
+            threadColsReady = (tc.rows[0].n >= 8);
+        } catch { threadColsReady = false; }
+
         try {
             const wsRow = await pool.query(
                 `SELECT id, slug FROM workspaces WHERE slug = $1 AND is_active = TRUE LIMIT 1`,
@@ -693,6 +710,63 @@ module.exports = function assistantFilesRouter(pool, deps) {
                         FALSE      AS has_report_intelligence,
                         NULL::text AS report_intelligence_status,`;
 
+            // REPORT thread fields (migration 070). The per-thread last-role
+            // lookup happens via a LATERAL subquery so we can compute
+            // derived_thread_status_label without a second round-trip. The
+            // root row's report_thread_* fields drive the response — child
+            // rows are not surfaced here (the canonical endpoint is per-file,
+            // not per-thread; /api/di/report-thread/:root_id is the
+            // authoritative thread reader).
+            const threadCols = threadColsReady ? `
+                        s.report_thread_root_id,
+                        s.report_parent_submission_id,
+                        s.report_thread_role,
+                        s.report_thread_status,
+                        s.is_final_report,
+                        s.is_discarded,
+                        s.report_closed_at,
+                        s.report_reopened_at,
+                        s.report_discarded_at,
+                        s.report_thread_comment,
+                        tl.last_role  AS thread_last_role,
+                        tl.last_uploaded_at AS thread_last_uploaded_at,`
+                : `
+                        NULL::uuid AS report_thread_root_id,
+                        NULL::uuid AS report_parent_submission_id,
+                        NULL::text AS report_thread_role,
+                        NULL::text AS report_thread_status,
+                        FALSE      AS is_final_report,
+                        FALSE      AS is_discarded,
+                        NULL::timestamptz AS report_closed_at,
+                        NULL::timestamptz AS report_reopened_at,
+                        NULL::timestamptz AS report_discarded_at,
+                        NULL::text AS report_thread_comment,
+                        NULL::text AS thread_last_role,
+                        NULL::timestamptz AS thread_last_uploaded_at,`;
+            const threadJoin = threadColsReady ? `
+                   LEFT JOIN LATERAL (
+                       SELECT report_thread_role AS last_role,
+                              created_at         AS last_uploaded_at
+                         FROM di_submissions
+                        WHERE report_thread_root_id = s.submission_id
+                          AND submission_id <> s.submission_id
+                        ORDER BY created_at DESC
+                        LIMIT 1
+                   ) tl ON s.file_type = 'REPORT'` : '';
+
+            // Filter for the canonical listing:
+            //   - status <> 'DISCARDED' (legacy submission-level)
+            //   - For REPORT rows specifically, ALSO exclude rows where the
+            //     thread root is discarded but only show thread ROOTs (one
+            //     row per thread) so the listing stays one-card-per-thread.
+            //     Revisions live inside /api/di/report-thread/:root_id.
+            const reportFilter = threadColsReady
+                ? `AND (s.file_type <> 'REPORT' OR (
+                        s.report_thread_root_id = s.submission_id
+                        AND COALESCE(s.is_discarded, FALSE) = FALSE
+                   ))`
+                : '';
+
             const r = await pool.query(
                 `SELECT s.submission_id,
                         s.original_filename,
@@ -706,15 +780,18 @@ module.exports = function assistantFilesRouter(pool, deps) {
                         ${indexedCols}
                         ${reportCols}
                         ${intelCols}
+                        ${threadCols}
                         EXTRACT(YEAR FROM s.created_at)::int AS year
                    FROM di_submissions s
                    LEFT JOIN di_allowlist a ON a.researcher_id = s.researcher_id
                    ${indexedJoin}
                    ${intelJoin}
+                   ${threadJoin}
                   WHERE s.workspace_id  = $1
                     AND s.researcher_id = $2
                     AND s.status <> 'DISCARDED'
                     AND s.file_type IN ('DATA', 'SOP', 'PRESENTATION', 'REPORT')
+                    ${reportFilter}
                   ORDER BY s.created_at DESC NULLS LAST`,
                 [workspaceId, code]
             );
@@ -773,6 +850,27 @@ module.exports = function assistantFilesRouter(pool, deps) {
                     // there yet, both fields fall back to false / null.
                     file.has_report_intelligence    = !!row.has_report_intelligence;
                     file.report_intelligence_status = row.report_intelligence_status || null;
+
+                    // Thread metadata (migration 070). The derived label is
+                    // computed from thread_status + the last upload role in
+                    // the thread (the LATERAL `tl` join in the SELECT).
+                    file.report_thread_root_id       = row.report_thread_root_id      || null;
+                    file.report_parent_submission_id = row.report_parent_submission_id || null;
+                    file.report_thread_role          = row.report_thread_role         || null;
+                    file.report_thread_status        = row.report_thread_status       || null;
+                    file.is_final_report             = !!row.is_final_report;
+                    file.is_discarded                = !!row.is_discarded;
+                    file.report_thread_comment       = row.report_thread_comment     || null;
+                    file.report_closed_at            = row.report_closed_at    ? new Date(row.report_closed_at).toISOString()    : null;
+                    file.report_reopened_at          = row.report_reopened_at  ? new Date(row.report_reopened_at).toISOString()  : null;
+                    file.report_discarded_at         = row.report_discarded_at ? new Date(row.report_discarded_at).toISOString() : null;
+                    // If no later revision exists, the "last role" is the
+                    // root's own role (the initial STUDENT_SUBMISSION).
+                    const lastRole = row.thread_last_role || row.report_thread_role;
+                    const lastAt   = row.thread_last_uploaded_at || row.created_at;
+                    file.derived_thread_status_label = threadColsReady
+                        ? deriveThreadLabel(row.report_thread_status, lastRole, row.report_reopened_at, lastAt)
+                        : null;
                 }
 
                 const yKey = row.year == null ? 'unknown' : String(row.year);
@@ -823,6 +921,7 @@ module.exports = function assistantFilesRouter(pool, deps) {
                 index_enrichment:    idxReady,
                 report_enrichment:   reportColsReady,
                 report_intelligence_enrichment: intelReady,
+                report_thread_enrichment: threadColsReady,
                 grouped,
                 generated_at:    new Date().toISOString()
             });

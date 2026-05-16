@@ -2459,21 +2459,24 @@ app.post('/api/di/upload-report', requireAuth, reportUpload.single('file'), asyn
         console.log('[UPLOAD-REPORT] Uploading: key=' + key + ', size=' + file.size + ', sub=' + subcategoryRaw);
         await uploadToR2(file.buffer, key, file.mimetype || 'application/octet-stream');
 
-        // file_type='REPORT' was already accepted in di_submissions_file_type_check
-        // as of migration 048/049 — no constraint widening needed.
+        // file_type='REPORT' is accepted by di_submissions_file_type_check
+        // since migration 069. Thread fields (migration 070) are initialised
+        // in the same INSERT so the row is a self-rooted thread from the start.
         const ins = await pool.query(
             `INSERT INTO di_submissions
                 (researcher_id, affiliation, file_type, original_filename, r2_object_key,
                  report_subcategory, report_project,
                  report_period_start, report_period_end,
                  report_related_data_ids, report_related_sop_ids,
-                 report_supervisor, report_status, workspace_id)
+                 report_supervisor, report_status, workspace_id,
+                 report_thread_role, report_thread_status, is_final_report, is_discarded)
              VALUES ($1, $2, 'REPORT', $3, $4,
                      $5, $6,
                      $7::date, $8::date,
                      $9::jsonb, $10::jsonb,
                      $11, $12,
-                     (SELECT id FROM workspaces WHERE slug = 'natlab'))
+                     (SELECT id FROM workspaces WHERE slug = 'natlab'),
+                     'STUDENT_SUBMISSION', 'OPEN', FALSE, FALSE)
              RETURNING submission_id`,
             [
                 user.researcher_id, user.affiliation,
@@ -2485,6 +2488,16 @@ app.post('/api/di/upload-report', requireAuth, reportUpload.single('file'), asyn
             ]
         );
         const submissionId = ins.rows[0].submission_id;
+
+        // The thread root is the submission itself. Set after INSERT since the
+        // submission_id is generated. A single UPDATE keeps the migration-070
+        // schema invariant true (every REPORT has a non-null root id).
+        await pool.query(
+            `UPDATE di_submissions
+                SET report_thread_root_id = submission_id
+              WHERE submission_id = $1`,
+            [submissionId]
+        );
 
         // n8n webhook (same shape as /api/di/upload). Best-effort.
         const webhookUrl = process.env.N8N_DI_WEBHOOK_URL;
@@ -24642,6 +24655,16 @@ app.use('/api/assistant/workspace',   require('./routes/assistant/workspace')(po
 app.use('/api/assistant/review-queue', require('./routes/assistant/reviewQueue')(pool));
 app.use('/api/assistant/activity',    require('./routes/assistant/activity')(pool));
 app.use('/api/assistant/reports',     require('./routes/assistant/reports')(pool));
+
+// REPORT thread workflow (migration 070). Mounted last so existing
+// /api/di/* routes (upload, upload-report, my-files etc.) keep priority.
+app.use('/api/di/report-thread', require('./routes/di/reportThread')(pool, {
+    uploadToR2,
+    reportUploadMulter: reportUpload,
+    requireAuth,
+    requirePI,
+    reportIntelligence: require('./services/reportIntelligence')
+}));
 
 app.listen(PORT, "0.0.0.0", async () => {
     console.log("[STARTUP] Server listening on port " + PORT);
