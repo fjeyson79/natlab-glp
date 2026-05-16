@@ -938,7 +938,6 @@ module.exports = function assistantFilesRouter(pool, deps) {
                 report_enrichment:   reportColsReady,
                 report_intelligence_enrichment: intelReady,
                 report_thread_enrichment: threadColsReady,
-                report_thread_debug: threadColsDebug,
                 grouped,
                 generated_at:    new Date().toISOString()
             });
