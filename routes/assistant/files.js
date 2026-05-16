@@ -566,6 +566,186 @@ module.exports = function assistantFilesRouter(pool, deps) {
         }
     });
 
+    // GET /api/assistant/files/canonical/:code?ws=natlab
+    //
+    // Canonical researcher file listing. Primary source is di_submissions —
+    // the NAT-Lab upload table also used by /api/assistant/activity — so the
+    // per-file_type breakdown reconciles with the performance / activity
+    // numbers Zoe already reports on.
+    //
+    // Why this exists separately from /researcher/:code:
+    //   /researcher/:code is driven by assistant_file_index (the R2-scanned
+    //   secondary view). The index can lag di_submissions or miss files that
+    //   were never written to the assistant indexer. /canonical/:code reads
+    //   di_submissions directly so it always matches what the rest of the
+    //   portal counts, and LEFT JOINs assistant_file_index for the
+    //   extraction-status enrichment Zoe needs.
+    //
+    // Counted file_types: DATA, SOP, PRESENTATION (matches activity.js).
+    // INVENTORY is excluded; DISCARDED submissions are excluded.
+    //
+    // Always 200 — an unknown / inactive researcher returns an empty group
+    // map so Zoe doesn't need to 404-branch.
+    router.get('/canonical/:code', async (req, res) => {
+        const code   = String(req.params.code || '').trim().toUpperCase();
+        const wsSlug = (req.query.ws || '').toString().trim();
+        if (!code)   return res.status(400).json({ error: 'researcher code is required' });
+        if (!wsSlug) return res.status(400).json({ error: 'ws query parameter is required' });
+
+        // Index tables may not be deployed on every environment. When they
+        // are, we LEFT JOIN for indexed_file_id / text_status / has_full_text.
+        // When not, those fields come back as null but the di_submissions
+        // listing itself is still returned.
+        const idxReady = await ensureIndexTables();
+
+        try {
+            const wsRow = await pool.query(
+                `SELECT id, slug FROM workspaces WHERE slug = $1 AND is_active = TRUE LIMIT 1`,
+                [wsSlug]
+            );
+            if (wsRow.rows.length === 0) {
+                return res.status(404).json({ error: 'Workspace not found' });
+            }
+            const workspaceId   = wsRow.rows[0].id;
+            const workspaceSlug = wsRow.rows[0].slug;
+
+            // Lateral joins (when the index is ready) bridge di_submissions to
+            // assistant_file_index by r2_object_key. submissions in
+            // REVISION_NEEDED have a NULL r2_object_key — those rows still
+            // appear in the listing, just without index enrichment.
+            const indexedJoin = idxReady ? `
+                   LEFT JOIN LATERAL (
+                       SELECT id, text_status, text_char_count
+                         FROM assistant_file_index
+                        WHERE r2_key = s.r2_object_key
+                        ORDER BY indexed_at DESC NULLS LAST
+                        LIMIT 1
+                   ) i ON s.r2_object_key IS NOT NULL
+                   LEFT JOIN assistant_file_text t ON t.file_id = i.id`
+                : '';
+            const indexedCols = idxReady ? `
+                        i.id              AS indexed_file_id,
+                        i.text_status     AS text_status,
+                        i.text_char_count AS text_char_count,
+                        (t.file_id IS NOT NULL) AS has_full_text,`
+                : `
+                        NULL::uuid AS indexed_file_id,
+                        NULL::text AS text_status,
+                        NULL::int  AS text_char_count,
+                        FALSE      AS has_full_text,`;
+
+            const r = await pool.query(
+                `SELECT s.submission_id,
+                        s.original_filename,
+                        s.file_type,
+                        s.status,
+                        s.researcher_id,
+                        s.affiliation,
+                        s.created_at,
+                        s.r2_object_key,
+                        a.name AS researcher_name,
+                        ${indexedCols}
+                        EXTRACT(YEAR FROM s.created_at)::int AS year
+                   FROM di_submissions s
+                   LEFT JOIN di_allowlist a ON a.researcher_id = s.researcher_id
+                   ${indexedJoin}
+                  WHERE s.workspace_id  = $1
+                    AND s.researcher_id = $2
+                    AND s.status <> 'DISCARDED'
+                    AND s.file_type IN ('DATA', 'SOP', 'PRESENTATION')
+                  ORDER BY s.created_at DESC NULLS LAST`,
+                [workspaceId, code]
+            );
+            const rows = r.rows;
+
+            // Aggregate by year -> file_type -> [files].
+            const grouped = {};
+            const byType = { DATA: 0, SOP: 0, PRESENTATION: 0 };
+            for (const row of rows) {
+                const filename = row.original_filename || null;
+                const isPdfName = !!(filename && filename.toLowerCase().endsWith('.pdf'));
+                const textStatus = row.text_status || null;
+                const hasFullText = !!row.has_full_text;
+                // can_read_now: assistant has the body text on file right now.
+                // can_attempt_extract: PDF that the assistant could pull and
+                // parse on demand via POST /indexed/:id/extract. We treat
+                // 'unsupported' (non-PDF) and rows without an indexed_file_id
+                // as not-extractable.
+                const canReadNow = hasFullText;
+                const canAttemptExtract = !canReadNow
+                                       && isPdfName
+                                       && !!row.indexed_file_id
+                                       && textStatus !== 'unsupported';
+
+                const file = {
+                    submission_id:    row.submission_id,
+                    filename:         filename,
+                    file_type:        row.file_type || null,
+                    status:           row.status || null,
+                    researcher_id:    row.researcher_id || null,
+                    researcher_name:  row.researcher_name || null,
+                    affiliation:      row.affiliation || null,
+                    created_at:       row.created_at ? new Date(row.created_at).toISOString() : null,
+                    r2_object_key:    row.r2_object_key || null,
+                    indexed_file_id:  row.indexed_file_id || null,
+                    text_status:      textStatus,
+                    has_full_text:    hasFullText,
+                    text_char_count:  row.text_char_count == null ? null : Number(row.text_char_count),
+                    can_read_now:     canReadNow,
+                    can_attempt_extract: canAttemptExtract
+                };
+
+                const yKey = row.year == null ? 'unknown' : String(row.year);
+                const tKey = row.file_type || 'UNTYPED';
+                grouped[yKey] = grouped[yKey] || {};
+                grouped[yKey][tKey] = grouped[yKey][tKey] || [];
+                grouped[yKey][tKey].push(file);
+                if (byType[tKey] !== undefined) byType[tKey]++;
+            }
+
+            // researcher_name / affiliation come from di_allowlist; pull them
+            // separately so an "exists in allowlist but no submissions yet"
+            // researcher still surfaces identity in the response. Falls back
+            // to the first submission's join if the allowlist lookup misses.
+            let researcherName = rows[0] ? rows[0].researcher_name : null;
+            let researcherAff  = rows[0] ? rows[0].affiliation     : null;
+            if (!researcherName || !researcherAff) {
+                try {
+                    const ar = await pool.query(
+                        `SELECT name, affiliation FROM di_allowlist WHERE researcher_id = $1 LIMIT 1`,
+                        [code]
+                    );
+                    if (ar.rows.length) {
+                        researcherName = researcherName || ar.rows[0].name || null;
+                        researcherAff  = researcherAff  || ar.rows[0].affiliation || null;
+                    }
+                } catch { /* di_allowlist always present in NAT-Lab; ignore */ }
+            }
+
+            res.json({
+                workspace:       workspaceSlug,
+                researcher_id:   code,
+                researcher_name: researcherName,
+                affiliation:     researcherAff,
+                source:          'di_submissions',
+                counted_file_types: ['DATA', 'SOP', 'PRESENTATION'],
+                total:           rows.length,
+                totals_by_file_type: {
+                    DATA:         byType.DATA,
+                    SOP:          byType.SOP,
+                    PRESENTATION: byType.PRESENTATION
+                },
+                index_enrichment: idxReady,
+                grouped,
+                generated_at:    new Date().toISOString()
+            });
+        } catch (err) {
+            console.error('[ASSISTANT] files/canonical error:', err.message);
+            if (err && err.code) console.error('[ASSISTANT] files/canonical PG code=' + err.code, 'detail=' + (err.detail || '-'));
+            res.status(500).json({ error: 'Failed to load canonical researcher files' });
+        }
+    });
+
     // GET /api/assistant/files/indexed/:id/text?max_chars=12000
     //
     // Phase 1.2 — read the extracted text Zoe already has on file. Returns
