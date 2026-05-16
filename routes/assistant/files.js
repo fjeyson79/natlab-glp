@@ -631,18 +631,34 @@ module.exports = function assistantFilesRouter(pool, deps) {
         // Migration 070 introduced REPORT thread columns. Same degradation
         // pattern. When the columns are absent, all thread fields come back
         // null and derived_thread_status_label is set to null too.
+        // Surface the raw count + per-column flags in the response envelope
+        // so operators can tell whether the migration ran partially.
         let threadColsReady = false;
+        let threadColsDebug = null;
         try {
             const tc = await pool.query(`
-                SELECT COUNT(*)::int AS n
+                SELECT COUNT(*)::int AS n,
+                       BOOL_OR(column_name='report_thread_root_id')      AS has_root,
+                       BOOL_OR(column_name='report_thread_role')         AS has_role,
+                       BOOL_OR(column_name='report_thread_status')       AS has_status,
+                       BOOL_OR(column_name='is_final_report')            AS has_final,
+                       BOOL_OR(column_name='is_discarded')               AS has_discarded,
+                       BOOL_OR(column_name='report_closed_at')           AS has_closed,
+                       BOOL_OR(column_name='report_reopened_at')         AS has_reopened,
+                       BOOL_OR(column_name='report_discarded_at')        AS has_discarded_at
                   FROM information_schema.columns
-                 WHERE table_name='di_submissions'
+                 WHERE table_schema='public'
+                   AND table_name='di_submissions'
                    AND column_name IN ('report_thread_root_id','report_thread_role',
                                        'report_thread_status','is_final_report',
                                        'is_discarded','report_closed_at',
                                        'report_reopened_at','report_discarded_at')`);
             threadColsReady = (tc.rows[0].n >= 8);
-        } catch { threadColsReady = false; }
+            threadColsDebug = tc.rows[0];
+        } catch (e) {
+            threadColsReady = false;
+            threadColsDebug = { error: e && e.message };
+        }
 
         try {
             const wsRow = await pool.query(
@@ -922,6 +938,7 @@ module.exports = function assistantFilesRouter(pool, deps) {
                 report_enrichment:   reportColsReady,
                 report_intelligence_enrichment: intelReady,
                 report_thread_enrichment: threadColsReady,
+                report_thread_debug: threadColsDebug,
                 grouped,
                 generated_at:    new Date().toISOString()
             });
