@@ -4187,6 +4187,31 @@
                     <div id="zoeDocsList" style="font-size:12px; color:#475569; max-height:200px; overflow-y:auto;">Loading...</div>
                 </div>
 
+                <!-- Memory Admin (PI only) -->
+                <!-- Buttons fire /api/assistant/memory/{rebuild,weekly-update}.
+                     The endpoints are requirePI-protected, so even though
+                     this whole page is served only to PIs, the backend
+                     remains the source of truth — these buttons are a
+                     convenience UI, not a security boundary. -->
+                <div style="border:1px solid #d0d5dd; border-radius:10px; background:white; padding:14px;">
+                    <div style="font-weight:600; color:#1a365d; margin-bottom:8px;">Zoe Memory</div>
+                    <div style="font-size:11px; color:#64748b; margin-bottom:10px;">
+                        Rebuild summarizes every indexed file from scratch.
+                        Update only refreshes files changed since the last run.
+                    </div>
+                    <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                        <button id="zoeMemRebuildBtn" type="button" onclick="zoeMemRebuild()"
+                                style="padding:6px 12px; font-size:12px; background:#0f766e; color:white; border:none; border-radius:4px; cursor:pointer;">
+                            Rebuild Zoe Memory
+                        </button>
+                        <button id="zoeMemUpdateBtn" type="button" onclick="zoeMemUpdate()"
+                                style="padding:6px 12px; font-size:12px; background:#e2e8f0; color:#1a365d; border:1px solid #cbd5e1; border-radius:4px; cursor:pointer;">
+                            Update Zoe Memory
+                        </button>
+                    </div>
+                    <div id="zoeMemStatus" style="font-size:12px; color:#475569; margin-top:10px; white-space:pre-wrap;"></div>
+                </div>
+
                 <!-- Project Ideas / Drafts (Zoe idea layer, separate from live projects) -->
                 <div style="border:1px solid #d0d5dd; border-radius:10px; background:white; padding:14px;">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
@@ -14492,6 +14517,66 @@ function dicBuildPdfViewerSrc(fileUrl) {
     function zoeQuick(text) {
         document.getElementById('zoeChatInput').value = text;
         zoeSend();
+    }
+
+    // -----------------------------------------------------------------
+    // Zoe memory admin (PI-only). Both buttons hit requirePI endpoints
+    // so a stray non-PI session would be rejected by the backend even
+    // if the markup were ever shown outside pi-dashboard.html.
+    // -----------------------------------------------------------------
+    async function _zoeMemCall(label, url, body) {
+        const rebuildBtn = document.getElementById('zoeMemRebuildBtn');
+        const updateBtn  = document.getElementById('zoeMemUpdateBtn');
+        const status     = document.getElementById('zoeMemStatus');
+        if (!status) return;
+        if (rebuildBtn) rebuildBtn.disabled = true;
+        if (updateBtn)  updateBtn.disabled  = true;
+        status.style.color = '#475569';
+        status.textContent = label + '… (this can take a while on first run)';
+        const t0 = Date.now();
+        try {
+            const r = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify(body || {})
+            });
+            const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+            let data = {};
+            try { data = await r.json(); } catch (_) { /* keep empty */ }
+            if (!r.ok) {
+                status.style.color = '#b91c1c';
+                if (r.status === 401 || r.status === 403) {
+                    status.textContent = 'Not authorised. Log in as PI and try again. (HTTP ' + r.status + ')';
+                } else {
+                    status.textContent = (data.error || 'Failed') + ' (HTTP ' + r.status + ', ' + elapsed + 's)';
+                }
+                return;
+            }
+            // Success — surface the numeric counters when present.
+            const stats = (data && data.stats) || {};
+            const parts = [label + ' complete in ' + elapsed + 's.'];
+            if ('files'       in stats) parts.push('files_processed: '       + stats.files);
+            if ('researchers' in stats) parts.push('researchers_processed: ' + stats.researchers);
+            if ('projects'    in stats) parts.push('projects_processed: '    + stats.projects);
+            if ('workspace'   in stats) parts.push('workspace_processed: '   + (stats.workspace ? 'yes' : 'no'));
+            if (data && data.error) parts.push('error: ' + data.error);
+            status.style.color = '#15803d';
+            status.textContent = parts.join('\n');
+        } catch (e) {
+            status.style.color = '#b91c1c';
+            status.textContent = 'Network error: ' + (e && e.message ? e.message : e);
+        } finally {
+            if (rebuildBtn) rebuildBtn.disabled = false;
+            if (updateBtn)  updateBtn.disabled  = false;
+        }
+    }
+    function zoeMemRebuild() {
+        if (!confirm('Rebuild Zoe scientific memory from scratch? This re-summarises every indexed file (capped at 50 in this call).')) return;
+        _zoeMemCall('Rebuild', '/api/assistant/memory/rebuild?ws=natlab', { limit: 50 });
+    }
+    function zoeMemUpdate() {
+        _zoeMemCall('Update', '/api/assistant/memory/weekly-update?ws=natlab', { limit: 200 });
     }
 
     let zoeInFlight = false;
