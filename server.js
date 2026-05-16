@@ -2462,6 +2462,14 @@ app.post('/api/di/upload-report', requireAuth, reportUpload.single('file'), asyn
         // file_type='REPORT' is accepted by di_submissions_file_type_check
         // since migration 069. Thread fields (migration 070) are initialised
         // in the same INSERT so the row is a self-rooted thread from the start.
+        // Ensure the migration 070 columns exist before the INSERT references
+        // them — guards against deploys where db/migrate.js aborted earlier
+        // in the inline migration array.
+        try {
+            await require('./routes/di/reportThread').ensureSchemaFor(pool);
+        } catch (schemaErr) {
+            console.warn('[UPLOAD-REPORT] schema ensure failed (continuing):', schemaErr && schemaErr.message);
+        }
         const ins = await pool.query(
             `INSERT INTO di_submissions
                 (researcher_id, affiliation, file_type, original_filename, r2_object_key,
@@ -24658,13 +24666,20 @@ app.use('/api/assistant/reports',     require('./routes/assistant/reports')(pool
 
 // REPORT thread workflow (migration 070). Mounted last so existing
 // /api/di/* routes (upload, upload-report, my-files etc.) keep priority.
-app.use('/api/di/report-thread', require('./routes/di/reportThread')(pool, {
+const reportThreadModule = require('./routes/di/reportThread');
+app.use('/api/di/report-thread', reportThreadModule(pool, {
     uploadToR2,
     reportUploadMulter: reportUpload,
     requireAuth,
     requirePI,
     reportIntelligence: require('./services/reportIntelligence')
 }));
+// Ensure migration 070 schema is in place. db/migrate.js sometimes aborts
+// earlier in its inline migrations array; this idempotent runtime
+// helper fixes the schema regardless.
+reportThreadModule.ensureSchemaFor(pool).catch(e =>
+    console.error('[STARTUP] report-thread schema ensure failed:', e && e.message)
+);
 
 app.listen(PORT, "0.0.0.0", async () => {
     console.log("[STARTUP] Server listening on port " + PORT);

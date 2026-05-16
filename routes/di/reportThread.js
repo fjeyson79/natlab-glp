@@ -65,6 +65,75 @@ module.exports = function reportThreadRouter(pool, deps) {
 
     const router = express.Router();
 
+    // Runtime schema ensure. db/migrate.js sometimes aborts before
+    // reaching migration 070 (one of the earlier inline statements
+    // fails on some deploys), leaving the thread columns absent. We
+    // re-assert the schema on first call from this router and cache
+    // the result so it only runs once per process.
+    let _schemaEnsured = null;
+    async function ensureSchema() {
+        if (_schemaEnsured !== null) return _schemaEnsured;
+        try {
+            const stmts = [
+                `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS report_thread_root_id UUID`,
+                `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS report_parent_submission_id UUID`,
+                `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS report_thread_role TEXT`,
+                `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS report_thread_status TEXT`,
+                `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS is_final_report BOOLEAN DEFAULT FALSE`,
+                `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS report_thread_comment TEXT`,
+                `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS report_closed_at TIMESTAMPTZ`,
+                `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS report_reopened_at TIMESTAMPTZ`,
+                `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS report_discarded_at TIMESTAMPTZ`,
+                `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS is_discarded BOOLEAN DEFAULT FALSE`,
+                `ALTER TABLE di_submissions DROP CONSTRAINT IF EXISTS di_submissions_report_thread_role_check`,
+                `ALTER TABLE di_submissions ADD CONSTRAINT di_submissions_report_thread_role_check
+                    CHECK (report_thread_role IS NULL OR report_thread_role IN (
+                        'STUDENT_SUBMISSION','PI_ANNOTATED_VERSION','PI_REVISED_VERSION',
+                        'STUDENT_REVISED_VERSION','FINAL_REPORT','NOTE','OTHER'
+                    ))`,
+                `ALTER TABLE di_submissions DROP CONSTRAINT IF EXISTS di_submissions_report_thread_status_check`,
+                `ALTER TABLE di_submissions ADD CONSTRAINT di_submissions_report_thread_status_check
+                    CHECK (report_thread_status IS NULL OR report_thread_status IN (
+                        'OPEN','CLOSED','REOPENED','DISCARDED'
+                    ))`,
+                // Backfill — only sets columns that we just added; refs
+                // to `signed_at` / `discarded_at` are guarded with COALESCE
+                // and CASE so missing legacy columns don't abort.
+                `UPDATE di_submissions
+                    SET report_thread_root_id = COALESCE(report_thread_root_id, submission_id),
+                        report_thread_role    = COALESCE(report_thread_role, 'STUDENT_SUBMISSION'),
+                        report_thread_status  = COALESCE(report_thread_status, CASE
+                            WHEN status = 'APPROVED'  THEN 'CLOSED'
+                            WHEN status = 'DISCARDED' THEN 'DISCARDED'
+                            ELSE 'OPEN'
+                        END),
+                        is_final_report       = COALESCE(is_final_report, (status = 'APPROVED')),
+                        is_discarded          = COALESCE(is_discarded, (status = 'DISCARDED'))
+                    WHERE file_type = 'REPORT'
+                      AND report_thread_root_id IS NULL`,
+                `CREATE INDEX IF NOT EXISTS idx_di_submissions_thread_root
+                    ON di_submissions (report_thread_root_id) WHERE report_thread_root_id IS NOT NULL`,
+                `CREATE INDEX IF NOT EXISTS idx_di_submissions_thread_status
+                    ON di_submissions (report_thread_status) WHERE report_thread_status IS NOT NULL`,
+                `CREATE INDEX IF NOT EXISTS idx_di_submissions_thread_parent
+                    ON di_submissions (report_parent_submission_id) WHERE report_parent_submission_id IS NOT NULL`,
+            ];
+            for (const s of stmts) {
+                try { await pool.query(s); }
+                catch (e) {
+                    console.warn('[REPORT-THREAD] schema ensure stmt failed:', (e && e.message) || e);
+                }
+            }
+            _schemaEnsured = true;
+        } catch (e) {
+            console.error('[REPORT-THREAD] ensureSchema failed:', (e && e.message) || e);
+            _schemaEnsured = false;
+        }
+        return _schemaEnsured;
+    }
+    // Kick it off at mount so the first request doesn't pay the cost.
+    ensureSchema().catch(() => {});
+
     // -------------------------------------------------------------
     // GET /  — list REPORT thread roots (one row per thread). Used by
     // the PI dashboard to render the Open/Approve/Discard card grid.
@@ -610,3 +679,64 @@ module.exports = function reportThreadRouter(pool, deps) {
 };
 
 module.exports.deriveThreadLabel = deriveThreadLabel;
+
+// Shared schema-ensure used by server.js /api/di/upload-report so the
+// INSERT can rely on the thread columns existing. Lazy-cached per pool.
+module.exports.ensureSchemaFor = function ensureSchemaFor(pool) {
+    if (!pool.__reportThreadSchemaPromise) {
+        pool.__reportThreadSchemaPromise = (async () => {
+            const stmts = [
+                `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS report_thread_root_id UUID`,
+                `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS report_parent_submission_id UUID`,
+                `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS report_thread_role TEXT`,
+                `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS report_thread_status TEXT`,
+                `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS is_final_report BOOLEAN DEFAULT FALSE`,
+                `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS report_thread_comment TEXT`,
+                `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS report_closed_at TIMESTAMPTZ`,
+                `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS report_reopened_at TIMESTAMPTZ`,
+                `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS report_discarded_at TIMESTAMPTZ`,
+                `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS is_discarded BOOLEAN DEFAULT FALSE`,
+                `ALTER TABLE di_submissions DROP CONSTRAINT IF EXISTS di_submissions_report_thread_role_check`,
+                `ALTER TABLE di_submissions ADD CONSTRAINT di_submissions_report_thread_role_check
+                    CHECK (report_thread_role IS NULL OR report_thread_role IN (
+                        'STUDENT_SUBMISSION','PI_ANNOTATED_VERSION','PI_REVISED_VERSION',
+                        'STUDENT_REVISED_VERSION','FINAL_REPORT','NOTE','OTHER'
+                    ))`,
+                `ALTER TABLE di_submissions DROP CONSTRAINT IF EXISTS di_submissions_report_thread_status_check`,
+                `ALTER TABLE di_submissions ADD CONSTRAINT di_submissions_report_thread_status_check
+                    CHECK (report_thread_status IS NULL OR report_thread_status IN (
+                        'OPEN','CLOSED','REOPENED','DISCARDED'
+                    ))`,
+                `UPDATE di_submissions
+                    SET report_thread_root_id = COALESCE(report_thread_root_id, submission_id),
+                        report_thread_role    = COALESCE(report_thread_role, 'STUDENT_SUBMISSION'),
+                        report_thread_status  = COALESCE(report_thread_status, CASE
+                            WHEN status = 'APPROVED'  THEN 'CLOSED'
+                            WHEN status = 'DISCARDED' THEN 'DISCARDED'
+                            ELSE 'OPEN'
+                        END),
+                        is_final_report       = COALESCE(is_final_report, (status = 'APPROVED')),
+                        is_discarded          = COALESCE(is_discarded, (status = 'DISCARDED'))
+                    WHERE file_type = 'REPORT'
+                      AND report_thread_root_id IS NULL`,
+                `CREATE INDEX IF NOT EXISTS idx_di_submissions_thread_root
+                    ON di_submissions (report_thread_root_id) WHERE report_thread_root_id IS NOT NULL`,
+                `CREATE INDEX IF NOT EXISTS idx_di_submissions_thread_status
+                    ON di_submissions (report_thread_status) WHERE report_thread_status IS NOT NULL`,
+                `CREATE INDEX IF NOT EXISTS idx_di_submissions_thread_parent
+                    ON di_submissions (report_parent_submission_id) WHERE report_parent_submission_id IS NOT NULL`,
+            ];
+            for (const s of stmts) {
+                try { await pool.query(s); }
+                catch (e) {
+                    console.warn('[REPORT-THREAD] schema ensure stmt failed:', (e && e.message) || e);
+                }
+            }
+            return true;
+        })().catch(e => {
+            console.error('[REPORT-THREAD] schema ensure root failed:', e && e.message);
+            return false;
+        });
+    }
+    return pool.__reportThreadSchemaPromise;
+};
