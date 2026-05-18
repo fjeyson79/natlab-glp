@@ -23,6 +23,9 @@
 
 const express = require('express');
 const { deriveThreadLabel } = require('../di/reportThread');
+// Phase 1.1 — REPORT-aware extraction (PDF unchanged, DOCX via mammoth,
+// non-REPORT DOC/DOCX blocked). Single policy gate for all extraction sites.
+const { extractReportText, classify: classifyExtraction } = require('../../backend-patch/extractReportText');
 
 // Soft cap on extracted PDF text returned by /:submission_id/text. Picked to
 // keep responses well under typical upstream LLM payload limits while still
@@ -1695,17 +1698,18 @@ module.exports = function assistantFilesRouter(pool, deps) {
                 });
             }
 
-            // Only attempt PDF text extraction for files that look like PDFs.
-            // Other file types (xlsx, images, etc.) return a clean failure;
-            // OCR / non-PDF parsing is intentionally out of scope for this
-            // endpoint per the patch brief.
-            const filenameLower = (row.original_filename || '').toLowerCase();
-            if (!filenameLower.endsWith('.pdf')) {
+            // Phase 1.1 — route by (file_type, ext). REPORT PDF stays on
+            // pdf-parse; REPORT DOCX adds the mammoth path; legacy REPORT DOC
+            // is best-effort (mammoth throws on the old binary format, we
+            // return legacy_doc_unsupported). Everything else returns a clean
+            // unsupported failure shape and is NOT extracted.
+            const policy = classifyExtraction(row.original_filename, row.file_type);
+            if (!policy.method) {
                 return res.json({
                     ...meta,
                     text_available: false,
                     extracted_text: '',
-                    extraction: { method: 'pdf-parse', error: 'unsupported_file_type' }
+                    extraction: { method: null, error: policy.reason || 'unsupported_file_type' }
                 });
             }
 
@@ -1718,40 +1722,29 @@ module.exports = function assistantFilesRouter(pool, deps) {
                     ...meta,
                     text_available: false,
                     extracted_text: '',
-                    extraction: { method: 'pdf-parse', error: 'r2_fetch_failed' }
+                    extraction: { method: policy.method, error: 'r2_fetch_failed' }
                 });
             }
 
-            let parsed;
-            try {
-                const pdfParse = require('pdf-parse');
-                parsed = await pdfParse(buffer);
-            } catch (e) {
-                console.error('[ASSISTANT] files/:submission_id/text pdf-parse failed:', e.message);
-                return res.json({
-                    ...meta,
-                    text_available: false,
-                    extracted_text: '',
-                    extraction: { method: 'pdf-parse', error: 'scanned_pdf_or_unreadable' }
-                });
-            }
-
-            const rawText = (parsed.text || '').replace(/\s+\n/g, '\n').trim();
-            // pdf-parse on a scanned/image-only PDF parses fine but yields an
-            // empty string. Surface that as the documented failure shape.
-            if (!rawText) {
+            const result = await extractReportText(buffer, row.original_filename, row.file_type);
+            if (!result.ok) {
+                if (result.error && !result.error.startsWith('scanned_pdf') && !result.error.startsWith('empty_docx')) {
+                    console.error('[ASSISTANT] files/:submission_id/text extract failed:',
+                                  result.method, result.error);
+                }
                 return res.json({
                     ...meta,
                     text_available: false,
                     extracted_text: '',
                     extraction: {
-                        method: 'pdf-parse',
-                        pages:  parsed.numpages || null,
-                        error:  'scanned_pdf_or_unreadable'
+                        method: result.method,
+                        pages:  result.pages,
+                        error:  result.error || 'extraction_failed'
                     }
                 });
             }
 
+            const rawText    = result.text;
             const charsTotal = rawText.length;
             const truncated  = charsTotal > DEFAULT_TEXT_MAX;
             const out        = truncated ? rawText.slice(0, DEFAULT_TEXT_MAX) : rawText;
@@ -1761,8 +1754,8 @@ module.exports = function assistantFilesRouter(pool, deps) {
                 text_available: true,
                 extracted_text: out,
                 extraction: {
-                    method:         'pdf-parse',
-                    pages:          parsed.numpages || null,
+                    method:         result.method,
+                    pages:          result.pages,
                     chars_total:    charsTotal,
                     chars_returned: out.length,
                     truncated

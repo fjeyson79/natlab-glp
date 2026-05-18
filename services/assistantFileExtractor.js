@@ -30,6 +30,14 @@
 const crypto = require('crypto');
 const { GetObjectCommand } = require('@aws-sdk/client-s3');
 const { sanitizeExtractedText } = require('./assistantFileIndexer');
+// Phase 1.1 — REPORT-aware extraction policy. classify() decides whether a
+// row is extractable and which parser to use (pdf-parse / mammoth / mammoth-
+// legacy). extractReportText() handles DOCX; PDFs still use the per-page
+// extractor below so we keep page tracking + chunking for that path.
+const {
+    classify: classifyExtraction,
+    extractReportText
+} = require('../backend-patch/extractReportText');
 
 // ---------------------------------------------------------------------------
 // Tunables
@@ -429,9 +437,11 @@ async function extractOne(deps, fileId, opts) {
     const force = !!opts.force;
 
     // 1. Look up the file. We need r2_key + filename + the prior file_hash
-    //    so we can short-circuit when nothing has changed.
+    //    so we can short-circuit when nothing has changed. file_type is
+    //    consulted by the Phase 1.1 policy gate (REPORT DOCX is allowed,
+    //    everything-else DOCX is not).
     const r = await pool.query(
-        `SELECT id, r2_key, filename, file_ext, file_hash, summary_ready
+        `SELECT id, r2_key, filename, file_ext, file_type, file_hash, summary_ready
            FROM assistant_file_index
           WHERE id = $1
           LIMIT 1`,
@@ -444,12 +454,15 @@ async function extractOne(deps, fileId, opts) {
     }
     const row = r.rows[0];
 
-    // 2. Non-PDFs are intentionally out of scope for Phase 2. Mark
-    //    'unsupported' (matches the indexer's vocabulary) and bail. The
-    //    front end can show "no extracted text" and move on.
-    if ((row.file_ext || '').toLowerCase() !== 'pdf') {
+    // 2. Policy gate: which parser (if any) for this (filename, file_type)?
+    //    Phase 1.1 allows REPORT DOCX through mammoth and keeps PDF on
+    //    pdf-parse. Anything outside the whitelist is stamped 'unsupported'.
+    const policy = classifyExtraction(row.filename, row.file_type);
+    if (!policy.method) {
         await markFailure(pool, fileId, 'unsupported',
-                          'file_ext=' + (row.file_ext || 'unknown'), log);
+                          'policy=' + (policy.reason || 'unsupported_file_type')
+                          + ' file_ext=' + (row.file_ext || 'unknown')
+                          + ' file_type=' + (row.file_type || 'unknown'), log);
         return {
             ok: false,
             file_id: fileId,
@@ -458,7 +471,7 @@ async function extractOne(deps, fileId, opts) {
             page_count: 0,
             chunk_count: 0,
             summary_ready: false,
-            reason: 'unsupported_file_type',
+            reason: policy.reason || 'unsupported_file_type',
         };
     }
 
@@ -488,16 +501,52 @@ async function extractOne(deps, fileId, opts) {
         };
     }
 
-    // 5. Per-page extraction.
+    // 5. Parser fan-out — pdf-parse keeps the per-page path (page tracking +
+    //    chunk page_start/page_end). mammoth has no concept of pages, so we
+    //    extract the whole document and treat it as a single synthetic page.
+    //    Legacy .doc files (mammoth-legacy) are stamped 'unsupported' on
+    //    failure since mammoth can't read the old binary format.
     let pages;
-    try {
-        const out = await extractPagesFromPdf(buffer);
-        pages = out.pages;
-    } catch (e) {
-        await markFailure(pool, fileId, 'failed', 'pdf_parse: ' + e.message, log);
-        const err = new Error('pdf-parse failed: ' + e.message);
-        err.cause = e;
-        throw err;
+    if (policy.method === 'pdf-parse') {
+        try {
+            const out = await extractPagesFromPdf(buffer);
+            pages = out.pages;
+        } catch (e) {
+            await markFailure(pool, fileId, 'failed', 'pdf_parse: ' + e.message, log);
+            const err = new Error('pdf-parse failed: ' + e.message);
+            err.cause = e;
+            throw err;
+        }
+    } else {
+        // mammoth / mammoth-legacy path — never throws (extractReportText
+        // is total). Failure shapes: empty_docx_or_unreadable (treat as empty),
+        // legacy_doc_unsupported (stamp unsupported), other (stamp failed).
+        const result = await extractReportText(buffer, row.filename, row.file_type);
+        if (!result.ok) {
+            if (result.error === 'legacy_doc_unsupported') {
+                await markFailure(pool, fileId, 'unsupported', result.error, log);
+                return {
+                    ok: false,
+                    file_id: fileId,
+                    filename: row.filename,
+                    file_hash,
+                    text_status: 'unsupported',
+                    page_count: 0,
+                    chunk_count: 0,
+                    summary_ready: false,
+                    reason: result.error,
+                };
+            }
+            if (result.error === 'empty_docx_or_unreadable') {
+                pages = [];   // falls through to the "empty" branch below
+            } else {
+                await markFailure(pool, fileId, 'failed', result.method + ': ' + result.error, log);
+                const err = new Error(result.method + ' failed: ' + result.error);
+                throw err;
+            }
+        } else {
+            pages = [result.text];
+        }
     }
 
     // 6. Sanitise per page.

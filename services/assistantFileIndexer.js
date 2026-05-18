@@ -39,6 +39,15 @@
 
 const { ListObjectsV2Command, GetObjectCommand } = require('@aws-sdk/client-s3');
 const { parseR2Path, shouldIgnoreR2Path, resolveFileType } = require('./zoeRetrieval');
+// Phase 1.1 — REPORT-aware extraction policy. shouldIndexText() decides
+// which rows enter the text-extract pass; extractReportText() routes the
+// buffer to pdf-parse (REPORT/SOP/DATA/PRESENTATION + PDF) or mammoth
+// (REPORT + DOCX). Non-REPORT Word docs are not extracted.
+const {
+    shouldIndexText,
+    classify: classifyExtraction,
+    extractReportText
+} = require('../backend-patch/extractReportText');
 
 // Char cap for text_preview (kept short — this is the snippet shown in
 // /map and /search hit summaries, NOT the full document).
@@ -310,12 +319,20 @@ async function indexAllFromR2(deps, opts) {
             const affiliation = affPath || (rosterEntry && rosterEntry.affiliation) || null;
             const researcher_name = (rosterEntry && rosterEntry.name) || null;
 
+            const fileType = inferFileType(parsed);
+            // Phase 1.1 — text_status: 'pending' for files the policy gate
+            // accepts (PDF for REPORT/SOP/DATA/PRESENTATION, DOCX for REPORT
+            // via mammoth), 'unsupported' for everything else. Set here so
+            // the text-extract pass has a clean WHERE clause and the indexer
+            // never opens a non-REPORT Word doc.
+            const indexable   = shouldIndexText(filename, fileType);
+            const textStatus  = indexable ? 'pending' : 'unsupported';
             buffer.push({
                 r2_key:          obj.Key,
                 workspace_slug:  inferWorkspaceSlug(parsed),
                 filename,
                 file_ext:        ext,
-                file_type:       inferFileType(parsed),
+                file_type:       fileType,
                 researcher_code: code,
                 researcher_name,
                 affiliation,
@@ -325,9 +342,7 @@ async function indexAllFromR2(deps, opts) {
                 source_area:     inferSourceArea(parsed),
                 topic:           parsed.topic || null,
                 size_bytes:      typeof obj.Size === 'number' ? obj.Size : null,
-                // text_status: 'pending' for PDFs, 'unsupported' for everything else.
-                // Set here so the pdf-text pass has a clean WHERE clause.
-                text_status:     ext === 'pdf' ? 'pending' : 'unsupported'
+                text_status:     textStatus
             });
 
             if (buffer.length >= batchSize) {
@@ -432,11 +447,17 @@ async function extractPendingPdfText(deps, opts) {
     while (true) {
         if (limit && processed >= limit) break;
 
+        // Phase 1.1 — pick up rows that classify() routes anywhere: PDFs
+        // (any of the four supported file_types) AND REPORT DOCX. file_type
+        // is read so the per-row policy gate can decide pdf-parse vs mammoth.
         const r = await pool.query(
-            `SELECT id, r2_key, filename
+            `SELECT id, r2_key, filename, file_ext, file_type
                FROM assistant_file_index
               WHERE text_status = 'pending'
-                AND file_ext = 'pdf'
+                AND (
+                      file_ext = 'pdf'
+                   OR (file_ext = 'docx' AND file_type = 'REPORT')
+                )
               ORDER BY indexed_at DESC
               LIMIT $1`,
             [pageSize]
@@ -466,13 +487,28 @@ async function extractPendingPdfText(deps, opts) {
 async function _processOnePdf(pool, r2Client, r2Bucket, row, pdfParse, log) {
     _job.counts.text_processed += 1;
 
-    // Outer guard: NO single PDF can ever bubble an error out of this
+    // Outer guard: NO single file can ever bubble an error out of this
     // function. Anything we don't explicitly handle below lands in the
     // bottom catch and gets recorded as a failed row, so the text pass
     // continues and remains resumable. The earlier UTF-8 NUL crash
     // (text_processed=24, then aborted) was caused by an uncaught DB
     // write — that path is now covered.
     try {
+        // Phase 1.1 — consult the policy gate. PDF → pdf-parse; REPORT
+        // DOCX → mammoth via extractReportText(); anything else stamps
+        // 'unsupported' (the WHERE in extractPendingPdfText shouldn't even
+        // surface these rows, but we re-check defensively).
+        const policy = classifyExtraction(row.filename, row.file_type);
+        if (!policy.method) {
+            await _safeMark(pool, row, {
+                status: 'unsupported',
+                preview: null,
+                charCount: 0,
+                full: null
+            }, log);
+            return;
+        }
+
         let buffer;
         try {
             buffer = await downloadObject(r2Client, r2Bucket, row.r2_key);
@@ -481,15 +517,45 @@ async function _processOnePdf(pool, r2Client, r2Bucket, row, pdfParse, log) {
             return;
         }
 
-        let parsed;
-        try {
-            parsed = await pdfParse(buffer);
-        } catch (e) {
-            await _markFailed(pool, row, 'pdf_parse_failed', e, log);
-            return;
+        // Run the right parser. extractReportText is total (never throws)
+        // — failures are returned as { ok:false, error }. pdf-parse keeps
+        // its existing path so we don't change PDF behaviour at all.
+        let raw;
+        if (policy.method === 'pdf-parse') {
+            let parsed;
+            try {
+                parsed = await pdfParse(buffer);
+            } catch (e) {
+                await _markFailed(pool, row, 'pdf_parse_failed', e, log);
+                return;
+            }
+            raw = (parsed.text || '').replace(/\s+\n/g, '\n');
+        } else {
+            // mammoth / mammoth-legacy
+            const result = await extractReportText(buffer, row.filename, row.file_type);
+            if (!result.ok) {
+                if (result.error === 'legacy_doc_unsupported') {
+                    await _safeMark(pool, row, {
+                        status: 'unsupported',
+                        preview: null,
+                        charCount: 0,
+                        full: null
+                    }, log);
+                    return;
+                }
+                if (result.error === 'empty_docx_or_unreadable') {
+                    raw = '';   // falls through to the empty-text branch
+                } else {
+                    await _markFailed(pool, row,
+                        'docx_extract_failed:' + result.error,
+                        new Error(result.error || 'unknown'), log);
+                    return;
+                }
+            } else {
+                raw = result.text;
+            }
         }
 
-        const raw = (parsed.text || '').replace(/\s+\n/g, '\n');
         // Sanitize before ANY DB write — strips NUL (which Postgres rejects
         // under UTF-8) and replaces other ASCII control chars with spaces so
         // word boundaries survive. If the result is empty we mark the file
