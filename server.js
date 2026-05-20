@@ -16,13 +16,39 @@ const archiver = require('archiver');
 
 // R2 (S3-compatible) SDK
 const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, CopyObjectCommand } = require('@aws-sdk/client-s3');
+
+// ── Defensive startup protections ──────────────────────────────────────────
+// Railway reports "Application failed to respond" whenever the Node process
+// dies. The portal runs many optional subsystems (Zoe assistant, PubMed
+// cache, Telegram, R2, memory rebuild, file indexing) that do async work; a
+// single unhandled rejection or an idle pg-Pool connection error would
+// otherwise crash the whole portal. Log and stay up — degrade gracefully.
+process.on('unhandledRejection', (reason) => {
+    console.error('[STARTUP] Unhandled promise rejection (ignored, server stays up):',
+        reason && reason.stack ? reason.stack : reason);
+});
+process.on('uncaughtException', (err) => {
+    console.error('[STARTUP] Uncaught exception (ignored, server stays up):',
+        err && err.stack ? err.stack : err);
+});
+
 const app = express();
 const PORT = process.env.PORT || 8080;
 
 // Database connection
+if (!process.env.DATABASE_URL) {
+    console.warn('[STARTUP] WARNING: DATABASE_URL is not set — DB-backed routes will fail until it is configured.');
+}
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false }
+});
+// pg emits an 'error' event on idle clients when Railway/Postgres drops a
+// connection. With no listener Node treats it as an uncaught exception and
+// the process crashes. Log it and let the pool recycle the connection.
+pool.on('error', (err) => {
+    console.error('[STARTUP] Postgres pool error on idle client (recovered):',
+        err && err.message ? err.message : err);
 });
 
 // Middleware
@@ -24785,7 +24811,21 @@ reportThreadModule.ensureSchemaFor(pool).catch(e =>
 );
 
 app.listen(PORT, "0.0.0.0", async () => {
-    console.log("[STARTUP] Server listening on port " + PORT);
+    console.log(`[STARTUP] Server listening on 0.0.0.0:${PORT} — port bound OK`);
+
+    // DB connectivity probe — non-blocking, never crashes the server.
+    try {
+        await pool.query('SELECT 1');
+        console.log('[STARTUP] DB connected');
+    } catch (e) {
+        console.warn('[STARTUP] DB connection failed (server still up, DB routes will retry):', e.message);
+    }
+
+    // R2 storage status — optional subsystem, client is created lazily.
+    console.log(r2Enabled()
+        ? '[STARTUP] R2 storage configured'
+        : '[STARTUP] R2 storage not configured (file routes degrade gracefully)');
+
     // Safety check: warn if any di_submissions row has no r2_object_key
     try {
         const nullKeyRows = await pool.query(
@@ -24800,6 +24840,8 @@ app.listen(PORT, "0.0.0.0", async () => {
     } catch (e) {
         console.warn("[STARTUP] Storage check skipped (DB not ready):", e.message);
     }
+
+    console.log('[STARTUP] startup complete — portal ready');
 });
 
 

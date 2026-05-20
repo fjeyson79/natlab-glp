@@ -33,49 +33,57 @@ module.exports = function assistantStatusRouter(pool) {
             const workspaceId = wsRow.rows[0].id;
             const workspaceSlug = wsRow.rows[0].slug;
 
+            // Each count is isolated: a missing table or partial subsystem
+            // failure degrades that single metric to 0 instead of failing
+            // the whole endpoint. The status route must always return safely.
+            const safeCount = async (sql) => {
+                try {
+                    const r = await pool.query(sql, [workspaceId]);
+                    return r.rows[0].c;
+                } catch (err) {
+                    console.warn('[ASSISTANT] status: count query degraded to 0:', err.message);
+                    return 0;
+                }
+            };
+
             const [activeProjects, pending, revision, recent, last30] = await Promise.all([
-                pool.query(
+                safeCount(
                     `SELECT COUNT(*)::int AS c
                        FROM rd_projects
                       WHERE workspace_id = $1
-                        AND status NOT IN ('archived','completed')`,
-                    [workspaceId]
+                        AND status NOT IN ('archived','completed')`
                 ),
-                pool.query(
+                safeCount(
                     `SELECT COUNT(*)::int AS c
                        FROM di_submissions
                       WHERE workspace_id = $1
-                        AND status = 'PENDING'`,
-                    [workspaceId]
+                        AND status = 'PENDING'`
                 ),
-                pool.query(
+                safeCount(
                     `SELECT COUNT(*)::int AS c
                        FROM di_submissions
                       WHERE workspace_id = $1
-                        AND status = 'REVISION_NEEDED'`,
-                    [workspaceId]
+                        AND status = 'REVISION_NEEDED'`
                 ),
-                pool.query(
+                safeCount(
                     `SELECT COUNT(*)::int AS c
                        FROM rd_documents
                       WHERE workspace_id = $1
-                        AND created_at >= NOW() - INTERVAL '7 days'`,
-                    [workspaceId]
+                        AND created_at >= NOW() - INTERVAL '7 days'`
                 ),
-                pool.query(
+                safeCount(
                     `SELECT COUNT(*)::int AS c
                        FROM rd_documents
                       WHERE workspace_id = $1
-                        AND created_at >= NOW() - INTERVAL '30 days'`,
-                    [workspaceId]
+                        AND created_at >= NOW() - INTERVAL '30 days'`
                 )
             ]);
 
             const summary = {
-                active_projects: activeProjects.rows[0].c,
-                pending_glp_items: pending.rows[0].c,
-                revision_needed: revision.rows[0].c,
-                recent_uploads: recent.rows[0].c
+                active_projects: activeProjects,
+                pending_glp_items: pending,
+                revision_needed: revision,
+                recent_uploads: recent
             };
 
             const attention = [];
@@ -87,7 +95,7 @@ module.exports = function assistantStatusRouter(pool) {
                 const n = summary.revision_needed;
                 attention.push(`${n} ${n === 1 ? 'item requires' : 'items require'} revision`);
             }
-            if (last30.rows[0].c === 0) {
+            if (last30 === 0) {
                 attention.push('Low recent activity in workspace');
             }
 
