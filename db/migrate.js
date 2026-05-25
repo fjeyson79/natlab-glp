@@ -1276,6 +1276,16 @@ async function migrate() {
             `CREATE INDEX IF NOT EXISTS idx_di_submissions_thread_parent
                 ON di_submissions (report_parent_submission_id) WHERE report_parent_submission_id IS NOT NULL`,
 
+            // Migration 072 — PAPER metadata on assistant_file_index. The
+            // sibling .sql in migrations_legacy_sql_runner/ only runs when
+            // ENABLE_SQL_MIGRATIONS=1, which Railway does not set, so the
+            // columns are inlined here too. All idempotent (IF NOT EXISTS).
+            `ALTER TABLE assistant_file_index ADD COLUMN IF NOT EXISTS pmid         TEXT`,
+            `ALTER TABLE assistant_file_index ADD COLUMN IF NOT EXISTS doi          TEXT`,
+            `ALTER TABLE assistant_file_index ADD COLUMN IF NOT EXISTS paper_title  TEXT`,
+            `CREATE INDEX IF NOT EXISTS idx_afi_pmid ON assistant_file_index (pmid) WHERE pmid IS NOT NULL`,
+            `CREATE INDEX IF NOT EXISTS idx_afi_doi  ON assistant_file_index (doi)  WHERE doi  IS NOT NULL`,
+
         ];
 
         for (const sql of migrations) {

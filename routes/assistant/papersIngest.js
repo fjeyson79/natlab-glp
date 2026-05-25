@@ -45,6 +45,24 @@ module.exports = function papersIngestRouter(pool, deps) {
         throw new Error('papersIngestRouter: missing deps.uploadToR2');
     }
 
+    // Column-presence cache. pmid/doi/paper_title are added by migration 072
+    // (inlined in db/migrate.js). If the deploy ran before the migration we
+    // gracefully omit those columns from INSERT/SELECT so ingest still works
+    // — pmid/doi/paper_title come back NULL in the response on that path.
+    let _paperColsReady = null;
+    async function paperColsReady() {
+        if (_paperColsReady !== null) return _paperColsReady;
+        try {
+            const r = await pool.query(`
+                SELECT COUNT(*)::int AS n
+                  FROM information_schema.columns
+                 WHERE table_name='assistant_file_index'
+                   AND column_name IN ('pmid','doi','paper_title')`);
+            _paperColsReady = (r.rows[0].n >= 3);
+        } catch { _paperColsReady = false; }
+        return _paperColsReady;
+    }
+
     const upload = multer({
         storage: multer.memoryStorage(),
         limits:  { fileSize: MAX_BYTES },
@@ -145,44 +163,55 @@ module.exports = function papersIngestRouter(pool, deps) {
             //
             // text_status is forced to 'pending' so the next extractor pass
             // (run inline below) picks it up. pmid/doi/paper_title are set
-            // from the form fields when provided; the inline extractor's
-            // COALESCE-UPDATE will only fill them if they're still NULL,
-            // so user-supplied values always win.
+            // from the form fields when migration 072 columns exist; the
+            // inline extractor's COALESCE-UPDATE will only fill them if
+            // they're still NULL, so user-supplied values always win.
+            const hasPaperCols = await paperColsReady();
+            const baseCols   = `workspace_slug, r2_key, filename, file_ext, file_type,
+                                researcher_code, researcher_name, affiliation, year,
+                                source_area, topic, mime_type, size_bytes,
+                                text_status`;
+            const baseVals   = `$1, $2, $3, 'pdf', 'PAPER',
+                                $4, $5, $6, $7,
+                                'papers', $8, 'application/pdf', $9,
+                                'pending'`;
+            const baseUpdate = `workspace_slug   = EXCLUDED.workspace_slug,
+                                filename         = EXCLUDED.filename,
+                                file_type        = 'PAPER',
+                                researcher_code  = EXCLUDED.researcher_code,
+                                researcher_name  = EXCLUDED.researcher_name,
+                                affiliation      = EXCLUDED.affiliation,
+                                year             = EXCLUDED.year,
+                                source_area      = 'papers',
+                                topic            = EXCLUDED.topic,
+                                mime_type        = 'application/pdf',
+                                size_bytes       = EXCLUDED.size_bytes,
+                                text_status      = 'pending',
+                                indexed_at       = NOW()`;
+            const paperColsSql   = hasPaperCols ? `, pmid, doi, paper_title` : '';
+            const paperValsSql   = hasPaperCols ? `, $10, $11, $12`         : '';
+            const paperUpdateSql = hasPaperCols
+                ? `,
+                                pmid             = COALESCE(EXCLUDED.pmid, assistant_file_index.pmid),
+                                doi              = COALESCE(EXCLUDED.doi,  assistant_file_index.doi),
+                                paper_title      = COALESCE(EXCLUDED.paper_title, assistant_file_index.paper_title)`
+                : '';
+            const insertParams = hasPaperCols
+                ? [workspaceSlug, r2Key, safeName,
+                   researcherCode, roster.name || null, roster.affiliation || null, year,
+                   title, file.buffer.length,
+                   pmid, doi, title]
+                : [workspaceSlug, r2Key, safeName,
+                   researcherCode, roster.name || null, roster.affiliation || null, year,
+                   title, file.buffer.length];
+
             const ins = await pool.query(
-                `INSERT INTO assistant_file_index
-                    (workspace_slug, r2_key, filename, file_ext, file_type,
-                     researcher_code, researcher_name, affiliation, year,
-                     source_area, topic, mime_type, size_bytes,
-                     text_status, pmid, doi, paper_title)
-                 VALUES
-                    ($1, $2, $3, 'pdf', 'PAPER',
-                     $4, $5, $6, $7,
-                     'papers', $8, 'application/pdf', $9,
-                     'pending', $10, $11, $12)
+                `INSERT INTO assistant_file_index (${baseCols}${paperColsSql})
+                 VALUES (${baseVals}${paperValsSql})
                  ON CONFLICT (r2_key) DO UPDATE SET
-                     workspace_slug   = EXCLUDED.workspace_slug,
-                     filename         = EXCLUDED.filename,
-                     file_type        = 'PAPER',
-                     researcher_code  = EXCLUDED.researcher_code,
-                     researcher_name  = EXCLUDED.researcher_name,
-                     affiliation      = EXCLUDED.affiliation,
-                     year             = EXCLUDED.year,
-                     source_area      = 'papers',
-                     topic            = EXCLUDED.topic,
-                     mime_type        = 'application/pdf',
-                     size_bytes       = EXCLUDED.size_bytes,
-                     text_status      = 'pending',
-                     pmid             = COALESCE(EXCLUDED.pmid, assistant_file_index.pmid),
-                     doi              = COALESCE(EXCLUDED.doi,  assistant_file_index.doi),
-                     paper_title      = COALESCE(EXCLUDED.paper_title, assistant_file_index.paper_title),
-                     indexed_at       = NOW()
+                     ${baseUpdate}${paperUpdateSql}
                  RETURNING id`,
-                [
-                    workspaceSlug, r2Key, safeName,
-                    researcherCode, roster.name || null, roster.affiliation || null, year,
-                    title, file.buffer.length,
-                    pmid, doi, title
-                ]
+                insertParams
             );
             const fileId = ins.rows[0].id;
 
@@ -212,13 +241,17 @@ module.exports = function papersIngestRouter(pool, deps) {
 
             // Re-fetch the row so the response reflects post-extraction
             // state (text_status, text_char_count, and any newly detected
-            // pmid/doi/paper_title).
+            // pmid/doi/paper_title). pmid/doi/paper_title columns are
+            // conditional on migration 072.
+            const paperSelectCols = hasPaperCols
+                ? `, pmid, doi, paper_title`
+                : `, NULL::text AS pmid, NULL::text AS doi, NULL::text AS paper_title`;
             const finalR = await pool.query(
                 `SELECT id, r2_key, filename, file_type, workspace_slug,
                         researcher_code, researcher_name, affiliation, year,
                         text_status, text_char_count, text_extracted_at,
-                        pmid, doi, paper_title,
                         size_bytes, indexed_at
+                        ${paperSelectCols}
                    FROM assistant_file_index WHERE id = $1`,
                 [fileId]
             );
