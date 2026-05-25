@@ -86,6 +86,9 @@ module.exports = function reportThreadRouter(pool, deps) {
                 `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS report_reopened_at TIMESTAMPTZ`,
                 `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS report_discarded_at TIMESTAMPTZ`,
                 `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS is_discarded BOOLEAN DEFAULT FALSE`,
+                // NOTE thread rows have no file → allow NULL filename/key.
+                // Idempotent: succeeds whether or not the column was NOT NULL.
+                `ALTER TABLE di_submissions ALTER COLUMN original_filename DROP NOT NULL`,
                 `ALTER TABLE di_submissions DROP CONSTRAINT IF EXISTS di_submissions_report_thread_role_check`,
                 `ALTER TABLE di_submissions ADD CONSTRAINT di_submissions_report_thread_role_check
                     CHECK (report_thread_role IS NULL OR report_thread_role IN (
@@ -381,12 +384,8 @@ module.exports = function reportThreadRouter(pool, deps) {
                 return res.status(409).json({ error: 'Thread is closed/approved. Re-open before uploading new revisions.' });
             }
 
-            const file = req.file;
-            if (!file) return res.status(400).json({ error: 'No file uploaded' });
-            if (file.size > 20 * 1024 * 1024) return res.status(400).json({ error: 'File exceeds 20 MB limit' });
-
-            // Role validation. Default differs by caller: PI → PI_ANNOTATED_VERSION,
-            // student → STUDENT_REVISED_VERSION.
+            // Role validation FIRST — file requirement depends on role.
+            // PI → PI_ANNOTATED_VERSION default, student → STUDENT_REVISED_VERSION.
             let role = (req.body.role || '').toString().trim().toUpperCase();
             if (!role) role = piMode ? 'PI_ANNOTATED_VERSION' : 'STUDENT_REVISED_VERSION';
             if (!ALL_ROLES.has(role)) {
@@ -399,21 +398,33 @@ module.exports = function reportThreadRouter(pool, deps) {
             if (!allowed.has(role)) {
                 return res.status(403).json({ error: 'Role not allowed for this caller', allowed: Array.from(allowed) });
             }
+            const isNote = (role === 'NOTE');
 
             const comment = (req.body.comment || '').toString().trim() || null;
             const replaceFinal = ['1', 'true', 'yes'].includes(
                 (req.body.replace_final || '').toString().trim().toLowerCase()
             );
 
+            // NOTE rows carry a comment only — no file, no R2 object. Any
+            // file accidentally attached is ignored to keep the artifact
+            // shape clean (no "fake file" rows on the thread).
+            const file = isNote ? null : req.file;
+            if (!isNote && !file) return res.status(400).json({ error: 'No file uploaded' });
+            if (isNote && !comment) return res.status(400).json({ error: 'Comment is required for a note' });
+            if (file && file.size > 20 * 1024 * 1024) return res.status(400).json({ error: 'File exceeds 20 MB limit' });
+
+            const uploaderId = user.researcher_id || 'pi';
             // R2 key. Same prefix shape as /api/di/upload-report keeps R2
             // navigable by reviewers ("REPORT" sub-prefix groups thread files).
-            const year = new Date().getFullYear();
-            const dateStamp = new Date().toISOString().slice(0, 10);
-            const safeOriginal = (file.originalname || 'revision.pdf').replace(/[^\w.\-]+/g, '_');
-            const uploaderId = user.researcher_id || 'pi';
-            const key = `di/${root.affiliation}/Submitted/${year}/REPORT/${rootId.slice(0,8)}/${dateStamp}_${uploaderId}_${role}_${safeOriginal}`;
-
-            await uploadToR2(file.buffer, key, file.mimetype || 'application/octet-stream');
+            // NOTE rows skip the R2 upload entirely.
+            let key = null;
+            if (!isNote) {
+                const year = new Date().getFullYear();
+                const dateStamp = new Date().toISOString().slice(0, 10);
+                const safeOriginal = (file.originalname || 'revision.pdf').replace(/[^\w.\-]+/g, '_');
+                key = `di/${root.affiliation}/Submitted/${year}/REPORT/${rootId.slice(0,8)}/${dateStamp}_${uploaderId}_${role}_${safeOriginal}`;
+                await uploadToR2(file.buffer, key, file.mimetype || 'application/octet-stream');
+            }
 
             // Identify the parent (most recent prior submission in the thread)
             const last = await pool.query(
@@ -445,7 +456,7 @@ module.exports = function reportThreadRouter(pool, deps) {
                  RETURNING submission_id`,
                 [
                     uploaderId, root.affiliation,
-                    file.originalname, key,
+                    isNote ? null : file.originalname, key,
                     root.workspace_id,
                     rootId, parentId,
                     role, root.report_thread_status || 'OPEN', comment,
@@ -484,9 +495,10 @@ module.exports = function reportThreadRouter(pool, deps) {
             }
 
             // Best-effort: run report intelligence on the new revision.
-            // Failure is logged but never affects the response.
+            // Failure is logged but never affects the response. NOTE rows
+            // have no buffer/filename, so intelligence is skipped.
             let intelOutcome = { extraction_status: 'skipped', extraction_error: null };
-            if (reportIntelligence && typeof reportIntelligence.run === 'function') {
+            if (!isNote && reportIntelligence && typeof reportIntelligence.run === 'function') {
                 try {
                     intelOutcome = await reportIntelligence.run(
                         { pool },
@@ -669,6 +681,9 @@ module.exports.ensureSchemaFor = function ensureSchemaFor(pool) {
                 `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS report_reopened_at TIMESTAMPTZ`,
                 `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS report_discarded_at TIMESTAMPTZ`,
                 `ALTER TABLE di_submissions ADD COLUMN IF NOT EXISTS is_discarded BOOLEAN DEFAULT FALSE`,
+                // NOTE thread rows have no file → allow NULL filename/key.
+                // Idempotent: succeeds whether or not the column was NOT NULL.
+                `ALTER TABLE di_submissions ALTER COLUMN original_filename DROP NOT NULL`,
                 `ALTER TABLE di_submissions DROP CONSTRAINT IF EXISTS di_submissions_report_thread_role_check`,
                 `ALTER TABLE di_submissions ADD CONSTRAINT di_submissions_report_thread_role_check
                     CHECK (report_thread_role IS NULL OR report_thread_role IN (

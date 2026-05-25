@@ -4740,7 +4740,7 @@ app.get('/api/di/lab-files-enriched', requirePIRead, async (req, res) => {
         const workspaceId = req.workspace.id;
 
         // Implementation note: structured for easy future extension with ?researcher_id=
-        const conditions = ['s.created_at >= NOW() - make_interval(months => $1)', "s.status != 'DISCARDED'", 's.workspace_id = $2'];
+        const conditions = ['s.created_at >= NOW() - make_interval(months => $1)', "s.status != 'DISCARDED'", 's.workspace_id = $2', "COALESCE(s.report_thread_role,'') <> 'NOTE'"];
         const params = [months, workspaceId];
 
         const whereClause = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
@@ -5083,6 +5083,7 @@ app.get('/api/di/vision/files', requireAuth, async (req, res) => {
             ${presCountJoin}
             WHERE s.researcher_id = $1 AND s.status NOT IN ('DISCARDED', 'ARCHIVED')
               AND s.workspace_id = $2
+              AND COALESCE(s.report_thread_role,'') <> 'NOTE'
             ORDER BY s.created_at DESC
         `, [targetResearcherId, workspaceId]);
 

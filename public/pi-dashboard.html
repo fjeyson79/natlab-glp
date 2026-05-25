@@ -6232,7 +6232,9 @@ function dicInitEmbedModeFromUrl() {
                             <div class="rt-rev-meta">${rtEscape(rev.uploader_name || rev.researcher_id || '')} &middot; ${rtEscape(dt)}</div>
                         </div>
                         <div style="margin-top:6px;font-size:13px;color:#0f172a;word-break:break-word;">
-                            ${rtEscape(rev.filename || '')}
+                            ${rev.role === 'NOTE'
+                                ? '<span style="font-style:italic;color:#64748b;">Note (no file)</span>'
+                                : rtEscape(rev.filename || '')}
                         </div>
                         ${rev.comment ? '<div class="rt-rev-comment">' + rtEscape(rev.comment) + '</div>' : ''}
                         <div class="rt-rev-actions">
@@ -6289,6 +6291,7 @@ function dicInitEmbedModeFromUrl() {
                 const com  = document.getElementById('rtPiComment').value;
                 const msg  = document.getElementById('rtPiUploadMsg');
                 if (role !== 'NOTE' && !f) { msg.textContent = 'Select a file (or pick role=Note).'; msg.style.color='#b91c1c'; return; }
+                if (role === 'NOTE' && !com.trim()) { msg.textContent = 'Comment is required for a note.'; msg.style.color='#b91c1c'; return; }
                 msg.textContent = 'Uploading...'; msg.style.color='#475569';
                 btn.disabled = true;
                 try {
