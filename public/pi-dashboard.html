@@ -6259,7 +6259,7 @@ function dicInitEmbedModeFromUrl() {
                             <option value="OTHER">Other</option>
                         </select>
                     </div>
-                    <div class="rt-form-row">
+                    <div class="rt-form-row" id="rtPiFileRow">
                         <label>File (PDF / DOC / DOCX, max 20 MB)</label>
                         <input type="file" id="rtPiFile" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
                     </div>
@@ -6283,20 +6283,45 @@ function dicInitEmbedModeFromUrl() {
         }
 
         function rtBindUploadForm(rootId) {
-            const btn = document.getElementById('rtPiUploadBtn');
-            if (!btn) return;
+            const btn      = document.getElementById('rtPiUploadBtn');
+            const roleSel  = document.getElementById('rtPiRole');
+            const fileRow  = document.getElementById('rtPiFileRow');
+            const fileInp  = document.getElementById('rtPiFile');
+            const commentT = document.getElementById('rtPiComment');
+            const msg      = document.getElementById('rtPiUploadMsg');
+            if (!btn || !roleSel) return;
+
+            // NOTE is a dedicated comment-only action; hide the file row and
+            // swap the button label so the PI sees a distinct "Send note"
+            // affordance rather than the file-upload one.
+            function syncUi() {
+                const role    = roleSel.value;
+                const isNote  = (role === 'NOTE');
+                const isFinal = (role === 'FINAL_REPORT');
+                if (fileRow) fileRow.style.display = isNote ? 'none' : '';
+                if (fileInp && isNote) fileInp.value = '';
+                if (commentT) commentT.placeholder = isNote
+                    ? 'Required: note for the researcher'
+                    : 'Optional comment for the researcher';
+                btn.textContent = isNote ? 'Send note' : (isFinal ? 'Upload final' : 'Upload revision');
+                btn.setAttribute('aria-label', btn.textContent);
+            }
+            roleSel.onchange = syncUi;
+            syncUi();
+
             btn.onclick = async () => {
-                const role = document.getElementById('rtPiRole').value;
-                const f    = document.getElementById('rtPiFile').files[0];
-                const com  = document.getElementById('rtPiComment').value;
-                const msg  = document.getElementById('rtPiUploadMsg');
-                if (role !== 'NOTE' && !f) { msg.textContent = 'Select a file (or pick role=Note).'; msg.style.color='#b91c1c'; return; }
-                if (role === 'NOTE' && !com.trim()) { msg.textContent = 'Comment is required for a note.'; msg.style.color='#b91c1c'; return; }
-                msg.textContent = 'Uploading...'; msg.style.color='#475569';
+                const role   = roleSel.value;
+                const isNote = (role === 'NOTE');
+                const f      = fileInp ? fileInp.files[0] : null;
+                const com    = commentT ? commentT.value : '';
+                if (!isNote && !f) { msg.textContent = 'Select a file (or pick role=Note).'; msg.style.color='#b91c1c'; return; }
+                if (isNote && !com.trim()) { msg.textContent = 'Comment is required for a note.'; msg.style.color='#b91c1c'; return; }
+                msg.textContent = isNote ? 'Sending note...' : 'Uploading...'; msg.style.color='#475569';
                 btn.disabled = true;
                 try {
                     const fd = new FormData();
-                    if (f) fd.append('file', f);
+                    // NOTE never carries a file even if one is somehow attached.
+                    if (!isNote && f) fd.append('file', f);
                     fd.append('role', role);
                     if (com) fd.append('comment', com);
                     const r = await fetch('/api/di/report-thread/' + encodeURIComponent(rootId) + '/upload-revision', {
@@ -6304,11 +6329,13 @@ function dicInitEmbedModeFromUrl() {
                     });
                     const j = await r.json().catch(() => ({}));
                     if (!r.ok) {
-                        msg.textContent = j.error || 'Upload failed';
+                        msg.textContent = j.error || (isNote ? 'Note failed' : 'Upload failed');
                         msg.style.color = '#b91c1c';
                     } else {
-                        msg.textContent = 'Uploaded';
+                        msg.textContent = isNote ? 'Note sent.' : 'Uploaded';
                         msg.style.color = '#15803d';
+                        if (commentT) commentT.value = '';
+                        if (fileInp)  fileInp.value  = '';
                         await rtOpenThread(rootId);
                         rtRefreshActiveList();
                     }
