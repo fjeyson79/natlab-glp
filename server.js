@@ -24785,6 +24785,9 @@ app.use('/api/assistant/files',       require('./routes/assistant/files')(pool, 
     extractor: require('./services/assistantFileExtractor'),
 }));
 app.use('/api/assistant/researchers', require('./routes/assistant/researchers')(pool));
+// Advisory v2 — mounted on the same prefix as researchers.js. Express picks
+// the route by path pattern (:id/report vs :id/advisory), so no collision.
+app.use('/api/assistant/researchers', require('./routes/assistant/advisory')(pool));
 app.use('/api/assistant/attention',   require('./routes/assistant/attention')(pool));
 app.use('/api/assistant/sessions',    require('./routes/assistant/sessions')(pool));
 app.use('/api/assistant/viewer',      require('./routes/assistant/viewer')(pool));
