@@ -24796,6 +24796,14 @@ app.use('/api/assistant/review-queue', require('./routes/assistant/reviewQueue')
 app.use('/api/assistant/activity',    require('./routes/assistant/activity')(pool));
 app.use('/api/assistant/reports',     require('./routes/assistant/reports')(pool));
 app.use('/api/assistant/memory',      require('./routes/assistant/memory')(pool, { requirePI }));
+// PAPER ingestion — token-gated (NATLAB_PI_TOKEN), called from the VPS
+// runner script. Reuses uploadToR2 + the existing indexer's extractor.
+app.use('/api/assistant/papers',      require('./routes/assistant/papersIngest')(pool, {
+    uploadToR2,
+    r2Client: r2Enabled() ? getR2Client() : null,
+    r2Bucket: process.env.R2_BUCKET || null,
+    indexer:  require('./services/assistantFileIndexer'),
+}));
 
 // REPORT thread workflow (migration 070). Mounted last so existing
 // /api/di/* routes (upload, upload-report, my-files etc.) keep priority.
