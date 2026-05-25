@@ -512,6 +512,22 @@ module.exports = function assistantFilesRouter(pool, deps) {
         const code = String(req.params.code || '').trim().toUpperCase();
         if (!code) return res.status(400).json({ error: 'researcher code is required' });
 
+        // Migration 072 adds PAPER metadata columns (pmid, doi, paper_title).
+        // Probe presence so this endpoint stays compatible with pre-072
+        // deploys — when absent, these fields come back as null on every row.
+        let paperColsReady = false;
+        try {
+            const pc = await pool.query(`
+                SELECT COUNT(*)::int AS n
+                  FROM information_schema.columns
+                 WHERE table_name='assistant_file_index'
+                   AND column_name IN ('pmid','doi','paper_title')`);
+            paperColsReady = (pc.rows[0].n >= 3);
+        } catch { paperColsReady = false; }
+        const paperCols = paperColsReady
+            ? `, i.pmid, i.doi, i.paper_title`
+            : `, NULL::text AS pmid, NULL::text AS doi, NULL::text AS paper_title`;
+
         try {
             // LATERAL join exposes rd_documents.id (when the file is also in
             // the R&D path), so callers can hand it to open_file_in_portal.
@@ -520,7 +536,8 @@ module.exports = function assistantFilesRouter(pool, deps) {
                         i.researcher_code, i.researcher_name, i.affiliation,
                         i.year, i.date_detected, i.status, i.source_area, i.topic,
                         i.text_status, i.text_preview, i.text_char_count,
-                        i.indexed_at,
+                        i.indexed_at
+                        ${paperCols},
                         d.id AS portal_file_id
                    FROM assistant_file_index i
                    LEFT JOIN LATERAL (
@@ -544,7 +561,7 @@ module.exports = function assistantFilesRouter(pool, deps) {
                 const t = row.file_type || 'UNTYPED';
                 byYearType[y] = byYearType[y] || {};
                 byYearType[y][t] = byYearType[y][t] || [];
-                byYearType[y][t].push({
+                const item = {
                     id:                 row.id,
                     filename:           row.filename,
                     r2_key:             row.r2_key,
@@ -555,7 +572,16 @@ module.exports = function assistantFilesRouter(pool, deps) {
                     portal_file_id:     row.portal_file_id || null,
                     can_open_in_portal: !!row.portal_file_id,
                     indexed_at:         row.indexed_at ? new Date(row.indexed_at).toISOString() : null
-                });
+                };
+                // PAPER-only enrichment. Other rows omit these fields entirely
+                // so callers can branch on (file_type === 'PAPER') without
+                // having to null-check every row.
+                if (row.file_type === 'PAPER') {
+                    item.pmid        = row.pmid        || null;
+                    item.doi         = row.doi         || null;
+                    item.paper_title = row.paper_title || null;
+                }
+                byYearType[y][t].push(item);
             }
             res.json({
                 researcher_code: code,
@@ -809,7 +835,7 @@ module.exports = function assistantFilesRouter(pool, deps) {
                   WHERE s.workspace_id  = $1
                     AND s.researcher_id = $2
                     AND s.status <> 'DISCARDED'
-                    AND s.file_type IN ('DATA', 'SOP', 'PRESENTATION', 'REPORT')
+                    AND s.file_type IN ('DATA', 'SOP', 'PRESENTATION', 'REPORT', 'PAPER')
                     ${reportFilter}
                   ORDER BY s.created_at DESC NULLS LAST`,
                 [workspaceId, code]
@@ -818,7 +844,7 @@ module.exports = function assistantFilesRouter(pool, deps) {
 
             // Aggregate by year -> file_type -> [files].
             const grouped = {};
-            const byType = { DATA: 0, SOP: 0, PRESENTATION: 0, REPORT: 0 };
+            const byType = { DATA: 0, SOP: 0, PRESENTATION: 0, REPORT: 0, PAPER: 0 };
             for (const row of rows) {
                 const filename = row.original_filename || null;
                 const lname = (filename || '').toLowerCase();
@@ -929,7 +955,7 @@ module.exports = function assistantFilesRouter(pool, deps) {
                 researcher_name: researcherName,
                 affiliation:     researcherAff,
                 source:          'di_submissions',
-                counted_file_types: ['DATA', 'SOP', 'PRESENTATION', 'REPORT'],
+                counted_file_types: ['DATA', 'SOP', 'PRESENTATION', 'REPORT', 'PAPER'],
                 // REPORT was added in migration 067; /api/assistant/activity
                 // intentionally still excludes REPORT so performance counters
                 // are unchanged.
@@ -939,7 +965,8 @@ module.exports = function assistantFilesRouter(pool, deps) {
                     DATA:         byType.DATA,
                     SOP:          byType.SOP,
                     PRESENTATION: byType.PRESENTATION,
-                    REPORT:       byType.REPORT
+                    REPORT:       byType.REPORT,
+                    PAPER:        byType.PAPER
                 },
                 index_enrichment:    idxReady,
                 report_enrichment:   reportColsReady,

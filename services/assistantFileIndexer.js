@@ -77,6 +77,46 @@ function sanitizeExtractedText(value) {
 }
 
 // ------------------------------------------------------------------------
+// Paper metadata detection (PAPER file_type only)
+// ------------------------------------------------------------------------
+// Heuristic, best-effort. Runs only when text extraction succeeds for a
+// PAPER row. Each field is independent — a PDF can yield (DOI, no PMID)
+// or (PMID, no title). All three end up NULL if nothing matches.
+//
+// Detection scope is the first ~8000 chars of extracted text — covers the
+// front matter on virtually every paper while keeping the regex sweep cheap.
+function detectPaperMetadata(text) {
+    if (!text) return { pmid: null, doi: null, paper_title: null };
+    const head = String(text).slice(0, 8000);
+
+    // PMID: "PMID: 12345678" or "PubMed ID 12345678". 6–9 digits covers
+    // PubMed's id range; longer matches are rejected as false positives.
+    const pmidM = head.match(/\bPMID[\s:]+(\d{6,9})\b/i)
+               || head.match(/\bPubMed\s*ID[\s:]+(\d{6,9})\b/i);
+    const pmid = pmidM ? pmidM[1] : null;
+
+    // DOI: canonical form 10.<reg>/<suffix>. Trailing punctuation is
+    // stripped — DOIs often appear as "...10.1234/foo." in body text.
+    const doiM = head.match(/\b10\.\d{4,9}\/[-._;()\/:A-Z0-9]+/i);
+    let doi = doiM ? doiM[0].replace(/[.,;)]+$/, '') : null;
+
+    // Paper title: first plausible line in the head — long enough to be a
+    // real title, short enough to not be a paragraph, not a known section
+    // header or boilerplate line.
+    let paper_title = null;
+    const lines = head.split(/[\r\n]+/).map(l => l.trim()).filter(Boolean);
+    for (const line of lines.slice(0, 25)) {
+        if (line.length < 20 || line.length > 300) continue;
+        if (/^(abstract|introduction|methods?|results?|discussion|conclusions?|references|keywords?|background)$/i.test(line)) continue;
+        if (/^(downloaded from|https?:|www\.|received|accepted|published|copyright|©|doi[\s:]|pmid[\s:]|vol\.|volume\s+\d|issue\s+\d|\d{4}\s*;\s*\d)/i.test(line)) continue;
+        paper_title = line;
+        break;
+    }
+
+    return { pmid, doi, paper_title };
+}
+
+// ------------------------------------------------------------------------
 // Workspace + source-area mapping
 // ------------------------------------------------------------------------
 // parseR2Path() returns the raw first segment as `organization`. For
@@ -590,6 +630,28 @@ async function _processOnePdf(pool, r2Client, r2Bucket, row, pdfParse, log) {
                 full: fullClipped
             });
             _job.counts.text_ready += 1;
+            // PAPER-only: best-effort PMID/DOI/title detection. Stored on
+            // the index row via a follow-up UPDATE so the main _markText
+            // transaction stays simple and non-PAPER files pay nothing.
+            // Try/catch swallows missing-column errors when migration 072
+            // hasn't been applied yet — extraction itself still succeeds.
+            if (row.file_type === 'PAPER') {
+                const meta = detectPaperMetadata(sanitized);
+                if (meta.pmid || meta.doi || meta.paper_title) {
+                    try {
+                        await pool.query(
+                            `UPDATE assistant_file_index
+                                SET pmid        = COALESCE($1, pmid),
+                                    doi         = COALESCE($2, doi),
+                                    paper_title = COALESCE($3, paper_title)
+                              WHERE id = $4`,
+                            [meta.pmid, meta.doi, meta.paper_title, row.id]
+                        );
+                    } catch (e) {
+                        log.warn && log.warn('[INDEXER] paper-meta update skipped for', row.r2_key, '—', e.message);
+                    }
+                }
+            }
         } catch (e) {
             // Sanitization should have prevented this, but if a DB write
             // still fails (constraint violation, transient pool error,
@@ -722,4 +784,6 @@ module.exports = {
     // Phase 2 — reused by services/assistantFileExtractor for the per-page
     // sanitization pass. Same helper, single source of truth.
     sanitizeExtractedText,
+    // PAPER metadata extractor — exposed for unit testing only.
+    detectPaperMetadata,
 };
