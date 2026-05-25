@@ -470,6 +470,22 @@ async function gvInit() {
         document.getElementById('gvUserName').textContent = gvUser.name || gvUser.researcher_id;
         document.getElementById('gvUserRole').textContent = gvUser.role || 'Researcher';
 
+        // PI-only REPORT scope pill: archival visibility for approved reports.
+        // Researchers/supervisors never see this — keeps the upload-side
+        // approval flow unaffected.
+        if (gvUser.role === 'pi') {
+            const pills = document.querySelector('.gv-scope-pills');
+            const allPill = pills && pills.querySelector('[data-scope=""]');
+            if (pills && allPill && !pills.querySelector('[data-scope="REPORT"]')) {
+                const reportPill = document.createElement('span');
+                reportPill.className = 'gv-scope-pill';
+                reportPill.setAttribute('data-scope', 'REPORT');
+                reportPill.setAttribute('onclick', 'gvSetScope(this)');
+                reportPill.textContent = 'REPORT';
+                pills.insertBefore(reportPill, allPill);
+            }
+        }
+
         gvRenderScopeList();
         await gvLoadFiles();
         gvLoadNextMeeting();
