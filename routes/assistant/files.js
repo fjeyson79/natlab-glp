@@ -126,6 +126,7 @@ module.exports = function assistantFilesRouter(pool, deps) {
             'file_type',
             'status',
             'workspace',
+            'ws',
             'indexed',
         ];
         const hasNewParams = NEW_PARAM_KEYS.some(k => Object.prototype.hasOwnProperty.call(req.query, k));
@@ -1582,13 +1583,19 @@ module.exports = function assistantFilesRouter(pool, deps) {
                     match_reasons:      reasons
                 };
             });
+            // Response carries both shapes so callers built against the
+            // legacy /search contract (best_match + alternatives) keep
+            // working after the 'ws' routing fix above sends them here.
             res.json({
                 workspace_slug: filters.workspace_slug,
+                workspace:      filters.workspace_slug,
                 query:          q || null,
                 search_scope:   scope,
                 filters,
                 count:          results.length,
-                results
+                results,
+                best_match:     results[0] || null,
+                alternatives:   results.slice(1)
             });
         } catch (err) {
             // Surface the FULL pg error context so prod logs let us
