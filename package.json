@@ -7,7 +7,7 @@
     "start": "node db/migrate.js && node server.js",
     "migrate": "node db/migrate.js",
     "seed": "node db/seed.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --test test/*.test.js"
   },
   "keywords": [],
   "author": "",

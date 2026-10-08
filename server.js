@@ -13,6 +13,7 @@ const fetch = require('node-fetch');
 const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
 const { Readable } = require('stream');
 const archiver = require('archiver');
+const { normalizeEmail, isEmailAllowedForAffiliation, affiliationDomainError } = require('./server/institution_email');
 
 // R2 (S3-compatible) SDK
 const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, CopyObjectCommand } = require('@aws-sdk/client-s3');
@@ -3718,14 +3719,11 @@ app.post('/api/di/members', requirePI, async (req, res) => {
             return res.status(400).json({ error: 'Affiliation must be LiU, UNAV, or EXTERNAL' });
         }
 
-        const emailLower = institution_email.toLowerCase().trim();
+        const emailLower = normalizeEmail(institution_email);
 
-        // Domain validation for LIU and UNAV
-        if (affiliation === 'LiU' && !emailLower.endsWith('@liu.se')) {
-            return res.status(400).json({ error: 'LiU affiliation requires @liu.se email' });
-        }
-        if (affiliation === 'UNAV' && !emailLower.endsWith('@unav.es') && !emailLower.endsWith('@alumni.unav.es')) {
-            return res.status(400).json({ error: 'UNAV affiliation requires @unav.es or @alumni.unav.es email' });
+        // Domain validation for LIU and UNAV (exact domain match)
+        if (!isEmailAllowedForAffiliation(emailLower, affiliation)) {
+            return res.status(400).json({ error: affiliationDomainError(affiliation) });
         }
 
         // Validate researcher_id (required)
