@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 
 const BASELINE_FILE_MIGRATION_VERSION = 28;
+const { DI_SUBMISSIONS_FILE_TYPE_CHECK_SQL } = require('../server/di_submission_types');
 // If schema_migrations is empty, we assume historical migrations were applied via inline SQL list.
 // We therefore mark files <= BASELINE as already applied to avoid re-applying them.
 
@@ -139,8 +140,8 @@ async function migrate() {
             `ALTER TABLE di_submissions ALTER COLUMN file_type TYPE VARCHAR(20)`,
             `ALTER TABLE di_submissions ALTER COLUMN affiliation TYPE VARCHAR(20)`,
 
-            `ALTER TABLE di_submissions DROP CONSTRAINT IF EXISTS di_submissions_file_type_check`,
-            `ALTER TABLE di_submissions ADD CONSTRAINT di_submissions_file_type_check CHECK (file_type IN ('SOP', 'DATA', 'INVENTORY', 'PRESENTATION'))`,
+            // Atomic DROP + ADD with the shared type list (server/di_submission_types.js)
+            DI_SUBMISSIONS_FILE_TYPE_CHECK_SQL,
 
             // Extend di_submissions status CHECK to include SUBMITTED (canonical GLP wording; PENDING is legacy for SOP/DATA)
             `ALTER TABLE di_submissions DROP CONSTRAINT IF EXISTS di_submissions_status_check`,
@@ -427,13 +428,16 @@ async function migrate() {
             `CREATE INDEX IF NOT EXISTS idx_di_glp_cohort_members_cohort ON di_glp_cohort_members(cohort_id)`,
             `CREATE INDEX IF NOT EXISTS idx_di_glp_cohort_members_user ON di_glp_cohort_members(user_id)`,
 
-            // Backfill cohort membership from di_allowlist (active members only)
+            // Backfill cohort membership from di_allowlist (active members only).
+            // Initial seed only: runs when the cohort table is empty, so later boots
+            // never auto-include new members — inclusion is a PI decision.
             `INSERT INTO di_glp_cohort_members (cohort_id, user_id, included, updated_by)
              SELECT
                  CASE WHEN a.affiliation = 'LiU' THEN 'LIU' ELSE 'UNAV' END,
                  a.researcher_id, TRUE, 'system-migration'
              FROM di_allowlist a
              WHERE a.active = TRUE AND a.affiliation IS NOT NULL
+               AND NOT EXISTS (SELECT 1 FROM di_glp_cohort_members)
              ON CONFLICT (cohort_id, user_id) DO NOTHING`,
 
             // ==================== GLP GROUP WEEKLY STATUS ====================
@@ -1226,9 +1230,7 @@ async function migrate() {
             // runtime widener and avoid breaking historical rows in any of
             // those categories). Idempotent: re-running the migration just
             // re-asserts the same definition.
-            `ALTER TABLE di_submissions DROP CONSTRAINT IF EXISTS di_submissions_file_type_check`,
-            `ALTER TABLE di_submissions ADD CONSTRAINT di_submissions_file_type_check
-                CHECK (file_type IN ('SOP','DATA','INVENTORY','PRESENTATION','REPORT','DOCS','PRES'))`,
+            DI_SUBMISSIONS_FILE_TYPE_CHECK_SQL,
 
             // ==================== MIGRATION 070 — REPORT thread model ====================
             // Adds thread-state columns to di_submissions, plus a one-shot
@@ -1288,7 +1290,7 @@ async function migrate() {
 
         ];
 
-        for (const sql of migrations) {
+        for (const [i, sql] of migrations.entries()) {
             try {
                 await pool.query(sql);
                 console.log('  OK:', sql.substring(0, 60) + '...');
@@ -1297,6 +1299,9 @@ async function migrate() {
                     // Column already exists, ignore
                     console.log('  SKIP (exists):', sql.substring(0, 50) + '...');
                 } else {
+                    // Identify the failing statement in glp_migration_state.last_error_text
+                    const snippet = sql.replace(/\s+/g, ' ').trim().substring(0, 120);
+                    err.message = `inline migration #${i} of ${migrations.length} failed (${snippet}): ${err.message}`;
                     throw err;
                 }
             }

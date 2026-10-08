@@ -14,6 +14,8 @@ const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
 const { Readable } = require('stream');
 const archiver = require('archiver');
 const { normalizeEmail, isEmailAllowedForAffiliation, affiliationDomainError } = require('./server/institution_email');
+const { assessMigrationState } = require('./server/migration_status');
+const { DI_SUBMISSIONS_FILE_TYPE_CHECK_SQL } = require('./server/di_submission_types');
 
 // R2 (S3-compatible) SDK
 const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, CopyObjectCommand } = require('@aws-sdk/client-s3');
@@ -393,12 +395,14 @@ app.use('/di', express.static(path.join(__dirname, 'public')));
 app.use(express.static(path.join(__dirname, 'public')));
 
   // Health check endpoint
+let migrationsOk = null; // set at startup from glp_migration_state; null = not checked
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
     service: 'natlab-glp',
     storage: 'r2',
+    migrations_ok: migrationsOk,
     git: {
       sha: process.env.RAILWAY_GIT_COMMIT_SHA || null,
       branch: process.env.RAILWAY_GIT_BRANCH || null
@@ -19239,12 +19243,12 @@ let _diConstraintsWidened = null;
 async function ensureDiSubmissionsConstraints() {
     if (_diConstraintsWidened !== null) return _diConstraintsWidened;
     try {
-        // Widen affiliation to include THERALIA
-        await pool.query(`ALTER TABLE di_submissions DROP CONSTRAINT IF EXISTS di_submissions_affiliation_check`);
-        await pool.query(`ALTER TABLE di_submissions ADD CONSTRAINT di_submissions_affiliation_check CHECK (affiliation IN ('LiU', 'UNAV', 'EXTERNAL', 'THERALIA'))`);
-        // Widen file_type to include R&D categories
-        await pool.query(`ALTER TABLE di_submissions DROP CONSTRAINT IF EXISTS di_submissions_file_type_check`);
-        await pool.query(`ALTER TABLE di_submissions ADD CONSTRAINT di_submissions_file_type_check CHECK (file_type IN ('SOP', 'DATA', 'INVENTORY', 'PRESENTATION', 'REPORT', 'DOCS', 'PRES'))`);
+        // Widen affiliation to include THERALIA (atomic DROP + ADD: a failed ADD keeps the old constraint)
+        await pool.query(`ALTER TABLE di_submissions
+            DROP CONSTRAINT IF EXISTS di_submissions_affiliation_check,
+            ADD CONSTRAINT di_submissions_affiliation_check CHECK (affiliation IN ('LiU', 'UNAV', 'EXTERNAL', 'THERALIA'))`);
+        // Widen file_type to include R&D categories (shared list, atomic)
+        await pool.query(DI_SUBMISSIONS_FILE_TYPE_CHECK_SQL);
         // Widen r2_object_key from VARCHAR(100) to TEXT (migration 050)
         await pool.query(`ALTER TABLE di_submissions ALTER COLUMN r2_object_key TYPE TEXT`);
         _diConstraintsWidened = true;
@@ -24849,6 +24853,22 @@ app.listen(PORT, "0.0.0.0", async () => {
         }
     } catch (e) {
         console.warn("[STARTUP] Storage check skipped (DB not ready):", e.message);
+    }
+
+    // Migration status — db/migrate.js never blocks startup, so surface failures here.
+    try {
+        const r = await pool.query(
+            'SELECT last_success_at, last_error_at, last_error_text FROM glp_migration_state WHERE id = 1'
+        );
+        const status = assessMigrationState(r.rows[0]);
+        migrationsOk = status.ok;
+        if (status.ok) {
+            console.log('[STARTUP] Migrations OK:', status.reason);
+        } else {
+            console.error('[STARTUP] MIGRATIONS INCOMPLETE — schema may be out of date:', status.reason);
+        }
+    } catch (e) {
+        console.warn('[STARTUP] Migration status check skipped:', e.message);
     }
 
     console.log('[STARTUP] startup complete — portal ready');
