@@ -8376,8 +8376,7 @@ function dicRenderInternalDocs(items) {
 }
 
 function dicOpenInternalDoc(key) {
-    const token = btoa(key + '_glp_2024_sec').replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
-    const fileUrl = "/api/internal-docs/open?key=" + encodeURIComponent(key) + "&token=" + token + "#pagemode=none&zoom=page-width";
+    const fileUrl = "/api/internal-docs/open?key=" + encodeURIComponent(key) + "#pagemode=none&zoom=page-width";
 
     dicSelectedInternalKey = key;
     dicRenderInternalDocs(dicInternalDocsItems);

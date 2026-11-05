@@ -583,6 +583,33 @@ function zoeRetiredHandler(req, res) {
 }
 app.use(['/api/assistant', '/api/zoe', '/api/telegram/webhook'], zoeRetiredHandler);
 
+// R1b-1: document access.
+// - /api/di/download/:id now REQUIRES a logged-in session or a valid API key
+//   (enforced). API-key access is kept temporarily for automation compatibility
+//   (no active n8n workflow fetches this route); review/restrict in R1b-2.
+// - Finer ownership / role / workspace rules (server/docAccess.js) run in SHADOW
+//   mode: decisions are logged ([R1B-ACCESS]) but not enforced until R1b-2.
+const docGuards = require('./server/docAccess').makeGuards(pool);
+function r1bRequireDownloadAuth(req, res, next) {
+    if (req.session && req.session.user) return next();
+    const provided = String(req.headers['x-api-key'] || '').trim();
+    const expected = String(process.env.API_SECRET_KEY || '').trim();
+    if (provided && expected) {
+        const a = Buffer.from(provided), b = Buffer.from(expected);
+        if (a.length === b.length && r1crypto.timingSafeEqual(a, b)) {
+            console.log('[R1B-ACCESS] route=di-download decision=allow rule=api_key role=api actor=api-key doc=' + String(req.params.id || '').slice(0, 40));
+            return next();
+        }
+    }
+    console.log('[R1B-ACCESS] route=di-download decision=deny rule=login_required role=anonymous actor=- doc=' + String(req.params.id || '').slice(0, 40));
+    if (String(req.headers.accept || '').includes('text/html')) {
+        return res.status(401).send(renderHtmlPage('Login required',
+            '<p>Please log in to the NAT-Lab portal, then open this link again.</p>' +
+            '<p><a href="/di/login.html" style="color:#007bff;">Go to login</a></p>', 'info'));
+    }
+    return res.status(401).json({ error: 'Not authenticated' });
+}
+
 // CSO MIDDLEWARE - requires workspace_position = CSO (InvestRoom update mode)
 async function requireCSO(req, res, next) {
     if (!req.session.user) {
@@ -3153,7 +3180,7 @@ app.get('/api/di/verify/:code', async (req, res) => {
 });
 
 // GET /api/di/download/:id
-app.get('/api/di/download/:id', async (req, res) => {
+app.get('/api/di/download/:id', r1bRequireDownloadAuth, docGuards.submission, async (req, res) => {
     const { id } = req.params;
     const { download } = req.query;
 
@@ -4309,7 +4336,7 @@ app.get('/api/di/sop-inventory', requireAuth, async (req, res) => {
 
 // GET /api/di/group-documents/:id/download
 // Download a group document
-app.get('/api/di/group-documents/:id/download', requireAuth, async (req, res) => {
+app.get('/api/di/group-documents/:id/download', requireAuth, docGuards.groupDocument, async (req, res) => {
     try {
         const { id } = req.params;
         const user = req.session.user;
@@ -7235,7 +7262,7 @@ app.get('/api/system-versions/:id/files', requireAuth, async (req, res) => {
 });
 
 // --- GET /api/system-versions/:id/download/:fileType ---
-app.get('/api/system-versions/:id/download/:fileType', requireAuth, async (req, res) => {
+app.get('/api/system-versions/:id/download/:fileType', requireAuth, docGuards.systemVersion, async (req, res) => {
   try {
     if (!await checkSystemVersionsTable()) return res.status(503).json({ error: 'System versions table not available' });
     const { rows } = await pool.query('SELECT * FROM system_versions WHERE id = $1', [req.params.id]);
@@ -10818,7 +10845,7 @@ app.put('/api/di/training/documents/:id/activate', requirePI, async (req, res) =
 });
 
 // --- View document version PDF (stream from R2) ---
-app.get('/api/di/training/document-versions/:versionId/view', requireAuth, async (req, res) => {
+app.get('/api/di/training/document-versions/:versionId/view', requireAuth, docGuards.trainingDocumentVersion, async (req, res) => {
     try {
         if (!(await checkTrainingTables())) return res.status(501).json({ error: 'Training tables not available' });
         const v = await pool.query('SELECT r2_object_key, original_filename FROM di_training_document_versions WHERE id = $1', [req.params.versionId]);
@@ -11406,7 +11433,7 @@ app.post('/api/di/training/packs/:id/revise', requirePIorCap('revise'), async (r
 });
 
 // --- Download sealed certificate ---
-app.get('/api/di/training/certificate/:packId', requireAuth, async (req, res) => {
+app.get('/api/di/training/certificate/:packId', requireAuth, docGuards.trainingCertificate, async (req, res) => {
     try {
         if (!(await checkTrainingTables())) return res.status(501).json({ error: 'Training tables not available' });
         const pack = await pool.query(
@@ -14445,15 +14472,8 @@ app.post('/api/internal-docs/restore', requirePI, async (req, res) => {
   }
 });
 
-// 7. GET /api/internal-docs/open  (PI session OR token)
-app.get('/api/internal-docs/open', (req, res, next) => {
-  const { token, key } = req.query;
-  if (token && key) {
-    const expected = Buffer.from(key + '_glp_2024_sec').toString('base64').replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
-    if (token === expected) return next();
-  }
-  requirePI(req, res, next);
-}, async (req, res) => {
+// 7. GET /api/internal-docs/open  (R1b-1: PI or AI-bot session only; computable token removed)
+app.get('/api/internal-docs/open', requirePIRead, async (req, res) => {
   try {
     const { key } = req.query;
     if (!key || !key.startsWith(INTDOC_PREFIX)) return res.status(400).json({ error: 'Invalid key' });
@@ -14471,10 +14491,9 @@ app.get('/api/internal-docs/open', (req, res, next) => {
     res.status(500).json({ error: 'Failed to open document' });
   }
 });
-  // 7b. GET /api/internal-docs/openb64/:k/:token  (PI session OR token)
-  // k is base64url-encoded internal-docs key, token is derived from key
+  // 7b. GET /api/internal-docs/openb64/:k/:token  (R1b-1: PI or AI-bot session only;
+  // the :token segment is ignored — the computable token no longer grants access)
   app.get('/api/internal-docs/openb64/:k/:token', (req, res, next) => {
-    const token = req.params.token || '';
     let key = '';
     try {
       const b64 = (req.params.k || '').replace(/-/g, '+').replace(/_/g, '/');
@@ -14485,13 +14504,7 @@ app.get('/api/internal-docs/open', (req, res, next) => {
       // Pass decoded key to handler for both token and PI session paths
       req.query.key = key;
 
-    if (token && key) {
-      const expected = Buffer.from(key + '_glp_2024_sec').toString('base64').replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
-      if (token === expected) {
-          return next();
-      }
-    }
-    requirePI(req, res, next);
+    requirePIRead(req, res, next);
   }, async (req, res) => {
     try {
       const key = req.query.key;
@@ -19171,7 +19184,7 @@ app.post('/api/company/documents/:sectionKey/upload', requireAuth, requireInvest
 });
 
 // GET download document
-app.get('/api/company/documents/:id/download', requireAuth, requireInvestorTab('company'), async (req, res) => {
+app.get('/api/company/documents/:id/download', requireAuth, requireInvestorTab('company'), docGuards.companyDocument, async (req, res) => {
     try {
         if (!(await checkCompanyTables())) return res.status(503).json({ error: 'Not available' });
         const doc = await pool.query(
@@ -19689,7 +19702,7 @@ app.post('/api/rd/projects/:projectId/documents', requireAuth, requireInvestorTa
     }
 });
 
-app.get('/api/rd/documents/:id/download', requireAuth, requireInvestorTab('rnd'), async (req, res) => {
+app.get('/api/rd/documents/:id/download', requireAuth, requireInvestorTab('rnd'), docGuards.rdDocument, async (req, res) => {
     try {
         if (!(await checkRdTables())) return res.status(404).json({ error: 'Not found' });
         const doc = await pool.query(`SELECT r2_key, filename, file_type FROM rd_documents WHERE id=$1`, [req.params.id]);
@@ -21161,7 +21174,7 @@ app.get('/api/theralia/board-meetings/:id/files', requireAuth, async (req, res) 
 });
 
 // GET /api/theralia/board-meeting-files/:fileId/view — stream PDF for inline viewing
-app.get('/api/theralia/board-meeting-files/:fileId/view', requireAuth, async (req, res) => {
+app.get('/api/theralia/board-meeting-files/:fileId/view', requireAuth, docGuards.boardMeetingFile, async (req, res) => {
     try {
         if (!(await checkBmFilesTable())) return res.status(404).json({ error: 'Not found' });
         const r = await pool.query(
@@ -22310,7 +22323,7 @@ app.post('/api/investroom/boxes/:id/files', requireCSO, irBoxUpload.single('file
 });
 
 // GET /api/investroom/files/:fileId/download — Download a box file (any authenticated user with access)
-app.get('/api/investroom/files/:fileId/download', requireAuth, async (req, res) => {
+app.get('/api/investroom/files/:fileId/download', requireAuth, docGuards.investroomFile, async (req, res) => {
     try {
         if (!(await checkIrTables())) return res.status(503).json({ error: 'Migration not applied' });
         const result = await pool.query(
@@ -22814,7 +22827,7 @@ app.post('/api/theralia/inventory/strategic-assets/:id/files', requireAuth, ther
     } catch (err) { console.error('[TH-INV] asset-file upload error:', err.message); res.status(500).json({ error: 'Upload failed' }); }
 });
 
-app.get('/api/theralia/inventory/asset-files/:fileId/download', requireAuth, async (req, res) => {
+app.get('/api/theralia/inventory/asset-files/:fileId/download', requireAuth, docGuards.assetFile, async (req, res) => {
     try {
         if (!(await checkTheraliaAssetFilesTable())) return res.status(503).json({ error: 'Not ready' });
         const r = await pool.query(
