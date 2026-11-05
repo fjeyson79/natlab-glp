@@ -84,7 +84,9 @@
         const params = new URLSearchParams(window.location.search);
         const action = params.get('action');
         const file = params.get('file') || 'document.pdf';
-        const id = params.get('id');
+        // R1: only accept a UUID so the id can never inject HTML into the links below.
+        const rawId = params.get('id') || '';
+        const id = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawId) ? rawId : null;
 
         const icon = document.getElementById('icon');
         const title = document.getElementById('title');

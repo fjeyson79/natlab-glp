@@ -409,67 +409,7 @@ app.get('/health', (req, res) => {
     }
   });
 });
-// Debug endpoint to check members (temporary - for troubleshooting)
-app.get('/api/di/debug-members', async (req, res) => {
-    try {
-        // Check session
-        const sessionInfo = {
-            hasSession: !!req.session,
-            hasUser: !!req.session?.user,
-            userRole: req.session?.user?.role || 'none',
-            userName: req.session?.user?.name || 'none'
-        };
-
-        // Check database connection
-        const dbTest = await pool.query('SELECT 1 as test');
-
-        // Check role column
-        const columnCheck = await pool.query(`
-            SELECT column_name FROM information_schema.columns
-            WHERE table_name = 'di_allowlist' AND column_name = 'role'
-        `);
-        const hasRoleColumn = columnCheck.rows.length > 0;
-
-        // Get all members
-        let members;
-        if (hasRoleColumn) {
-            members = await pool.query(
-                `SELECT researcher_id, name, institution_email, affiliation,
-                        COALESCE(role, 'researcher') as role, active
-                 FROM di_allowlist
-                 ORDER BY role DESC, name ASC`
-            );
-        } else {
-            members = await pool.query(
-                `SELECT researcher_id, name, institution_email, affiliation,
-                        'researcher' as role, active
-                 FROM di_allowlist
-                 ORDER BY name ASC`
-            );
-        }
-
-        res.json({
-            success: true,
-            session: sessionInfo,
-            database: {
-                connected: true,
-                hasRoleColumn: hasRoleColumn
-            },
-            members: {
-                total: members.rows.length,
-                active: members.rows.filter(m => m.active).length,
-                list: members.rows
-            }
-        });
-
-    } catch (err) {
-        res.status(500).json({
-            success: false,
-            error: err.message,
-            stack: err.stack
-        });
-    }
-});
+// R1: removed unauthenticated /api/di/debug-members (exposed all member names/emails).
 
 // AUTH MIDDLEWARE
 function requireAuth(req, res, next) {
@@ -555,6 +495,97 @@ function requirePIorCap(capName) {
         return res.status(403).json({ error: 'Access denied. PI role required.' });
     };
 }
+
+// ============================================================================
+// R1 SECURITY HELPERS
+// ----------------------------------------------------------------------------
+// - requireSameOrigin : blocks cross-site browser writes (session cookie is
+//                       SameSite=None, so CSRF must be enforced server-side).
+// - r1IssueCsrfToken / r1CheckCsrfToken : session-bound synchronizer token for
+//                       the email-link confirmation forms.
+// - requirePIPage     : strict PI-only guard for HTML (email-link) pages.
+//                       ai_bot is NOT allowed here, regardless of capabilities.
+// - assistantGuard    : session-only guard for /api/assistant/* (papers keeps
+//                       its own bearer-token check).
+// ============================================================================
+const r1crypto = require('crypto');
+const R1_TRUSTED_ORIGIN_HOSTS = new Set(['natlab-glp-production.up.railway.app']);
+const R1_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function r1EscapeHtml(value) {
+    return String(value === undefined || value === null ? '' : value).replace(/[&<>"'`]/g, ch => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '`': '&#96;'
+    }[ch]));
+}
+
+function requireSameOrigin(req, res, next) {
+    const method = req.method;
+    if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return next();
+    const host = String(req.get('host') || '').toLowerCase();
+    const origin = req.get('origin');
+    const fetchSite = String(req.get('sec-fetch-site') || '').toLowerCase();
+    let reason = null;
+    if (origin !== undefined) {
+        let originHost = null;
+        try { originHost = new URL(origin).host.toLowerCase(); } catch (_) { originHost = null; }
+        if (!originHost || (originHost !== host && !R1_TRUSTED_ORIGIN_HOSTS.has(originHost))) reason = 'origin';
+    }
+    if (!reason && fetchSite && fetchSite !== 'same-origin' && fetchSite !== 'none') reason = 'sec-fetch-site';
+    if (reason) {
+        console.warn(`[R1-SAMEORIGIN] blocked ${method} ${req.originalUrl.split('?')[0]} reason=${reason} ` +
+            `origin=${origin === undefined ? '-' : String(origin).slice(0, 100)} fetch-site=${fetchSite || '-'}`);
+        return res.status(403).json({ error: 'Cross-site request blocked' });
+    }
+    next();
+}
+
+function r1IssueCsrfToken(req) {
+    if (typeof req.session.r1CsrfToken !== 'string') {
+        req.session.r1CsrfToken = r1crypto.randomBytes(32).toString('base64url');
+    }
+    return req.session.r1CsrfToken;
+}
+
+function r1CheckCsrfToken(req) {
+    const expected = req.session && req.session.r1CsrfToken;
+    const provided = req.body && req.body._csrf;
+    if (typeof expected !== 'string' || typeof provided !== 'string') return false;
+    const a = Buffer.from(expected);
+    const b = Buffer.from(provided);
+    return a.length === b.length && r1crypto.timingSafeEqual(a, b);
+}
+
+function requirePIPage(req, res, next) {
+    const u = req.session && req.session.user;
+    if (!u) {
+        return res.status(401).send(renderHtmlPage('Login required',
+            '<p>Please log in to the NAT-Lab portal as PI, then open this link again.</p>' +
+            '<p><a href="/di/login.html" style="color:#007bff;">Go to login</a></p>', 'info'));
+    }
+    if (u.role !== 'pi') {
+        return res.status(403).send(renderHtmlPage('Access denied',
+            '<p>Only the PI can approve or request revisions from this link.</p>', 'error'));
+    }
+    next();
+}
+
+function r1LogAction(req, action, submissionId, outcome) {
+    const u = (req.session && req.session.user) || {};
+    console.log(`[R1-AUDIT] action=${action} submission=${submissionId} outcome=${outcome} ` +
+        `actor=${u.researcher_id || '-'} role=${u.role || '-'} ip=${req.ip || '-'}`);
+}
+
+function assistantGuard(req, res, next) {
+    if (req.path === '/papers' || req.path.startsWith('/papers/')) return next();
+    const u = req.session && req.session.user;
+    if (!u) return res.status(401).json({ error: 'Not authenticated' });
+    const isRead = req.method === 'GET' || req.method === 'HEAD';
+    const allowed = isRead ? (u.role === 'pi' || u.role === 'ai_bot') : (u.role === 'pi');
+    if (!allowed) return res.status(403).json({ error: 'Access denied. PI role required.' });
+    next();
+}
+// Mounted here (before any /api/assistant route is registered) so it runs first.
+app.use('/api/assistant', assistantGuard);
 
 // CSO MIDDLEWARE - requires workspace_position = CSO (InvestRoom update mode)
 async function requireCSO(req, res, next) {
@@ -3419,88 +3450,150 @@ async function performRevision(submissionId, comments) {
     return { success: true, filename: submission.original_filename };
 }
 
-// GET /api/di/approve/:id - R2 only, no Drive (token-based)
-app.get('/api/di/approve/:id', async (req, res) => {
+// ─── R1: Email-link approval / revision (confirmation flow) ───────────────────
+// GET  pages NEVER change state. The legacy ?token= parameter is ignored.
+// POST actions require: same-origin request + logged-in PI (role 'pi' only;
+// ai_bot is not accepted on this flow) + session-bound CSRF token.
+// The actual work is done by the unchanged performApproval / performRevision.
+function r1SetPageHeaders(res) {
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Content-Security-Policy', "frame-ancestors 'none'");
+    res.setHeader('Referrer-Policy', 'no-referrer');
+}
+
+async function r1LoadSubmissionForPage(req, res) {
     const { id } = req.params;
-    const { token } = req.query;
+    if (!R1_UUID_RE.test(String(id || ''))) {
+        res.status(404).send(renderHtmlPage('Not found', '<p>Submission not found.</p>', 'error'));
+        return null;
+    }
+    const r = await pool.query(
+        'SELECT submission_id, original_filename, researcher_id, file_type, status, r2_object_key FROM di_submissions WHERE submission_id = $1',
+        [id]
+    );
+    if (r.rows.length === 0) {
+        res.status(404).send(renderHtmlPage('Not found', '<p>Submission not found.</p>', 'error'));
+        return null;
+    }
+    return r.rows[0];
+}
+
+function r1ConfirmPage(title, sub, formHtml) {
+    return `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>${r1EscapeHtml(title)} - NATLAB GLP</title></head>
+<body style="font-family:Arial;background:linear-gradient(135deg,#1a365d,#2d5a87);min-height:100vh;display:flex;justify-content:center;align-items:center;margin:0;">
+<div style="background:white;padding:40px;border-radius:10px;max-width:520px;width:90%;">
+<h1 style="color:#1a365d;">${r1EscapeHtml(title)}</h1>
+<p>File: <strong>${r1EscapeHtml(sub.original_filename)}</strong></p>
+<p>Researcher: <strong>${r1EscapeHtml(sub.researcher_id)}</strong> &nbsp; Type: <strong>${r1EscapeHtml(sub.file_type)}</strong></p>
+<p>Status: <strong>${r1EscapeHtml(sub.status)}</strong></p>
+<p style="color:#555;font-size:13px;">Submission ID: ${r1EscapeHtml(sub.submission_id)}</p>
+${formHtml}
+</div>
+</body>
+</html>`;
+}
+
+// GET /api/di/approve/:id — confirmation page only (no state change)
+app.get('/api/di/approve/:id', requirePIPage, async (req, res) => {
+    r1SetPageHeaders(res);
     try {
-        if (!token) return res.status(400).send(renderHtmlPage('Error', 'Missing token', 'error'));
-        const expectedToken = Buffer.from(id + '_glp_2024_sec').toString('base64').replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
-        if (token !== expectedToken) return res.status(403).send(renderHtmlPage('Invalid Token', 'Link invalid or expired.', 'error'));
-
-        const result = await performApproval(id);
-        if (!result.success) {
-            const tpl = result.status === 409 ? 'info' : 'error';
-            return res.status(result.status || 500).send(renderHtmlPage('Error', result.error, tpl));
+        const sub = await r1LoadSubmissionForPage(req, res);
+        if (!sub) return;
+        if (sub.status === 'APPROVED' || sub.status === 'DISCARDED' || !normalizeR2Key(sub.r2_object_key)) {
+            return res.status(409).send(renderHtmlPage('Not available',
+                `<p>This submission cannot be approved (status: ${r1EscapeHtml(sub.status)}).</p>`, 'info'));
         }
-
-        res.redirect(`/di/action-success.html?action=approved&file=${encodeURIComponent(result.filename)}&id=${id}`);
+        const csrf = r1IssueCsrfToken(req);
+        res.send(r1ConfirmPage('Approve and sign document', sub, `
+<form method="POST" action="/api/di/approve/${r1EscapeHtml(sub.submission_id)}">
+<input type="hidden" name="_csrf" value="${r1EscapeHtml(csrf)}">
+<label style="display:block;margin-bottom:8px;font-weight:bold;">Approval comment (optional):</label>
+<textarea name="approval_comment" style="width:100%;height:90px;padding:10px;border:2px solid #ddd;border-radius:5px;box-sizing:border-box;"></textarea>
+<button type="submit" style="width:100%;padding:15px;background:#28a745;color:white;border:none;border-radius:5px;cursor:pointer;margin-top:15px;font-size:16px;">Approve and sign</button>
+</form>`));
     } catch (err) {
-        console.error('[APPROVE] Error:', err);
-        res.status(500).send(renderHtmlPage('Error', err.message, 'error'));
+        console.error('[APPROVE-PAGE] Error:', err);
+        res.status(500).send(renderHtmlPage('Error', '<p>Server error occurred.</p>', 'error'));
     }
 });
 
-// GET /api/di/revise/:id
-// Browser-based revision request page
-app.get('/api/di/revise/:id', async (req, res) => {
+// POST /api/di/approve/:id — performs the approval (unchanged performApproval)
+app.post('/api/di/approve/:id', requireSameOrigin, requirePIPage, async (req, res) => {
+    r1SetPageHeaders(res);
+    const { id } = req.params;
     try {
-        const { id } = req.params;
-        const { token } = req.query;
-
-        if (!token) {
-            return res.status(400).send(renderHtmlPage('Error', 'Missing token parameter', 'error'));
+        if (!R1_UUID_RE.test(String(id || ''))) {
+            return res.status(404).send(renderHtmlPage('Not found', '<p>Submission not found.</p>', 'error'));
         }
-
-        // Validate token
-        const expectedToken = Buffer.from(id + '_glp_2024_sec').toString('base64').replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
-
-        if (token !== expectedToken) {
-            return res.status(403).send(renderHtmlPage('Invalid Token', 'The revision link is invalid or expired.', 'error'));
+        if (!r1CheckCsrfToken(req)) {
+            r1LogAction(req, 'approve-email-link', id, 'csrf-rejected');
+            return res.status(403).send(renderHtmlPage('Request expired',
+                '<p>The confirmation form is invalid or expired. Please open the approval link again.</p>', 'error'));
         }
+        const approvalComment = typeof req.body.approval_comment === 'string' ? req.body.approval_comment : '';
+        const result = await performApproval(id, approvalComment);
+        r1LogAction(req, 'approve-email-link', id, result.success ? 'approved' : `failed-${result.status || 500}`);
+        if (!result.success) {
+            const tpl = result.status === 409 ? 'info' : 'error';
+            return res.status(result.status || 500).send(renderHtmlPage('Error', r1EscapeHtml(result.error), tpl));
+        }
+        res.redirect(303, `/di/action-success.html?action=approved&file=${encodeURIComponent(result.filename)}&id=${encodeURIComponent(id)}`);
+    } catch (err) {
+        console.error('[APPROVE] Error:', err);
+        res.status(500).send(renderHtmlPage('Error', '<p>Server error occurred.</p>', 'error'));
+    }
+});
 
-        // Show revision form
-        res.send(`<!DOCTYPE html>
-<html>
-<head><title>Request Revision</title></head>
-<body style="font-family:Arial;background:linear-gradient(135deg,#1a365d,#2d5a87);min-height:100vh;display:flex;justify-content:center;align-items:center;margin:0;">
-<div style="background:white;padding:40px;border-radius:10px;max-width:500px;width:90%;">
-<h1 style="color:#1a365d;">Request Revision</h1>
-<p>Submission ID: <strong>${id}</strong></p>
-<form method="POST" action="/api/di/revise/${id}?token=${token}">
+// GET /api/di/revise/:id — revision form only (no state change)
+app.get('/api/di/revise/:id', requirePIPage, async (req, res) => {
+    r1SetPageHeaders(res);
+    try {
+        const sub = await r1LoadSubmissionForPage(req, res);
+        if (!sub) return;
+        if (sub.status === 'DISCARDED') {
+            return res.status(409).send(renderHtmlPage('Not available',
+                '<p>This submission was discarded and cannot be revised.</p>', 'info'));
+        }
+        const csrf = r1IssueCsrfToken(req);
+        res.send(r1ConfirmPage('Request Revision', sub, `
+<form method="POST" action="/api/di/revise/${r1EscapeHtml(sub.submission_id)}">
+<input type="hidden" name="_csrf" value="${r1EscapeHtml(csrf)}">
 <label style="display:block;margin-bottom:8px;font-weight:bold;">Revision Comments:</label>
 <textarea name="comments" required style="width:100%;height:150px;padding:10px;border:2px solid #ddd;border-radius:5px;box-sizing:border-box;" placeholder="Enter your comments for the researcher..."></textarea>
 <button type="submit" style="width:100%;padding:15px;background:#dc3545;color:white;border:none;border-radius:5px;cursor:pointer;margin-top:15px;font-size:16px;">Submit Revision Request</button>
-</form>
-</div>
-</body>
-</html>`);
-
+</form>`));
     } catch (err) {
         console.error('Revise page error:', err);
-        res.status(500).send(renderHtmlPage('Error', 'Server error occurred.', 'error'));
+        res.status(500).send(renderHtmlPage('Error', '<p>Server error occurred.</p>', 'error'));
     }
 });
 
-// POST /api/di/revise/:id - R2 only, no Drive (token-based)
-app.post('/api/di/revise/:id', async (req, res) => {
+// POST /api/di/revise/:id — performs the revision (unchanged performRevision)
+app.post('/api/di/revise/:id', requireSameOrigin, requirePIPage, async (req, res) => {
+    r1SetPageHeaders(res);
     const { id } = req.params;
-    const { token } = req.query;
-    const { comments } = req.body;
     try {
-        if (!token) return res.status(400).send(renderHtmlPage('Error', 'Missing token', 'error'));
-        const expectedToken = Buffer.from(id + '_glp_2024_sec').toString('base64').replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
-        if (token !== expectedToken) return res.status(403).send(renderHtmlPage('Invalid Token', 'Link invalid or expired.', 'error'));
-
-        const result = await performRevision(id, comments);
-        if (!result.success) {
-            return res.status(result.status || 500).send(renderHtmlPage('Error', result.error, 'error'));
+        if (!R1_UUID_RE.test(String(id || ''))) {
+            return res.status(404).send(renderHtmlPage('Not found', '<p>Submission not found.</p>', 'error'));
         }
-
-        res.redirect(`/di/action-success.html?action=revision&file=${encodeURIComponent(result.filename)}&id=${id}`);
+        if (!r1CheckCsrfToken(req)) {
+            r1LogAction(req, 'revise-email-link', id, 'csrf-rejected');
+            return res.status(403).send(renderHtmlPage('Request expired',
+                '<p>The revision form is invalid or expired. Please open the revision link again.</p>', 'error'));
+        }
+        const comments = typeof req.body.comments === 'string' ? req.body.comments : '';
+        const result = await performRevision(id, comments);
+        r1LogAction(req, 'revise-email-link', id, result.success ? 'revision-requested' : `failed-${result.status || 500}`);
+        if (!result.success) {
+            return res.status(result.status || 500).send(renderHtmlPage('Error', r1EscapeHtml(result.error), 'error'));
+        }
+        res.redirect(303, `/di/action-success.html?action=revision&file=${encodeURIComponent(result.filename)}&id=${encodeURIComponent(id)}`);
     } catch (err) {
         console.error('[REVISE] Error:', err);
-        res.status(500).send(renderHtmlPage('Error', err.message, 'error'));
+        res.status(500).send(renderHtmlPage('Error', '<p>Server error occurred.</p>', 'error'));
     }
 });
 
@@ -5322,10 +5415,11 @@ app.delete('/api/di/vision/associations/:id', requireAuth, async (req, res) => {
 });
 
 // POST /api/di/approve-inline/:id — Session-based approval (DIC)
-app.post('/api/di/approve-inline/:id', requirePIorCap('approve'), async (req, res) => {
+app.post('/api/di/approve-inline/:id', requireSameOrigin, requirePIorCap('approve'), async (req, res) => {
     try {
         const { approval_comment } = req.body || {};
         const result = await performApproval(req.params.id, approval_comment);
+        r1LogAction(req, 'approve-inline', req.params.id, result.success ? 'approved' : `failed-${result.status || 500}`);
         if (!result.success) return res.status(result.status || 500).json({ error: result.error });
         res.json({ success: true, verification_code: result.verification_code });
     } catch (err) {
@@ -5335,10 +5429,11 @@ app.post('/api/di/approve-inline/:id', requirePIorCap('approve'), async (req, re
 });
 
 // POST /api/di/revise-inline/:id — Session-based revision (DIC)
-app.post('/api/di/revise-inline/:id', requirePIorCap('revise'), async (req, res) => {
+app.post('/api/di/revise-inline/:id', requireSameOrigin, requirePIorCap('revise'), async (req, res) => {
     try {
         const { comments } = req.body;
         const result = await performRevision(req.params.id, comments);
+        r1LogAction(req, 'revise-inline', req.params.id, result.success ? 'revision-requested' : `failed-${result.status || 500}`);
         if (!result.success) return res.status(result.status || 500).json({ error: result.error });
         res.json({ success: true });
     } catch (err) {
@@ -5348,7 +5443,7 @@ app.post('/api/di/revise-inline/:id', requirePIorCap('revise'), async (req, res)
 });
 
 // POST /api/di/discard-inline/:id — PI discards a submission (final, audit preserved)
-app.post('/api/di/discard-inline/:id', requirePIorCap('discard'), async (req, res) => {
+app.post('/api/di/discard-inline/:id', requireSameOrigin, requirePIorCap('discard'), async (req, res) => {
     try {
         const submissionId = req.params.id;
         const { reason, note } = req.body || {};
@@ -24810,7 +24905,7 @@ app.use('/api/assistant/papers',      require('./routes/assistant/papersIngest')
 // REPORT thread workflow (migration 070). Mounted last so existing
 // /api/di/* routes (upload, upload-report, my-files etc.) keep priority.
 const reportThreadModule = require('./routes/di/reportThread');
-app.use('/api/di/report-thread', reportThreadModule(pool, {
+app.use('/api/di/report-thread', requireSameOrigin, reportThreadModule(pool, {
     uploadToR2,
     reportUploadMulter: reportUpload,
     requireAuth,

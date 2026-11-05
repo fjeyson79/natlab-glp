@@ -6501,8 +6501,7 @@ function dicInitEmbedModeFromUrl() {
             if (comments === null) return;
 
             try {
-                const token = btoa(id + '_glp_2024_sec').replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
-                const response = await fetch(`/api/di/revise/${id}?token=${token}`, {
+                const response = await fetch(`/api/di/revise-inline/${encodeURIComponent(id)}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ comments }),
