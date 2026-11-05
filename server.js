@@ -583,6 +583,17 @@ function zoeRetiredHandler(req, res) {
 }
 app.use(['/api/assistant', '/api/zoe', '/api/telegram/webhook'], zoeRetiredHandler);
 
+// GLP Status retired: every method on these prefixes answers 410 Gone. The
+// backend GLP Status block further down is intentionally left in place but is
+// unreachable behind this handler (it also contains R2 helpers, which are not
+// modified). Historical glp_weekly_status_index, glp_group_weekly_status_index
+// and di_glp_cohort_members tables and records are preserved. /api/rd/glp/*
+// (Theralia per-document GLP views) is a different prefix and is NOT affected.
+function glpStatusRetiredHandler(req, res) {
+    return res.status(410).json({ error: 'GLP Status has been retired' });
+}
+app.use(['/api/glp/status', '/api/glp/cohorts', '/api/di/glp-status'], glpStatusRetiredHandler);
+
 // R1b-1: document access.
 // - /api/di/download/:id now REQUIRES a logged-in session or a valid API key
 //   (enforced). API-key access is kept temporarily for automation compatibility
