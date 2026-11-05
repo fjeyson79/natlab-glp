@@ -3459,7 +3459,7 @@ function r1SetPageHeaders(res) {
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('X-Frame-Options', 'DENY');
     res.setHeader('Content-Security-Policy', "frame-ancestors 'none'");
-    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('Referrer-Policy', 'same-origin');
 }
 
 async function r1LoadSubmissionForPage(req, res) {
