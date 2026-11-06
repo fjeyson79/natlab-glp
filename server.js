@@ -594,6 +594,17 @@ function glpStatusRetiredHandler(req, res) {
 }
 app.use(['/api/glp/status', '/api/glp/cohorts', '/api/di/glp-status'], glpStatusRetiredHandler);
 
+// Module Studio retired: every method on /api/modules answers 410 Gone. The
+// backend Module Studio block further down is intentionally kept unchanged but
+// unreachable behind this handler. The modules, module_toggles,
+// workspace_modules and workspace_module_toggles tables and records are
+// preserved. The core permission system (module_access_json,
+// computeEffectiveAccess, /api/di/user-clearance) is NOT affected.
+function moduleStudioRetiredHandler(req, res) {
+    return res.status(410).json({ error: 'Module Studio has been retired' });
+}
+app.use('/api/modules', moduleStudioRetiredHandler);
+
 // R1b-1: document access.
 // - /api/di/download/:id now REQUIRES a logged-in session or a valid API key
 //   (enforced). API-key access is kept temporarily for automation compatibility
