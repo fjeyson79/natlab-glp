@@ -4507,92 +4507,56 @@ function dicInitEmbedModeFromUrl() {
               } catch {}
           }
 
-          const MTG_SEND_TEST_EMAIL = 'fjhernandezh@unav.es';
-
+          // Group-meeting e-mail: sent by NAT-Lab itself (no n8n). The server picks the
+          // recipients from the meeting's participants; the browser sends no addresses.
           async function mtgSendMeetingEmail(meetingId, btnEl) {
               const origText = btnEl.textContent;
               try {
-                  // 1. Fetch meeting details
-                  const mResp = await fetch('/api/meetings/' + meetingId, { credentials: 'include' });
-                  if (!mResp.ok) throw new Error('Failed to load meeting');
-                  const mData = await mResp.json();
-                  const meeting = mData.meeting;
-                  if (!meeting) throw new Error('Meeting not found');
+                  // 1. Preview from the server (recipient count, missing addresses, form token)
+                  const pResp = await fetch('/api/meetings/' + encodeURIComponent(meetingId) + '/notification-preview', { credentials: 'include' });
+                  const preview = await pResp.json().catch(() => ({}));
+                  if (!pResp.ok) throw new Error(preview.error || 'Failed to load meeting');
+                  if (!preview.email_enabled) throw new Error('E-mail notifications are not configured on the server.');
 
-                  // 2. Fetch members to resolve emails
-                  const memResp = await fetch('/api/di/members', { credentials: 'include' });
-                  if (!memResp.ok) throw new Error('Failed to load members');
-                  const memData = await memResp.json();
-                  const emailMap = {};
-                  (memData.members || []).forEach(m => { emailMap[m.researcher_id] = m.institution_email; });
-
-                  // 3. Build participants with email, check for missing
                   const testMode = document.getElementById('mtgSendTestMode') && document.getElementById('mtgSendTestMode').checked;
-                  const missing = [];
-                  const participants = (meeting.participants || []).map(p => {
-                      const realEmail = emailMap[p.user_id] || '';
-                      if (!realEmail && !testMode) missing.push(p.name || p.user_id);
-                      return {
-                          user_id: p.user_id,
-                          name: p.name || p.user_id,
-                          email: testMode ? MTG_SEND_TEST_EMAIL : realEmail,
-                          slot_type: p.slot_type,
-                          order_position: p.order_position
-                      };
-                  });
-
-                  if (missing.length > 0) {
-                      throw new Error('Missing email for: ' + missing.join(', '));
+                  if (testMode && !preview.test_recipient_configured) throw new Error('No test recipient is configured on the server.');
+                  if (!testMode && preview.missing && preview.missing.length > 0) {
+                      throw new Error('Missing email for: ' + preview.missing.join(', '));
                   }
+                  if (!preview.recipients) throw new Error('This meeting has no participants.');
 
-                  // 4. Confirm dialog
-                  const dateStr = mtgDateStr(meeting.meeting_date);
-                  const timeStr = (meeting.meeting_time || '').slice(0, 5);
-                  const locStr = meeting.location_text || 'No location';
-                  let confirmMsg = 'Send meeting notification?\n\n'
+                  // 2. Confirm dialog
+                  const dateStr = mtgDateStr(preview.meeting_date);
+                  const timeStr = (preview.meeting_time || '').slice(0, 5);
+                  const locStr = preview.location_text || 'No location';
+                  const resend = !testMode && !!preview.notified_at;
+                  let confirmMsg = (resend ? 'Participants were already notified. Send the notification AGAIN?\n\n' : 'Send meeting notification?\n\n')
                       + 'Date: ' + dateStr + '\n'
                       + 'Time: ' + timeStr + '\n'
                       + 'Location: ' + locStr + '\n'
-                      + 'Recipients: ' + participants.length + ' participant(s)\n';
+                      + 'Recipients: ' + preview.recipients + ' participant(s)\n';
                   if (testMode) {
-                      confirmMsg += '\nTEST MODE ON: all emails go to ' + MTG_SEND_TEST_EMAIL;
+                      confirmMsg += '\nTEST MODE ON: all emails go to the configured PI address';
                   }
                   if (!confirm(confirmMsg)) return;
 
-                  // 5. Disable button to prevent double-send
+                  // 3. Disable button to prevent double-send
                   btnEl.disabled = true;
-                  btnEl.textContent = 'Sending\u2026';
+                  btnEl.textContent = 'Sending…';
                   btnEl.style.opacity = '0.7';
                   btnEl.style.cursor = 'default';
 
-                  // 6. POST to n8n webhook
-                  const payload = {
-                      meeting_date: meeting.meeting_date,
-                      meeting_time: meeting.meeting_time,
-                      location_text: meeting.location_text,
-                      participants: participants
-                  };
-                  const whResp = await fetch('https://n8n-production-4d4f.up.railway.app/webhook/meeting-send', {
-                      method: 'POST',
+                  // 4. Ask NAT-Lab to send (marks the meeting as notified only after the e-mail service accepted it)
+                  const sResp = await fetch('/api/meetings/' + encodeURIComponent(meetingId) + '/send-notification', {
+                      method: 'POST', credentials: 'include',
                       headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify(payload)
+                      body: JSON.stringify({ _csrf: preview.csrf, test_mode: !!testMode, resend: resend })
                   });
-                  if (!whResp.ok) {
-                      const errText = await whResp.text().catch(() => '');
-                      throw new Error('Webhook error (' + whResp.status + ')' + (errText ? ': ' + errText : ''));
-                  }
+                  const sData = await sResp.json().catch(() => ({}));
+                  if (!sResp.ok) throw new Error(sData.error || ('Server error (' + sResp.status + ')'));
 
-                  // 7. Log to DB
-                  try {
-                      await fetch('/api/meetings/' + meetingId + '/mark-notified', {
-                          method: 'POST', credentials: 'include',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ sent_count: participants.length })
-                      });
-                  } catch (logErr) { console.warn('[MTG] mark-notified failed:', logErr); }
-
-                  // 8. Success
-                  btnEl.textContent = 'Sent \u2713';
+                  // 5. Success
+                  btnEl.textContent = testMode ? 'Test sent ✓' : 'Sent ✓';
                   btnEl.style.background = '#28a745';
                   btnEl.style.color = '#fff';
                   btnEl.style.opacity = '1';

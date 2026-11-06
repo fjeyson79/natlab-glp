@@ -8,7 +8,6 @@ const multer = require('multer');
 const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
 const session = require('express-session');
-const FormData = require('form-data');
 const fetch = require('node-fetch');
 const { PDFDocument, rgb, StandardFonts } = require('pdf-lib');
 const { Readable } = require('stream');
@@ -16,6 +15,7 @@ const archiver = require('archiver');
 const { normalizeEmail, isEmailAllowedForAffiliation, affiliationDomainError } = require('./server/institution_email');
 const { assessMigrationState } = require('./server/migration_status');
 const { DI_SUBMISSIONS_FILE_TYPE_CHECK_SQL } = require('./server/di_submission_types');
+const notify = require('./server/notify');
 
 // R2 (S3-compatible) SDK
 const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, CopyObjectCommand } = require('@aws-sdk/client-s3');
@@ -363,23 +363,11 @@ function parseNatlabFilename(filename) {
     console.log(`[PARSER] parseNatlabFilename: ${pass} passed, ${fail} failed`);
 })();
 
-// Notify researcher of PI decision (fire-and-forget)
+// Notify researcher of PI decision. Optional e-mail via server/notify.js (n8n is
+// no longer used). Returns immediately: the e-mail is sent after the response,
+// never throws, and cannot change the decision, signature or response status.
 async function notifyResearcher(payload) {
-  const webhookUrl = process.env.N8N_NOTIFY_WEBHOOK_URL;
-  if (!webhookUrl) {
-    console.warn('[NOTIFY] N8N_NOTIFY_WEBHOOK_URL not configured, skipping notification');
-    return;
-  }
-  try {
-    const res = await fetch(webhookUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    console.log(`[NOTIFY] Sent to researcher: ${payload.researcher_email}, status=${res.status}`);
-  } catch (err) {
-    console.error('[NOTIFY] Failed (non-blocking):', err.message);
-  }
+  notify.notifyResearcherDecision(payload);
 }
 
   // Serve static files from public folder under /di
@@ -2401,27 +2389,8 @@ app.post('/api/di/upload', requireAuth, upload.single('file'), async (req, res) 
             }
         }
 
-        const webhookUrl = process.env.N8N_DI_WEBHOOK_URL;
-        if (webhookUrl) {
-            console.log('[UPLOAD] Calling n8n webhook for PI notification...');
-            try {
-                const formData = new FormData();
-                formData.append('researcher_id', user.researcher_id);
-                formData.append('affiliation', user.affiliation);
-                formData.append('fileType', normalizedType);
-                formData.append('original_filename', file.originalname);
-                formData.append('submission_id', submissionId);
-                formData.append('r2_object_key', key);
-                formData.append('file', file.buffer, { filename: file.originalname, contentType: file.mimetype });
-
-                const webhookRes = await fetch(webhookUrl, { method: 'POST', body: formData, headers: formData.getHeaders() });
-                console.log('[UPLOAD] Webhook response status:', webhookRes.status);
-            } catch (webhookErr) {
-                console.error('[UPLOAD] Webhook error:', webhookErr.message);
-            }
-        } else {
-            console.warn('[UPLOAD] N8N_DI_WEBHOOK_URL not configured, PI notification skipped');
-        }
+        // Optional PI notification (metadata only, sent after the response; n8n no longer used).
+        notify.notifySubmissionReceived({ submissionId, researcherName: user.name || user.researcher_id, fileType: normalizedType });
 
         return res.json({
             success: true,
@@ -2614,26 +2583,8 @@ app.post('/api/di/upload-report', requireAuth, reportUpload.single('file'), asyn
             [submissionId]
         );
 
-        // n8n webhook (same shape as /api/di/upload). Best-effort.
-        const webhookUrl = process.env.N8N_DI_WEBHOOK_URL;
-        if (webhookUrl) {
-            try {
-                const formData = new FormData();
-                formData.append('researcher_id', user.researcher_id);
-                formData.append('affiliation', user.affiliation);
-                formData.append('fileType', 'REPORT');
-                formData.append('report_subcategory', subcategoryRaw);
-                formData.append('report_status', reportStatus);
-                formData.append('original_filename', file.originalname);
-                formData.append('submission_id', submissionId);
-                formData.append('r2_object_key', key);
-                formData.append('file', file.buffer, { filename: file.originalname, contentType: file.mimetype || 'application/octet-stream' });
-                const webhookRes = await fetch(webhookUrl, { method: 'POST', body: formData, headers: formData.getHeaders() });
-                console.log('[UPLOAD-REPORT] Webhook response status:', webhookRes.status);
-            } catch (webhookErr) {
-                console.error('[UPLOAD-REPORT] Webhook error:', webhookErr.message);
-            }
-        }
+        // Optional PI notification (metadata only, sent after the response; n8n no longer used).
+        notify.notifySubmissionReceived({ submissionId, researcherName: user.name || user.researcher_id, fileType: 'REPORT', reportSubcategory: subcategoryRaw });
 
         // ---- REPORT intelligence: disconnected in R2 (Zoe retired) ----
         // services/reportIntelligence.js is kept but no longer called. The
@@ -2727,35 +2678,8 @@ app.post('/api/di/external-upload', upload.single('file'), async (req, res) => {
 
         const submissionId = submissionResult.rows[0].submission_id;
 
-        // Forward to n8n webhook as multipart form data
-        const webhookUrl = process.env.N8N_DI_WEBHOOK_URL;
-
-        if (webhookUrl) {
-            const formData = new FormData();
-            formData.append('researcher_id', researcher_id);
-            formData.append('affiliation', affiliation);
-            formData.append('fileType', fileType);
-            formData.append('original_filename', file.originalname);
-            formData.append('submission_id', submissionId);
-            formData.append('file', file.buffer, {
-                filename: file.originalname,
-                contentType: file.mimetype
-            });
-
-            try {
-                const webhookResponse = await fetch(webhookUrl, {
-                    method: 'POST',
-                    body: formData,
-                    headers: formData.getHeaders()
-                });
-
-                if (!webhookResponse.ok) {
-                    console.error('Webhook error:', webhookResponse.status);
-                }
-            } catch (webhookErr) {
-                console.error('Webhook call failed:', webhookErr.message);
-            }
-        }
+        // Optional PI notification (metadata only, sent after the response; n8n no longer used).
+        notify.notifySubmissionReceived({ submissionId, researcherName: researcher_id, fileType });
 
         res.json({
             success: true,
@@ -4179,31 +4103,8 @@ app.post('/api/di/pi-upload-old', requirePIorCap('upload_files'), upload.single(
 
         const submissionId = submissionResult.rows[0].submission_id;
 
-        // Forward to n8n webhook if configured
-        const webhookUrl = process.env.N8N_DI_WEBHOOK_URL;
-        if (webhookUrl) {
-            const formData = new FormData();
-            formData.append('researcher_id', researcher_id);
-            formData.append('affiliation', researcher.affiliation);
-            formData.append('fileType', fileType);
-            formData.append('original_filename', file.originalname);
-            formData.append('submission_id', submissionId);
-            formData.append('uploaded_by_pi', req.session.user.researcher_id);
-            formData.append('file', file.buffer, {
-                filename: file.originalname,
-                contentType: file.mimetype
-            });
-
-            try {
-                await fetch(webhookUrl, {
-                    method: 'POST',
-                    body: formData,
-                    headers: formData.getHeaders()
-                });
-            } catch (webhookErr) {
-                console.error('Webhook error:', webhookErr.message);
-            }
-        }
+        // Optional PI notification (metadata only, sent after the response; n8n no longer used).
+        notify.notifySubmissionReceived({ submissionId, researcherName: researcher_id, fileType, uploadedByPi: true });
 
         res.json({
             success: true,
@@ -15432,6 +15333,107 @@ app.post('/api/meetings/:id/mark-notified', requirePI, async (req, res) => {
 });
 
 // GET /api/meetings/:id — PI or any auth for locked meetings
+// ─── Group-meeting e-mail (replaces the browser's direct n8n webhook) ─────────
+// PI only (ai_bot excluded), same-origin + session CSRF token. Recipients come
+// only from the meeting's participation rows joined to active allowlist
+// entries; the browser cannot supply addresses. Test mode sends every message to
+// the configured PI address and never marks the meeting. The meeting is marked
+// as notified only after the e-mail provider accepted the request.
+const MEETING_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const _meetingSendInFlight = new Set();
+
+async function meetingNotificationRows(meetingId) {
+    const r = await pool.query(`
+        SELECT mp.user_id, mp.slot_type, mp.order_position, a.name, a.institution_email, a.active
+        FROM meeting_participation mp
+        LEFT JOIN di_allowlist a ON a.researcher_id = mp.user_id
+        WHERE mp.meeting_id = $1
+        ORDER BY mp.order_position ASC`, [meetingId]);
+    return r.rows;
+}
+function meetingMissingRecipients(rows) {
+    return rows.filter(r => r.active !== true || !notify.validEmail(r.institution_email)).map(r => r.name || r.user_id);
+}
+
+// GET /api/meetings/:id/notification-preview — what would be sent, plus a form token
+app.get('/api/meetings/:id/notification-preview', requirePI, async (req, res) => {
+    if (!MEETING_ID_RE.test(req.params.id)) return res.status(400).json({ error: 'Invalid meeting id' });
+    if (!(await checkMeetingTables())) return res.status(503).json({ error: 'Meeting tables not available' });
+    try {
+        const mResult = await pool.query('SELECT * FROM meeting_schedule WHERE id = $1', [req.params.id]);
+        if (mResult.rows.length === 0) return res.status(404).json({ error: 'Meeting not found' });
+        const m = mResult.rows[0];
+        const rows = await meetingNotificationRows(m.id);
+        res.json({
+            csrf: r1IssueCsrfToken(req),
+            meeting_date: notify.dateOnly(m.meeting_date), meeting_time: m.meeting_time, location_text: m.location_text, status: m.status,
+            recipients: rows.length, missing: meetingMissingRecipients(rows),
+            notified_at: m.notification_sent_at || null,
+            email_enabled: notify.isEnabled(), test_recipient_configured: !!notify.piAddress()
+        });
+    } catch (err) {
+        console.error('[MEETING] notification-preview error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// POST /api/meetings/:id/send-notification  body: { _csrf, test_mode?, resend? }
+app.post('/api/meetings/:id/send-notification', requireSameOrigin, requirePI, async (req, res) => {
+    if (!r1CheckCsrfToken(req)) return res.status(403).json({ error: 'Invalid or missing form token. Reload the page and try again.' });
+    const id = req.params.id;
+    if (!MEETING_ID_RE.test(id)) return res.status(400).json({ error: 'Invalid meeting id' });
+    if (!(await checkMeetingTables())) return res.status(503).json({ error: 'Meeting tables not available' });
+    const testMode = !!(req.body && req.body.test_mode === true);
+    const resend = !!(req.body && req.body.resend === true);
+    if (!notify.isEnabled()) return res.status(503).json({ error: 'E-mail notifications are not configured.' });
+    if (_meetingSendInFlight.has(id)) return res.status(409).json({ error: 'A notification for this meeting is already being sent.' });
+    _meetingSendInFlight.add(id);
+    try {
+        const colCheck = await pool.query(`SELECT 1 FROM information_schema.columns WHERE table_name = 'meeting_schedule' AND column_name = 'notification_sent_at'`);
+        if (colCheck.rows.length === 0) return res.status(503).json({ error: 'Notification columns not yet migrated' });
+        const mResult = await pool.query('SELECT * FROM meeting_schedule WHERE id = $1', [id]);
+        if (mResult.rows.length === 0) return res.status(404).json({ error: 'Meeting not found' });
+        const m = mResult.rows[0];
+        if (m.status !== 'LOCKED') return res.status(409).json({ error: 'Only locked meetings can be notified.' });
+        if (!testMode && m.notification_sent_at && !resend) {
+            return res.status(409).json({ error: 'Participants have already been notified for this meeting.', already_notified: true });
+        }
+        const rows = await meetingNotificationRows(m.id);
+        if (rows.length === 0) return res.status(422).json({ error: 'This meeting has no participants.' });
+        let participants;
+        if (testMode) {
+            const testTo = notify.piAddress();
+            if (!testTo) return res.status(503).json({ error: 'No test recipient is configured.' });
+            participants = rows.map(r => ({ name: r.name || r.user_id, slot_type: r.slot_type, email: testTo }));
+        } else {
+            const missing = meetingMissingRecipients(rows);
+            if (missing.length > 0) return res.status(422).json({ error: 'Missing e-mail address for: ' + missing.join(', '), missing });
+            participants = rows.map(r => ({ name: r.name || r.user_id, slot_type: r.slot_type, email: r.institution_email }));
+        }
+        const messages = notify.buildMeetingMessages(m, participants);
+        if (testMode) messages.forEach(x => { x.subject = '[TEST] ' + x.subject; });
+        const sentBefore = m.notification_sent_at ? new Date(m.notification_sent_at).toISOString() : 'never';
+        const idempotencyKey = 'meeting-' + notify.hashKey(id, testMode ? 'test-' + Date.now() : 'live', sentBefore,
+            JSON.stringify(messages.map(x => [x.to, x.subject, x.text])));
+        const result = await notify.sendBatch({ event: testMode ? 'meeting.test' : 'meeting.invitation', messages, idempotencyKey });
+        if (!result.ok) {
+            return res.status(502).json({ error: 'The e-mail service did not accept the request. The meeting was not marked as notified.', outcome: result.outcome });
+        }
+        if (!testMode) {
+            await pool.query(
+                `UPDATE meeting_schedule SET notification_sent_at = now(), notification_sent_by = $2, notification_sent_count = $3 WHERE id = $1`,
+                [id, req.session.user.researcher_id, messages.length]
+            );
+        }
+        res.json({ ok: true, sent_count: messages.length, test_mode: testMode });
+    } catch (err) {
+        console.error('[MEETING] send-notification error:', err.message);
+        res.status(500).json({ error: 'Server error' });
+    } finally {
+        _meetingSendInFlight.delete(id);
+    }
+});
+
 app.get('/api/meetings/:id', requireAuth, async (req, res) => {
     if (!(await checkMeetingTables())) return res.status(503).json({ error: 'Meeting tables not available' });
     try {
@@ -20067,9 +20069,7 @@ app.get('/api/rd/glp/my-revision-items', requireAuth, requireInvestorTabAny('rnd
 // =====================================================
 
 const INVESTOR_MEETING_ZOOM_LINK = process.env.INVESTOR_MEETING_ZOOM_LINK || 'https://zoom.us/j/CONFIGURE_ME';
-const INVESTOR_MEETING_CEO_EMAIL = process.env.INVESTOR_MEETING_CEO_EMAIL || '';
-const INVESTOR_MEETING_CSO_EMAIL = process.env.INVESTOR_MEETING_CSO_EMAIL || '';
-const INVESTOR_MEETING_N8N_WEBHOOK = process.env.INVESTOR_MEETING_N8N_WEBHOOK || '';
+// Theralia team addresses (INVESTOR_MEETING_CEO_EMAIL / _CSO_EMAIL) are read by server/notify.js.
 
 // Cached table check
 let _investorBookingsTableExists = null;
@@ -20153,48 +20153,10 @@ app.post('/api/investor/request-meeting', async (req, res) => {
             bookingId = ins.rows[0].id;
         }
 
-        // Build payload for n8n workflow
-        const payload = {
-            booking_id: bookingId,
-            investor_name,
-            investor_email,
-            investor_company: investor_company || '',
-            meeting_type: meetingType,
-            meeting_note: meeting_note || '',
-            date,
-            time,
-            local_timezone: local_timezone || 'UTC',
-            slot_start_utc: slotStartUtc,
-            slot_end_utc: slotEndUtc,
-            slot_start_local: slotStartLocal,
-            slot_end_local: slotEndLocal,
-            zoom_link: INVESTOR_MEETING_ZOOM_LINK,
-            ceo_email: INVESTOR_MEETING_CEO_EMAIL,
-            cso_email: INVESTOR_MEETING_CSO_EMAIL,
-            // Email templates for n8n
-            investor_email_subject: 'Theralia Investor Meeting Confirmation',
-            investor_email_body: `Dear ${investor_name},\n\nThank you for requesting a meeting with Theralia.\n\nConfirmed details:\n• Date: ${date}\n• Time: ${time} (${local_timezone || 'UTC'})\n• Duration: 45 minutes\n• Meeting type: ${meetingType}\n• Zoom: ${INVESTOR_MEETING_ZOOM_LINK}\n${meeting_note ? '\nYour note: ' + meeting_note + '\n' : ''}\nWe look forward to speaking with you.\n\nBest regards,\nThe Theralia Team`,
-            team_email_subject: `New Investor Meeting Request — ${meetingType}`,
-            team_email_body: `New investor meeting booking:\n\n• Investor: ${investor_name}\n• Email: ${investor_email}\n${investor_company ? '• Company: ' + investor_company + '\n' : ''}• Date: ${date}\n• Time: ${time} (${local_timezone || 'UTC'})\n• Meeting type: ${meetingType}\n${meeting_note ? '• Note: ' + meeting_note + '\n' : ''}\n• Zoom: ${INVESTOR_MEETING_ZOOM_LINK}`,
-            calendar_title: `Theralia Investor Meeting: ${meetingType}`,
-            calendar_description: `Theralia Investor Meeting\n\nType: ${meetingType}\nInvestor: ${investor_name} (${investor_email})${investor_company ? '\nCompany: ' + investor_company : ''}${meeting_note ? '\nNote: ' + meeting_note : ''}\n\nZoom: ${INVESTOR_MEETING_ZOOM_LINK}`,
-            calendar_attendees: [investor_email, INVESTOR_MEETING_CEO_EMAIL, INVESTOR_MEETING_CSO_EMAIL].filter(Boolean)
-        };
-
-        // Fire to n8n webhook (non-blocking)
-        if (INVESTOR_MEETING_N8N_WEBHOOK) {
-            fetch(INVESTOR_MEETING_N8N_WEBHOOK, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            }).then(r => {
-                console.log(`[INVESTOR-MEETING] n8n webhook status=${r.status} for ${investor_email}`);
-            }).catch(err => {
-                console.error('[INVESTOR-MEETING] n8n webhook failed (non-blocking):', err.message);
-            });
-        } else {
-            console.warn('[INVESTOR-MEETING] INVESTOR_MEETING_N8N_WEBHOOK not configured, skipping workflow');
-        }
+        // Optional notification to the configured Theralia team only (n8n no longer
+        // used; no investor-facing e-mail). Sent after the response, never blocks.
+        const teamText = `New investor meeting booking:\n\n• Investor: ${investor_name}\n• Email: ${investor_email}\n${investor_company ? '• Company: ' + investor_company + '\n' : ''}• Date: ${date}\n• Time: ${time} (${local_timezone || 'UTC'})\n• Meeting type: ${meetingType}\n${meeting_note ? '• Note: ' + meeting_note + '\n' : ''}\n• Zoom: ${INVESTOR_MEETING_ZOOM_LINK}`;
+        notify.notifyInvestorBookingTeam({ bookingId, teamText });
 
         res.json({ ok: true, booking_id: bookingId });
     } catch (err) {
