@@ -3380,7 +3380,7 @@
                 <div class="panel-header">
                     <h2><span class="icon">&#128197;</span> Meeting Schedule</h2>
                     <div style="display:flex;align-items:center;gap:10px;">
-                        <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:#6b7280;cursor:pointer;user-select:none;">
+                        <label id="mtgSendTestModeLabel" style="display:none;align-items:center;gap:5px;font-size:11px;color:#6b7280;cursor:pointer;user-select:none;">
                             <input type="checkbox" id="mtgSendTestMode" style="cursor:pointer;">
                             Test mode, send only to me
                         </label>
@@ -4404,6 +4404,16 @@ function dicInitEmbedModeFromUrl() {
               const el = document.getElementById('mtgScheduleListBody');
               if (!el) return;
               el.innerHTML = '<div class="loading"><div class="spinner"></div>Loading...</div>';
+              // Meeting e-mail is shown only when the server says it can send.
+              // Any failure keeps the sending controls hidden.
+              let mtgEmailEnabled = false;
+              try {
+                  const sr = await fetch('/api/meetings/notification-status', { credentials: 'include' });
+                  if (sr.ok) { const sd = await sr.json(); mtgEmailEnabled = sd && sd.email_enabled === true; }
+              } catch { mtgEmailEnabled = false; }
+              const tmLabel = document.getElementById('mtgSendTestModeLabel');
+              if (tmLabel) tmLabel.style.display = mtgEmailEnabled ? 'flex' : 'none';
+              if (!mtgEmailEnabled) { const tm = document.getElementById('mtgSendTestMode'); if (tm) tm.checked = false; }
               try {
                   const listUrl = mtgSelectedGroup ? '/api/meetings/list?group_id=' + mtgSelectedGroup.id : '/api/meetings/list';
                   const resp = await fetch(listUrl, { credentials: 'include' });
@@ -4453,9 +4463,12 @@ function dicInitEmbedModeFromUrl() {
                           actions += `<button onclick="mtgStartLive('${m.id}')" style="font-size:11px;color:#fff;background:#0369a1;border:none;cursor:pointer;padding:3px 10px;border-radius:4px;font-weight:600;margin-right:6px;">Start Meeting</button>`;
                           if (m.notification_sent_at) {
                               actions += `<span style="font-size:10px;color:#155724;background:#d4edda;padding:2px 8px;border-radius:6px;font-weight:600;margin-right:6px;">Sent</span>`;
-                              actions += `<button id="mtgSendBtn_${m.id}" onclick="mtgSendMeetingEmail('${m.id}',this)" style="font-size:11px;color:#6d28d9;background:none;border:none;cursor:pointer;text-decoration:underline;">Resend</button>`;
-                          } else {
+                              if (mtgEmailEnabled) actions += `<button id="mtgSendBtn_${m.id}" onclick="mtgSendMeetingEmail('${m.id}',this)" style="font-size:11px;color:#6d28d9;background:none;border:none;cursor:pointer;text-decoration:underline;">Resend</button>`;
+                          } else if (mtgEmailEnabled) {
                               actions += `<button id="mtgSendBtn_${m.id}" onclick="mtgSendMeetingEmail('${m.id}',this)" style="font-size:11px;color:#fff;background:#6d28d9;border:none;cursor:pointer;padding:3px 10px;border-radius:4px;font-weight:600;">Send</button>`;
+                          }
+                          if (!mtgEmailEnabled) {
+                              actions += `<span id="mtgEmailOff_${m.id}" title="Meeting e-mail is not available on this server" style="font-size:10px;color:#6b7280;background:#f3f4f6;padding:2px 8px;border-radius:6px;">Email off</span>`;
                           }
                       }
 

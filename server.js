@@ -15365,6 +15365,15 @@ function meetingMissingRecipients(rows) {
     return rows.filter(r => r.active !== true || !notify.validEmail(r.institution_email)).map(r => r.name || r.user_id);
 }
 
+// GET /api/meetings/notification-status — whether meeting e-mail can be sent at
+// all (so the dashboard only shows sending controls when it can). Returns only a
+// boolean from notify.isEnabled(); never keys, addresses or other configuration.
+// Registered before GET /api/meetings/:id so "notification-status" is not taken as an id.
+app.get('/api/meetings/notification-status', requirePI, (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    res.json({ email_enabled: notify.isEnabled() === true });
+});
+
 // GET /api/meetings/:id/notification-preview — what would be sent, plus a form token
 app.get('/api/meetings/:id/notification-preview', requirePI, async (req, res) => {
     if (!MEETING_ID_RE.test(req.params.id)) return res.status(400).json({ error: 'Invalid meeting id' });
