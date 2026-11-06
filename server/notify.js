@@ -13,7 +13,18 @@
 //   addresses, filenames, document contents, keys or credentials.
 // - Every e-mail carries an Idempotency-Key so that the one automatic retry
 //   (or an accidental repeat of the same event) cannot produce a duplicate.
-// - No document contents and no attachments are ever sent to the provider.
+// - No filenames, document contents or attachments are ever sent to the
+//   provider. E-mails identify a submission only by document type and date.
+//
+// Delivery reliability (best effort, by design):
+// - There is no persistent queue. A notification that is waiting to be sent or
+//   is in flight is LOST if the application restarts or redeploys at that
+//   moment; the underlying operation (upload, decision, booking) is unaffected.
+// - A failed send is retried once; after that it is only logged
+//   (outcome=failed). Nothing re-sends it later.
+// - Duplicates are suppressed by the provider's Idempotency-Key for 24 hours.
+// - Group-meeting e-mails are the exception: the PI waits for the result, sees
+//   a failure, and the meeting is marked as notified only after success.
 // ============================================================================
 const crypto = require('crypto');
 
@@ -156,7 +167,7 @@ function button(href, label) {
 const TYPE_LABELS = { SOP: 'SOP', DATA: 'Data', PRESENTATION: 'Presentation', REPORT: 'Report' };
 
 // New submission -> configured PI address. Minimal metadata, no filename, no content.
-function notifySubmissionReceived({ submissionId, researcherName, fileType, reportSubcategory, uploadedByPi }) {
+function notifySubmissionReceived({ submissionId, researcherName, fileType, reportSubcategory, uploadedByAutomation }) {
     const event = 'submission.received';
     dispatch(event, async () => {
         const cfg = config();
@@ -165,7 +176,7 @@ function notifySubmissionReceived({ submissionId, researcherName, fileType, repo
         const typeLabel = TYPE_LABELS[String(fileType || '').toUpperCase()] || oneLine(fileType, 40) || 'Document';
         const who = oneLine(researcherName, 120) || 'a researcher';
         const rows = [row('Researcher', who), row('Type', typeLabel + (reportSubcategory ? ' (' + oneLine(reportSubcategory, 60).replace(/_/g, ' ').toLowerCase() + ')' : ''))];
-        if (uploadedByPi) rows.push(row('Uploaded by', 'PI on behalf of the researcher'));
+        if (uploadedByAutomation) rows.push(row('Uploaded by', 'automation account on behalf of the researcher'));
         const dash = cfg.portal + '/pi-dashboard.html';
         const html = wrap('New submission waiting for review', '#1a365d',
             `<p>A new document has been submitted to NAT-Lab.</p>${table(rows)}${button(dash, 'Open the PI dashboard')}<p style="font-size:12px;color:#666;">Sign-in is required. The document itself is not attached to this e-mail.</p>`);
@@ -176,9 +187,12 @@ function notifySubmissionReceived({ submissionId, researcherName, fileType, repo
 }
 
 // PI decision -> researcher. Same payload shape that notifyResearcher() always
-// received. Each decision event gets its own key, so a later revision request on
-// the same submission is never suppressed by an earlier one.
-function notifyResearcherDecision(payload) {
+// received (file_name is ignored: no filenames in e-mails). The optional async
+// `describe()` returns { fileType, submittedAt } so the researcher can tell which
+// submission is meant; it runs after the response and its failure is harmless.
+// Each decision event gets its own key, so a later revision request on the same
+// submission is never suppressed by an earlier one.
+function notifyResearcherDecision(payload, describe) {
     const p = payload || {};
     const decision = String(p.decision || '').toUpperCase();
     const event = 'decision.' + (decision === 'APPROVED' ? 'approved' : decision === 'DISCARDED' ? 'discarded' : decision === 'REVISION_NEEDED' ? 'revision' : 'unknown');
@@ -187,32 +201,37 @@ function notifyResearcherDecision(payload) {
         const cfg = config();
         if (!cfg.enabled) { log(event, 'skipped', 'reason=not-configured'); return; }
         if (event === 'decision.unknown') { log(event, 'skipped', 'reason=unknown-decision'); return; }
-        const fileName = oneLine(p.file_name, 200);
+        let info = {};
+        if (typeof describe === 'function') { try { info = (await describe()) || {}; } catch (_) { info = {}; } }
+        const typeLabel = TYPE_LABELS[String(info.fileType || '').toUpperCase()] || 'Document';
+        const submitted = info.submittedAt ? dateOnly(info.submittedAt) : '';
+        const what = typeLabel + (submitted ? ' submitted on ' + submitted : '');
+        const idRows = () => [row('Document', typeLabel), ...(submitted ? [row('Submitted', submitted)] : [])];
         let subject, title, color, body, text;
         if (decision === 'APPROVED') {
-            subject = `GLP Submission Approved: ${fileName}`; title = 'Submission Approved'; color = '#1e7e34';
-            const rows = [row('File', fileName)];
+            subject = `GLP Submission Approved: ${what}`; title = 'Submission Approved'; color = '#1e7e34';
+            const rows = idRows();
             if (p.verification_code) rows.push(row('Verification code', p.verification_code));
             body = `<p>Your submission has been approved and signed by the PI.</p>${table(rows)}` +
                 (p.approval_comment ? `<p><strong>PI comment:</strong><br>${esc(p.approval_comment)}</p>` : '') +
                 (p.view_url ? button(p.view_url, 'View approved document') : '') +
                 `<p style="font-size:12px;color:#666;">Sign-in is required to open the document.</p>`;
-            text = `Your submission "${fileName}" has been approved.\n` + (p.verification_code ? `Verification code: ${p.verification_code}\n` : '') +
+            text = `Your submission (${what}) has been approved.\n` + (p.verification_code ? `Verification code: ${p.verification_code}\n` : '') +
                 (p.approval_comment ? `PI comment: ${p.approval_comment}\n` : '') + (p.view_url ? `View (sign-in required): ${p.view_url}\n` : '');
         } else if (decision === 'DISCARDED') {
-            subject = `GLP Submission Discarded: ${fileName}`; title = 'Submission Discarded'; color = '#6c757d';
-            const rows = [row('File', fileName)];
+            subject = `GLP Submission Discarded: ${what}`; title = 'Submission Discarded'; color = '#6c757d';
+            const rows = idRows();
             if (p.discard_reason) rows.push(row('Reason', p.discard_reason));
             body = `<p>Your submission has been discarded by the PI.</p>${table(rows)}` +
                 (p.discard_note ? `<p><strong>Note:</strong><br>${esc(p.discard_note)}</p>` : '');
-            text = `Your submission "${fileName}" has been discarded.\n` + (p.discard_reason ? `Reason: ${p.discard_reason}\n` : '') + (p.discard_note ? `Note: ${p.discard_note}\n` : '');
+            text = `Your submission (${what}) has been discarded.\n` + (p.discard_reason ? `Reason: ${p.discard_reason}\n` : '') + (p.discard_note ? `Note: ${p.discard_note}\n` : '');
         } else {
-            subject = `GLP Submission Requires Revision: ${fileName}`; title = 'Revision Requested'; color = '#b45309';
+            subject = `GLP Submission Requires Revision: ${what}`; title = 'Revision Requested'; color = '#b45309';
             const uploadUrl = cfg.portal + '/upload.html';
-            body = `<p>The PI has requested a revision of your submission.</p>${table([row('File', fileName)])}` +
+            body = `<p>The PI has requested a revision of your submission.</p>${table(idRows())}` +
                 (p.pi_comments ? `<p><strong>PI comments:</strong><br>${esc(p.pi_comments)}</p>` : '') +
                 button(uploadUrl, 'Upload a revised version') + `<p style="font-size:12px;color:#666;">Sign-in is required.</p>`;
-            text = `The PI has requested a revision of "${fileName}".\n` + (p.pi_comments ? `PI comments: ${p.pi_comments}\n` : '') + `Upload a revised version (sign-in required): ${uploadUrl}\n`;
+            text = `The PI has requested a revision of your submission (${what}).\n` + (p.pi_comments ? `PI comments: ${p.pi_comments}\n` : '') + `Upload a revised version (sign-in required): ${uploadUrl}\n`;
         }
         await sendEmail({ event, to: p.researcher_email, subject, html: wrap(title, color, body), text,
             idempotencyKey: 'decision-' + hashKey(p.submission_id, decision, eventId) });

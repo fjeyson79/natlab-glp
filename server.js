@@ -366,8 +366,14 @@ function parseNatlabFilename(filename) {
 // Notify researcher of PI decision. Optional e-mail via server/notify.js (n8n is
 // no longer used). Returns immediately: the e-mail is sent after the response,
 // never throws, and cannot change the decision, signature or response status.
+// The e-mail names the document type and submission date, never the filename;
+// that lookup is read-only and runs after the response.
 async function notifyResearcher(payload) {
-  notify.notifyResearcherDecision(payload);
+  const submissionId = payload && payload.submission_id;
+  notify.notifyResearcherDecision(payload, async () => {
+    const r = await pool.query('SELECT file_type, created_at FROM di_submissions WHERE submission_id = $1', [submissionId]);
+    return r.rows[0] ? { fileType: r.rows[0].file_type, submittedAt: r.rows[0].created_at } : {};
+  });
 }
 
   // Serve static files from public folder under /di
@@ -4103,8 +4109,12 @@ app.post('/api/di/pi-upload-old', requirePIorCap('upload_files'), upload.single(
 
         const submissionId = submissionResult.rows[0].submission_id;
 
-        // Optional PI notification (metadata only, sent after the response; n8n no longer used).
-        notify.notifySubmissionReceived({ submissionId, researcherName: researcher_id, fileType, uploadedByPi: true });
+        // No notification when the PI uploads (the PI would only be notified of their
+        // own action). An AI_bot account with the upload_files capability still
+        // triggers the optional metadata-only PI notification.
+        if (req.session.user.role !== 'pi') {
+            notify.notifySubmissionReceived({ submissionId, researcherName: researcher_id, fileType, uploadedByAutomation: true });
+        }
 
         res.json({
             success: true,
@@ -15417,7 +15427,7 @@ app.post('/api/meetings/:id/send-notification', requireSameOrigin, requirePI, as
             JSON.stringify(messages.map(x => [x.to, x.subject, x.text])));
         const result = await notify.sendBatch({ event: testMode ? 'meeting.test' : 'meeting.invitation', messages, idempotencyKey });
         if (!result.ok) {
-            return res.status(502).json({ error: 'The e-mail service did not accept the request. The meeting was not marked as notified.', outcome: result.outcome });
+            return res.status(502).json({ error: 'Email delivery failed: the e-mail service did not confirm the request. The meeting itself is saved and unchanged; it has only not been marked as notified. You can try again.', email_delivery_failed: true, outcome: result.outcome });
         }
         if (!testMode) {
             await pool.query(

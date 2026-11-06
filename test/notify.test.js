@@ -182,3 +182,28 @@ test('meeting date is the stored calendar date regardless of server time zone', 
     const [m] = notify.buildMeetingMessages({ meeting_date: local, meeting_time: '10:00:00', location_text: 'R' }, [{ name: 'A', email: 'a@example.test', slot_type: 'DATA_FLASH' }]);
     assert.ok(m.text.includes('Monday') && m.text.includes('3 May 2027'), m.text.split('\n')[3]);
 });
+
+test('decision e-mails never contain the filename; they name document type and submission date', async () => {
+    configure(); mode = 'ok'; seen.length = 0;
+    for (const decision of ['APPROVED', 'REVISION_NEEDED', 'DISCARDED']) {
+        notify.notifyResearcherDecision({ submission_id: 'sub-F-' + decision, decision, researcher_email: 'r@example.test', file_name: '2026-11-06_AB_SecretProject_Assay.pdf', verification_code: 'NATLAB-x', pi_comments: 'c', discard_reason: 'Duplicate' },
+            async () => ({ fileType: 'DATA', submittedAt: new Date(2026, 10, 5, 14, 30) }));
+    }
+    await settle(300);
+    assert.strictEqual(seen.length, 3);
+    for (const s of seen) {
+        const all = JSON.stringify(s.body);
+        assert.ok(!all.includes('SecretProject') && !all.includes('.pdf'), 'filename leaked: ' + s.body.subject);
+        assert.ok(s.body.subject.includes('Data submitted on 2026-11-05'), s.body.subject);
+        assert.strictEqual(s.body.attachments, undefined);
+    }
+});
+
+test('decision e-mail still sent (generic wording) when the type/date lookup fails', async () => {
+    configure(); mode = 'ok'; seen.length = 0;
+    notify.notifyResearcherDecision({ submission_id: 'sub-G', decision: 'APPROVED', researcher_email: 'r@example.test', file_name: 'x.pdf' },
+        async () => { throw new Error('db down'); });
+    await settle(300);
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].body.subject, 'GLP Submission Approved: Document');
+});
