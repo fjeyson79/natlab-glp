@@ -406,6 +406,12 @@ function parseNatlabFilename(filename) {
 // never throws, and cannot change the decision, signature or response status.
 // The e-mail names the document type and submission date, never the filename;
 // that lookup is read-only and runs after the response.
+// N3: hand a successful scientific/training event to the Notify centre (installed
+// at startup). Fire-and-forget: never throws, never delays or changes the response.
+function notifyEvent(type, payload) {
+    try { if (typeof notifyCenter !== 'undefined' && notifyCenter) notifyCenter.emit(type, payload); } catch (_) { /* never affects the operation */ }
+}
+
 async function notifyResearcher(payload) {
   const submissionId = payload && payload.submission_id;
   notify.notifyResearcherDecision(payload, async () => {
@@ -2566,6 +2572,7 @@ app.post('/api/di/upload', requireAuth, upload.single('file'), async (req, res) 
 
         // Close revision request if this is a resubmission
         const revisionRequestId = req.body.revision_request_id;
+        let isResubmission = false;
         if (revisionRequestId && await checkRevisionRequestsTable()) {
             const closeResult = await pool.query(
                 `UPDATE di_revision_requests SET status = 'closed', closed_at = NOW(), resubmitted_file_id = $1
@@ -2573,12 +2580,13 @@ app.post('/api/di/upload', requireAuth, upload.single('file'), async (req, res) 
                 [submissionId, revisionRequestId]
             );
             if (closeResult.rowCount > 0) {
+                isResubmission = true;
                 console.log('[UPLOAD] Closed revision request: ' + revisionRequestId);
             }
         }
 
         // Optional PI notification (metadata only, sent after the response; n8n no longer used).
-        notify.notifySubmissionReceived({ submissionId, researcherName: user.name || user.researcher_id, fileType: normalizedType });
+        notify.notifySubmissionReceived({ submissionId, researcherId: user.researcher_id, researcherName: user.name || user.researcher_id, fileType: normalizedType, resubmission: isResubmission });
 
         return res.json({
             success: true,
@@ -2772,7 +2780,7 @@ app.post('/api/di/upload-report', requireAuth, reportUpload.single('file'), asyn
         );
 
         // Optional PI notification (metadata only, sent after the response; n8n no longer used).
-        notify.notifySubmissionReceived({ submissionId, researcherName: user.name || user.researcher_id, fileType: 'REPORT', reportSubcategory: subcategoryRaw });
+        notify.notifySubmissionReceived({ submissionId, researcherId: user.researcher_id, researcherName: user.name || user.researcher_id, fileType: 'REPORT', reportSubcategory: subcategoryRaw });
 
         // ---- REPORT intelligence: disconnected in R2 (Zoe retired) ----
         // services/reportIntelligence.js is kept but no longer called. The
@@ -4299,7 +4307,7 @@ app.post('/api/di/pi-upload-old', requirePIorCap('upload_files'), upload.single(
         // own action). An AI_bot account with the upload_files capability still
         // triggers the optional metadata-only PI notification.
         if (req.session.user.role !== 'pi') {
-            notify.notifySubmissionReceived({ submissionId, researcherName: researcher_id, fileType, uploadedByAutomation: true });
+            notify.notifySubmissionReceived({ submissionId, researcherId: researcher_id, researcherName: researcher_id, fileType, uploadedByAutomation: true });
         }
 
         res.json({
@@ -11129,6 +11137,7 @@ app.post('/api/di/training/entries', requireAuth, async (req, res) => {
                  other_supervisor_name.trim(), other_supervisor_email.trim(),
                  req.session.user.name]
             );
+            notifyEvent('training.entry_created', { entryId: result.rows[0].id });
             res.json({ success: true, entry_id: result.rows[0].id });
         } else {
             // SUPERVISOR route: normal supervisor certification
@@ -11142,6 +11151,7 @@ app.post('/api/di/training/entries', requireAuth, async (req, res) => {
                 [pack_id, training_type, training_date, notes || null,
                  supervisor_id, req.session.user.name]
             );
+            notifyEvent('training.entry_created', { entryId: result.rows[0].id });
             res.json({ success: true, entry_id: result.rows[0].id });
         }
     } catch (err) {
@@ -11204,6 +11214,7 @@ app.post('/api/di/training/submit', requireAuth, async (req, res) => {
         await pool.query(
             `UPDATE di_training_packs SET status = 'SUBMITTED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [pack_id]
         );
+        notifyEvent('training.pack_submitted', { packId: pack_id });
 
         res.json({ success: true });
     } catch (err) {
@@ -11253,6 +11264,7 @@ app.post('/api/di/training/entries/:id/certify', requireSupervisor, async (req, 
             `UPDATE di_training_entries SET status = 'CERTIFIED', certified_at = CURRENT_TIMESTAMP, certified_by = $1 WHERE id = $2`,
             [userId, req.params.id]
         );
+        notifyEvent('training.entry_certified', { entryId: req.params.id, by: 'supervisor' });
         res.json({ success: true });
     } catch (err) {
         console.error('[TRAINING] certify error:', err);
@@ -11280,6 +11292,7 @@ app.post('/api/di/training/entries/:id/pi-certify', requirePIorCap('approve'), a
             `UPDATE di_training_entries SET status = 'CERTIFIED', certified_at = CURRENT_TIMESTAMP, certified_by = $1 WHERE id = $2`,
             [piId, req.params.id]
         );
+        notifyEvent('training.entry_certified', { entryId: req.params.id, by: 'pi' });
         res.json({ success: true });
     } catch (err) {
         console.error('[TRAINING] pi-certify error:', err);
@@ -11306,6 +11319,7 @@ app.post('/api/di/training/entries/:id/reject', requireAuth, async (req, res) =>
         await pool.query(
             `UPDATE di_training_entries SET status = 'REJECTED', rejection_comment = $1 WHERE id = $2`, [comment, req.params.id]
         );
+        notifyEvent('training.entry_rejected', { entryId: req.params.id });
         res.json({ success: true });
     } catch (err) {
         console.error('[TRAINING] reject error:', err);
@@ -11526,6 +11540,7 @@ app.post('/api/di/training/packs/:id/seal', requirePIorCap('seal'), async (req, 
             [sealedAt, req.session.user.researcher_id, certKey, signatureHash, verificationCode, packId]
         );
 
+        notifyEvent('training.pack_sealed', { packId });
         res.json({ success: true, verification_code: verificationCode });
     } catch (err) {
         console.error('[TRAINING] seal pack error:', err);
@@ -11548,6 +11563,7 @@ app.post('/api/di/training/packs/:id/revise', requirePIorCap('revise'), async (r
             `UPDATE di_training_packs SET status='REVISION_NEEDED', revision_comments=$1, updated_at=CURRENT_TIMESTAMP WHERE id=$2`,
             [comments, req.params.id]
         );
+        notifyEvent('training.pack_revision', { packId: req.params.id });
         res.json({ success: true });
     } catch (err) {
         console.error('[TRAINING] revise pack error:', err);
@@ -22717,7 +22733,7 @@ const notifyCenter = require('./server/notifyCenter').createNotifyCenter({
     spacingMs: Math.min(5000, Math.max(0, parseInt(process.env.NOTIFY_SPACING_MS || '600', 10) || 600)),
 });
 app.use('/api/notify', notifyCenter.router);
-notify.setAutomation({ isCategoryEnabled: notifyCenter.isCategoryEnabled, deliver: notifyCenter.enqueueAutomatic });
+notify.setAutomation({ isCategoryEnabled: notifyCenter.isCategoryEnabled, deliver: notifyCenter.enqueueAutomatic, onEvent: notifyCenter.emit });
 notifyCenter.ensureSchema().then(() => notifyCenter.recover()).catch(e =>
     console.error('[STARTUP] notify schema ensure failed:', e && e.message)
 );

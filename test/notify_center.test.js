@@ -30,10 +30,14 @@ test('rendering: values are single-line (no header injection) and meeting variab
     assert.ok(r.text.includes('https://liu-se.zoom.us/j/1') && r.text.includes('LiU group'));
 });
 
-test('categories: every automatic category exists once; only the four existing hooks are implementable; investor bookings locked', () => {
+test('categories (N3): submissions, decisions and training are switchable; summaries and Group Meetings stay planned; investor bookings locked; 4 options', () => {
     const keys = nc.CATEGORIES.map(c => c.key);
     assert.strictEqual(new Set(keys).size, keys.length);
-    assert.deepStrictEqual(nc.CATEGORIES.filter(c => c.implemented).map(c => c.key), ['submission_received', 'decision_approved', 'decision_revision', 'decision_discarded']);
+    assert.deepStrictEqual(nc.CATEGORIES.filter(c => c.implemented).map(c => c.key), ['submission_sop', 'submission_data', 'submission_presentation', 'submission_report', 'submission_resubmission',
+        'decision_approved', 'decision_revision', 'decision_discarded', 'training_initiated', 'training_submitted', 'training_supervisor_accepted', 'training_pi_accepted',
+        'training_revision', 'training_rejected', 'training_certified']);
+    assert.deepStrictEqual(nc.CATEGORIES.filter(c => !c.implemented).map(c => c.key), ['research_summary', 'supervisor_summary', 'gm_invitation', 'gm_reminder', 'theralia_investor_booking']);
+    assert.deepStrictEqual(nc.OPTIONS.map(o => o.key), ['cc_submissions', 'cc_decisions', 'cc_training', 'include_researcher_messages']);
     assert.ok(nc.CATEGORIES.find(c => c.key === 'theralia_investor_booking').locked);
     assert.ok(nc.SYSTEM_TEMPLATES.length >= 7 && nc.SYSTEM_TEMPLATES.every(t => nc.variablesIn(t.subject + t.body).unknown.length === 0));
     assert.strictEqual(nc.MAX_RECIPIENTS, 60);

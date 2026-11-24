@@ -52,7 +52,7 @@
             item(e.configured, 'E-mail service', e.configured ? 'Configured' : 'Not configured' + (e.missing.length ? ' — missing: ' + e.missing.join(', ') : '')) +
             item(e.sending_switch, 'Global sending switch', e.sending_switch ? 'ON (NOTIFY_SENDING_ENABLED)' : 'OFF — nothing can be sent') +
             item(st.manual_enabled, 'Manual sending', st.manual_enabled ? 'Enabled' : 'Disabled') +
-            item(!st.paused, 'Emergency pause', st.paused ? 'PAUSED — all sending stopped' : 'Not paused') +
+            item(!st.paused, 'Emergency pause', st.paused ? 'PAUSED — all sending stopped' + (S.status.pending && S.status.pending.recipients ? ` · ${S.status.pending.recipients} pending e-mail(s) in ${S.status.pending.messages} message(s) — see History` : ' · nothing pending') : 'Not paused') +
             `<div class="nt-st meta"><b>Sender</b><span>${esc(e.from || '—')}</span></div>` +
             `<div class="nt-st meta"><b>Reply-To</b><span>${esc(e.reply_to || '—')}</span></div>` +
             `<div class="nt-st meta"><b>Test recipient</b><span>${esc(e.test_recipient || '—')}</span></div>`;
@@ -199,8 +199,8 @@
               <p class="nt-hint">${esc(m.kind)} · ${esc(m.category)} · status ${esc(m.status)} · by ${esc(m.created_by === 'system' ? 'System' : m.created_by_name)} · confirmed ${fmt(m.confirmed_at)}${m.completed_at ? ' · finished ' + fmt(m.completed_at) : ''}</p>
               <div class="nt-progress"><div style="width:${rs.length ? Math.round(100 * done / rs.length) : 0}%"></div></div>
               ${m.status === 'QUEUED' && !d.sending ? '<div class="message info show">Queued — sending is held (global switch, manual sending or pause). It continues when sending is allowed again.</div>' : ''}
-              <table class="data-table"><tr><th>Recipient</th><th>Address</th><th>Status</th><th>Resend ID</th><th>Error / reason</th><th>Attempts</th><th>Last attempt</th></tr>
-              ${rs.map(x => `<tr><td>${esc(x.name)}</td><td>${esc(x.email)}</td><td>${pill(x.status)}</td><td><code>${esc(x.provider_id || '')}</code></td>
+              <table class="data-table"><tr><th>Recipient</th><th>To / CC</th><th>Address</th><th>Status</th><th>Resend ID</th><th>Error / reason</th><th>Attempts</th><th>Last attempt</th></tr>
+              ${rs.map(x => `<tr><td>${esc(x.name)}</td><td>${x.recipient_role === 'cc' ? 'CC (copy)' : 'To'}</td><td>${esc(x.email)}</td><td>${pill(x.status)}</td><td><code>${esc(x.provider_id || '')}</code></td>
                 <td>${esc(x.error || x.skip_reason || '')}</td><td>${x.attempts}</td><td>${fmt(x.last_attempt_at)}</td></tr>`).join('')}</table>
               ${canResend ? `<div class="nt-actions"><label class="nt-check"><input type="checkbox" id="ntUnc"> also re-send UNCERTAIN e-mails (may duplicate if they were in fact delivered)</label>
                  <button class="btn btn-warning" id="ntResend">Re-send failed</button></div>` : ''}
@@ -273,11 +273,13 @@
             <label class="nt-check nt-danger"><input type="checkbox" id="ntPause" ${st.paused ? 'checked' : ''}> Emergency pause — stop ALL sending immediately</label>
           </div></div>
           <div class="panel"><div class="panel-header"><h2>Automatic notifications</h2></div><div class="panel-content">
-            <p class="nt-hint">Every automatic category is off by default and is switched on individually. Planned categories (N3) are shown for reference and cannot be switched on yet.</p>
-            <table class="data-table"><tr><th>Category</th><th>State</th></tr>
-            ${S.status.categories.map(c => `<tr><td>${esc(c.label)}</td><td>${c.implemented && !c.locked
+            <p class="nt-hint">Every category and option is off by default and is switched on individually. Once on, notifications are sent automatically after the operation has succeeded. Supervisor copies go only to supervisors currently assigned to the researcher; they never grant access to documents. E-mails contain no documents, filenames, approval comments, discard reasons or notes.</p>
+            ${[...new Set(S.status.categories.map(c => c.group))].map(g => `<h3 class="nt-group">${esc(g)}</h3><table class="data-table"><tr><th>Notification</th><th>State</th></tr>
+            ${S.status.categories.filter(c => c.group === g).map(c => `<tr><td>${esc(c.label)}</td><td>${c.implemented && !c.locked
                 ? `<label class="nt-check"><input type="checkbox" data-cat="${esc(c.key)}" ${c.enabled ? 'checked' : ''}> ${c.enabled ? 'On' : 'Off'}</label>`
-                : `<span class="nt-pill nt-skipped">${c.locked ? 'Not available' : 'Planned (N3)'}</span>`}</td></tr>`).join('')}</table>
+                : `<span class="nt-pill nt-skipped">${c.locked ? 'Not available' : 'Planned'}</span>`}</td></tr>`).join('')}</table>`).join('')}
+            <h3 class="nt-group">Options</h3><table class="data-table"><tr><th>Option</th><th>State</th></tr>
+            ${(S.status.options || []).map(o => `<tr><td>${esc(o.label)}</td><td><label class="nt-check"><input type="checkbox" data-opt="${esc(o.key)}" ${o.enabled ? 'checked' : ''}> ${o.enabled ? 'On' : 'Off'}</label></td></tr>`).join('')}</table>
           </div></div>`;
         const put = async (body, what) => {
             try { await api('/settings', 'PUT', body); msg(what + ' saved.', 'success'); } catch (err) { msg(err.message, 'error'); }
@@ -285,9 +287,19 @@
         };
         view.querySelector('#ntManual').addEventListener('change', (ev) => put({ manual_enabled: ev.target.checked }, 'Manual sending'));
         view.querySelector('#ntPause').addEventListener('change', (ev) => {
-            if (!ev.target.checked && !confirm('Resume sending? Queued e-mails will continue.')) { ev.target.checked = true; return; }
+            if (!ev.target.checked) {
+                const p = S.status.pending || { messages: 0, recipients: 0 };
+                const txt = p.recipients
+                    ? `Resume sending?\n\n${p.recipients} pending e-mail(s) in ${p.messages} message(s) are listed in History with status "Queued".\nBefore each one is sent, its category setting and the recipient's eligibility (account, NAT-Lab membership, supervisor assignment) are checked again; anything no longer allowed is skipped.`
+                    : 'Resume sending? Nothing is pending.';
+                if (!confirm(txt)) { ev.target.checked = true; return; }
+            }
             put({ paused: ev.target.checked }, 'Pause');
         });
+        view.querySelectorAll('[data-opt]').forEach(x => x.addEventListener('change', (ev) => {
+            if (ev.target.checked && !confirm('Switch on: "' + x.closest('tr').firstChild.textContent + '"?')) { ev.target.checked = false; return; }
+            put({ options: { [x.dataset.opt]: ev.target.checked } }, 'Option');
+        }));
         view.querySelectorAll('[data-cat]').forEach(x => x.addEventListener('change', (ev) => {
             if (ev.target.checked && !confirm('Switch on automatic e-mails for "' + x.closest('tr').firstChild.textContent + '"?')) { ev.target.checked = false; return; }
             put({ categories: { [x.dataset.cat]: ev.target.checked } }, 'Category');

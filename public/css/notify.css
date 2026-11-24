@@ -41,3 +41,4 @@
 .nt-modal { background: #fff; border-radius: 10px; padding: 20px 24px; max-width: 560px; width: 92%; max-height: 85vh; overflow: auto; box-shadow: 0 10px 40px rgba(0,0,0,.25); }
 .nt-modal-list { max-height: 200px; overflow: auto; font-size: 12px; background: #f8fafc; border-radius: 6px; padding: 8px; margin: 8px 0; }
 .nt-loading { color: #64748b; padding: 12px; }
+.nt-group { font-size: 14px; color: #1a365d; margin: 16px 0 6px; }

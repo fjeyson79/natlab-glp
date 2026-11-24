@@ -35,22 +35,36 @@ const GROUP_CODES = ['LIU', 'UNAV', 'JOINT'];
 const AFFILIATIONS = ['LiU', 'UNAV', 'EXTERNAL'];
 const BASE_AUDIENCES = ['all', 'researchers', 'supervisors'];
 
-// Automatic categories. Only `implemented` ones can be switched on (N1 hooks);
-// the rest are the planned N3 programme, shown but not switchable.
+// Automatic categories (N3). Every one is OFF until the PI switches it on.
+// `implemented: false` = planned, shown but not switchable; `locked` = never here.
 const CATEGORIES = [
-    { key: 'submission_received', label: 'New submission → PI (metadata only)', implemented: true },
-    { key: 'decision_approved', label: 'Document approved → researcher', implemented: true },
-    { key: 'decision_revision', label: 'Revision requested → researcher', implemented: true },
-    { key: 'decision_discarded', label: 'Document discarded → researcher', implemented: true },
-    { key: 'supervisor_sop', label: 'SOP submissions → assigned supervisors', implemented: false },
-    { key: 'supervisor_data', label: 'DATA submissions → assigned supervisors', implemented: false },
-    { key: 'supervisor_presentation', label: 'PRESENTATION submissions → assigned supervisors', implemented: false },
-    { key: 'document_review', label: 'Document review reminders', implemented: false },
-    { key: 'research_summary', label: 'Research activity summaries', implemented: false },
-    { key: 'supervisor_summary', label: 'Supervisor activity summaries (daily / weekly)', implemented: false },
-    { key: 'gm_invitation', label: 'Group Meetings invitations', implemented: false },
-    { key: 'gm_reminder', label: 'Group Meetings reminders', implemented: false },
-    { key: 'theralia_investor_booking', label: 'Theralia investor bookings (company module — out of scope)', implemented: false, locked: true },
+    { key: 'submission_sop', group: 'Scientific submissions', label: 'New SOP submission → PI', implemented: true },
+    { key: 'submission_data', group: 'Scientific submissions', label: 'New DATA submission → PI', implemented: true },
+    { key: 'submission_presentation', group: 'Scientific submissions', label: 'New PRESENTATION submission → PI', implemented: true },
+    { key: 'submission_report', group: 'Scientific submissions', label: 'Other new submissions (reports) → PI', implemented: true },
+    { key: 'submission_resubmission', group: 'Scientific submissions', label: 'Revised submission (after a revision request) → PI', implemented: true },
+    { key: 'decision_approved', group: 'Scientific decisions', label: 'Approval → researcher', implemented: true },
+    { key: 'decision_revision', group: 'Scientific decisions', label: 'Revision request → researcher', implemented: true },
+    { key: 'decision_discarded', group: 'Scientific decisions', label: 'Discard → researcher', implemented: true },
+    { key: 'training_initiated', group: 'Training and certification', label: 'Training entry recorded → certifying supervisor (or PI)', implemented: true },
+    { key: 'training_submitted', group: 'Training and certification', label: 'Training pack submitted for validation → PI', implemented: true },
+    { key: 'training_supervisor_accepted', group: 'Training and certification', label: 'Supervisor certifies a training entry → researcher', implemented: true },
+    { key: 'training_pi_accepted', group: 'Training and certification', label: 'PI accepts a training entry → researcher', implemented: true },
+    { key: 'training_revision', group: 'Training and certification', label: 'Additional training / revision requested → researcher', implemented: true },
+    { key: 'training_rejected', group: 'Training and certification', label: 'Training entry not accepted → researcher', implemented: true },
+    { key: 'training_certified', group: 'Training and certification', label: 'Certification issued → researcher', implemented: true },
+    { key: 'research_summary', group: 'Planned', label: 'Research activity summaries', implemented: false },
+    { key: 'supervisor_summary', group: 'Planned', label: 'Supervisor activity summaries (daily / weekly)', implemented: false },
+    { key: 'gm_invitation', group: 'Planned', label: 'Group Meetings invitations', implemented: false },
+    { key: 'gm_reminder', group: 'Planned', label: 'Group Meetings reminders', implemented: false },
+    { key: 'theralia_investor_booking', group: 'Planned', label: 'Theralia investor bookings (company module — out of scope)', implemented: false, locked: true },
+];
+// Options (all OFF): supervisor copies per area, and researcher-facing messages.
+const OPTIONS = [
+    { key: 'cc_submissions', label: 'Copy assigned supervisors on submission notices' },
+    { key: 'cc_decisions', label: 'Copy assigned supervisors on decision notices' },
+    { key: 'cc_training', label: 'Copy assigned supervisors on training notices' },
+    { key: 'include_researcher_messages', label: 'Include researcher-facing messages (revision / training comments the researcher already sees in the portal) in the researcher\'s own e-mail' },
 ];
 const CATEGORY_KEYS = new Set(CATEGORIES.map(c => c.key));
 
@@ -149,6 +163,14 @@ const SCHEMA = [
         created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )`,
+    // N3 (additive): To / CC role and the recorded reason the person may receive it.
+    `ALTER TABLE notify_recipients ADD COLUMN IF NOT EXISTS recipient_role VARCHAR(4) NOT NULL DEFAULT 'to'`,
+    `ALTER TABLE notify_recipients ADD COLUMN IF NOT EXISTS basis JSONB`,
+    `DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'notify_recipients_role_check') THEN
+            ALTER TABLE notify_recipients ADD CONSTRAINT notify_recipients_role_check CHECK (recipient_role IN ('to', 'cc'));
+        END IF;
+     END $$`,
     `CREATE INDEX IF NOT EXISTS idx_notify_messages_created ON notify_messages(created_at DESC)`,
     `CREATE INDEX IF NOT EXISTS idx_notify_messages_status ON notify_messages(status)`,
     `CREATE INDEX IF NOT EXISTS idx_notify_recipients_message ON notify_recipients(message_id)`,
@@ -235,7 +257,9 @@ function createNotifyCenter({ pool, requirePI, spacingMs }) {
         const on = (k) => !!(m.get(k) && m.get(k).enabled === true);
         const categories = {};
         for (const c of CATEGORIES) categories[c.key] = c.implemented && !c.locked && on('category:' + c.key);
-        return { manual_enabled: on('manual'), paused: !!(m.get('paused') && m.get('paused').paused === true), categories };
+        const options = {};
+        for (const o of OPTIONS) options[o.key] = on('option:' + o.key);
+        return { manual_enabled: on('manual'), paused: !!(m.get('paused') && m.get('paused').paused === true), categories, options };
     }
     async function setSetting(key, value, by) {
         await pool.query(`INSERT INTO notify_settings (key, value, updated_by, updated_at) VALUES ($1, $2, $3, now())
@@ -386,10 +410,7 @@ function createNotifyCenter({ pool, requirePI, spacingMs }) {
             return pi && pi.toLowerCase() === rcpt.email.toLowerCase() ? null : 'Test recipient is no longer the configured PI address';
         }
         if (msg.kind === 'automatic') {
-            if (msg.category === 'submission_received') {
-                const pi = notify.piAddress();
-                return pi && pi.toLowerCase() === rcpt.email.toLowerCase() ? null : 'PI address changed';
-            }
+            if (rcpt.basis) return events.recheck(rcpt.basis, rcpt.email);
             const r = await pool.query(`SELECT 1 FROM di_allowlist WHERE active = TRUE AND lower(institution_email) = lower($1)`, [rcpt.email]);
             return r.rows.length ? null : 'Recipient account no longer active';
         }
@@ -423,7 +444,17 @@ function createNotifyCenter({ pool, requirePI, spacingMs }) {
         let first = true;
         for (;;) {
             const g = await gate(m.kind, m.category);
-            if (!g.ok) { log('message.send', 'held', `message=${messageId} reason=${g.code}`); break; }
+            if (!g.ok) {
+                // A category switched off before sending is final for its pending notices (no
+                // stale e-mails if it is switched on again later). Global switch, manual sending
+                // and the pause only HOLD; held e-mails are re-checked when sending resumes.
+                if (m.kind === 'automatic' && g.code === 'category_disabled') {
+                    await pool.query(`UPDATE notify_recipients SET status = 'SKIPPED', skip_reason = 'Category switched off before sending', updated_at = now()
+                                      WHERE message_id = $1 AND status = 'QUEUED'`, [messageId]);
+                    log('message.send', 'skipped', `message=${messageId} reason=category_disabled`);
+                } else log('message.send', 'held', `message=${messageId} reason=${g.code}`);
+                break;
+            }
             // claim exactly one row (two workers can never send the same row)
             const c = await pool.query(`UPDATE notify_recipients SET status = 'SENDING', attempts = attempts + 1,
                     first_attempt_at = COALESCE(first_attempt_at, now()), last_attempt_at = now(), updated_at = now()
@@ -478,31 +509,49 @@ function createNotifyCenter({ pool, requirePI, spacingMs }) {
         if (!CATEGORY_KEYS.has(category)) return false;
         return (await settings()).categories[category] === true;
     }
-    async function enqueueAutomatic(m) {
+    // One automatic event -> one message with one row per recipient (To and CC
+    // copies are separate e-mails). Rows whose dedupe key already exists are dropped,
+    // so a repeated event can never e-mail anybody twice.
+    async function enqueueEvent({ category, event, list }) {
         try {
-            const g = await gate('automatic', m.category);
-            if (!g.ok) { log(m.event, 'skipped', 'reason=' + g.code); return { ok: false }; }
-            if (!notify.validEmail(m.to)) { log(m.event, 'skipped', 'reason=invalid-recipient'); return { ok: false }; }
+            const g = await gate('automatic', category);
+            // Paused: the notice is still recorded and held (released when sending resumes).
+            // Global switch off or category off: nothing is recorded.
+            if (!g.ok && g.code !== 'paused') { log(event, 'skipped', 'reason=' + g.code); return { ok: false }; }
+            const rows = list.filter(r => notify.validEmail(r.to)).slice(0, MAX_RECIPIENTS);
+            if (!rows.length) { log(event, 'skipped', 'reason=no-recipient'); return { ok: false }; }
             const client = await pool.connect();
-            let messageId = null;
+            let messageId = null, kept = [];
             try {
                 await client.query('BEGIN');
-                const dup = await client.query(`SELECT 1 FROM notify_recipients WHERE dedupe_key = $1`, [m.dedupeKey]);
-                if (!dup.rows.length) {
+                const dup = new Set((await client.query(`SELECT dedupe_key FROM notify_recipients WHERE dedupe_key = ANY($1::text[])`, [rows.map(r => r.dedupeKey)])).rows.map(x => x.dedupe_key));
+                kept = rows.filter(r => !dup.has(r.dedupeKey));
+                if (kept.length) {
+                    const first = kept[0];
                     messageId = (await client.query(`INSERT INTO notify_messages (kind, category, status, subject, body, recipient_count, created_by, trigger_event, confirmed_at)
-                        VALUES ('automatic', $1, 'QUEUED', $2, $3, 1, 'system', $4, now()) RETURNING id`,
-                        [m.category, notify.oneLine(m.subject, MAX_SUBJECT), String(m.text || '').slice(0, MAX_BODY), m.event])).rows[0].id;
-                    await client.query(`INSERT INTO notify_recipients (message_id, researcher_id, name, email, reason, sent_subject, sent_text, sent_html, dedupe_key)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-                        [messageId, m.recipientId, notify.oneLine(m.name, 200) || 'Recipient', String(m.to).trim(), 'automatic: ' + m.category,
-                         notify.oneLine(m.subject, 250), String(m.text || ''), String(m.html || ''), m.dedupeKey]);
+                        VALUES ('automatic', $1, 'QUEUED', $2, $3, $4, 'system', $5, now()) RETURNING id`,
+                        [category, notify.oneLine(first.subject, MAX_SUBJECT), String(first.text || '').slice(0, MAX_BODY), kept.length, event])).rows[0].id;
+                    for (const r of kept) {
+                        await client.query(`INSERT INTO notify_recipients (message_id, researcher_id, name, email, reason, recipient_role, basis, sent_subject, sent_text, sent_html, dedupe_key)
+                            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+                            [messageId, r.researcherId || null, notify.oneLine(r.name, 200) || 'Recipient', String(r.to).trim(),
+                             notify.oneLine((r.role === 'cc' ? 'copy: ' : '') + (r.basis ? r.basis.kind : 'automatic') + ' · ' + category, 120),
+                             r.role === 'cc' ? 'cc' : 'to', r.basis ? JSON.stringify(r.basis) : null,
+                             notify.oneLine(r.subject, 250), String(r.text || ''), String(r.html || ''), r.dedupeKey]);
+                    }
                 }
                 await client.query('COMMIT');
             } catch (e) { await client.query('ROLLBACK').catch(() => {}); throw e; } finally { client.release(); }
-            if (messageId) startWorker(messageId); else log(m.event, 'skipped', 'reason=duplicate');
+            if (messageId) { log(event, 'queued', `message=${messageId} recipients=${kept.length}`); startWorker(messageId); }
+            else log(event, 'skipped', 'reason=duplicate');
             return { ok: true };
-        } catch (_) { log(m.event, 'failed', 'reason=internal'); return { ok: false }; }
+        } catch (_) { log(event, 'failed', 'reason=internal'); return { ok: false }; }
     }
+    async function enqueueAutomatic(m) {
+        return enqueueEvent({ category: m.category, event: m.event, list: [{ to: m.to, name: m.name, researcherId: m.recipientId, role: 'to', basis: null,
+            subject: m.subject, html: m.html, text: m.text, dedupeKey: m.dedupeKey }] });
+    }
+    const events = require('./notifyEvents').createNotifyEvents({ pool, getSettings: settings, enqueueEvent, bulkExcludedIds: () => bulkExcludedIds(), log });
 
     // ------------------------------------------------------------ limits
     const windows = new Map();
@@ -526,8 +575,11 @@ function createNotifyCenter({ pool, requirePI, spacingMs }) {
 
     router.get('/status', wrapRoute(async (req, res) => {
         const st = await settings();
-        res.json({ email: notify.status(), settings: st, limits: { max_recipients: MAX_RECIPIENTS, spacing_ms: SPACING },
-            categories: CATEGORIES.map(c => ({ ...c, enabled: st.categories[c.key] === true })), variables: VARIABLES });
+        // Pending = recorded but not yet sent (held by the pause, a switch or in progress).
+        const pend = (await pool.query(`SELECT count(DISTINCT message_id)::int AS messages, count(*)::int AS recipients FROM notify_recipients WHERE status IN ('QUEUED','SENDING')`)).rows[0];
+        res.json({ email: notify.status(), settings: st, pending: pend, limits: { max_recipients: MAX_RECIPIENTS, spacing_ms: SPACING },
+            categories: CATEGORIES.map(c => ({ ...c, enabled: st.categories[c.key] === true })),
+            options: OPTIONS.map(o => ({ ...o, enabled: st.options[o.key] === true })), variables: VARIABLES });
     }));
 
     router.get('/audiences', wrapRoute(async (req, res) => {
@@ -684,7 +736,7 @@ function createNotifyCenter({ pool, requirePI, spacingMs }) {
         if (!isUuid(req.params.id)) return fail(res, 404, 'not_found', 'Not found');
         const m = (await pool.query(`SELECT m.*, COALESCE(a.name, m.created_by) AS created_by_name FROM notify_messages m LEFT JOIN di_allowlist a ON a.researcher_id = m.created_by WHERE m.id = $1`, [req.params.id])).rows[0];
         if (!m) return fail(res, 404, 'not_found', 'Not found');
-        const r = await pool.query(`SELECT id, researcher_id, name, email, reason, status, skip_reason, provider_id, error, attempts,
+        const r = await pool.query(`SELECT id, researcher_id, name, email, reason, recipient_role, status, skip_reason, provider_id, error, attempts,
                 queued_at, first_attempt_at, last_attempt_at, accepted_at, delivered_at FROM notify_recipients WHERE message_id = $1 ORDER BY name`, [m.id]);
         const sample = (await pool.query(`SELECT sent_subject, sent_text FROM notify_recipients WHERE message_id = $1 ORDER BY name LIMIT 1`, [m.id])).rows[0] || null;
         res.json({ message: m, recipients: r.rows, sample, sending: running.has(m.id) });
@@ -745,7 +797,11 @@ function createNotifyCenter({ pool, requirePI, spacingMs }) {
                 if (!c || !c.implemented || c.locked) return fail(res, 400, 'category_not_available', 'This category is not available yet.');
             }
         }
+        if (b.options && typeof b.options === 'object') {
+            for (const k of Object.keys(b.options)) if (!OPTIONS.some(o => o.key === k)) return fail(res, 400, 'option_not_available', 'Unknown option.');
+        }
         if (b.manual_enabled !== undefined) await setSetting('manual', { enabled: b.manual_enabled === true }, actor(req));
+        if (b.options && typeof b.options === 'object') for (const [k, v] of Object.entries(b.options)) await setSetting('option:' + k, { enabled: v === true }, actor(req));
         if (b.paused !== undefined) await setSetting('paused', { paused: b.paused === true }, actor(req));
         if (b.categories && typeof b.categories === 'object') {
             for (const [k, v] of Object.entries(b.categories)) await setSetting('category:' + k, { enabled: v === true }, actor(req));
@@ -759,8 +815,8 @@ function createNotifyCenter({ pool, requirePI, spacingMs }) {
         res.json({ settings: st });
     }));
 
-    return { router, ensureSchema, recover, isCategoryEnabled, enqueueAutomatic, startWorker, idle,
+    return { router, ensureSchema, recover, isCategoryEnabled, enqueueAutomatic, emit: events.emit, startWorker, idle,
              _internals: { resolveAudience, eligiblePool, renderFor, contentProblems, variablesIn, textToHtml, gate, settings } };
 }
 
-module.exports = { createNotifyCenter, renderFor, variablesIn, textToHtml, fill, SYSTEM_TEMPLATES, CATEGORIES, VARIABLES, MAX_RECIPIENTS };
+module.exports = { createNotifyCenter, renderFor, variablesIn, textToHtml, fill, SYSTEM_TEMPLATES, CATEGORIES, OPTIONS, VARIABLES, MAX_RECIPIENTS };

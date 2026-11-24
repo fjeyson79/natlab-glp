@@ -188,8 +188,15 @@ async function sendBatch({ event, messages, idempotencyKey }) {
 // Automatic categories are opt-in (default OFF). server/notifyCenter.js installs
 // the category check and the durable delivery sink; without it nothing automatic
 // is ever sent.
-let automation = { isCategoryEnabled: async () => false, deliver: null };
-function setAutomation(a) { automation = Object.assign({ isCategoryEnabled: async () => false, deliver: null }, a || {}); }
+let automation = { isCategoryEnabled: async () => false, deliver: null, onEvent: null };
+function setAutomation(a) { automation = Object.assign({ isCategoryEnabled: async () => false, deliver: null, onEvent: null }, a || {}); }
+// N3: when the Notify centre is installed, scientific events are handed to it
+// (it decides categories, recipients incl. supervisor copies, content and delivery).
+function handOver(type, payload) {
+    if (typeof automation.onEvent !== 'function') return false;
+    try { automation.onEvent(type, payload); } catch (_) { log(type, 'failed', 'reason=internal'); }
+    return true;
+}
 async function automaticAllowed(category, event) {
     try {
         if (!config().enabled) { log(event, 'skipped', 'reason=sending-disabled'); return false; }
@@ -230,7 +237,8 @@ function button(href, label) {
 const TYPE_LABELS = { SOP: 'SOP', DATA: 'Data', PRESENTATION: 'Presentation', REPORT: 'Report' };
 
 // New submission -> configured PI address. Minimal metadata, no filename, no content.
-function notifySubmissionReceived({ submissionId, researcherName, fileType, reportSubcategory, uploadedByAutomation }) {
+function notifySubmissionReceived({ submissionId, researcherId, researcherName, fileType, reportSubcategory, uploadedByAutomation, resubmission }) {
+    if (handOver('submission.received', { submissionId, researcherId, fileType, resubmission: !!resubmission })) return;
     const event = 'submission.received';
     dispatch(event, async () => {
         const cfg = config();
@@ -264,6 +272,7 @@ const DECISION_CATEGORY = { APPROVED: 'decision_approved', REVISION_NEEDED: 'dec
 function notifyResearcherDecision(payload, describe) {
     const p = payload || {};
     const decision = String(p.decision || '').toUpperCase();
+    if (handOver('decision', { submissionId: p.submission_id, decision })) return;
     const event = 'decision.' + (decision === 'APPROVED' ? 'approved' : decision === 'DISCARDED' ? 'discarded' : decision === 'REVISION_NEEDED' ? 'revision' : 'unknown');
     const eventId = crypto.randomUUID();
     dispatch(event, async () => {
@@ -351,6 +360,6 @@ function buildMeetingMessages(meeting, participants) {
 
 module.exports = {
     isEnabled, status, config, piAddress, dateOnly, sendEmail, sendBatch, deliver, dispatch, esc, oneLine, hashKey, validEmail, validSender,
-    setAutomation, wrap,
+    setAutomation, wrap, row, table, button,
     notifySubmissionReceived, notifyResearcherDecision, notifyInvestorBookingTeam, buildMeetingMessages
 };
