@@ -5,7 +5,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const http = require('node:http');
 
-const ENV_KEYS = ['NOTIFY_ENABLED', 'RESEND_API_KEY', 'NOTIFY_FROM', 'NOTIFY_PI_EMAIL', 'RESEND_API_URL', 'NOTIFY_TIMEOUT_MS',
+const ENV_KEYS = ['NOTIFY_ENABLED', 'NOTIFY_SENDING_ENABLED', 'NOTIFY_REPLY_TO', 'RESEND_API_KEY', 'NOTIFY_FROM', 'NOTIFY_PI_EMAIL', 'RESEND_API_URL', 'NOTIFY_TIMEOUT_MS',
     'INVESTOR_MEETING_CEO_EMAIL', 'INVESTOR_MEETING_CSO_EMAIL', 'NOTIFY_PORTAL_URL'];
 const saved = {}; for (const k of ENV_KEYS) saved[k] = process.env[k];
 test.after(() => { for (const k of ENV_KEYS) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; } });
@@ -19,7 +19,7 @@ const server = http.createServer((req, res) => {
         const m = typeof mode === 'function' ? mode(seen.length) : mode;
         if (m === 'hang') return; // never answers
         if (m === 'slow') return setTimeout(() => { res.writeHead(200); res.end('{"id":"x"}'); }, 300);
-        res.writeHead(m === 'ok' ? 200 : Number(m)); res.end('{}');
+        res.writeHead(m === 'ok' ? 200 : Number(m)); res.end(m === 'ok' ? '{"id":"re_' + seen.length + '"}' : '{}');
     });
 });
 let base;
@@ -29,7 +29,8 @@ test.after(() => { server.closeAllConnections(); server.close(); });
 function configure(extra) {
     for (const k of ENV_KEYS) delete process.env[k];
     Object.assign(process.env, { RESEND_API_KEY: 'test-key-not-real', NOTIFY_FROM: 'NAT-Lab <noreply@example.test>', RESEND_API_URL: base,
-        NOTIFY_PI_EMAIL: 'pi@example.test', NOTIFY_TIMEOUT_MS: '1000' }, extra || {});
+        NOTIFY_PI_EMAIL: 'pi@example.test', NOTIFY_TIMEOUT_MS: '1000', NOTIFY_SENDING_ENABLED: 'true' }, extra || {});
+    notify.setAutomation({ isCategoryEnabled: async () => true }); // these unit tests exercise the hooks directly
 }
 const notify = require('../server/notify');
 function captureLogs() {
@@ -49,6 +50,61 @@ test('disabled without configuration or with NOTIFY_ENABLED=false: nothing is se
     assert.strictEqual(notify.isEnabled(), false);
     assert.strictEqual((await notify.sendEmail({ event: 't', to: 'a@example.test', subject: 's', idempotencyKey: 'k' })).outcome, 'skipped');
     assert.strictEqual(seen.length, 0);
+});
+
+test('N1: installing the key and sender alone never sends (global switch defaults to OFF)', async () => {
+    configure({ NOTIFY_SENDING_ENABLED: undefined }); delete process.env.NOTIFY_SENDING_ENABLED; mode = 'ok'; seen.length = 0;
+    assert.strictEqual(notify.isEnabled(), false);
+    assert.strictEqual(notify.status().configured, true); assert.strictEqual(notify.status().sending_switch, false);
+    for (const v of ['1', 'yes', 'TRUE ', 'on']) { process.env.NOTIFY_SENDING_ENABLED = v; assert.strictEqual(notify.isEnabled(), v.trim().toLowerCase() === 'true', v); }
+    delete process.env.NOTIFY_SENDING_ENABLED;
+    assert.strictEqual((await notify.sendEmail({ event: 't', to: 'a@example.test', subject: 's', idempotencyKey: 'k' })).outcome, 'skipped');
+    assert.strictEqual((await notify.deliver({ event: 't', to: 'a@example.test', subject: 's', idempotencyKey: 'k' })).status, 'disabled');
+    notify.notifySubmissionReceived({ submissionId: 'x', researcherName: 'R', fileType: 'SOP' });
+    notify.notifyResearcherDecision({ submission_id: 'y', decision: 'APPROVED', researcher_email: 'r@example.test' });
+    await settle(200);
+    assert.strictEqual(seen.length, 0);
+    const st = JSON.stringify(notify.status());
+    assert.ok(!st.includes('test-key-not-real'), 'status never exposes the key');
+});
+
+test('N1: every automatic category is OFF unless explicitly enabled', async () => {
+    configure(); mode = 'ok'; seen.length = 0;
+    notify.setAutomation(null); // default: nothing enabled
+    notify.notifySubmissionReceived({ submissionId: 'x2', researcherName: 'R', fileType: 'SOP' });
+    for (const d of ['APPROVED', 'REVISION_NEEDED', 'DISCARDED']) notify.notifyResearcherDecision({ submission_id: 'y2', decision: d, researcher_email: 'r@example.test' });
+    notify.notifyInvestorBookingTeam({ bookingId: 1, teamText: 'x' });
+    await settle(200);
+    assert.strictEqual(seen.length, 0);
+    const asked = [];
+    notify.setAutomation({ isCategoryEnabled: async (c) => { asked.push(c); return c === 'decision_revision'; } });
+    for (const d of ['APPROVED', 'REVISION_NEEDED', 'DISCARDED']) notify.notifyResearcherDecision({ submission_id: 'y3', decision: d, researcher_email: 'r@example.test' });
+    notify.notifySubmissionReceived({ submissionId: 'x3', researcherName: 'R', fileType: 'SOP' });
+    await settle(300);
+    assert.strictEqual(seen.length, 1, 'only the enabled category'); assert.ok(seen[0].body.subject.startsWith('GLP Submission Requires Revision'));
+    assert.deepStrictEqual(new Set(asked), new Set(['decision_approved', 'decision_revision', 'decision_discarded', 'submission_received']));
+    notify.setAutomation({ isCategoryEnabled: async () => { throw new Error('db down'); } });
+    notify.notifySubmissionReceived({ submissionId: 'x4', researcherName: 'R', fileType: 'SOP' });
+    await settle(200);
+    assert.strictEqual(seen.length, 1, 'a failing category check sends nothing');
+});
+
+test('N1: Reply-To, provider message id, and accepted / failed / uncertain outcomes', async () => {
+    configure({ NOTIFY_REPLY_TO: 'pi.mailbox@example.test' }); mode = 'ok'; seen.length = 0;
+    const a = await notify.deliver({ event: 't', to: 'a@example.test', subject: 's', html: 'h', text: 't', idempotencyKey: 'd1' });
+    assert.deepStrictEqual([a.status, a.id], ['accepted', 're_1']);
+    assert.strictEqual(seen[0].body.reply_to, 'pi.mailbox@example.test'); assert.deepStrictEqual(seen[0].body.to, ['a@example.test']);
+    assert.ok(!('cc' in seen[0].body) && !('bcc' in seen[0].body));
+    mode = '422'; assert.deepStrictEqual(await notify.deliver({ event: 't', to: 'a@example.test', subject: 's', idempotencyKey: 'd2' }), { status: 'failed', code: 'http_422' });
+    mode = '429'; assert.strictEqual((await notify.deliver({ event: 't', to: 'a@example.test', subject: 's', idempotencyKey: 'd3' })).status, 'failed');
+    mode = '500'; assert.strictEqual((await notify.deliver({ event: 't', to: 'a@example.test', subject: 's', idempotencyKey: 'd4' })).status, 'uncertain');
+    mode = '409'; assert.strictEqual((await notify.deliver({ event: 't', to: 'a@example.test', subject: 's', idempotencyKey: 'd5' })).status, 'uncertain');
+    mode = 'hang'; assert.strictEqual((await notify.deliver({ event: 't', to: 'a@example.test', subject: 's', idempotencyKey: 'd6' })).status, 'uncertain');
+    assert.strictEqual((await notify.deliver({ event: 't', to: 'not an address', subject: 's', idempotencyKey: 'd7' })).status, 'failed');
+    configure({ NOTIFY_REPLY_TO: 'not-an-address' }); mode = 'ok'; seen.length = 0;
+    await notify.deliver({ event: 't', to: 'a@example.test', subject: 's', idempotencyKey: 'd8' });
+    assert.strictEqual(seen[0].body.reply_to, undefined, 'invalid Reply-To is not sent');
+    assert.ok(notify.status().missing.includes('NOTIFY_REPLY_TO'));
 });
 
 test('success: one request with bearer key and Idempotency-Key', async () => {
@@ -104,7 +160,7 @@ test('HTML escaping in decision and meeting e-mails; no attachment, no document 
     await settle(300);
     const b = seen[0].body;
     assert.ok(!b.html.includes('<script>') && !b.html.includes('<img'));
-    assert.ok(b.html.includes('&lt;script&gt;') && b.html.includes('&amp; more'));
+    assert.ok(!JSON.stringify(b).includes('alert') && !JSON.stringify(b).includes('more'), 'PI comments are not in the e-mail at all');
     assert.strictEqual(b.attachments, undefined);
     const msgs = notify.buildMeetingMessages({ meeting_date: '2026-11-12', meeting_time: '09:00:00', location_text: '<b>Room</b>' },
         [{ name: '<i>A</i>', email: 'a@example.test', slot_type: 'DATA_DEEP' }]);
@@ -196,6 +252,8 @@ test('decision e-mails never contain the filename; they name document type and s
         assert.ok(!all.includes('SecretProject') && !all.includes('.pdf'), 'filename leaked: ' + s.body.subject);
         assert.ok(s.body.subject.includes('Data submitted on 2026-11-05'), s.body.subject);
         assert.strictEqual(s.body.attachments, undefined);
+        for (const secret of ['NATLAB-x', 'Duplicate', '"c"', 'c\\n', 'railway.app', '/api/di/download']) assert.ok(!all.includes(secret), 'leaked ' + secret);
+        assert.ok(all.includes('https://glp.hernandezlab.com/upload.html'), 'links to the primary domain portal');
     }
 });
 

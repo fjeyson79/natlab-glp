@@ -22708,6 +22708,20 @@ groupMeetings.ensureSchemaIfEnabled(pool).catch(() =>
     console.error('[STARTUP] group-meetings schema ensure failed')
 );
 
+// NAT-Lab Notify (N1 + N2) — see server/notifyCenter.js. PI only. Nothing is sent
+// unless RESEND_API_KEY + NOTIFY_FROM are configured AND NOTIFY_SENDING_ENABLED=true;
+// manual sending and each automatic category are separate settings, all OFF by
+// default. The automatic hooks in server/notify.js deliver through its durable outbox.
+const notifyCenter = require('./server/notifyCenter').createNotifyCenter({
+    pool, requirePI,
+    spacingMs: Math.min(5000, Math.max(0, parseInt(process.env.NOTIFY_SPACING_MS || '600', 10) || 600)),
+});
+app.use('/api/notify', notifyCenter.router);
+notify.setAutomation({ isCategoryEnabled: notifyCenter.isCategoryEnabled, deliver: notifyCenter.enqueueAutomatic });
+notifyCenter.ensureSchema().then(() => notifyCenter.recover()).catch(e =>
+    console.error('[STARTUP] notify schema ensure failed:', e && e.message)
+);
+
 app.listen(PORT, "0.0.0.0", async () => {
     console.log(`[STARTUP] Server listening on 0.0.0.0:${PORT} — port bound OK`);
 

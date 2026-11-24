@@ -4,8 +4,11 @@
 // ----------------------------------------------------------------------------
 // - Uses Node's built-in fetch and Resend's HTTPS API. No extra packages,
 //   services, queues or tables.
-// - DISABLED unless RESEND_API_KEY and NOTIFY_FROM are set, and can be switched
-//   off with NOTIFY_ENABLED=false. When disabled nothing is sent and nothing fails.
+// - N1: sending requires THREE things: RESEND_API_KEY and NOTIFY_FROM configured
+//   AND the explicit global switch NOTIFY_SENDING_ENABLED=true. Installing the
+//   credentials alone never sends anything. (NOTIFY_ENABLED=false still forces
+//   everything off.) Every automatic category is additionally opt-in, off by
+//   default, through the Notify settings (server/notifyCenter.js).
 // - Every request has a bounded timeout. Functions here never throw.
 // - Core operations never wait for e-mail: they call dispatch(), which runs the
 //   send after the current request has been answered.
@@ -29,20 +32,28 @@
 const crypto = require('crypto');
 
 const DEFAULT_ENDPOINT = 'https://api.resend.com/emails';
-const DEFAULT_PORTAL = 'https://natlab-glp-production.up.railway.app';
+const DEFAULT_PORTAL = 'https://glp.hernandezlab.com'; // primary address; the Railway fallback stays served
+
+const SENDER_RE = /^([^<>"\r\n]{1,100}) <([^<>\s]+)>$/;
+function validSender(v) { const m = SENDER_RE.exec(v || ''); return m ? validEmail(m[2]) : validEmail(v); }
 
 function config() {
     const env = process.env;
     const off = /^(0|false|off|no)$/i.test(String(env.NOTIFY_ENABLED || '').trim());
+    const sendingSwitch = String(env.NOTIFY_SENDING_ENABLED || '').trim().toLowerCase() === 'true';
     const apiKey = String(env.RESEND_API_KEY || '').trim();
     const from = String(env.NOTIFY_FROM || '').trim();
+    const replyTo = String(env.NOTIFY_REPLY_TO || '').trim();
+    const configured = !!apiKey && !/\s/.test(apiKey) && validSender(from);
     let timeoutMs = parseInt(env.NOTIFY_TIMEOUT_MS || '8000', 10);
     if (!Number.isFinite(timeoutMs)) timeoutMs = 8000;
     timeoutMs = Math.min(15000, Math.max(1000, timeoutMs));
     const endpoint = String(env.RESEND_API_URL || DEFAULT_ENDPOINT).trim().replace(/\/+$/, '');
     return {
-        enabled: !off && !!apiKey && !!from,
+        configured, sendingSwitch, off,
+        enabled: !off && configured && sendingSwitch,
         apiKey, from, timeoutMs, endpoint,
+        replyTo: validEmail(replyTo) ? replyTo : '',
         piEmail: String(env.NOTIFY_PI_EMAIL || '').trim(),
         theraliaTeam: [env.INVESTOR_MEETING_CEO_EMAIL, env.INVESTOR_MEETING_CSO_EMAIL]
             .map(x => String(x || '').trim()).filter(Boolean),
@@ -51,6 +62,19 @@ function config() {
 }
 
 function isEnabled() { return config().enabled; }
+// What the PI's Notify page may learn: booleans, variable NAMES and the (non-secret)
+// addresses. Never the key or anything derived from it.
+function status() {
+    const c = config();
+    const missing = [];
+    if (!c.apiKey) missing.push('RESEND_API_KEY');
+    if (!validSender(c.from)) missing.push('NOTIFY_FROM');
+    if (!c.replyTo) missing.push('NOTIFY_REPLY_TO');
+    if (!validEmail(c.piEmail)) missing.push('NOTIFY_PI_EMAIL');
+    return { configured: c.configured, sending_switch: c.sendingSwitch && !c.off, sending_possible: c.enabled,
+             missing, from: validSender(c.from) ? c.from : null, reply_to: c.replyTo || null,
+             test_recipient: validEmail(c.piEmail) ? c.piEmail : null, portal: c.portal };
+}
 // The configured PI address (used as the only recipient in meeting test mode).
 function piAddress() { const a = config().piEmail; return validEmail(a) ? a : ''; }
 
@@ -73,8 +97,11 @@ function log(event, outcome, extra) {
     console.log(`[NOTIFY] event=${event} outcome=${outcome}${extra ? ' ' + extra : ''}`);
 }
 
-// One POST with a bounded timeout; one retry (same Idempotency-Key) on network
-// error, timeout, 429 or 5xx. Returns { ok, outcome, http }. Never throws.
+// One POST with a bounded timeout; one immediate retry on network error, timeout,
+// 429 or 5xx — always with the SAME Idempotency-Key, so the provider cannot
+// deliver twice (Resend keeps the key for 24 h). Returns { ok, outcome, http, id,
+// ambiguous }. `ambiguous` = it is unknown whether the provider accepted it.
+// Never throws.
 async function post(path, body, idempotencyKey, event) {
     const cfg = config();
     if (!cfg.enabled) { log(event, 'skipped', 'reason=not-configured'); return { ok: false, outcome: 'skipped' }; }
@@ -94,15 +121,18 @@ async function post(path, body, idempotencyKey, event) {
                 redirect: 'error',
                 signal: AbortSignal.timeout(cfg.timeoutMs)
             });
-            try { await r.arrayBuffer(); } catch (_) { /* response body is not used */ }
+            let id = null;
+            try { const j = JSON.parse(Buffer.from(await r.arrayBuffer()).toString('utf8') || 'null'); id = j && typeof j.id === 'string' ? j.id.slice(0, 100) : null; } catch (_) { /* body not needed */ }
             const ms = Date.now() - started;
-            if (r.ok) { log(event, 'sent', `http=${r.status} attempt=${attempt} ms=${ms}`); return { ok: true, outcome: 'sent', http: r.status }; }
-            last = { ok: false, outcome: 'failed', http: r.status };
+            if (r.ok) { log(event, 'sent', `http=${r.status} attempt=${attempt} ms=${ms}`); return { ok: true, outcome: 'sent', http: r.status, id }; }
+            // 5xx and 409 (concurrent request with the same key) leave it UNKNOWN whether the
+            // provider accepted the e-mail; other 4xx (incl. 429) mean it was not accepted.
+            last = { ok: false, outcome: 'failed', http: r.status, ambiguous: r.status >= 500 || r.status === 409 };
             log(event, 'failed', `http=${r.status} attempt=${attempt} ms=${ms}`);
             if (!(r.status === 429 || r.status >= 500)) break;
         } catch (e) {
             const reason = e && (e.name === 'TimeoutError' || e.name === 'AbortError') ? 'timeout' : 'network';
-            last = { ok: false, outcome: 'failed', reason };
+            last = { ok: false, outcome: 'failed', reason, ambiguous: true };
             log(event, 'failed', `reason=${reason} attempt=${attempt} ms=${Date.now() - started}`);
         }
         if (attempt === 1) await new Promise(res => setTimeout(res, 500));
@@ -116,11 +146,26 @@ async function sendEmail({ event, to, subject, html, text, idempotencyKey }) {
         if (!cfg.enabled) { log(event, 'skipped', 'reason=not-configured'); return { ok: false, outcome: 'skipped' }; }
         const recipients = (Array.isArray(to) ? to : [to]).filter(validEmail);
         if (recipients.length === 0) { log(event, 'skipped', 'reason=no-recipient'); return { ok: false, outcome: 'skipped' }; }
-        return await post('', { from: cfg.from, to: recipients, subject: oneLine(subject, 250), html, text }, idempotencyKey, event);
+        const body = { from: cfg.from, to: recipients, subject: oneLine(subject, 250), html, text };
+        if (cfg.replyTo) body.reply_to = cfg.replyTo;
+        return await post('', body, idempotencyKey, event);
     } catch (_) {
         log(event, 'failed', 'reason=internal');
         return { ok: false, outcome: 'failed' };
     }
+}
+
+// One e-mail to ONE address (never CC/BCC) for the Notify outbox. Returns
+// { status: 'accepted' | 'failed' | 'uncertain' | 'disabled', id, code }.
+// 'accepted' = Resend accepted the request (NOT proof of delivery).
+async function deliver({ event, to, subject, html, text, idempotencyKey }) {
+    if (!config().enabled) return { status: 'disabled', code: 'sending_disabled' };
+    if (!validEmail(to)) return { status: 'failed', code: 'invalid_address' };
+    const r = await sendEmail({ event, to: String(to).trim(), subject, html, text, idempotencyKey });
+    if (r.ok) return { status: 'accepted', id: r.id || null };
+    if (r.outcome === 'skipped') return { status: 'disabled', code: 'sending_disabled' };
+    const code = r.http ? 'http_' + r.http : (r.reason || 'internal');
+    return { status: r.ambiguous ? 'uncertain' : 'failed', code };
 }
 
 // Several separate e-mails in ONE request (Resend batch endpoint): the request
@@ -137,6 +182,24 @@ async function sendBatch({ event, messages, idempotencyKey }) {
         log(event, 'failed', 'reason=internal');
         return { ok: false, outcome: 'failed' };
     }
+}
+
+// ------------------------------------------------------------- automation
+// Automatic categories are opt-in (default OFF). server/notifyCenter.js installs
+// the category check and the durable delivery sink; without it nothing automatic
+// is ever sent.
+let automation = { isCategoryEnabled: async () => false, deliver: null };
+function setAutomation(a) { automation = Object.assign({ isCategoryEnabled: async () => false, deliver: null }, a || {}); }
+async function automaticAllowed(category, event) {
+    try {
+        if (!config().enabled) { log(event, 'skipped', 'reason=sending-disabled'); return false; }
+        if (!(await automation.isCategoryEnabled(category))) { log(event, 'skipped', 'reason=category-disabled'); return false; }
+        return true;
+    } catch (_) { log(event, 'skipped', 'reason=category-check-failed'); return false; }
+}
+async function deliverAutomatic(m) {
+    if (typeof automation.deliver === 'function') return automation.deliver(m);
+    return sendEmail({ event: m.event, to: m.to, subject: m.subject, html: m.html, text: m.text, idempotencyKey: m.dedupeKey });
 }
 
 // Run fn after the current request has been answered. Never throws, never blocks.
@@ -171,7 +234,7 @@ function notifySubmissionReceived({ submissionId, researcherName, fileType, repo
     const event = 'submission.received';
     dispatch(event, async () => {
         const cfg = config();
-        if (!cfg.enabled) { log(event, 'skipped', 'reason=not-configured'); return; }
+        if (!(await automaticAllowed('submission_received', event))) return;
         if (!validEmail(cfg.piEmail)) { log(event, 'skipped', 'reason=no-pi-address'); return; }
         const typeLabel = TYPE_LABELS[String(fileType || '').toUpperCase()] || oneLine(fileType, 40) || 'Document';
         const who = oneLine(researcherName, 120) || 'a researcher';
@@ -181,17 +244,23 @@ function notifySubmissionReceived({ submissionId, researcherName, fileType, repo
         const html = wrap('New submission waiting for review', '#1a365d',
             `<p>A new document has been submitted to NAT-Lab.</p>${table(rows)}${button(dash, 'Open the PI dashboard')}<p style="font-size:12px;color:#666;">Sign-in is required. The document itself is not attached to this e-mail.</p>`);
         const text = `New NAT-Lab submission\nResearcher: ${who}\nType: ${typeLabel}\nOpen the PI dashboard (sign-in required): ${dash}\n`;
-        await sendEmail({ event, to: cfg.piEmail, subject: `New NAT-Lab submission: ${typeLabel} from ${who}`, html, text,
-            idempotencyKey: 'submission-received-' + hashKey(submissionId) });
+        await deliverAutomatic({ category: 'submission_received', event, to: cfg.piEmail, recipientId: null, name: 'PI',
+            subject: `New NAT-Lab submission: ${typeLabel} from ${who}`, html, text,
+            dedupeKey: 'submission-received-' + hashKey(submissionId) });
     });
 }
 
-// PI decision -> researcher. Same payload shape that notifyResearcher() always
-// received (file_name is ignored: no filenames in e-mails). The optional async
-// `describe()` returns { fileType, submittedAt } so the researcher can tell which
-// submission is meant; it runs after the response and its failure is harmless.
-// Each decision event gets its own key, so a later revision request on the same
-// submission is never suppressed by an earlier one.
+// PI decision -> researcher. Per category opt-in (decision_approved /
+// decision_revision / decision_discarded), all OFF by default.
+// The e-mail carries NO filename, NO PI comment, NO discard reason or note and
+// NO verification code: only the document type, the submission date and a link
+// to the portal, where sign-in and the document-access rules apply. (Payload
+// fields such as approval_comment, pi_comments, discard_reason, discard_note,
+// file_name, view_url and verification_code are deliberately ignored.)
+// The optional async `describe()` returns { fileType, submittedAt }; it runs after
+// the response and its failure is harmless. Each decision event has its own key,
+// so a later revision request on the same submission is never suppressed.
+const DECISION_CATEGORY = { APPROVED: 'decision_approved', REVISION_NEEDED: 'decision_revision', DISCARDED: 'decision_discarded' };
 function notifyResearcherDecision(payload, describe) {
     const p = payload || {};
     const decision = String(p.decision || '').toUpperCase();
@@ -199,42 +268,32 @@ function notifyResearcherDecision(payload, describe) {
     const eventId = crypto.randomUUID();
     dispatch(event, async () => {
         const cfg = config();
-        if (!cfg.enabled) { log(event, 'skipped', 'reason=not-configured'); return; }
         if (event === 'decision.unknown') { log(event, 'skipped', 'reason=unknown-decision'); return; }
+        if (!(await automaticAllowed(DECISION_CATEGORY[decision], event))) return;
         let info = {};
         if (typeof describe === 'function') { try { info = (await describe()) || {}; } catch (_) { info = {}; } }
         const typeLabel = TYPE_LABELS[String(info.fileType || '').toUpperCase()] || 'Document';
         const submitted = info.submittedAt ? dateOnly(info.submittedAt) : '';
         const what = typeLabel + (submitted ? ' submitted on ' + submitted : '');
-        const idRows = () => [row('Document', typeLabel), ...(submitted ? [row('Submitted', submitted)] : [])];
-        let subject, title, color, body, text;
+        const rows = [row('Document', typeLabel), ...(submitted ? [row('Submitted', submitted)] : [])];
+        const portalUrl = cfg.portal + '/upload.html';
+        let subject, title, color, lead;
         if (decision === 'APPROVED') {
             subject = `GLP Submission Approved: ${what}`; title = 'Submission Approved'; color = '#1e7e34';
-            const rows = idRows();
-            if (p.verification_code) rows.push(row('Verification code', p.verification_code));
-            body = `<p>Your submission has been approved and signed by the PI.</p>${table(rows)}` +
-                (p.approval_comment ? `<p><strong>PI comment:</strong><br>${esc(p.approval_comment)}</p>` : '') +
-                (p.view_url ? button(p.view_url, 'View approved document') : '') +
-                `<p style="font-size:12px;color:#666;">Sign-in is required to open the document.</p>`;
-            text = `Your submission (${what}) has been approved.\n` + (p.verification_code ? `Verification code: ${p.verification_code}\n` : '') +
-                (p.approval_comment ? `PI comment: ${p.approval_comment}\n` : '') + (p.view_url ? `View (sign-in required): ${p.view_url}\n` : '');
+            lead = 'Your submission has been approved and signed by the PI.';
         } else if (decision === 'DISCARDED') {
             subject = `GLP Submission Discarded: ${what}`; title = 'Submission Discarded'; color = '#6c757d';
-            const rows = idRows();
-            if (p.discard_reason) rows.push(row('Reason', p.discard_reason));
-            body = `<p>Your submission has been discarded by the PI.</p>${table(rows)}` +
-                (p.discard_note ? `<p><strong>Note:</strong><br>${esc(p.discard_note)}</p>` : '');
-            text = `Your submission (${what}) has been discarded.\n` + (p.discard_reason ? `Reason: ${p.discard_reason}\n` : '') + (p.discard_note ? `Note: ${p.discard_note}\n` : '');
+            lead = 'Your submission has been discarded by the PI.';
         } else {
             subject = `GLP Submission Requires Revision: ${what}`; title = 'Revision Requested'; color = '#b45309';
-            const uploadUrl = cfg.portal + '/upload.html';
-            body = `<p>The PI has requested a revision of your submission.</p>${table(idRows())}` +
-                (p.pi_comments ? `<p><strong>PI comments:</strong><br>${esc(p.pi_comments)}</p>` : '') +
-                button(uploadUrl, 'Upload a revised version') + `<p style="font-size:12px;color:#666;">Sign-in is required.</p>`;
-            text = `The PI has requested a revision of your submission (${what}).\n` + (p.pi_comments ? `PI comments: ${p.pi_comments}\n` : '') + `Upload a revised version (sign-in required): ${uploadUrl}\n`;
+            lead = 'The PI has requested a revision of your submission.';
         }
-        await sendEmail({ event, to: p.researcher_email, subject, html: wrap(title, color, body), text,
-            idempotencyKey: 'decision-' + hashKey(p.submission_id, decision, eventId) });
+        const html = wrap(title, color, `<p>${esc(lead)}</p>${table(rows)}<p>Details are available in the NAT-Lab portal.</p>` +
+            button(portalUrl, 'Open the NAT-Lab portal') + `<p style="font-size:12px;color:#666;">Sign-in is required.</p>`);
+        const text = `${lead}\nDocument: ${what}\nDetails are available in the NAT-Lab portal (sign-in required): ${portalUrl}\n`;
+        await deliverAutomatic({ category: DECISION_CATEGORY[decision], event, to: p.researcher_email, recipientId: p.researcher_id || null,
+            name: oneLine(p.researcher_name, 120) || 'Researcher', subject, html, text,
+            dedupeKey: 'decision-' + hashKey(p.submission_id, decision, eventId) });
     });
 }
 
@@ -243,7 +302,7 @@ function notifyInvestorBookingTeam({ bookingId, teamText }) {
     const event = 'investor.booking.team';
     dispatch(event, async () => {
         const cfg = config();
-        if (!cfg.enabled) { log(event, 'skipped', 'reason=not-configured'); return; }
+        if (!(await automaticAllowed('theralia_investor_booking', event))) return;
         const team = cfg.theraliaTeam.filter(validEmail);
         if (team.length === 0) { log(event, 'skipped', 'reason=no-team-address'); return; }
         const t = String(teamText || '').slice(0, 4000);
@@ -291,6 +350,7 @@ function buildMeetingMessages(meeting, participants) {
 }
 
 module.exports = {
-    isEnabled, piAddress, dateOnly, sendEmail, sendBatch, dispatch, esc, hashKey, validEmail,
+    isEnabled, status, config, piAddress, dateOnly, sendEmail, sendBatch, deliver, dispatch, esc, oneLine, hashKey, validEmail, validSender,
+    setAutomation, wrap,
     notifySubmissionReceived, notifyResearcherDecision, notifyInvestorBookingTeam, buildMeetingMessages
 };
