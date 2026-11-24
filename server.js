@@ -122,10 +122,15 @@ async function resolveWorkspace(req, res, next) {
     try {
         const transferredBy = (req.user && transferredBy) || (req.session && req.session.researcher_id) || 'UNKNOWN';
 
-        const requestedSlug =
-            req.headers['x-workspace-slug'] ||
-            req.query.ws ||
-            DEFAULT_WORKSPACE_SLUG;
+        // S1.4: the requested workspace is only a SELECTION, never authorization
+        // (membership is enforced later by authorizeWorkspace / companyBoundary).
+        const headerSlug = req.headers['x-workspace-slug'];
+        const querySlug = req.query.ws;
+        if (headerSlug && querySlug && String(headerSlug) !== String(querySlug)) {
+            return res.status(400).json({ error: 'Conflicting workspace selection', code: 'workspace_conflict' });
+        }
+        req.workspaceExplicit = !!(headerSlug || querySlug);
+        const requestedSlug = headerSlug || querySlug || DEFAULT_WORKSPACE_SLUG;
 
         const ws = await pool.query(
             `SELECT id, slug FROM workspaces WHERE slug = $1 AND is_active = TRUE LIMIT 1`,
@@ -496,6 +501,19 @@ async function revalidateSession(req, res, next) {
 }
 app.use(revalidateSession);
 
+// S1.4 / R1c: CSRF for every state-changing API request, storage-key filtering,
+// workspace authorization boundary and company-module boundary (see
+// server/workspaceAccess.js). Registered before every API route.
+const workspaceAccessMw = require('./server/workspaceAccess').makeWorkspaceAccess(pool, {
+    getGovernanceDefaults: () => GOVERNANCE_DEFAULTS,
+    trustedOrigins: [],
+});
+app.use('/api', workspaceAccessMw.csrfGuard);
+app.use('/api', workspaceAccessMw.stripStorageKeys);
+app.use(workspaceAccessMw.authorizeWorkspace);
+app.use(require('./server/workspaceAccess').COMPANY_PREFIXES, workspaceAccessMw.companyBoundary);
+app.use('/api/di/training', workspaceAccessMw.requireLabMember);
+
 // R1: removed unauthenticated /api/di/debug-members (exposed all member names/emails).
 
 // AUTH MIDDLEWARE
@@ -602,7 +620,8 @@ function requirePIorCap(capName) {
 //       (Zoe removed) and answer 410 Gone — see zoeRetiredHandler below.
 // ============================================================================
 const r1crypto = require('crypto');
-const R1_TRUSTED_ORIGIN_HOSTS = new Set(['natlab-glp-production.up.railway.app']);
+// S1.4 (D5): no cross-domain write trust — each domain accepts writes only from itself.
+const R1_TRUSTED_ORIGIN_HOSTS = new Set([]);
 const R1_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function r1EscapeHtml(value) {
@@ -764,7 +783,7 @@ async function requireCSO(req, res, next) {
         if (!hasWu || !hasPos) {
             return res.status(403).json({ error: 'Access denied. CSO role required.' });
         }
-        const wsSlug = req.query.workspace || req.headers['x-workspace-slug'] || 'theralia';
+        const wsSlug = companySlugOf(req); // S1.4 (A4): the authorised company workspace
         const result = await pool.query(
             `SELECT wu.workspace_position
              FROM workspace_users wu
@@ -802,9 +821,15 @@ async function requireInternal(req, res, next) {
         return res.status(401).json({ error: 'Not authenticated' });
     }
     const user = req.session.user;
-    // If not External, always allow (LiU/UNAV baseline)
+    // S1.4 (D6): authorization comes from explicit, active NAT-Lab (LAB)
+    // membership — never from institutional affiliation.
+    const wa = req.workspaceAccess;
+    if (wa && wa.isPi) return next();
+    if (!wa || !wa.labMember) {
+        return res.status(403).json({ error: 'Inventory access is restricted to NAT-Lab members.' });
+    }
     if (user.affiliation !== 'EXTERNAL') {
-        return next();
+        return next(); // internal NAT-Lab member
     }
     // External: check if clearance_profile grants inventory access
     try {
@@ -1160,6 +1185,15 @@ const INVESTOR_TABS = [
 const INVESTOR_TAB_KEYS = INVESTOR_TABS.map(t => t.key);
 const DEFAULT_INVESTOR_PERMISSIONS = Object.fromEntries(INVESTOR_TAB_KEYS.map(k => [k, false]));
 
+// S1.4 (A4): company authorization helpers evaluate the caller's membership in
+// the COMPANY workspace the request was authorised for by the company boundary
+// (server/workspaceAccess.js), never in a hardcoded workspace. Theralia and
+// Skinotek therefore have independent positions, clearances and investor tabs.
+// These helpers are only used on company routes; 'theralia' is a defensive fallback.
+function companySlugOf(req) {
+    return (req.companyWorkspace && req.companyWorkspace.slug) || 'theralia';
+}
+
 // Middleware: enforce investor tab permission for a specific tab key
 // Usage: requireInvestorTab('company') — blocks investor-role users who lack that tab permission
 function requireInvestorTab(tabKey) {
@@ -1173,8 +1207,8 @@ function requireInvestorTab(tabKey) {
             const result = await pool.query(
                 `SELECT wu.investor_tab_permissions
                  FROM workspace_users wu JOIN workspaces w ON w.id = wu.workspace_id
-                 WHERE wu.user_id = $1 AND w.slug = 'theralia' AND wu.is_active = TRUE`,
-                [req.session.user.researcher_id]
+                 WHERE wu.user_id = $1 AND w.slug = $2 AND wu.is_active = TRUE`,
+                [req.session.user.researcher_id, companySlugOf(req)]
             );
             const perms = result.rows[0]?.investor_tab_permissions || {};
             if (perms[tabKey] === true) return next();
@@ -1197,8 +1231,8 @@ function requireInvestorTabAny(...tabKeys) {
             const result = await pool.query(
                 `SELECT wu.investor_tab_permissions
                  FROM workspace_users wu JOIN workspaces w ON w.id = wu.workspace_id
-                 WHERE wu.user_id = $1 AND w.slug = 'theralia' AND wu.is_active = TRUE`,
-                [req.session.user.researcher_id]
+                 WHERE wu.user_id = $1 AND w.slug = $2 AND wu.is_active = TRUE`,
+                [req.session.user.researcher_id, companySlugOf(req)]
             );
             const perms = result.rows[0]?.investor_tab_permissions || {};
             if (tabKeys.some(k => perms[k] === true)) return next();
@@ -1245,8 +1279,8 @@ async function getPositionForReq(req) {
         const r = await pool.query(
             `SELECT wu.workspace_position FROM workspace_users wu
              JOIN workspaces w ON w.id = wu.workspace_id
-             WHERE wu.user_id = $1 AND w.slug = 'theralia' AND wu.is_active = TRUE LIMIT 1`,
-            [req.session.user.researcher_id]);
+             WHERE wu.user_id = $1 AND w.slug = $2 AND wu.is_active = TRUE LIMIT 1`,
+            [req.session.user.researcher_id, companySlugOf(req)]);
         req._govPosition = (r.rows[0]?.workspace_position || '').toLowerCase();
     } catch { req._govPosition = ''; }
     return req._govPosition;
@@ -1261,8 +1295,8 @@ async function getClearanceForReq(req) {
         const r = await pool.query(
             `SELECT wu.clearance_config FROM workspace_users wu
              JOIN workspaces w ON w.id = wu.workspace_id
-             WHERE wu.user_id = $1 AND w.slug = 'theralia' AND wu.is_active = TRUE LIMIT 1`,
-            [req.session.user.researcher_id]);
+             WHERE wu.user_id = $1 AND w.slug = $2 AND wu.is_active = TRUE LIMIT 1`,
+            [req.session.user.researcher_id, companySlugOf(req)]);
         const stored = r.rows[0]?.clearance_config || {};
         req._govClearance = { ...defaults, ...stored };
     } catch { req._govClearance = defaults; }
@@ -1277,8 +1311,8 @@ async function canWriteRD(req) {
     try {
         const r = await pool.query(
             `SELECT wu.role FROM workspace_users wu JOIN workspaces w ON w.id = wu.workspace_id
-             WHERE wu.user_id = $1 AND w.slug = 'theralia' AND wu.is_active = TRUE LIMIT 1`,
-            [req.session.user.researcher_id]);
+             WHERE wu.user_id = $1 AND w.slug = $2 AND wu.is_active = TRUE LIMIT 1`,
+            [req.session.user.researcher_id, companySlugOf(req)]);
         if (r.rows[0]?.role === 'r_and_d') return true;
     } catch {}
     return false;
@@ -4368,8 +4402,9 @@ app.get('/api/di/group-documents', requireAuth, async (req, res) => {
             `SELECT id, title, category, description, filename, file_type, created_at, uploaded_by,
                     COALESCE(can_download, true) as can_download
              FROM di_group_documents
-             WHERE is_active = true
-             ORDER BY category, title`
+             WHERE is_active = true AND ($1::boolean OR workspace_id = ANY($2::uuid[]))
+             ORDER BY category, title`,
+            [!!(req.workspaceAccess && req.workspaceAccess.isPi), workspaceAccessMw.allowedWorkspaceIds(req)]
         );
 
         res.json({
@@ -4389,14 +4424,17 @@ app.get('/api/di/group-documents', requireAuth, async (req, res) => {
 
 // GET /api/di/sop-inventory
 // Read-only listing of approved SOP documents for the SOP Inventory view
-app.get('/api/di/sop-inventory', requireAuth, async (req, res) => {
+app.get('/api/di/sop-inventory', requireAuth, workspaceAccessMw.requireLabMember, async (req, res) => {
     try {
+        // S1.4: NAT-Lab SOP inventory lists only LAB-workspace SOPs (company SOPs
+        // stay in their own workspace's modules).
         const result = await pool.query(
             `SELECT s.submission_id, s.original_filename, s.researcher_id,
                     a.name as researcher_name, s.signed_at,
                     ROW_NUMBER() OVER (PARTITION BY s.researcher_id ORDER BY s.signed_at ASC) as version_number
              FROM di_submissions s
              LEFT JOIN di_allowlist a ON s.researcher_id = a.researcher_id
+             JOIN workspaces sw ON sw.id = s.workspace_id AND sw.workspace_type = 'LAB'
              WHERE s.file_type = 'SOP' AND s.status = 'APPROVED' AND s.researcher_id <> 'FJH2'
              ORDER BY s.signed_at DESC NULLS LAST`
         );
@@ -19993,7 +20031,11 @@ app.get('/api/rd/glp/files', requireAuth, requireInvestorTabAny('rnd', 'glp_visi
 
         q += ` ORDER BY s.created_at DESC`;
         const r = await pool.query(q, params);
-        res.json({ files: r.rows });
+        // S1.4: administrative review fields are not shown to investors.
+        const wsm = req.workspaceAccess && req.companyWorkspace ? req.workspaceAccess.memberships.get(req.companyWorkspace.slug) : null;
+        const investor = String(req.session.user.role || '').toLowerCase() === 'investor' || (wsm && (wsm.role === 'investor' || wsm.position === 'investor'));
+        const files = investor ? r.rows.map(({ revision_comments, approval_comment, discard_reason, discard_note, ...rest }) => rest) : r.rows;
+        res.json({ files });
     } catch (err) {
         console.error('[RD-GLP] files error:', err.message);
         res.status(500).json({ error: 'Failed to load GLP files' });
@@ -20090,7 +20132,7 @@ async function isWorkspaceMaster(req) {
             `SELECT wu.is_workspace_master FROM workspace_users wu
              JOIN workspaces w ON w.id = wu.workspace_id
              WHERE wu.user_id = $1 AND w.id = $2 AND wu.is_active = TRUE`,
-            [req.session.user?.researcher_id, req.workspace_id]);
+            [req.session.user?.researcher_id, (req.companyWorkspace && req.companyWorkspace.id) || req.workspace_id]);
         return r.rows.length > 0 && r.rows[0].is_workspace_master === true;
     } catch { return false; }
 }
@@ -21123,6 +21165,13 @@ app.put('/api/theralia/board-meetings/:id/content', requireAuth, async (req, res
         const mtg = await pool.query(`SELECT status FROM theralia_board_meetings WHERE id = $1`, [req.params.id]);
         if (mtg.rows.length === 0) return res.status(404).json({ error: 'Meeting not found' });
         if (['COMPLETED', 'CANCELLED'].includes(mtg.rows[0].status)) return res.status(403).json({ error: 'Meeting is locked' });
+        // S1.4 (A1): board content is edited only by board members (the existing
+        // board-founder model: CEO/CSO/CTO/COO/Advisor, workspace master, or a
+        // 'founder' custom title) and the PI. Ordinary membership is not enough.
+        const isPiUser = String(req.session.user.role || '').toLowerCase() === 'pi';
+        if (!isPiUser && !(await isBmFounder(req))) {
+            return res.status(403).json({ error: 'Board member role required' });
+        }
         // CEO-only sections
         if (['agenda', 'action'].includes(section)) {
             const pos = await getPositionForReq(req);
@@ -21130,8 +21179,8 @@ app.put('/api/theralia/board-meetings/:id/content', requireAuth, async (req, res
                 // Check workspace master
                 try {
                     const wu = await pool.query(
-                        `SELECT is_workspace_master FROM workspace_users wu JOIN workspaces w ON w.id=wu.workspace_id WHERE wu.user_id=$1 AND w.slug='theralia' AND wu.is_active=TRUE LIMIT 1`,
-                        [req.session.user.researcher_id]);
+                        `SELECT is_workspace_master FROM workspace_users wu JOIN workspaces w ON w.id=wu.workspace_id WHERE wu.user_id=$1 AND w.slug=$2 AND wu.is_active=TRUE LIMIT 1`,
+                        [req.session.user.researcher_id, companySlugOf(req)]);
                     if (!wu.rows[0]?.is_workspace_master) return res.status(403).json({ error: 'CEO or CSO required for this section' });
                 } catch { return res.status(403).json({ error: 'CEO or CSO required for this section' }); }
             }
@@ -21253,8 +21302,8 @@ async function isBmFounder(req) {
         const r = await pool.query(
             `SELECT wu.is_workspace_master, wu.custom_position_title
              FROM workspace_users wu JOIN workspaces w ON w.id = wu.workspace_id
-             WHERE wu.user_id = $1 AND w.slug = 'theralia' AND wu.is_active = TRUE LIMIT 1`,
-            [req.session.user.researcher_id]
+             WHERE wu.user_id = $1 AND w.slug = $2 AND wu.is_active = TRUE LIMIT 1`,
+            [req.session.user.researcher_id, companySlugOf(req)]
         );
         if (!r.rows.length) return false;
         if (r.rows[0].is_workspace_master === true) return true;
@@ -22533,7 +22582,7 @@ app.patch('/api/investroom/files/:fileId/review', requireAuth, async (req, res) 
         if (!(await checkIrTables())) return res.status(503).json({ error: 'Migration not applied' });
 
         // Enforce: must be COO + name must be "Luiza I. Hernandez"
-        const wsSlug = req.query.workspace || req.headers['x-workspace-slug'] || 'theralia';
+        const wsSlug = companySlugOf(req); // S1.4 (A4): the authorised company workspace
         const wu = await pool.query(
             `SELECT wu.workspace_position, r.name
              FROM workspace_users wu

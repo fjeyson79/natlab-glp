@@ -3319,6 +3319,7 @@
             cursor: not-allowed;
         }
 
+        .clr-viewonly-note { margin: 0 0 14px; padding: 8px 12px; border-radius: 8px; background: #f1f5f9; color: #475569; font-size: 13px; border: 1px solid #e2e8f0; }
     </style>
     <script src="js/presentation-mode.js"></script>
 </head>
@@ -5235,18 +5236,65 @@
         }
 
         // Governance: hide tabs based on clearance_config for non-investor internal users
+        // S1.4 (A2): Hidden / View / Edit are access permissions, enforced by the server;
+        // the portal mirrors them. A level that is not set counts as Hidden.
+        function _clrLevel(key) { return _userClearance[key] || 'hidden'; }
         function _applyTabClearance() {
+            if (hasAuthority('is_workspace_master')) return; // the company's administrative owner (server: same rule)
+            _clrApplied = true;
             // Map tab data-tab values to clearance_config keys
-            var tabToKey = { dashboard:'dashboard', company:'company', rnd:'rnd', glp:'glp', inventory:'inventory', training:'training', finance:'finance', investors:'investors' };
+            var tabToKey = { dashboard:'dashboard', company:'company', rnd:'rnd', glp:'glp', inventory:'inventory', training:'training', finance:'finance', investors:'investors', investroom:'investroom', audit:'audit' };
             Object.keys(tabToKey).forEach(function(tab) {
                 var key = tabToKey[tab];
-                var level = _userClearance[key];
+                var level = _clrLevel(key);
+                var btn = document.querySelector('.tab-btn[data-tab="' + tab + '"]');
+                var pane = document.getElementById('tab-' + tab);
                 if (level === 'hidden') {
-                    var btn = document.querySelector('.tab-btn[data-tab="' + tab + '"]');
-                    if (btn) btn.style.display = 'none';
+                    if (btn) { btn.style.display = 'none'; btn.dataset.clrHidden = '1'; } // its data is refused by the server
+                } else if (level === 'view' && pane && !pane.querySelector('.clr-viewonly-note')
+                           && ['dashboard', 'company', 'rnd', 'glp', 'inventory', 'investroom'].indexOf(tab) >= 0) {
+                    var note = document.createElement('div');
+                    note.className = 'clr-viewonly-note';
+                    note.textContent = 'View only \u2014 you can read this module but not change it.';
+                    pane.insertBefore(note, pane.firstChild);
                 }
             });
+            // If the default tab is hidden, open the first visible one.
+            var active = document.querySelector('.tab-btn.active');
+            if (active && active.dataset.clrHidden) {
+                var first = [].slice.call(document.querySelectorAll('.tab-btn')).filter(function(b) { return b.style.display !== 'none'; })[0];
+                active.classList.remove('active');
+                document.querySelectorAll('.tab-content').forEach(function(tc) { tc.classList.remove('active'); });
+                if (first) first.click();
+            }
         }
+        // Module of a company API path (same mapping as server/workspaceAccess.js).
+        function _clrModuleOf(url) {
+            var p = String(url).replace(/^https?:\/\/[^/]+/, '').split('?')[0];
+            if (/^\/api\/company\//.test(p)) return 'company';
+            if (/^\/api\/rd\/glp\//.test(p)) return 'glp';
+            if (/^\/api\/rd\//.test(p)) return 'rnd';
+            if (/^\/api\/theralia\/inventory\//.test(p)) return 'inventory';
+            if (/^\/api\/theralia\/board-meeting/.test(p)) return 'dashboard';
+            if (/^\/api\/investroom\//.test(p)) return 'investroom';
+            return null;
+        }
+        // View-only modules: refuse changes in the portal before they are sent (the server refuses them too).
+        var _clrApplied = false;
+        (function() {
+            var origFetch = window.fetch.bind(window);
+            window.fetch = function(input, init) {
+                var method = ((init && init.method) || (input && input.method) || 'GET').toUpperCase();
+                if (_clrApplied && method !== 'GET' && method !== 'HEAD' && !hasAuthority('is_workspace_master')) {
+                    var mod = _clrModuleOf(typeof input === 'string' ? input : (input && input.url) || '');
+                    if (mod && _clrLevel(mod) !== 'edit') {
+                        alert('View only: you do not have edit permission for this module.');
+                        return Promise.resolve(new Response(JSON.stringify({ error: 'Edit permission required', code: 'module_write_denied' }), { status: 403, headers: { 'Content-Type': 'application/json' } }));
+                    }
+                }
+                return origFetch(input, init);
+            };
+        })();
 
         // Governance: check if current user has edit access for a module (intersection of hard rule + clearance)
         function _canEdit(module) {
@@ -5314,6 +5362,8 @@
             const btn = e.target.closest('.tab-btn');
             if (!btn) return;
             const tab = btn.dataset.tab;
+            // Guard: modules whose clearance is Hidden never open (S1.4 A2)
+            if (btn.dataset.clrHidden) return;
             // Guard: block InvestRoom access for non-founders
             if (tab === 'investroom' && !_irHasAccess) return;
             // Guard: block User Control access — CSO full, founders investors_only
@@ -8430,7 +8480,7 @@
             if (!f) return;
             const viewer = document.getElementById('glpViewer');
             const canReview = false; // non-master never reviews
-            const previewUrl = f.r2_object_key ? '/api/di/download/' + f.submission_id : '';
+            const previewUrl = (f.has_file || f.r2_object_key) ? '/api/di/download/' + f.submission_id : '';
             viewer.innerHTML = `
                 <div class="glp-viewer-header">
                     <div class="glp-viewer-title">${rdEsc(f.original_filename)}</div>
@@ -8466,7 +8516,7 @@
             if (!f) return;
 
             const canReview = f.status === 'PENDING';
-            const previewUrl = f.r2_object_key ? '/api/di/download/' + f.submission_id : '';
+            const previewUrl = (f.has_file || f.r2_object_key) ? '/api/di/download/' + f.submission_id : '';
 
             // Update toolbar
             const toolbar = document.getElementById('glpToolbar');
@@ -10134,7 +10184,8 @@
         var _irHasAccess = false;
 
         function irCheckAccess() {
-            _irHasAccess = (_userPosition === 'ceo' || _userPosition === 'cso' || _userPosition === 'founder' || hasAuthority('is_workspace_master'));
+            _irHasAccess = (_userPosition === 'ceo' || _userPosition === 'cso' || _userPosition === 'founder' || hasAuthority('is_workspace_master'))
+                && (hasAuthority('is_workspace_master') || (_userClearance.investroom || 'hidden') !== 'hidden'); // S1.4 (A2)
             if (_irHasAccess) {
                 document.getElementById('irTabBtn').style.display = '';
             }
@@ -10205,9 +10256,12 @@
         var irCurrentFilter = 'all';
 
         function irInit() {
-            irLoadVisitors();
-            irLoadKpis();
-            irLoadActivity();
+            // S1.4 (A2): investor intelligence needs the Investors module as well
+            if (hasAuthority('is_workspace_master') || (_userClearance.investors || 'hidden') !== 'hidden') {
+                irLoadVisitors();
+                irLoadKpis();
+                irLoadActivity();
+            }
             irRenderPhaseEditors();
             irDetectCso();
             document.getElementById('irLastUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -11231,8 +11285,8 @@ function irRenderPhaseEditors() {
                     if (addMemberBtn && addMemberBtn.textContent.includes('Add Member')) addMemberBtn.style.display = 'none';
                 }
             }
-            // Audit Trail: CSO only
-            if (_userPosition === 'cso') {
+            // Audit Trail: CSO only (and not Hidden — S1.4 A2)
+            if (_userPosition === 'cso' && (hasAuthority('is_workspace_master') || (_userClearance.audit || 'hidden') !== 'hidden')) {
                 document.getElementById('auditTabBtn').style.display = '';
             }
         };
