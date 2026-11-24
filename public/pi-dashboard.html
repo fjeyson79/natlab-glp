@@ -1892,6 +1892,7 @@
 
 
 </style>
+    <link rel="stylesheet" href="/css/group-meetings.css">
 </head>
 <body>
     <div class="header">
@@ -1908,6 +1909,7 @@
         <button class="tab-btn active" data-tab="dashboard">Dashboard <span class="badge" id="pendingBadge" style="display:none;">0</span></button>
         <button class="tab-btn" data-tab="lab-files">GLP Vision</button>
         <button class="tab-btn" data-tab="group-docs">Group Docs</button>
+        <button class="tab-btn" data-tab="group-meetings" id="gmTabBtn" style="display:none;">Group Meetings</button>
         <button class="tab-btn" data-tab="user-mgmt">User Control</button>
         <button class="tab-btn" data-tab="training">Training</button>
         <button class="tab-btn" data-tab="purchases-inventory">Inventory</button>
@@ -2280,7 +2282,10 @@
                       <span class="gd-label">Upload new document</span>
                   </label>
 
-                  <label class="gd-toggle" style="margin-top:10px;">
+                  <!-- Legacy "Group Meeting" toggle. Follows GROUP_MEETINGS_ENABLED:
+                       shown only while the new Group Meetings utility is OFF
+                       (rollback); hidden when it is ON (see end of page). -->
+                  <label class="gd-toggle" id="gdToggleMeetingRow" style="margin-top:10px;display:none;">
                       <input type="checkbox" id="gdToggleMeeting">
                       <span class="gd-switch"></span>
                       <span class="gd-label">Group Meeting</span>
@@ -3196,7 +3201,15 @@
         </div>
     </div>
 
-    <!-- ==================== GROUP MEETING TAB ==================== -->
+    <!-- ==================== GROUP MEETINGS TAB (R2) ==================== -->
+    <!-- Shared component: public/js/group-meetings.js. Hidden unless the
+         server reports the feature enabled (GROUP_MEETINGS_ENABLED). -->
+    <div class="tab-content" id="tab-group-meetings">
+        <div id="gmPiMount"></div>
+    </div>
+
+    <!-- ==================== GROUP MEETING TAB (legacy) ==================== -->
+    <!-- Reachable only through the Group Docs toggle while Group Meetings is OFF. -->
     <div class="tab-content" id="tab-group-meeting">
         <!-- Meeting Group Selector -->
         <div id="mtgGroupBar" style="display:flex;align-items:center;gap:10px;margin-bottom:14px;padding:10px 16px;background:#fff;border:1px solid #e0e0e0;border-radius:10px;">
@@ -3655,6 +3668,7 @@
                   if (el) el.classList.add('active');
 
                   if (tabId === 'lab-files') dicInit();
+                  if (tabId === 'group-meetings' && window.GroupMeetings) GroupMeetings.mount(document.getElementById('gmPiMount'), { portal: 'pi' });
                   if (tabId === 'purchases-inventory') { loadAllPurchaseRequests(); loadAllInventoryV2(); loadPONumbers(); piLoadSamplePacks(); }
                   if (tabId === 'training') { loadTrainingDocuments(); loadPendingTrainingPacks(); loadSealedTrainingPacks(); }
               });
@@ -3675,6 +3689,7 @@
               if (el) el.classList.add('active');
 
               if (tabId === 'lab-files') dicInit();
+              if (tabId === 'group-meetings' && window.GroupMeetings) GroupMeetings.mount(document.getElementById('gmPiMount'), { portal: 'pi' });
               if (tabId === 'purchases-inventory') { loadAllPurchaseRequests(); loadAllInventoryV2(); loadPONumbers(); }
               if (tabId === 'training') { loadTrainingDocuments(); loadPendingTrainingPacks(); loadSealedTrainingPacks(); }
           }
@@ -12088,5 +12103,22 @@ function dicBuildPdfViewerSrc(fileUrl) {
 
     </script>
 <script src="/js/presentation-mode.js"></script>
+<script src="/js/group-meetings.js"></script>
+<script>
+    // Group Meetings: flag ON  -> new main tab; legacy Group Docs meeting toggle hidden.
+    //                 flag OFF -> previous behaviour (legacy toggle shown, no new tab).
+    (function () {
+        var legacyRow = document.getElementById('gdToggleMeetingRow');
+        var check = window.GroupMeetings ? GroupMeetings.featureEnabled() : Promise.resolve(false);
+        check.then(function (on) {
+            if (on) {
+                if (legacyRow) legacyRow.style.display = 'none';
+                GroupMeetings.enableTab('#gmTabBtn');
+            } else if (legacyRow) {
+                legacyRow.style.display = '';
+            }
+        });
+    })();
+</script>
 </body>
 </html>

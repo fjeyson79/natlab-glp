@@ -14797,6 +14797,11 @@ async function checkMeetingGroupsTable() {
 
 // GET /api/meetings/next — public (any authenticated user), returns next locked meeting
 app.get('/api/meetings/next', requireAuth, async (req, res) => {
+    // Group Meetings R2.1: the legacy "next locked meeting" announcement is
+    // retired for users who have the new Group Meetings utility (flag on and
+    // in the rollout audience; it exposed names/slots across all groups).
+    // Flag off, or user not yet in the audience => unchanged.
+    if (require('./server/meetings').isAvailableFor(req.session.user)) return res.json({ meeting: null, retired: true });
     if (!(await checkMeetingTables())) return res.json({ meeting: null });
     try {
         const today = new Date().toISOString().slice(0, 10);
@@ -15454,6 +15459,12 @@ app.post('/api/meetings/:id/send-notification', requireSameOrigin, requirePI, as
 });
 
 app.get('/api/meetings/:id', requireAuth, async (req, res) => {
+    // Group Meetings R2.1: legacy meeting details are retired for non-PI users
+    // who have the new utility (PI keeps access for rollback). Flag off, or
+    // user not yet in the rollout audience => unchanged.
+    if (req.session.user.role !== 'pi' && require('./server/meetings').isAvailableFor(req.session.user)) {
+        return res.status(404).json({ error: 'Meeting not found' });
+    }
     if (!(await checkMeetingTables())) return res.status(503).json({ error: 'Meeting tables not available' });
     try {
         const mResult = await pool.query('SELECT * FROM meeting_schedule WHERE id = $1', [req.params.id]);
@@ -22495,6 +22506,18 @@ app.use('/api/di/report-thread', requireSameOrigin, reportThreadModule(pool, {
 // helper fixes the schema regardless.
 reportThreadModule.ensureSchemaFor(pool).catch(e =>
     console.error('[STARTUP] report-thread schema ensure failed:', e && e.message)
+);
+
+// Group Meetings (R1) — see server/meetings/. Disabled unless
+// GROUP_MEETINGS_ENABLED is on: routes answer 404 and no schema change runs.
+// Documents are served through the existing storage helpers after a
+// meeting-scoped, actively enforced authorization check.
+const groupMeetings = require('./server/meetings');
+app.use('/api/group-meetings', groupMeetings.createGroupMeetingsRouter({
+    pool, requireSameOrigin, downloadFromR2, normalizeR2Key, r2Enabled
+}));
+groupMeetings.ensureSchemaIfEnabled(pool).catch(() =>
+    console.error('[STARTUP] group-meetings schema ensure failed')
 );
 
 app.listen(PORT, "0.0.0.0", async () => {

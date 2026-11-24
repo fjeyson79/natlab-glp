@@ -594,6 +594,7 @@
         }
         .legacy-pack-modal .btn-submit:disabled { opacity: 0.5; cursor: not-allowed; }
     </style>
+    <link rel="stylesheet" href="/css/group-meetings.css">
 </head>
 <body>
     <div class="header">
@@ -612,6 +613,7 @@
         <button class="section-btn" data-section="inventory" onclick="switchSection('inventory')">Purchases &amp; Inventory</button>
         <button class="section-btn" data-section="training" onclick="switchSection('training')">Training &amp; Approvals</button>
         <button class="section-btn" data-section="glpVision" onclick="switchSection('glpVision')">GLP Vision</button>
+        <button id="groupMeetingsTabBtn" class="section-btn" data-section="groupMeetings" onclick="switchSection('groupMeetings')" style="display:none;">Group Meetings</button>
         <button id="supervisionTabBtn" class="section-btn" data-section="supervision" onclick="switchSection('supervision')" style="display:none;">Supervision</button>
     </div>
 
@@ -916,6 +918,14 @@
     <div id="section-glpVision" class="section-content" style="display:none;">
       <div style="height: calc(100vh - 170px); border-radius: 16px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.08); border: 1px solid #e5e7eb;">
         <iframe id="glpVisionFrame" src="/glp-vision.html" style="width: 100%; height: 100%; border: 0; background: #fff;"></iframe>
+      </div>
+    </div>
+
+    <!-- Group Meetings (R2) — shared component public/js/group-meetings.js.
+         The section button is shown only for authorized meeting members. -->
+    <div id="section-groupMeetings" class="section-content" style="display:none;">
+      <div style="max-width: 1600px; margin: 0 auto; padding: 0 20px;">
+        <div id="gmMemberMount"></div>
       </div>
     </div>
 
@@ -1637,6 +1647,9 @@
         .rt-thread-btn:hover { background:#1e293b; }
     </style>
 
+    <!-- Group Meetings (R2): GLP Vision presentation mode + shared workspace -->
+    <script src="/js/presentation-mode.js"></script>
+    <script src="/js/group-meetings.js"></script>
     <script>
         let currentUserRole = null;
           let currentUserId = null;
@@ -1811,6 +1824,23 @@
                     if (user.affiliation !== 'EXTERNAL') {
                         document.getElementById('sectionNav').style.display = 'flex';
                     }
+                }
+
+                // Group Meetings (R2): show the section for authorized meeting
+                // members only (server-enforced; feature-flagged). If the nav
+                // bar was hidden, this user had no other sections: show the nav
+                // with Files + Group Meetings only.
+                if (window.GroupMeetings) {
+                    const navEl = document.getElementById('sectionNav');
+                    const navWasHidden = navEl && navEl.style.display === 'none';
+                    GroupMeetings.enableTab('#groupMeetingsTabBtn', function () {
+                        if (!navWasHidden) return;
+                        ['inventory', 'training', 'glpVision', 'supervision'].forEach(function (s) {
+                            const b = document.querySelector('[data-section="' + s + '"]');
+                            if (b) b.style.display = 'none';
+                        });
+                        navEl.style.display = 'flex';
+                    });
                 }
 
                 // Load files and group documents after user info
@@ -2975,6 +3005,9 @@ credentials: 'include'
             if (supSection) supSection.style.display = section === 'supervision' ? 'block' : 'none';
             const trainSection = document.getElementById('section-training');
             if (trainSection) trainSection.style.display = section === 'training' ? 'block' : 'none';
+            const gmSection = document.getElementById('section-groupMeetings');
+            if (gmSection) gmSection.style.display = section === 'groupMeetings' ? 'block' : 'none';
+            if (section === 'groupMeetings' && window.GroupMeetings) GroupMeetings.mount(document.getElementById('gmMemberMount'), { portal: 'researcher' });
 
             if (section === 'training') {
                 loadTrainingSection();
