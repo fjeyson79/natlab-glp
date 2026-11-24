@@ -112,7 +112,10 @@ test('compact layout: ~38px rows so at least eight researchers fit', () => {
 // ------------------------------------------------------- portal wiring
 test('PI portal: new tab and legacy toggle both follow the feature flag', () => {
     const html = pub('pi-dashboard.html');
-    assert.match(html, /<button class="tab-btn" data-tab="group-meetings" id="gmTabBtn" style="display:none;">Group Meetings<\/button>/);
+    assert.match(html, /<button class="tab-btn" data-tab="group-meetings" id="gmTabBtn" style="display:none;"><svg [^>]*aria-hidden="true"[^>]*>[\s\S]*?<\/svg>Group Meetings<\/button>/);
+    // position preserved: Group Docs -> Group Meetings -> User Control
+    assert.ok(html.indexOf('data-tab="group-docs"') < html.indexOf('data-tab="group-meetings"') &&
+              html.indexOf('data-tab="group-meetings"') < html.indexOf('data-tab="user-mgmt"'));
     assert.match(html, /<div class="tab-content" id="tab-group-meetings">/);
     // legacy toggle preserved for rollback, hidden by default, revealed only when the flag is off
     assert.match(html, /<label class="gd-toggle" id="gdToggleMeetingRow" style="margin-top:10px;display:none;">\s*<input type="checkbox" id="gdToggleMeeting">/);
@@ -129,7 +132,12 @@ test('PI portal: new tab and legacy toggle both follow the feature flag', () => 
 
 test('Researcher portal: main Group Meetings section (hidden until authorized)', () => {
     const html = pub('upload.html');
-    assert.match(html, /id="groupMeetingsTabBtn" class="section-btn" data-section="groupMeetings"[^>]*style="display:none;"/);
+    assert.match(html, /id="groupMeetingsTabBtn" class="section-btn" data-section="groupMeetings"[^>]*style="display:none;"><svg [^>]*aria-hidden="true"[^>]*>[\s\S]*?<\/svg>Group Meetings<\/button>/);
+    // order: Files & Documents, Group Meetings, Purchases & Inventory, Training & Approvals, GLP Vision, Supervision
+    const order = ['files', 'groupMeetings', 'inventory', 'training', 'glpVision', 'supervision']
+        .map(s => html.indexOf(`data-section="${s}" onclick=`));
+    assert.ok(order.every(i => i > 0), 'all sections present');
+    assert.deepStrictEqual([...order].sort((a, b) => a - b), order, 'researcher navigation order');
     assert.match(html, /<div id="section-groupMeetings" class="section-content" style="display:none;">/);
     assert.match(html, /gmSection\.style\.display = section === 'groupMeetings'/);
     assert.match(html, /<script src="\/js\/presentation-mode\.js"><\/script>\s*<script src="\/js\/group-meetings\.js"><\/script>/);
