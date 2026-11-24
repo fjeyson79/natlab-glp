@@ -385,6 +385,14 @@ app.get(['/research-studio.html', '/di/research-studio.html'], (req, res) => {
 
 app.use('/di', express.static(path.join(__dirname, 'public')));
 
+// Site root -> portal entry page. Relative Location, so each hostname (custom
+// domain and the Railway fallback) stays on itself; the query string is kept.
+// Only the exact path "/" matches; no other route is affected.
+app.get('/', (req, res) => {
+    const q = req.originalUrl.indexOf('?');
+    res.redirect(302, '/di/access.html' + (q >= 0 ? req.originalUrl.slice(q) : ''));
+});
+
 // Also serve static files at root level for direct access
 app.use(express.static(path.join(__dirname, 'public')));
 
