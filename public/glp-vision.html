@@ -472,7 +472,8 @@ async function gvInit() {
 
         gvRenderScopeList();
         await gvLoadFiles();
-        gvLoadNextMeeting();
+        // R2.2: the legacy "Next meeting" announcement is permanently retired
+        // (its API answers 410). gvLoadNextMeeting() is no longer called.
     } catch (err) {
         console.error('[GV] Init error:', err);
         window.location.href = '/access.html';

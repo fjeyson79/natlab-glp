@@ -45,11 +45,23 @@ test('logs never include Zoom links, filenames or storage keys', () => {
     for (const l of logLines) assert.doesNotMatch(l, /zoom_join_url|original_filename|r2_object_key|\bkey\b|url/i, l.trim());
 });
 
-test('server.js: legacy meeting announcements retired only while the flag is on', () => {
-    const next = server.slice(server.indexOf("app.get('/api/meetings/next'"), server.indexOf("app.get('/api/meetings/by-date/:date'"));
-    assert.match(next, /isAvailableFor\(req\.session\.user\)\) return res\.json\(\{ meeting: null, retired: true \}\);/);
-    const byId = server.slice(server.indexOf("app.get('/api/meetings/:id', requireAuth"), server.indexOf("app.get('/api/meetings/:id', requireAuth") + 700);
-    assert.match(byId, /req\.session\.user\.role !== 'pi' && require\('\.\/server\/meetings'\)\.isAvailableFor\(req\.session\.user\)\) \{\s*return res\.status\(404\)/);
+test('R2.2: all 22 legacy meeting routes are permanently retired (410) for every role', () => {
+    const mount = "app.use(['/api/meetings', '/api/meeting-groups'], legacyMeetingsRetiredHandler);";
+    const mountAt = server.indexOf(mount);
+    assert.ok(mountAt > 0, 'retirement handler mounted on both legacy prefixes');
+    assert.strictEqual(server.split(mount).length - 1, 1, 'mounted exactly once');
+    assert.match(server, /function legacyMeetingsRetiredHandler\(req, res\) \{\s*return res\.status\(410\)\.json\(/);
+    // Express matches in registration order: every legacy route is defined AFTER the 410 mount.
+    const routeRe = /app\.(get|post|put|patch|delete)\('(\/api\/(?:meetings|meeting-groups)[^']*)'/g;
+    const routes = [];
+    let m;
+    while ((m = routeRe.exec(server))) routes.push({ route: `${m[1].toUpperCase()} ${m[2]}`, at: m.index });
+    assert.strictEqual(routes.length, 22, 'inventory of legacy routes: ' + routes.map(r => r.route).join(', '));
+    for (const r of routes) assert.ok(r.at > mountAt, `${r.route} is shadowed by the 410 handler`);
+    // the retirement does not touch the new Group Meetings API (different prefix)
+    assert.ok(!'/api/group-meetings/status'.startsWith('/api/meetings/') && !'/api/group-meetings'.startsWith('/api/meeting-groups'));
+    // no handler for these prefixes is registered before the retirement mount
+    assert.doesNotMatch(server.slice(0, mountAt), /'\/api\/meetings|'\/api\/meeting-groups/);
 });
 
 test('server.js: mounted once, flag-gated, existing download route unchanged', () => {

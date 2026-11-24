@@ -110,18 +110,21 @@ test('compact layout: ~38px rows so at least eight researchers fit', () => {
 });
 
 // ------------------------------------------------------- portal wiring
-test('PI portal: new tab and legacy toggle both follow the feature flag', () => {
+test('PI portal: new tab shown when enabled; legacy meeting entry point permanently retired (R2.2)', () => {
     const html = pub('pi-dashboard.html');
     assert.match(html, /<button class="tab-btn" data-tab="group-meetings" id="gmTabBtn" style="display:none;"><svg [^>]*aria-hidden="true"[^>]*>[\s\S]*?<\/svg>Group Meetings<\/button>/);
     // position preserved: Group Docs -> Group Meetings -> User Control
     assert.ok(html.indexOf('data-tab="group-docs"') < html.indexOf('data-tab="group-meetings"') &&
               html.indexOf('data-tab="group-meetings"') < html.indexOf('data-tab="user-mgmt"'));
     assert.match(html, /<div class="tab-content" id="tab-group-meetings">/);
-    // legacy toggle preserved for rollback, hidden by default, revealed only when the flag is off
-    assert.match(html, /<label class="gd-toggle" id="gdToggleMeetingRow" style="margin-top:10px;display:none;">\s*<input type="checkbox" id="gdToggleMeeting">/);
-    assert.match(html, /GroupMeetings\.featureEnabled\(\)/);
-    assert.match(html, /if \(on\) \{\s*if \(legacyRow\) legacyRow\.style\.display = 'none';\s*GroupMeetings\.enableTab\('#gmTabBtn'\);\s*\} else if \(legacyRow\) \{\s*legacyRow\.style\.display = '';/);
-    assert.match(html, /<div class="tab-content" id="tab-group-meeting">/, 'legacy interface kept for rollback');
+    // R2.2: no entry point to the legacy meeting interface remains (toggle removed,
+    // no button), whatever the feature flag; the new tab is revealed by enableTab.
+    assert.doesNotMatch(html, /id="gdToggleMeeting"|id="gdToggleMeetingRow"/);
+    assert.doesNotMatch(html, /data-tab="group-meeting"/);
+    assert.match(html, /if \(window\.GroupMeetings\) GroupMeetings\.enableTab\('#gmTabBtn'\);/);
+    assert.doesNotMatch(html, /legacyRow/);
+    // the other Group Docs toggles are untouched
+    for (const id of ['gdToggleUpload', 'gdToggleInternal', 'gdToggleSharing']) assert.match(html, new RegExp(`id="${id}"`), id);
     assert.match(html, /<script src="\/js\/group-meetings\.js"><\/script>/);
     assert.match(html, /href="\/css\/group-meetings\.css"/);
     // other top-level tabs are all still present
@@ -144,10 +147,11 @@ test('Researcher portal: main Group Meetings section (hidden until authorized)',
     for (const s of ['files', 'inventory', 'training', 'glpVision', 'supervision']) assert.match(html, new RegExp(`data-section="${s}"`), s);
 });
 
-test('GLP Vision: legacy next-meeting announcement follows the flag; everything else intact', () => {
+test('GLP Vision: legacy next-meeting announcement permanently retired (R2.2); everything else intact', () => {
     const html = pub('glp-vision.html');
-    assert.match(html, /^\s*gvLoadNextMeeting\(\);/m, 'still called (flag off => unchanged behaviour)');
-    assert.match(html, /async function gvLoadNextMeeting\(\) \{\s*try \{[\s\S]{0,300}fetch\('\/api\/group-meetings\/status'[\s\S]{0,120}if \(gm && gm\.ok\) return;/);
+    assert.doesNotMatch(html, /^\s*gvLoadNextMeeting\(\);/m, 'no longer called');
+    // no page calls a retired legacy endpoint any more except the unreachable legacy PI tab code
+    assert.doesNotMatch(pub('upload.html'), /\/api\/meetings|\/api\/meeting-groups/);
     assert.match(html, /await gvLoadFiles\(\);/);
     assert.match(html, /function gvEnterPresentation/);
 });

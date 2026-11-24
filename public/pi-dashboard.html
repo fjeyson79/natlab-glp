@@ -2282,14 +2282,8 @@
                       <span class="gd-label">Upload new document</span>
                   </label>
 
-                  <!-- Legacy "Group Meeting" toggle. Follows GROUP_MEETINGS_ENABLED:
-                       shown only while the new Group Meetings utility is OFF
-                       (rollback); hidden when it is ON (see end of page). -->
-                  <label class="gd-toggle" id="gdToggleMeetingRow" style="margin-top:10px;display:none;">
-                      <input type="checkbox" id="gdToggleMeeting">
-                      <span class="gd-switch"></span>
-                      <span class="gd-label">Group Meeting</span>
-                  </label>
+                  <!-- R2.2: the legacy "Group Meeting" toggle is permanently retired
+                       (its API answers 410). Use the main "Group Meetings" tab. -->
 
                   <label class="gd-toggle" style="margin-top:10px;">
                       <input type="checkbox" id="gdToggleInternal">
@@ -3208,8 +3202,10 @@
         <div id="gmPiMount"></div>
     </div>
 
-    <!-- ==================== GROUP MEETING TAB (legacy) ==================== -->
-    <!-- Reachable only through the Group Docs toggle while Group Meetings is OFF. -->
+    <!-- ==================== GROUP MEETING TAB (legacy, retired in R2.2) ==================== -->
+    <!-- Unreachable: no entry point remains and its API answers 410. Kept only
+         until a separate cleanup release removes this markup and the mtg* code. -->
+
     <div class="tab-content" id="tab-group-meeting">
         <!-- Meeting Group Selector -->
         <div id="mtgGroupBar" style="display:flex;align-items:center;gap:10px;margin-bottom:14px;padding:10px 16px;background:#fff;border:1px solid #e0e0e0;border-radius:10px;">
@@ -12105,20 +12101,9 @@ function dicBuildPdfViewerSrc(fileUrl) {
 <script src="/js/presentation-mode.js"></script>
 <script src="/js/group-meetings.js"></script>
 <script>
-    // Group Meetings: flag ON  -> new main tab; legacy Group Docs meeting toggle hidden.
-    //                 flag OFF -> previous behaviour (legacy toggle shown, no new tab).
-    (function () {
-        var legacyRow = document.getElementById('gdToggleMeetingRow');
-        var check = window.GroupMeetings ? GroupMeetings.featureEnabled() : Promise.resolve(false);
-        check.then(function (on) {
-            if (on) {
-                if (legacyRow) legacyRow.style.display = 'none';
-                GroupMeetings.enableTab('#gmTabBtn');
-            } else if (legacyRow) {
-                legacyRow.style.display = '';
-            }
-        });
-    })();
+    // Group Meetings: show the main tab when the feature is enabled (R2.2: the
+    // legacy meeting interface is permanently retired, whatever the flag).
+    if (window.GroupMeetings) GroupMeetings.enableTab('#gmTabBtn');
 </script>
 </body>
 </html>

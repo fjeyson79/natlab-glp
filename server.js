@@ -599,6 +599,18 @@ function moduleStudioRetiredHandler(req, res) {
 }
 app.use('/api/modules', moduleStudioRetiredHandler);
 
+// Group Meetings R2.2: the previous meeting schedule / publication system is
+// permanently retired for ALL roles (PI and ai_bot included): /api/meetings/*
+// (next, details, list, by-date, generate, month-plan, lock/unlock, delete,
+// participation/details edits, speaker pool, notification e-mail) and
+// /api/meeting-groups/* (group create/edit and the bulk member replacement).
+// Group Meetings (/api/group-meetings) is the only meeting system. Legacy
+// tables and records are kept; the legacy route code below is unreachable.
+function legacyMeetingsRetiredHandler(req, res) {
+    return res.status(410).json({ error: 'The previous meeting schedule has been retired. Use Group Meetings.' });
+}
+app.use(['/api/meetings', '/api/meeting-groups'], legacyMeetingsRetiredHandler);
+
 // R1b-1: document access.
 // - /api/di/download/:id now REQUIRES a logged-in session or a valid API key
 //   (enforced). API-key access is kept temporarily for automation compatibility
