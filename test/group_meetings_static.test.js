@@ -68,7 +68,7 @@ test('server.js: mounted once, flag-gated, existing download route unchanged', (
     assert.strictEqual((server.match(/app\.use\('\/api\/group-meetings'/g) || []).length, 1);
     assert.match(server, /groupMeetings\.ensureSchemaIfEnabled\(pool\)/);
     assert.match(server, /app\.get\('\/api\/di\/download\/:id', r1bRequireDownloadAuth, docGuards\.submission,/);
-    // docAccess remains in shadow mode and unchanged by this feature
-    assert.strictEqual(require('../server/docAccess').ENFORCE, false);
+    // Group Meetings does not depend on, or modify, core document authorization
+    // (S1.2a staged enforcement lives in docAccess; meetings keep their own owner-or-PI check)
     assert.doesNotMatch(fs.readFileSync(path.join(__dirname, '..', 'server', 'docAccess.js'), 'utf8'), /group.?meeting|meeting_group/i);
 });

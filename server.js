@@ -467,7 +467,15 @@ function requirePI(req, res, next) {
 // If you add a new write endpoint: default to requirePI. Only downgrade to
 // requirePIorCap(...) if that specific action belongs to the published
 // AI_bot capability list. NEVER protect a write with requirePIRead.
+//
+// S1.2a (D4): the previous AI assistant has been retired. An 'ai_bot' account
+// currently has NO privileged read access and NO capabilities, and cannot log
+// in (see /api/di/login). The role, the stored capability list and the
+// capability-admin endpoints are kept, so a future assistant can be designed
+// separately with its own identity and scope. Re-enabling anything here must
+// be a separately approved change.
 // ============================================================================
+const AI_BOT_RETIRED_MESSAGE = 'The previous AI assistant has been retired and has no access to NAT-Lab.';
 
 // AI_BOT / PI READ MIDDLEWARE - inherits PI visibility for role='ai_bot'.
 // Allows ai_bot to see everything a PI sees, without granting any write capability.
@@ -477,7 +485,8 @@ function requirePIRead(req, res, next) {
         return res.status(401).json({ error: 'Not authenticated' });
     }
     const role = req.session.user.role;
-    if (role === 'pi' || role === 'ai_bot') return next();
+    if (role === 'pi') return next();
+    if (role === 'ai_bot') return res.status(403).json({ error: AI_BOT_RETIRED_MESSAGE });
     return res.status(403).json({ error: 'Access denied. PI role required.' });
 }
 
@@ -489,11 +498,8 @@ function requirePIorCap(capName) {
         const u = req.session.user;
         if (!u) return res.status(401).json({ error: 'Not authenticated' });
         if (u.role === 'pi') return next();
-        if (u.role === 'ai_bot') {
-            const caps = u.ai_bot_capabilities || {};
-            if (caps[capName] === true) return next();
-            return res.status(403).json({ error: `AI_bot capability '${capName}' is not enabled for this account.` });
-        }
+        // S1.2a (D4): stored capabilities are ignored while the AI assistant is retired.
+        if (u.role === 'ai_bot') return res.status(403).json({ error: AI_BOT_RETIRED_MESSAGE });
         return res.status(403).json({ error: 'Access denied. PI role required.' });
     };
 }
@@ -619,25 +625,41 @@ function legacyMeetingsRetiredHandler(req, res) {
 }
 app.use(['/api/meetings', '/api/meeting-groups'], legacyMeetingsRetiredHandler);
 
-// R1b-1: document access.
-// - /api/di/download/:id now REQUIRES a logged-in session or a valid API key
-//   (enforced). API-key access is kept temporarily for automation compatibility
-//   (no active n8n workflow fetches this route); review/restrict in R1b-2.
-// - Finer ownership / role / workspace rules (server/docAccess.js) run in SHADOW
-//   mode: decisions are logged ([R1B-ACCESS]) but not enforced until R1b-2.
+// S1.2a (D5): legacy API-key endpoints are permanently retired for every
+// caller. Their consumers (n8n workflows, GLP Status, Zoe/OpenClaw) are
+// retired; no portal page calls them. Registered BEFORE the old handlers, so
+// those handlers are unreachable. This does not depend on DOC_ACCESS_ENFORCE
+// and is not undone by an authorization rollback. DELETE /api/di/submissions/:id
+// (PI-only, used by the dashboard) is a separate route and is NOT retired.
+// API_SECRET_KEY is still read as the HMAC key for approval signatures.
+function apiKeyRetiredHandler(req, res) {
+    console.log(`[S1.2A-RETIRED] api-key endpoint ${req.method} ${req.route ? req.route.path : '-'}`);
+    return res.status(410).json({ error: 'This API-key endpoint has been retired.' });
+}
+app.post('/api/di/external-upload', apiKeyRetiredHandler);
+app.get('/api/di/researchers', apiKeyRetiredHandler);
+app.get('/api/di/submissions', apiKeyRetiredHandler);
+app.get('/api/di/submissions/:id', apiKeyRetiredHandler);
+app.patch('/api/di/submissions/:id', apiKeyRetiredHandler);
+app.post('/api/di/api-key-check', apiKeyRetiredHandler);
+app.post('/api/di/extract-text', apiKeyRetiredHandler);
+app.post('/api/di/sign', apiKeyRetiredHandler);
+app.get('/api/debug/has-route', apiKeyRetiredHandler);
+app.post('/api/internal/workflow-event', apiKeyRetiredHandler);
+
+// Document access (R1b-1, S1.2a).
+// - /api/di/download/:id REQUIRES a logged-in session. API-key access was
+//   retired in S1.2a (no active consumer; n8n, GLP Status and Zoe are retired).
+// - Ownership / role / workspace rules (server/docAccess.js) are enforced in
+//   stages via DOC_ACCESS_ENFORCE (off | cross_workspace | all; default
+//   cross_workspace; invalid values enforce 'all' and log a configuration error).
+//   Decisions are logged as [R1B-ACCESS]. Guards run before every handler, so a
+//   denied request never reaches storage or signed-URL generation.
 const docGuards = require('./server/docAccess').makeGuards(pool);
 function r1bRequireDownloadAuth(req, res, next) {
     if (req.session && req.session.user) return next();
-    const provided = String(req.headers['x-api-key'] || '').trim();
-    const expected = String(process.env.API_SECRET_KEY || '').trim();
-    if (provided && expected) {
-        const a = Buffer.from(provided), b = Buffer.from(expected);
-        if (a.length === b.length && r1crypto.timingSafeEqual(a, b)) {
-            console.log('[R1B-ACCESS] route=di-download decision=allow rule=api_key role=api actor=api-key doc=' + String(req.params.id || '').slice(0, 40));
-            return next();
-        }
-    }
-    console.log('[R1B-ACCESS] route=di-download decision=deny rule=login_required role=anonymous actor=- doc=' + String(req.params.id || '').slice(0, 40));
+    const retiredKey = !!String(req.headers['x-api-key'] || '').trim();
+    console.log(`[R1B-ACCESS] route=di-download decision=deny rule=${retiredKey ? 'api_key_retired' : 'login_required'} role=anonymous actor=- doc=` + String(req.params.id || '').slice(0, 40));
     if (String(req.headers.accept || '').includes('text/html')) {
         return res.status(401).send(renderHtmlPage('Login required',
             '<p>Please log in to the NAT-Lab portal, then open this link again.</p>' +
@@ -1587,6 +1609,12 @@ app.post('/api/di/login', async (req, res) => {
             return res.status(401).json({ error: 'Invalid credentials' });
         }
 
+        // S1.2a (D4): the previous AI assistant is retired; its account cannot
+        // log in (checked after the password, so roles are not disclosed).
+        if (String(user.role || '').toLowerCase() === 'ai_bot') {
+            return res.status(403).json({ error: AI_BOT_RETIRED_MESSAGE });
+        }
+
         // Check if password reset is required
         if (user.force_password_reset) {
             const resetWsSlug = req.query.ws || req.headers['x-workspace-slug'] || '';
@@ -1638,8 +1666,7 @@ app.post('/api/di/login', async (req, res) => {
         if (wsSlug && wsSlug !== 'natlab') {
             // Workspace-specific portal redirect
             redirectPage = `portal-${wsSlug}.html`;
-        } else if (user.role === 'pi' || user.role === 'ai_bot') {
-            // AI_bot inherits PI-level visibility, lands on PI dashboard.
+        } else if (user.role === 'pi') {
             redirectPage = 'pi-dashboard.html';
         }
         // Supervisors go to upload.html (same as researchers) but get additional supervision panel
@@ -3083,6 +3110,10 @@ app.post('/api/di/sign', async (req, res) => {
 // GET /api/di/verify/:code
 // Verify a signed document using verification code
 app.get('/api/di/verify/:code', async (req, res) => {
+    // S1.2a: public page; every value from the URL or the database is HTML-escaped
+    // (filenames are user-supplied), and scripts are disabled by CSP.
+    const e = r1EscapeHtml;
+    res.set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'");
     try {
         const { code } = req.params;
 
@@ -3099,7 +3130,7 @@ app.get('/api/di/verify/:code', async (req, res) => {
         if (result.rows.length === 0) {
             return res.send(renderHtmlPage(
                 'Verification Failed',
-                `<p>No document found with verification code: <strong>${code}</strong></p>
+                `<p>No document found with verification code: <strong>${e(code)}</strong></p>
                  <p>Please check the code and try again.</p>`,
                 'error'
             ));
@@ -3111,7 +3142,7 @@ app.get('/api/di/verify/:code', async (req, res) => {
             return res.send(renderHtmlPage(
                 'Document Not Signed',
                 `<p>Document found but has not been signed yet.</p>
-                 <p>Status: ${doc.status}</p>`,
+                 <p>Status: ${e(doc.status)}</p>`,
                 'error'
             ));
         }
@@ -3124,23 +3155,23 @@ app.get('/api/di/verify/:code', async (req, res) => {
             </div>
             <table style="width:100%;border-collapse:collapse;">
                 <tr><td style="padding:8px;color:#666;border-bottom:1px solid #eee;">Verification Code:</td>
-                    <td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">${doc.verification_code}</td></tr>
+                    <td style="padding:8px;font-weight:bold;border-bottom:1px solid #eee;">${e(doc.verification_code)}</td></tr>
                 <tr><td style="padding:8px;color:#666;border-bottom:1px solid #eee;">Document:</td>
-                    <td style="padding:8px;border-bottom:1px solid #eee;">${doc.original_filename}</td></tr>
+                    <td style="padding:8px;border-bottom:1px solid #eee;">${e(doc.original_filename)}</td></tr>
                 <tr><td style="padding:8px;color:#666;border-bottom:1px solid #eee;">Researcher:</td>
-                    <td style="padding:8px;border-bottom:1px solid #eee;">${doc.researcher_id}</td></tr>
+                    <td style="padding:8px;border-bottom:1px solid #eee;">${e(doc.researcher_id)}</td></tr>
                 <tr><td style="padding:8px;color:#666;border-bottom:1px solid #eee;">Affiliation:</td>
-                    <td style="padding:8px;border-bottom:1px solid #eee;">${doc.affiliation}</td></tr>
+                    <td style="padding:8px;border-bottom:1px solid #eee;">${e(doc.affiliation)}</td></tr>
                 <tr><td style="padding:8px;color:#666;border-bottom:1px solid #eee;">Document Type:</td>
-                    <td style="padding:8px;border-bottom:1px solid #eee;">${doc.file_type}</td></tr>
+                    <td style="padding:8px;border-bottom:1px solid #eee;">${e(doc.file_type)}</td></tr>
                 <tr><td style="padding:8px;color:#666;border-bottom:1px solid #eee;">Signed By:</td>
-                    <td style="padding:8px;border-bottom:1px solid #eee;">${doc.signer_name || 'Principal Investigator'}</td></tr>
+                    <td style="padding:8px;border-bottom:1px solid #eee;">${e(doc.signer_name || 'Principal Investigator')}</td></tr>
                 <tr><td style="padding:8px;color:#666;border-bottom:1px solid #eee;">Signed At:</td>
-                    <td style="padding:8px;border-bottom:1px solid #eee;">${new Date(doc.signed_at).toLocaleString()}</td></tr>
+                    <td style="padding:8px;border-bottom:1px solid #eee;">${e(new Date(doc.signed_at).toLocaleString())}</td></tr>
                 ${doc.ai_review_score ? `<tr><td style="padding:8px;color:#666;border-bottom:1px solid #eee;">AI Review Score:</td>
-                    <td style="padding:8px;border-bottom:1px solid #eee;">${doc.ai_review_score}/100</td></tr>` : ''}
+                    <td style="padding:8px;border-bottom:1px solid #eee;">${e(doc.ai_review_score)}/100</td></tr>` : ''}
                 <tr><td style="padding:8px;color:#666;">Signature Hash:</td>
-                    <td style="padding:8px;font-family:monospace;font-size:11px;word-break:break-all;">${doc.signature_hash}</td></tr>
+                    <td style="padding:8px;font-family:monospace;font-size:11px;word-break:break-all;">${e(doc.signature_hash)}</td></tr>
             </table>`,
             'success'
         ));
@@ -11458,25 +11489,12 @@ async function visionHasColumn(table, column) {
 }
 
 
-function requireApiKey(req, res, next) {
-  const apiKey = (req.headers['x-api-key'] || '').toString().trim();
-  const expected = ((process.env.API_SECRET_KEY || '').toString().trim());
-  if (!apiKey || !expected || apiKey !== expected) {
-    return res.status(401).json({ error: 'Invalid or missing API key' });
-  }
-  return next();
-}
 
 
-function requirePIOrApiKey(req, res, next) {
-  const apiKey = (req.headers['x-api-key'] || '').toString().trim();
-  const expected = ((process.env.API_SECRET_KEY || '').toString().trim());
-  if (apiKey && expected && apiKey === expected) return next();
-  return requirePI(req, res, next);
-}
+// S1.2a (D5): the API-key alternative was retired; PI session only.
 
 // GET /api/di/vision/training/:user_id
-app.get('/api/di/vision/training/:user_id', requirePIOrApiKey, async (req, res) => {
+app.get('/api/di/vision/training/:user_id', requirePI, async (req, res) => {
     const userId = req.params.user_id;
     const cacheKey = `vision-training-${userId}`;
     const cached = visionCacheGet(cacheKey);
@@ -11647,7 +11665,7 @@ app.get('/api/di/vision/training/:user_id', requirePIOrApiKey, async (req, res) 
 });
 
 // GET /api/di/vision/inventory/:user_id
-app.get('/api/di/vision/inventory/:user_id', requirePIOrApiKey, async (req, res) => {
+app.get('/api/di/vision/inventory/:user_id', requirePI, async (req, res) => {
     const userId = req.params.user_id;
     const cacheKey = `vision-inventory-${userId}`;
     const cached = visionCacheGet(cacheKey);
