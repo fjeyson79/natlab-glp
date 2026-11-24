@@ -81,6 +81,39 @@ app.use(session({
     }
 }));
 
+// ============================================================================
+// S1.2b — authentication session hardening
+// - establishSession(): every successful login REGENERATES the session id
+//   (session-fixation protection) and records a credential fingerprint.
+// - revalidateSession (registered after the static files and /health): every
+//   request that carries an authenticated session re-reads the account from
+//   the database (no cache) and revokes the session if the account was deleted,
+//   deactivated, its role changed, its credential changed or a password reset
+//   was forced. Database errors fail closed (503), never open.
+// - POST /api/di/logout destroys the server-side session and clears the cookie.
+// Scientific meeting sessions (Group Meetings) are database records and are
+// never touched by any of this.
+// ============================================================================
+const SESSION_COOKIE_OPTIONS = { path: '/', httpOnly: true, secure: true, sameSite: 'none' };
+// Short fingerprint of the stored credential hash (bcrypt hash or investor code
+// hash). Kept only in the server-side session; never sent to the browser.
+function authFingerprint(credentialHash) {
+    return credentialHash ? require('crypto').createHash('sha256').update(String(credentialHash)).digest('hex').slice(0, 24) : null;
+}
+function establishSession(req, user, credentialHash) {
+    return new Promise((resolve, reject) => {
+        req.session.regenerate((err) => {
+            if (err) return reject(err);
+            req.session.user = user;
+            req.session.authFp = authFingerprint(credentialHash);
+            req.session.save((e) => (e ? reject(e) : resolve()));
+        });
+    });
+}
+function sessionActorHash(id) {
+    return 'h:' + require('crypto').createHmac('sha256', process.env.SESSION_SECRET || 'r1b').update(String(id || '-')).digest('hex').slice(0, 10);
+}
+
 // Phase 4B: central workspace resolver, safe internal override + NAT-Lab fallback
 const DEFAULT_WORKSPACE_ID = '43a32f1d-8ff1-465b-9231-c366fafcec70';
 const DEFAULT_WORKSPACE_SLUG = 'natlab';
@@ -411,6 +444,58 @@ app.get('/health', (req, res) => {
     }
   });
 });
+// S1.2b: account revalidation at the common boundary. Runs for every request
+// that is not a static file or /health. One indexed lookup per authenticated
+// request; no cache, so revocation takes effect on the next request.
+async function revalidateSession(req, res, next) {
+    const u = req.session && req.session.user;
+    if (!u) return next();
+    let reason = null;
+    try {
+        const rows = (await pool.query(
+            `SELECT a.active, LOWER(COALESCE(to_jsonb(a)->>'role', 'researcher')) AS role, a.name, a.affiliation,
+                    du.password_hash, COALESCE((to_jsonb(du)->>'force_password_reset')::boolean, false) AS force_reset
+               FROM di_allowlist a LEFT JOIN di_users du ON du.researcher_id = a.researcher_id
+              WHERE a.researcher_id = $1`, [u.researcher_id])).rows;
+        const acc = rows[0];
+        if (!acc) reason = 'account_removed';
+        else if (acc.active !== true) reason = 'account_inactive';
+        else if (acc.role === 'ai_bot') reason = 'ai_bot_retired';
+        else if (acc.role !== String(u.role || 'researcher').toLowerCase()) reason = 'role_changed';
+        else if (u.investor_session) {
+            const code = (await checkInvCodeTable()) ? (await pool.query(
+                `SELECT c.code_hash, c.access_expires_at,
+                        EXISTS (SELECT 1 FROM workspace_users wu JOIN workspaces w ON w.id = wu.workspace_id
+                                 WHERE wu.user_id = c.researcher_id AND w.slug = 'theralia' AND wu.is_active = TRUE
+                                   AND (wu.role = 'investor' OR wu.workspace_position = 'investor')) AS member
+                   FROM investor_access_codes c WHERE c.researcher_id = $1 AND c.workspace_id = 'theralia'`, [u.researcher_id])).rows[0] : null;
+            if (!code) reason = 'credentials_removed';
+            else if (!req.session.authFp || authFingerprint(code.code_hash) !== req.session.authFp) reason = 'credentials_changed';
+            else if (code.access_expires_at && new Date(code.access_expires_at) < new Date()) reason = 'access_expired';
+            else if (!code.member) reason = 'membership_removed';
+        } else if (!acc.password_hash) reason = 'credentials_removed';
+        else if (!req.session.authFp || authFingerprint(acc.password_hash) !== req.session.authFp) reason = 'credentials_changed';
+        else if (acc.force_reset) reason = 'password_reset_required';
+        if (!reason) {
+            // keep display attributes current (no privilege is derived from them here)
+            if (acc.name !== u.name || acc.affiliation !== u.affiliation) { u.name = acc.name; u.affiliation = acc.affiliation; }
+            return next();
+        }
+    } catch (err) {
+        console.error('[AUTH] session revalidation failed (fail closed):', err && err.message);
+        return res.status(503).json({ error: 'Authentication check temporarily unavailable. Please try again.' });
+    }
+    console.log(`[AUTH] session revoked reason=${reason} actor=${sessionActorHash(u.researcher_id)}`);
+    // Replace the revoked session with a fresh, unauthenticated one: protected
+    // routes then answer 401 as usual and public routes keep working.
+    req.session.regenerate((err) => {
+        if (err) { console.error('[AUTH] session regenerate failed:', err.message); return res.status(503).json({ error: 'Authentication check temporarily unavailable. Please try again.' }); }
+        res.clearCookie('connect.sid', SESSION_COOKIE_OPTIONS);
+        next();
+    });
+}
+app.use(revalidateSession);
+
 // R1: removed unauthenticated /api/di/debug-members (exposed all member names/emails).
 
 // AUTH MIDDLEWARE
@@ -651,8 +736,8 @@ app.post('/api/internal/workflow-event', apiKeyRetiredHandler);
 // - /api/di/download/:id REQUIRES a logged-in session. API-key access was
 //   retired in S1.2a (no active consumer; n8n, GLP Status and Zoe are retired).
 // - Ownership / role / workspace rules (server/docAccess.js) are enforced in
-//   stages via DOC_ACCESS_ENFORCE (off | cross_workspace | all; default
-//   cross_workspace; invalid values enforce 'all' and log a configuration error).
+//   stages via DOC_ACCESS_ENFORCE (all | cross_workspace | off; default 'all'
+//   since S1.3; invalid values enforce 'all' and log a configuration error).
 //   Decisions are logged as [R1B-ACCESS]. Guards run before every handler, so a
 //   denied request never reaches storage or signed-URL generation.
 const docGuards = require('./server/docAccess').makeGuards(pool);
@@ -1529,14 +1614,14 @@ app.post('/api/di/register', async (req, res) => {
             [emailLower, personal_email || null, passwordHash, allowlistEntry.researcher_id]
         );
 
-        // Set session with role
-        req.session.user = {
+        // Set session with role (S1.2b: new session id at authentication)
+        await establishSession(req, {
             institution_email: emailLower,
             researcher_id: allowlistEntry.researcher_id,
             name: allowlistEntry.name,
             affiliation: allowlistEntry.affiliation,
             role: allowlistEntry.role
-        };
+        }, passwordHash);
 
         // Determine redirect based on role and workspace context
         const wsSlug = req.query.ws || req.headers['x-workspace-slug'] || '';
@@ -1650,15 +1735,15 @@ app.post('/api/di/login', async (req, res) => {
             }
         } catch (e) { aiBotCaps = {}; }
 
-        // Set session with role
-        req.session.user = {
+        // Set session with role (S1.2b: new session id at authentication)
+        await establishSession(req, {
             institution_email: user.institution_email,
             researcher_id: user.researcher_id,
             name: user.name,
             affiliation: user.affiliation,
             role: user.role,
             ai_bot_capabilities: user.role === 'ai_bot' ? aiBotCaps : {}
-        };
+        }, user.password_hash);
 
         // Determine redirect based on role and workspace context
         const wsSlug = req.query.ws || req.headers['x-workspace-slug'] || '';
@@ -1683,6 +1768,22 @@ app.post('/api/di/login', async (req, res) => {
         console.error('Login error:', err);
         res.status(500).json({ error: 'Server error' });
     }
+});
+
+// POST /api/di/logout (S1.2b) — destroys the server-side session of THIS
+// browser/domain and clears its cookie. Safe to repeat. Same-origin only
+// (existing cross-site write protection). Does not touch meeting sessions.
+app.post('/api/di/logout', requireSameOrigin, (req, res) => {
+    const finish = (hadSession) => {
+        res.clearCookie('connect.sid', SESSION_COOKIE_OPTIONS);
+        res.json({ success: true, logged_out: hadSession });
+    };
+    if (!req.session) return finish(false);
+    const had = !!req.session.user;
+    req.session.destroy((err) => {
+        if (err) console.error('[AUTH] logout: session destroy failed:', err.message);
+        finish(had);
+    });
 });
 
 // POST /api/di/complete-password-reset
@@ -1725,15 +1826,15 @@ app.post('/api/di/complete-password-reset', async (req, res) => {
         // Determine redirect based on role and workspace context
         const resetWsSlug = req.session.pendingPasswordReset?.workspace_slug || '';
 
-        // Clear pending reset and set normal session
-        delete req.session.pendingPasswordReset;
-        req.session.user = {
+        // Clear pending reset and set normal session (S1.2b: new session id; the
+        // pre-authentication session that carried the pending reset is discarded)
+        await establishSession(req, {
             institution_email,
             researcher_id,
             name,
             affiliation,
             role
-        };
+        }, passwordHash);
         let redirectPage = 'upload.html';
         if (resetWsSlug && resetWsSlug !== 'natlab') {
             redirectPage = `portal-${resetWsSlug}.html`;
@@ -21404,7 +21505,7 @@ app.post('/api/investor-auth/set-code', async (req, res) => {
         );
 
         // Create investor-scoped session (distinct from internal/researcher sessions)
-        req.session.user = {
+        await establishSession(req, {
             institution_email: emailLower,
             researcher_id: user.researcher_id,
             name: user.name,
@@ -21415,7 +21516,7 @@ app.post('/api/investor-auth/set-code', async (req, res) => {
             session_origin: 'investor_access',
             workspace: 'theralia',
             access_tier: 'investor_preview'
-        };
+        }, codeHash);
 
         // Update last login
         await pool.query(
@@ -21501,7 +21602,7 @@ app.post('/api/investor-auth/login', async (req, res) => {
         }
 
         // Create investor-scoped session (distinct from internal/researcher sessions)
-        req.session.user = {
+        await establishSession(req, {
             institution_email: emailLower,
             researcher_id: user.researcher_id,
             name: user.name,
@@ -21512,7 +21613,7 @@ app.post('/api/investor-auth/login', async (req, res) => {
             session_origin: 'investor_access',
             workspace: 'theralia',
             access_tier: 'investor_preview'
-        };
+        }, record.code_hash);
 
         invAuthLog(user.researcher_id, 'investor_login');
         console.log(`[INV-AUTH] Login for ${user.researcher_id}`);
@@ -21566,7 +21667,7 @@ app.post('/api/investor-auth/renew', async (req, res) => {
         );
 
         // Create investor-scoped session
-        req.session.user = {
+        await establishSession(req, {
             institution_email: emailLower,
             researcher_id: user.researcher_id,
             name: user.name,
@@ -21577,7 +21678,7 @@ app.post('/api/investor-auth/renew', async (req, res) => {
             session_origin: 'investor_access',
             workspace: 'theralia',
             access_tier: 'investor_preview'
-        };
+        }, codeHash);
 
         invAuthLog(user.researcher_id, 'investor_renewal');
         console.log(`[INV-AUTH] Code renewed for ${user.researcher_id}`);

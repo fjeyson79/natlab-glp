@@ -8,14 +8,16 @@
 // the DOCUMENT'S OWN workspace). User-supplied workspace hints (x-workspace-slug,
 // ?ws=) are never used as proof of membership.
 //
-// Staged enforcement (S1.2a), environment variable DOC_ACCESS_ENFORCE:
-//   cross_workspace  (default when unset) deny every decision whose scope is
+// Staged enforcement (S1.2a; full enforcement default since S1.3), environment
+// variable DOC_ACCESS_ENFORCE:
+//   all              (DEFAULT when unset, S1.3) deny every negative decision:
+//                    the full approved R1b policy.
+//   cross_workspace  controlled-recovery mode: deny every decision whose scope is
 //                    'workspace': lab documents for accounts without an active
 //                    NAT-Lab (LAB) membership, company/board/InvestRoom/asset
 //                    documents for non-members of the document's workspace,
 //                    and the retired AI-assistant account. Relationship-level
 //                    denials between lab members are logged as would-deny.
-//   all              deny every negative decision (full R1b-2 policy).
 //   off              shadow only: log, never block. Temporary transition /
 //                    emergency recovery mode; logged as a warning at startup.
 //   any other value  configuration error: the STRICTEST mode ('all') is
@@ -32,7 +34,7 @@
 const crypto = require('crypto');
 
 const MODES = ['off', 'cross_workspace', 'all'];
-const DEFAULT_MODE = 'cross_workspace';
+const DEFAULT_MODE = 'all'; // S1.3: full enforcement unless explicitly relaxed
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const INT_RE = /^[0-9]{1,12}$/;

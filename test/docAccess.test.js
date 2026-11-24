@@ -15,7 +15,9 @@ const base = { isOwner: false, isShareRecipient: false, isAssignedSupervisor: fa
 // ------------------------------------------------------- configuration (D6)
 test('DOC_ACCESS_ENFORCE: explicit modes, secure default, invalid values never weaken', () => {
   assert.deepStrictEqual(d.MODES, ['off', 'cross_workspace', 'all']);
-  assert.strictEqual(d.parseEnforceMode(undefined).mode, 'cross_workspace');
+  assert.strictEqual(d.DEFAULT_MODE, 'all', 'S1.3: full enforcement is the code default');
+  assert.strictEqual(d.parseEnforceMode(undefined).mode, 'all');
+  assert.strictEqual(d.parseEnforceMode(null).mode, 'all');
   assert.strictEqual(d.parseEnforceMode('').source, 'default');
   for (const m of d.MODES) assert.deepStrictEqual([d.parseEnforceMode(m).mode, d.parseEnforceMode(m).ok], [m, true]);
   assert.strictEqual(d.parseEnforceMode(' ALL ').mode, 'all');
