@@ -116,6 +116,120 @@ const STATEMENTS = [
         WHERE scheduled_start IS NOT NULL AND status <> 'CANCELLED'`,
 ];
 
+// ---------------------------------------------------------------------------
+// R3.1 scientific meeting sessions — executed ONLY when GROUP_MEETINGS_ENABLED
+// and GROUP_MEETINGS_SESSIONS_ENABLED are both on, after STATEMENTS above.
+// Additive: new nullable/defaulted columns on meeting_occurrences (Group
+// Meetings' own table), one partial unique index, one new table. No foreign
+// key or constraint points at the scientific submissions table, memberships
+// or the legacy tables.
+//
+// Rollback (manual, NOT executed by the application):
+//   DROP TABLE IF EXISTS meeting_document_events;
+//   DROP TABLE IF EXISTS meeting_attendance;
+//   DROP INDEX IF EXISTS uq_meeting_occurrences_one_active;
+//   ALTER TABLE meeting_occurrences DROP CONSTRAINT IF EXISTS meeting_occurrences_origin_check,
+//       DROP COLUMN IF EXISTS origin, DROP COLUMN IF EXISTS chair_researcher_id,
+//       DROP COLUMN IF EXISTS started_by, DROP COLUMN IF EXISTS ended_by,
+//       DROP COLUMN IF EXISTS shared_conclusions, DROP COLUMN IF EXISTS private_notes,
+//       DROP COLUMN IF EXISTS correction_log;
+// ---------------------------------------------------------------------------
+const SESSION_STATEMENTS = [
+    `ALTER TABLE meeting_occurrences ADD COLUMN IF NOT EXISTS origin TEXT NOT NULL DEFAULT 'SCHEDULED'`,
+    `DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'meeting_occurrences_origin_check') THEN
+            ALTER TABLE meeting_occurrences ADD CONSTRAINT meeting_occurrences_origin_check
+                CHECK (origin IN ('SCHEDULED', 'ADHOC'));
+        END IF;
+    END $$`,
+    `ALTER TABLE meeting_occurrences ADD COLUMN IF NOT EXISTS chair_researcher_id VARCHAR(100)`,
+    `ALTER TABLE meeting_occurrences ADD COLUMN IF NOT EXISTS started_by VARCHAR(100)`,
+    `ALTER TABLE meeting_occurrences ADD COLUMN IF NOT EXISTS ended_by VARCHAR(100)`,
+    `ALTER TABLE meeting_occurrences ADD COLUMN IF NOT EXISTS shared_conclusions TEXT`,
+    `ALTER TABLE meeting_occurrences ADD COLUMN IF NOT EXISTS private_notes TEXT`,
+    `ALTER TABLE meeting_occurrences ADD COLUMN IF NOT EXISTS correction_log JSONB NOT NULL DEFAULT '[]'::jsonb`,
+    // At most ONE active meeting per group, enforced by PostgreSQL.
+    `CREATE UNIQUE INDEX IF NOT EXISTS uq_meeting_occurrences_one_active
+        ON meeting_occurrences (meeting_group_id) WHERE status = 'IN_PROGRESS'`,
+    `CREATE TABLE IF NOT EXISTS meeting_attendance (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        occurrence_id UUID NOT NULL REFERENCES meeting_occurrences(id),
+        researcher_id VARCHAR(100) NOT NULL,
+        display_name TEXT NOT NULL,
+        affiliation TEXT,
+        role_snapshot TEXT,
+        source TEXT NOT NULL CHECK (source IN ('ROSTER', 'ADDED')),
+        status TEXT NOT NULL DEFAULT 'UNMARKED' CHECK (status IN ('UNMARKED', 'PRESENT', 'ABSENT')),
+        marked_by VARCHAR(100),
+        marked_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        UNIQUE (occurrence_id, researcher_id)
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_meeting_attendance_occurrence ON meeting_attendance (occurrence_id)`,
+
+    // R3.2: confirmed PRESENTED / DISCUSSED records. One row = "this document was
+    // presented (or discussed) in this meeting". No presentation time: the
+    // meeting's date is the scientific date. submission_id deliberately has NO
+    // foreign key (the document lifecycle is never blocked) and no document
+    // title/type/metadata is stored. created_at/updated_at are technical only.
+    `CREATE TABLE IF NOT EXISTS meeting_document_events (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        occurrence_id UUID NOT NULL REFERENCES meeting_occurrences(id),
+        submission_id UUID NOT NULL,
+        owner_researcher_id VARCHAR(100) NOT NULL,
+        event_type TEXT NOT NULL CHECK (event_type IN ('PRESENTED', 'DISCUSSED')),
+        presenter_researcher_id VARCHAR(100),
+        comment TEXT,
+        created_by VARCHAR(100) NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_by VARCHAR(100),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        voided_by VARCHAR(100),
+        voided_at TIMESTAMPTZ,
+        void_reason TEXT,
+        CHECK (event_type <> 'PRESENTED' OR presenter_researcher_id IS NOT NULL)
+    )`,
+    // Idempotency: one valid record per (meeting, document, kind).
+    `CREATE UNIQUE INDEX IF NOT EXISTS uq_meeting_document_events_active
+        ON meeting_document_events (occurrence_id, submission_id, event_type) WHERE voided_at IS NULL`,
+    `CREATE INDEX IF NOT EXISTS idx_meeting_document_events_occurrence ON meeting_document_events (occurrence_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_meeting_document_events_presenter
+        ON meeting_document_events (presenter_researcher_id) WHERE event_type = 'PRESENTED' AND voided_at IS NULL`,
+];
+
+async function runStatements(pool, statements) {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        await client.query('SELECT pg_advisory_xact_lock($1)', [ADVISORY_LOCK_KEY]);
+        for (const sql of statements) await client.query(sql);
+        await client.query('COMMIT');
+        return { ok: true };
+    } catch (err) {
+        try { await client.query('ROLLBACK'); } catch (_) { /* ignore */ }
+        return { ok: false, error: err && err.message ? err.message : String(err) };
+    } finally {
+        client.release();
+    }
+}
+
+async function ensureSessionSchema(pool) {
+    return runStatements(pool, SESSION_STATEMENTS);
+}
+
+async function isSessionSchemaReady(pool) {
+    const r = await pool.query(`
+        SELECT to_regclass('public.meeting_attendance') IS NOT NULL
+          AND to_regclass('public.meeting_document_events') IS NOT NULL
+          AND to_regclass('public.uq_meeting_occurrences_one_active') IS NOT NULL
+          AND (SELECT COUNT(*) FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'meeting_occurrences'
+                  AND column_name IN ('origin', 'chair_researcher_id', 'started_by', 'ended_by',
+                                      'shared_conclusions', 'private_notes', 'correction_log')) = 7
+          AS ready`);
+    return r.rows[0] && r.rows[0].ready === true;
+}
+
 async function ensureSchema(pool) {
     const client = await pool.connect();
     try {
@@ -149,4 +263,7 @@ async function isSchemaReady(pool) {
     return r.rows[0] && r.rows[0].ready === true;
 }
 
-module.exports = { STATEMENTS, ADVISORY_LOCK_KEY, ensureSchema, isSchemaReady };
+module.exports = {
+    STATEMENTS, ADVISORY_LOCK_KEY, ensureSchema, isSchemaReady,
+    SESSION_STATEMENTS, ensureSessionSchema, isSessionSchemaReady,
+};

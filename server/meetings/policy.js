@@ -197,6 +197,83 @@ function planOccurrenceAction(currentStatus, action) {
     return { ok: true, to: spec.to, event: spec.event };
 }
 
+// ------------------------------------------------- R3.1 scientific sessions
+// Sessions require GROUP_MEETINGS_ENABLED AND GROUP_MEETINGS_SESSIONS_ENABLED.
+function isSessionsFlagOn(env = process.env) {
+    return ['1', 'true', 'yes', 'on'].includes(String((env && env.GROUP_MEETINGS_SESSIONS_ENABLED) || '').trim().toLowerCase());
+}
+
+const ATTENDANCE_STATUSES = Object.freeze(['UNMARKED', 'PRESENT', 'ABSENT']);
+const BULK_ATTENDANCE_ACTIONS = Object.freeze(['all_present', 'remaining_absent']);
+const STALE_SESSION_MS = 12 * 60 * 60 * 1000;
+const TEXT_MAX = 10000;
+const REASON_MAX = 500;
+
+// Informational only: derived from started_at, never persisted, never acts.
+function isStaleSession(startedAt, now) {
+    const s = startedAt ? new Date(startedAt).getTime() : NaN;
+    const n = (now instanceof Date ? now : new Date(now)).getTime();
+    return Number.isFinite(s) && n - s > STALE_SESSION_MS;
+}
+
+function normalizeAttendanceStatus(value) {
+    const v = String(value || '').trim().toUpperCase();
+    return ATTENDANCE_STATUSES.includes(v) ? v : null;
+}
+
+// A reopened meeting is identified by the correction log: its last lifecycle
+// entry is a 'reopen' not yet followed by 'complete'.
+function isReopenedSession(correctionLog) {
+    const log = Array.isArray(correctionLog) ? correctionLog : [];
+    for (let i = log.length - 1; i >= 0; i--) {
+        if (log[i] && log[i].what === 'complete') return false;
+        if (log[i] && log[i].what === 'reopen') return true;
+    }
+    return false;
+}
+
+// Reopen: only the MOST RECENT started meeting of the group, only if it is
+// COMPLETED and no other meeting of the group is IN_PROGRESS.
+//   groupRows: [{ id, status, started_at }] for the whole group
+function planReopen(occurrence, groupRows) {
+    if (!occurrence || occurrence.status !== 'COMPLETED') return { ok: false, reason: 'not_completed' };
+    const rows = groupRows || [];
+    if (rows.some(r => r.status === 'IN_PROGRESS' && r.id !== occurrence.id)) return { ok: false, reason: 'another_meeting_in_progress' };
+    const mine = occurrence.started_at ? new Date(occurrence.started_at).getTime() : null;
+    const later = rows.some(r => r.id !== occurrence.id && ['COMPLETED', 'IN_PROGRESS'].includes(r.status) &&
+        r.started_at && (mine === null || new Date(r.started_at).getTime() > mine));
+    if (later) return { ok: false, reason: 'not_most_recent' };
+    return { ok: true };
+}
+
+// Explicit start/end timestamp correction of a COMPLETED meeting.
+//   others: [{ id, started_at, ended_at, status }] other started meetings of the group
+function validateTimeCorrection({ current, startedAt, endedAt, reason, now, others }) {
+    if (typeof reason !== 'string' || !reason.trim() || reason.length > REASON_MAX) return { ok: false, reason: 'reason_required' };
+    const s = startedAt !== undefined ? parseScheduledStart(startedAt) : (current.started_at ? new Date(current.started_at) : null);
+    const e = endedAt !== undefined ? parseScheduledStart(endedAt) : (current.ended_at ? new Date(current.ended_at) : null);
+    if ((startedAt !== undefined && !s) || (endedAt !== undefined && !e)) return { ok: false, reason: 'invalid_timestamp' };
+    if (startedAt === undefined && endedAt === undefined) return { ok: false, reason: 'nothing_to_correct' };
+    if (!s || !e) return { ok: false, reason: 'incomplete_interval' };
+    const n = (now instanceof Date ? now : new Date(now)).getTime();
+    if (s.getTime() >= e.getTime()) return { ok: false, reason: 'start_not_before_end' };
+    if (e.getTime() > n + 60000) return { ok: false, reason: 'in_the_future' };
+    for (const o of others || []) {
+        if (!o.started_at) continue;
+        const os = new Date(o.started_at).getTime();
+        const oe = o.ended_at ? new Date(o.ended_at).getTime() : Infinity;
+        if (s.getTime() < oe && os < e.getTime()) return { ok: false, reason: 'overlaps_another_meeting' };
+    }
+    return { ok: true, startedAt: s, endedAt: e };
+}
+
+function parseOptionalText(value, max = TEXT_MAX) {
+    if (value === undefined) return { ok: true, present: false };
+    if (value === null) return { ok: true, present: true, value: null };
+    if (typeof value !== 'string' || value.length > max) return { ok: false };
+    return { ok: true, present: true, value: value.trim() === '' ? null : value };
+}
+
 function parseScheduledStart(value) {
     if (typeof value !== 'string' || value.length > 40) return null;
     // Require an explicit offset or Z so the instant is unambiguous.
@@ -227,4 +304,7 @@ module.exports = {
     normalizeFilter, newSubmissionWindow,
     normalizeGroupCode, isValidResearcherId, isUuid, validateZoomJoinUrl,
     planOccurrenceAction, parseScheduledStart, parseDuration, parseNote,
+    // R3.1 sessions
+    isSessionsFlagOn, ATTENDANCE_STATUSES, BULK_ATTENDANCE_ACTIONS, STALE_SESSION_MS, TEXT_MAX, REASON_MAX,
+    isStaleSession, normalizeAttendanceStatus, isReopenedSession, planReopen, validateTimeCorrection, parseOptionalText,
 };

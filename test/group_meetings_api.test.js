@@ -129,8 +129,9 @@ function makeFakeRepo(d) {
 }
 
 // --------------------------------------------------------------- harness
-async function startApp({ enabled = true, ready = true, data = makeData(), events = [], audience = { mode: 'members' } } = {}) {
-    const { repo, calls } = makeFakeRepo(data);
+async function startApp({ enabled = true, ready = true, data = makeData(), events = [], audience = { mode: 'members' }, extraDeps = {}, repoOverrides = {} } = {}) {
+    const { repo: baseRepo, calls } = makeFakeRepo(data);
+    const repo = Object.assign(baseRepo, repoOverrides);
     const storage = { calls: [] };
     const app = express();
     app.use(express.json());
@@ -153,6 +154,7 @@ async function startApp({ enabled = true, ready = true, data = makeData(), event
         r2Enabled: () => true,
         downloadFromR2: async (key) => { storage.calls.push(key); return { ContentType: 'application/pdf', Body: Buffer.from('%PDF-mock ' + key) }; },
         onOccurrenceEvent: (e) => events.push(e),
+        ...extraDeps,
     }));
     const server = http.createServer(app);
     await new Promise(r => server.listen(0, '127.0.0.1', r));
@@ -189,6 +191,27 @@ test.before(() => {
 test.after(() => { globalThis.fetch = realFetch; assert.deepStrictEqual(outbound, [], 'no outbound calls'); });
 
 // ------------------------------------------------------- feature isolation
+test('sessions on but a session query fails: R2 overview and document list still work; log carries SQLSTATE only', async () => {
+    const boom = async () => { const e = new Error('relation "x" SECRET-VALUE does not exist'); e.code = '42P01'; throw e; };
+    const t = await startApp({
+        extraDeps: { sessions: {}, sessionsEnabled: () => true, sessionSchemaReady: async () => true },
+        repoOverrides: { documentMeetingStatus: boom, lastPresentedByResearcher: boom },
+    });
+    const logs = [];
+    const warn = console.warn;
+    console.warn = (...a) => logs.push(a.join(' '));
+    try {
+        const ov = await t.call('GET', '/groups/LIU/overview', { user: U.PI });
+        assert.strictEqual(ov.status, 200);
+        assert.ok(ov.json.researchers.length > 0 && ov.json.researchers.every(r => r.last_presented === null));
+        const docs = await t.call('GET', '/groups/LIU/members/L1/documents?filter=all', { user: U.L1 });
+        assert.strictEqual(docs.status, 200);
+        assert.ok(docs.json.documents.length > 0 && docs.json.documents.every(d => d.meeting_status == null));
+        assert.deepStrictEqual(logs, ['[GROUP-MEETINGS] last presented unavailable code=42P01', '[GROUP-MEETINGS] meeting status unavailable code=42P01']);
+        assert.ok(!logs.join(' ').includes('SECRET-VALUE'), 'no error text / values in logs');
+    } finally { console.warn = warn; await t.close(); }
+});
+
 test('feature flag is disabled by default', () => {
     assert.strictEqual(isFeatureEnabled({}), false);
     assert.strictEqual(isFeatureEnabled({ GROUP_MEETINGS_ENABLED: 'false' }), false);
@@ -623,6 +646,24 @@ test('route inventory: no document administration endpoints exist', () => {
         'POST /admin/occurrences/:id/:action',
         'PUT /admin/groups/:code/members/:researcherId',
         'PUT /admin/groups/:groupId/code',
+        // R3.1 sessions (flag-gated): one member-safe read, everything else PI-only under /admin
+        'GET /groups/:code/session',
+        'POST /admin/groups/:code/sessions',
+        'GET /admin/sessions/:id',
+        'POST /admin/sessions/:id/end',
+        'POST /admin/sessions/:id/abandon',
+        'POST /admin/sessions/:id/reopen',
+        'PUT /admin/sessions/:id/attendance/:researcherId',
+        'POST /admin/sessions/:id/attendance/bulk',
+        'POST /admin/sessions/:id/attendance',
+        'PATCH /admin/sessions/:id/notes',
+        'PATCH /admin/sessions/:id/times',
+        // R3.2
+        'GET /groups/:code/history',
+        'GET /groups/:code/history/:occurrenceId',
+        'POST /admin/sessions/:id/events',
+        'PATCH /admin/sessions/:id/events/:eventId',
+        'DELETE /admin/sessions/:id/events/:eventId',
     ].sort());
     // every route that can modify anything is under /admin (PI-only) and
     // none of them addresses a document

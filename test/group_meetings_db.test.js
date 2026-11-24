@@ -254,7 +254,8 @@ test('windows: week start, completed meeting resets, cancelled/postponed do not'
         await pool.query(`UPDATE meeting_occurrences SET status='CANCELLED', ended_at='2026-11-12T09:00:00Z' WHERE id=$1`, [b.id]);
         await repo.insertOccurrence({ groupId: liu, scheduledStart: '2026-11-19T08:00:00Z', durationMinutes: 60, note: null, actorId: 'PI' })
             .then(o => pool.query(`UPDATE meeting_occurrences SET status='POSTPONED' WHERE id=$1`, [o.id]));
-        assert.strictEqual(new Date(await repo.lastCompletedAt(liu)).toISOString(), '2026-11-05T09:10:00.000Z');
+        // R3.1: the reference is the ACTUAL START of the most recent completed meeting (not its end)
+        assert.strictEqual(new Date(await repo.lastCompletedAt(liu)).toISOString(), '2026-11-05T08:00:00.000Z');
         // unique slot per group (except cancelled); optimistic transitions
         await assert.rejects(repo.insertOccurrence({ groupId: liu, scheduledStart: '2026-11-19T08:00:00Z', durationMinutes: 60, note: null, actorId: 'PI' }), e => e.code === '23505');
         assert.ok(await repo.insertOccurrence({ groupId: liu, scheduledStart: '2026-11-12T08:00:00Z', durationMinutes: 60, note: null, actorId: 'PI' }));

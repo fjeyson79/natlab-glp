@@ -83,10 +83,23 @@ function makeRepo(pool) {
             return r.length > 0;
         },
 
+        // "Since last meeting" reference (R3.1/R3.3): the ACTUAL START of the
+        // most recent COMPLETED meeting of this group, so documents uploaded
+        // during a meeting stay "new" for the next one. Cancelled, postponed,
+        // abandoned and freshly started meetings never count. A completed
+        // meeting that has been REOPENED (IN_PROGRESS with a 'reopen' entry in
+        // its correction log — only reopening can return a completed meeting to
+        // IN_PROGRESS) keeps counting, so reopening never resets the New
+        // counters or the Since-last-meeting filter. to_jsonb() keeps this
+        // query valid where the R3 columns do not exist (sessions never enabled).
         async lastCompletedAt(groupId) {
             const r = await q(
-                `SELECT MAX(COALESCE(ended_at, scheduled_start)) AS t
-                   FROM meeting_occurrences WHERE meeting_group_id = $1 AND status = 'COMPLETED'`, [groupId]);
+                `SELECT MAX(COALESCE(o.started_at, o.ended_at, o.scheduled_start)) AS t
+                   FROM meeting_occurrences o
+                  WHERE o.meeting_group_id = $1
+                    AND (o.status = 'COMPLETED'
+                         OR (o.status = 'IN_PROGRESS'
+                             AND COALESCE(to_jsonb(o)->'correction_log', '[]'::jsonb) @> '[{"what":"reopen"}]'::jsonb))`, [groupId]);
             return r[0] ? r[0].t : null;
         },
 
@@ -174,6 +187,56 @@ function makeRepo(pool) {
                     AND ${ELIGIBLE_SQL}`,
                 [groupId, submissionId]);
             return r[0] || null;
+        },
+
+        // ------------------------------------------------- R3.2 (sessions)
+        // Documents among `ids` that are CURRENTLY listed in this group (same
+        // eligibility rule as everywhere). Anything else is "no longer available".
+        async getListedDocumentsByIds(groupId, ids) {
+            if (!ids || !ids.length) return [];
+            return q(
+                `WITH ${membersCte(1)}
+                 SELECT s.submission_id, s.researcher_id, s.original_filename, s.file_type, s.status, s.created_at
+                   FROM di_submissions s
+                   JOIN members mm ON mm.researcher_id = s.researcher_id
+                   CROSS JOIN LATERAL (SELECT to_jsonb(s) AS j) x
+                  WHERE s.submission_id = ANY($2::uuid[])
+                    AND ${ELIGIBLE_SQL}`,
+                [groupId, ids]);
+        },
+
+        // Last presented, per ACTUAL presenter, in this group: the MEETING DATE
+        // (actual start) of the latest meeting with a valid PRESENTED record.
+        // Never a presentation time. Abandoned/cancelled meetings and voided
+        // records are excluded; corrections are reflected automatically.
+        async lastPresentedByResearcher(groupId) {
+            const rows = await q(
+                `SELECT e.presenter_researcher_id AS researcher_id, MAX(o.started_at) AS last_presented
+                   FROM meeting_document_events e
+                   JOIN meeting_occurrences o ON o.id = e.occurrence_id
+                  WHERE o.meeting_group_id = $1 AND o.status IN ('COMPLETED', 'IN_PROGRESS')
+                    AND e.event_type = 'PRESENTED' AND e.voided_at IS NULL
+                  GROUP BY e.presenter_researcher_id`, [groupId]);
+            return new Map(rows.map(r => [r.researcher_id, r.last_presented]));
+        },
+
+        // Meeting status for listed documents: presented/discussed in the active
+        // meeting, and the last meeting date at which each was presented.
+        async documentMeetingStatus(groupId, ids) {
+            if (!ids || !ids.length) return new Map();
+            const rows = await q(
+                `SELECT e.submission_id,
+                        bool_or(o.status = 'IN_PROGRESS' AND e.event_type = 'PRESENTED') AS presented_in_session,
+                        bool_or(o.status = 'IN_PROGRESS' AND e.event_type = 'DISCUSSED') AS discussed_in_session,
+                        MAX(o.started_at) FILTER (WHERE e.event_type = 'PRESENTED') AS last_presented_on,
+                        (array_agg(a.name ORDER BY o.started_at DESC) FILTER (WHERE e.event_type = 'PRESENTED'))[1] AS last_presenter_name
+                   FROM meeting_document_events e
+                   JOIN meeting_occurrences o ON o.id = e.occurrence_id
+                   LEFT JOIN di_allowlist a ON a.researcher_id = e.presenter_researcher_id
+                  WHERE o.meeting_group_id = $1 AND o.status IN ('COMPLETED', 'IN_PROGRESS')
+                    AND e.voided_at IS NULL AND e.submission_id = ANY($2::uuid[])
+                  GROUP BY e.submission_id`, [groupId, ids]);
+            return new Map(rows.map(r => [r.submission_id, r]));
         },
 
         // ----------------------------------------------------------- admin
