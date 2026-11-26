@@ -1307,12 +1307,17 @@ async function migrate() {
             }
         }
 
-        // GLP Vision R2.2 — document-text index (derived data). Isolated: failures are logged
-        // and never abort the migration run; the feature stays inactive if tables are missing.
-        try {
-            await require('../server/docText/schema').applyDocTextSchema(pool);
-        } catch (e) {
-            console.warn('  [docText] schema block skipped:', e && e.message ? e.message : String(e));
+        // GLP Vision R2.2 — document-text index (derived data). Opt-in only: runs when
+        // DOC_TEXT_SCHEMA_ENABLED is set (default OFF), so deploys never create these tables or
+        // the pg_trgm extension implicitly. Isolated: failures are logged, never abort migrations.
+        if (/^(1|true|on|yes)$/i.test(String(process.env.DOC_TEXT_SCHEMA_ENABLED || ''))) {
+            try {
+                await require('../server/docText/schema').applyDocTextSchema(pool);
+            } catch (e) {
+                console.warn('  [docText] schema block skipped:', e && e.message ? e.message : String(e));
+            }
+        } else {
+            console.log('  [docText] schema disabled (DOC_TEXT_SCHEMA_ENABLED not set)');
         }
 
         if (process.env.ENABLE_SQL_MIGRATIONS === "1") {

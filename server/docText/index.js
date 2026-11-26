@@ -5,6 +5,8 @@
 // - Bytes come only from the upload request already in memory. No R2 access, no retry from storage.
 // - One worker thread per job, concurrency 1, explicit timeout + heap limit.
 // - Bounded in-memory waiting queue (jobs + bytes). Overflow is recorded as failed/QUEUE_FULL.
+//   Conservative defaults for a shared Railway service: 10 jobs / 40 MB queued (2× the 20 MB upload
+//   limit), 160 MB worker heap (measured ~30 MB above baseline for a 300-page PDF).
 // - The DB rows record job status only; they are NOT a durable PDF queue. Jobs that were pending
 //   or processing when the process stopped are marked 'interrupted' at startup and stay unindexed.
 // - Pages + final status are written in one transaction; 'ok' is never visible without its pages.
@@ -15,16 +17,17 @@ const { Worker } = require('worker_threads');
 
 const envInt = (k, d) => { const v = parseInt(process.env[k], 10); return Number.isFinite(v) && v > 0 ? v : d; };
 const CFG = {
-    maxQueueJobs:  envInt('DOC_TEXT_MAX_QUEUE_JOBS', 20),
-    maxQueueBytes: envInt('DOC_TEXT_MAX_QUEUE_MB', 100) * 1024 * 1024,
+    maxQueueJobs:  envInt('DOC_TEXT_MAX_QUEUE_JOBS', 10),
+    maxQueueBytes: envInt('DOC_TEXT_MAX_QUEUE_MB', 40) * 1024 * 1024,
     baseTimeoutMs: envInt('DOC_TEXT_TIMEOUT_MS', 30000),
     perMbTimeoutMs: envInt('DOC_TEXT_TIMEOUT_PER_MB_MS', 3000),
-    heapMb:        envInt('DOC_TEXT_WORKER_HEAP_MB', 256),
+    heapMb:        envInt('DOC_TEXT_WORKER_HEAP_MB', 160),
     maxPages:      envInt('DOC_TEXT_MAX_PAGES', 1000),
     maxChars:      envInt('DOC_TEXT_MAX_CHARS', 5000000),
 };
 
-const isEnabled = () => /^(1|true|on|yes)$/i.test(String(process.env.DOC_TEXT_INDEX_ENABLED || ''));
+const flagOn = (k) => /^(1|true|on|yes)$/i.test(String(process.env[k] || ''));
+const isEnabled = () => flagOn('DOC_TEXT_INDEX_ENABLED');
 
 // Documents whose text may be exposed by search (used by R2.3 queries and the stale purge).
 const VISIBLE_SUBMISSION_SQL =
@@ -142,7 +145,7 @@ function runWorker(data) {
         const w = new Worker(path.join(__dirname, 'worker.js'), {
             workerData: { data: data.buffer, maxPages: CFG.maxPages, maxChars: CFG.maxChars },
             transferList: [data.buffer],
-            resourceLimits: { maxOldGenerationSizeMb: CFG.heapMb, maxYoungGenerationSizeMb: 32 },
+            resourceLimits: { maxOldGenerationSizeMb: CFG.heapMb, maxYoungGenerationSizeMb: 16 },
             stdout: true, stderr: true,                       // swallow worker console output
         });
         const finish = (r) => { if (settled) return; settled = true; clearTimeout(t); w.terminate().catch(() => {}); resolve(r); };
@@ -198,4 +201,4 @@ function getState() {
     return { enabled: isEnabled(), inFlight: queuedIds.size, queued: queue.length, queuedBytes, running, ...stats, config: { ...CFG } };
 }
 
-module.exports = { init, enqueueFromUpload, purgeStale, getState, VISIBLE_SUBMISSION_SQL, _CFG: CFG };
+module.exports = { init, enqueueFromUpload, purgeStale, getState, VISIBLE_SUBMISSION_SQL, flagOn, _CFG: CFG };
