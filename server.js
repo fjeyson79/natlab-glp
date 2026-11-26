@@ -769,6 +769,8 @@ const docGuards = require('./server/docAccess').makeGuards(pool);
 // GLP Vision R2.2: best-effort text indexing of new uploads (DOC_TEXT_INDEX_ENABLED, default OFF).
 const docText = require('./server/docText');
 docText.init(pool);
+// GLP Vision R2.3: PI-only full-text search (DOC_TEXT_SEARCH_ENABLED, default OFF).
+require('./server/docText/routes').mountDocSearchRoutes(app, { pool, requirePIRead });
 function r1bRequireDownloadAuth(req, res, next) {
     if (req.session && req.session.user) return next();
     const retiredKey = !!String(req.headers['x-api-key'] || '').trim();

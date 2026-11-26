@@ -33,7 +33,7 @@ const isEnabled = () => flagOn('DOC_TEXT_INDEX_ENABLED');
 const VISIBLE_SUBMISSION_SQL =
     `s.r2_object_key IS NOT NULL AND s.status NOT IN ('REVISION_NEEDED','DISCARDED')`;
 
-let pool = null, ready = null, running = false, queuedBytes = 0;
+let pool = null, ready = null, active = null, running = false, queuedBytes = 0;
 const queue = [];
 const queuedIds = new Set();
 const stats = { enqueued: 0, rejected: 0, done: 0 };
@@ -64,6 +64,7 @@ function init(pgPool) {
             return true;
         } catch (e) { log('init failed; indexing inactive:', sanitize(e.message)); return false; }
     })();
+    ready.then(v => { active = v; });
     return ready;
 }
 
@@ -85,7 +86,7 @@ async function setStatus(id, status, code, message) {
 // Hook for upload routes. Synchronous, cheap, never throws. Returns a short reason string.
 function enqueueFromUpload(submissionId, buffer, source = 'server_upload') {
     try {
-        if (!isEnabled() || !pool || !ready) return 'disabled';
+        if (!isEnabled() || !pool || !ready || active === false) return 'disabled'; // inactive (e.g. tables missing)
         if (!submissionId || !Buffer.isBuffer(buffer) || buffer.length === 0) return 'invalid';
         if (queuedIds.has(submissionId)) return 'duplicate';
         // queuedIds covers staged + queued + running jobs; bytes are reserved until the worker takes them.
