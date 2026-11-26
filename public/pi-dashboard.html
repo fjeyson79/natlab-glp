@@ -852,6 +852,28 @@
         }
         .dic-advanced[hidden] { display: none; }
         .dic-adv-intdocs { padding: 8px 16px 0; }
+        /* R2.3: scientific search (scope control lives inside the search box: no extra height) */
+        .dic-search-wrap { position: relative; }
+        .dic-search-wrap.ds-on .dic-search-input { padding-right: 178px; }
+        .ds-scope { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); display: none; gap: 2px; background: #f3f4f6; border-radius: 8px; padding: 2px; }
+        .dic-search-wrap.ds-on .ds-scope { display: flex; }
+        .ds-scope button { border: 0; background: transparent; font-size: 10.5px; font-weight: 600; color: #5a6578; padding: 3px 7px; border-radius: 6px; cursor: pointer; }
+        .ds-scope button.active { background: #1a365d; color: #fff; }
+        .ds-coverage { font-size: 10.5px; color: #8c95a1; cursor: help; border-bottom: 1px dotted #c3cad4; }
+        .ds-card { flex-wrap: wrap; }
+        .ds-card .dic-result-body { min-width: 0; flex: 1; }
+        .ds-excerpt { font-size: 12px; line-height: 1.45; color: #374151; margin-top: 5px; overflow-wrap: anywhere; }
+        .ds-excerpt mark { background: #fef3c7; color: #92400e; padding: 0 1px; border-radius: 2px; font-weight: 600; }
+        .ds-hits { font-size: 10px; font-weight: 700; color: #1a365d; background: #eef2ff; border-radius: 8px; padding: 1px 7px; }
+        .ds-idx { font-size: 10px; color: #6b7280; background: #f3f4f6; border-radius: 8px; padding: 1px 7px; }
+        .ds-idx.warn { color: #92400e; background: #fef3c7; }
+        .ds-pages { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+        .ds-page { font-size: 10.5px; font-weight: 600; color: #2d5a87; background: #fff; border: 1px solid #d1d5db; border-radius: 6px; padding: 1px 7px; cursor: pointer; }
+        .ds-page:hover { border-color: #2d5a87; }
+        .ds-page.active { background: #1a365d; border-color: #1a365d; color: #fff; }
+        .ds-note { font-size: 11px; color: #6b7280; padding: 6px 4px 2px; }
+        .ds-head { font-size: 11px; color: #5a6578; padding: 2px 4px 6px; display: flex; gap: 6px; align-items: baseline; }
+        .ds-head b { color: #1a365d; }
         .dic-quick-metrics {
             display: flex;
             gap: 6px;
@@ -2146,7 +2168,14 @@
                     <button class="dic-vision-btn" onclick="dicSetVisionMode('onetoone', this)">1-to-1</button>
 </div>
                 <div class="dic-search-area">
-                    <input type="text" class="dic-search-input" id="dicSearchInput" placeholder="Search files..." oninput="dicApplyFilters()">
+                    <div class="dic-search-wrap" id="dsSearchWrap">
+                        <input type="text" class="dic-search-input" id="dicSearchInput" placeholder="Search files..." oninput="dicApplyFilters()" onkeydown="if(event.key==='Escape'){this.value='';dicApplyFilters();}">
+                        <div class="ds-scope" id="dsScope" role="group" aria-label="Search scope">
+                            <button type="button" class="active" data-scope="all" title="All information: filename and PDF content" onclick="dsSetScope('all')">All</button>
+                            <button type="button" data-scope="filename" title="Filename only" onclick="dsSetScope('filename')">Filename</button>
+                            <button type="button" data-scope="content" title="PDF content only" onclick="dsSetScope('content')">Content</button>
+                        </div>
+                    </div>
                     <div class="dic-scope-pills">
                         <span class="dic-scope-pill active" data-scope="DATA" onclick="dicSetScope(this)">DATA</span>
                         <span class="dic-scope-pill" data-scope="PRESENTATION" onclick="dicSetScope(this)">PRES</span>
@@ -2160,6 +2189,7 @@
                     <button type="button" class="dic-adv-toggle" id="dicAdvToggle" aria-expanded="false" aria-controls="dicAdvancedPanel" onclick="dicToggleAdvanced()">Advanced Filters <span class="dic-adv-badge" id="dicAdvBadge" hidden>0</span> <span class="dic-adv-caret">&#9662;</span></button>
                     <span class="dic-result-count" id="dicResultCount"></span>
                     <span style="margin-left:auto;"></span>
+                    <span class="dic-chip" id="dsRelevanceChip" data-filter="sort" data-val="relevance" hidden onclick="dicSetChip('sort','relevance')">Relevance</span>
                     <span class="dic-chip active" data-filter="sort" data-val="newest" onclick="dicSetChip('sort','newest')">Newest</span>
                     <span class="dic-chip" data-filter="sort" data-val="oldest" onclick="dicSetChip('sort','oldest')">Oldest</span>
                     <span class="dic-chip" data-filter="sort" data-val="name" onclick="dicSetChip('sort','name')">Name</span>
@@ -6355,6 +6385,7 @@ function dicInitEmbedModeFromUrl() {
             }
             dicRenderSidebar();
             dicApplyFilters();
+            dsInit();
         }
 
         function dicFormatResearcherName(name) {
@@ -6423,9 +6454,9 @@ function dicInitEmbedModeFromUrl() {
             dicFilters[key] = val;
             if (key === 'researcher' && val) {
                 dicCurrentScope = 'DATA';
-                dicFilters.sort = 'newest';
+                dicFilters.sort = dsIsActive() ? 'relevance' : 'newest';   // R2.3: keep Relevance during a search
                 document.querySelectorAll('.dic-scope-pill').forEach(p => p.classList.toggle('active', p.dataset.scope === 'DATA'));
-                document.querySelectorAll('.dic-chip[data-filter="sort"]').forEach(c => c.classList.toggle('active', c.dataset.val === 'newest'));
+                document.querySelectorAll('.dic-chip[data-filter="sort"]').forEach(c => c.classList.toggle('active', c.dataset.val === dicFilters.sort));
             }
             dicRenderSidebar();
             dicApplyFilters();
@@ -7864,6 +7895,227 @@ async function dicIntdocsFolderChanged(sel) {
   dicRenderInternalDocs(dicInternalDocsItems);
 }
 
+        // ===============================
+        // R2.3: GLP Vision scientific search (server flag DOC_TEXT_SEARCH_ENABLED).
+        // Disabled/unavailable => no further calls; the R1 filename filter stays as is.
+        // PDF text is rendered with textContent only (never innerHTML).
+        // ===============================
+        var dsState = { enabled: false,   // var: hoisted, so early callers see undefined instead of a TDZ error
+                        scope: 'all', seq: 0, timer: null, active: false, prevSort: 'newest',
+                          data: null, loading: false, error: null, nav: null, navSeq: 0, expanded: {} };
+
+        async function dsInit() {
+            if (dsState.inited) return; dsState.inited = true;
+            try {
+                const r = await fetch('/api/di/doc-search/status', { credentials: 'include' });
+                const j = r.ok ? await r.json() : null;
+                dsState.enabled = !!(j && j.enabled && j.available);
+            } catch (e) { dsState.enabled = false; }
+            document.getElementById('dsSearchWrap').classList.toggle('ds-on', dsState.enabled);
+            if (dsState.enabled && dsQuery()) dicApplyFilters();
+        }
+        const dsQuery = () => (document.getElementById('dicSearchInput').value || '').trim();
+        function dsIsActive() {
+            try { return !!(dsState && dsState.enabled && dicVisionMode === 'all' && !dicR1IntdocsShown && dsQuery().length >= 2); }
+            catch (e) { return false; }
+        }
+        function dsSetSortChips(val) {
+            document.querySelectorAll('.dic-chip[data-filter="sort"]').forEach(c => c.classList.toggle('active', c.dataset.val === val));
+        }
+        function dsOnFiltersChanged() {
+            if (!dsState) return;
+            const active = dsIsActive();
+            if (active && !dsState.active) {          // enter search session: Relevance by default
+                dsState.active = true; dsState.prevSort = dicFilters.sort === 'relevance' ? 'newest' : dicFilters.sort;
+                document.getElementById('dsRelevanceChip').hidden = false;
+                dsToggleRowForSearch(true);
+                dicFilters.sort = 'relevance'; dsSetSortChips('relevance');
+            } else if (!active && dsState.active) {   // leave: restore the exact R1 state
+                dsState.active = false; dsState.data = null; dsState.error = null; dsState.nav = null; dsState.seq++;
+                clearTimeout(dsState.timer);
+                document.getElementById('dsRelevanceChip').hidden = true;
+                dsToggleRowForSearch(false);
+                dicFilters.sort = dsState.prevSort; dsSetSortChips(dicFilters.sort);
+            }
+            if (active) { clearTimeout(dsState.timer); dsState.timer = setTimeout(dsRun, 280); }
+        }
+        // Keep the R1 compact row on one line during a search: the count moves into the results
+        // header and "Oldest" yields its place to "Relevance" (both restored when search clears).
+        function dsToggleRowForSearch(on) {
+            document.getElementById('dicResultCount').hidden = on;
+            const oldest = document.querySelector('.dic-chip[data-filter="sort"][data-val="oldest"]');
+            if (oldest) oldest.hidden = on;
+            if (on && dicFilters.sort === 'oldest') dicFilters.sort = 'newest';
+        }
+        function dsSetScope(scope) {
+            dsState.scope = scope;
+            document.querySelectorAll('#dsScope button').forEach(b => b.classList.toggle('active', b.dataset.scope === scope));
+            if (dsIsActive()) dicApplyFilters();
+        }
+        async function dsRun() {
+            if (!dsIsActive()) return;
+            const seq = ++dsState.seq;
+            const p = new URLSearchParams({ q: dsQuery().slice(0, 200), scope: dsState.scope, sort: dicFilters.sort || 'relevance',
+                months: String(dicMonthsUsed || 12), limit: '50' });
+            if (dicFilters.researcher) p.set('researcher', dicFilters.researcher);
+            if (dicCurrentScope) p.set('type', dicCurrentScope);
+            if (dicFilters.status) p.set('status', dicFilters.status);
+            if (dicFilters.time) p.set('days', dicFilters.time);
+            if (dicFilters.dragonSeal) p.set('dragon', '1');
+            if (dicFilters.year) p.set('year', dicFilters.year);
+            dsState.loading = true; if (!dsState.data) dicRenderResults();
+            try {
+                const r = await fetch('/api/di/doc-search?' + p.toString(), { credentials: 'include' });
+                const j = await r.json().catch(() => null);
+                if (seq !== dsState.seq) return;                       // a newer search superseded this one
+                if (!r.ok || !j || j.available === false) throw new Error((j && j.error) || 'unavailable');
+                dsState.data = j; dsState.error = null;
+            } catch (e) {
+                if (seq !== dsState.seq) return;
+                dsState.data = null; dsState.error = 'Full-text search unavailable — showing filename matches.';
+            }
+            dsState.loading = false;
+            if (dsIsActive()) dicRenderResults();
+        }
+        function dsEl(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+        function dsRenderExcerpt(ex) {
+            const d = dsEl('div', 'ds-excerpt');
+            if (!ex) return d;
+            let pos = 0; if (ex.truncatedStart) d.appendChild(document.createTextNode('… '));
+            for (const [s, e] of ex.highlights) {
+                if (s > pos) d.appendChild(document.createTextNode(ex.text.slice(pos, s)));
+                d.appendChild(dsEl('mark', null, ex.text.slice(s, e))); pos = e;
+            }
+            if (pos < ex.text.length) d.appendChild(document.createTextNode(ex.text.slice(pos)));
+            if (ex.truncatedEnd) d.appendChild(document.createTextNode(' …'));
+            return d;
+        }
+        function dsRender(container) {
+            dicUpdateR1Bar(undefined);   // keeps the active-filter badge in sync
+            if (dsState.error || (!dsState.data && !dsState.loading)) {
+                // Fallback: R1 filename filtering, with a discreet note
+                const saved = dsState.enabled; dsState.enabled = false;
+                document.getElementById('dicResultCount').hidden = false;   // fallback shows the R1 count
+                try { dicRenderResults(); } finally { dsState.enabled = saved; }
+                if (dsState.error) container.insertBefore(dsEl('div', 'ds-note', dsState.error), container.firstChild);
+                return;
+            }
+            if (!dsState.data) { container.innerHTML = ''; container.appendChild(dsEl('div', 'dic-empty-state', 'Searching…')); return; }
+            const d = dsState.data, c = d.coverage || {};
+            const n = d.total || 0;
+            document.getElementById('dicResultCount').hidden = true;
+            const nameOnly = (c.unindexed || 0) + (c.failed || 0) + (c.pending || 0) + (c.other || 0);
+            const limited = nameOnly + (c.unavailable || 0) + (c.partial || 0);
+            container.innerHTML = '';
+            const head = dsEl('div', 'ds-head'); head.id = 'dsHead';
+            head.appendChild(dsEl('b', null, n + (n === 1 ? ' result' : ' results')));
+            if (limited) {
+                const cov = dsEl('span', 'ds-coverage', `${nameOnly + (c.unavailable || 0)} not text-searchable${c.partial ? `, ${c.partial} partially indexed` : ''}`);
+                cov.id = 'dsCoverage';
+                cov.title = `Full text indexed: ${c.ok || 0}\nPartially indexed: ${c.partial || 0}\nNot indexed (filename only): ${nameOnly}\nFile unavailable (e.g. revision requested): ${c.unavailable || 0}`;
+                head.appendChild(cov);
+            }
+            container.appendChild(head);
+            if (!d.results.length) {
+                const msg = d.scope === 'filename' ? 'No filenames match.' :
+                    (nameOnly + (c.unavailable || 0)) ? `No matches in indexed PDF text. ${nameOnly + (c.unavailable || 0)} document(s) are not text-searchable${d.scope === 'all' ? ' and were matched by filename only' : ''}.` : 'No matches.';
+                container.appendChild(dsEl('div', 'dic-empty-state', msg)); return;   // header above keeps count/coverage
+            }
+            const frag = document.createDocumentFragment();
+            for (const r of d.results) frag.appendChild(dsCard(r));
+            container.appendChild(frag);
+            if (d.total > d.results.length) container.appendChild(dsEl('div', 'ds-note', `Showing the first ${d.results.length} of ${d.total}. Refine the search to narrow results.`));
+        }
+        function dsCard(r) {
+            const nav = dsState.nav;
+            const card = dsEl('div', 'dic-result-item ds-card' + (r.submission_id === dicSelectedFileId ? ' active' : ''));
+            card.onclick = () => dsOpen(r.submission_id, r.excerpt_page || (r.pages[0] && r.pages[0].page) || null);
+            const iconWrap = dsEl('div'); iconWrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;flex-shrink:0;';
+            const t = r.file_type === 'SOP' ? ['sop', 'SOP'] : r.file_type === 'PRESENTATION' ? ['pres', 'PRES'] : r.file_type === 'REPORT' ? ['data', 'REPORT'] : ['data', 'DATA'];
+            iconWrap.appendChild(dsEl('div', 'dic-result-icon ' + t[0], t[1])); card.appendChild(iconWrap);
+            const body = dsEl('div', 'dic-result-body');
+            const title = dsEl('div', 'dic-result-title', r.original_filename); title.title = r.original_filename; body.appendChild(title);
+            body.appendChild(dsEl('div', 'dic-result-sub', `${dicFormatResearcherName(r.researcher_name || r.researcher_id)} · ${String(r.created_at || '').substring(0, 10)}`));
+            const meta = dsEl('div', 'dic-result-meta');
+            const statusClass = (r.status || '').toLowerCase().replace('_needed', '');
+            meta.appendChild(dsEl('span', 'dic-badge ' + statusClass, r.status === 'REVISION_NEEDED' ? 'REVISION' : (r.status || '')));
+            if (r.occurrences) meta.appendChild(dsEl('span', 'ds-hits', r.occurrences + (r.occurrences === 1 ? ' hit' : ' hits')));
+            if (r.name_match) meta.appendChild(dsEl('span', 'ds-idx', 'Filename match'));
+            const ix = r.index || {};
+            if (ix.status === 'partial') meta.appendChild(dsEl('span', 'ds-idx warn', `Partial text (${ix.pages_indexed}/${ix.page_count} p.)`));
+            else if (ix.status !== 'ok') meta.appendChild(dsEl('span', 'ds-idx', 'Text not indexed'));
+            body.appendChild(meta);
+            if (r.excerpt) body.appendChild(dsRenderExcerpt(r.excerpt));
+            if (r.pages && r.pages.length) {
+                const row = dsEl('div', 'ds-pages'); const all = !!dsState.expanded[r.submission_id];
+                const list = all ? r.pages : r.pages.slice(0, 12);
+                for (const p of list) {
+                    const b = dsEl('button', 'ds-page' + (nav && nav.docId === r.submission_id && nav.page === p.page ? ' active' : ''), 'P. ' + p.page);
+                    b.type = 'button'; b.title = `${p.occ} hit${p.occ === 1 ? '' : 's'} on page ${p.page}`;
+                    b.onclick = (ev) => { ev.stopPropagation(); dsOpen(r.submission_id, p.page); };
+                    row.appendChild(b);
+                }
+                if (!all && r.pages.length > 12) {
+                    const more = dsEl('button', 'ds-page', `+${r.pages.length - 12}`); more.type = 'button';
+                    more.onclick = (ev) => { ev.stopPropagation(); dsState.expanded[r.submission_id] = true; dicRenderResults(); };
+                    row.appendChild(more);
+                }
+                body.appendChild(row);
+            }
+            card.appendChild(body);
+            return card;
+        }
+        // ---- viewer: open at page, same-document navigation without reload, in-PDF highlighting ----
+        // Search-driven opens: add the target page to the hash, and a unique query token so a rapid
+        // A->B->A switch is always a full load (a fragment-only change would let an in-flight load win).
+        function dsViewerSrc(src, docId) {
+            const n = dsState && dsState.nav;
+            if (!(n && dsState.active && n.docId === docId)) return src;
+            const i = src.indexOf('#'); const q = i < 0 ? src : src.slice(0, i), h = i < 0 ? '' : src.slice(i);
+            return q + '&_n=' + n.seq + (h || '#') + (n.page ? `&page=${n.page}` : '');
+        }
+        function dsOpen(docId, page) {
+            const terms = (dsState.data && dsState.data.query && dsState.data.query.terms) || [];
+            const nav = { docId, page: page || null, terms, seq: ++dsState.navSeq };
+            dsState.nav = nav;
+            const pdfEl = document.getElementById('dicViewerPdf');
+            if (dicSelectedFileId === docId && pdfEl.dataset.dsDoc === docId && pdfEl.style.display !== 'none') {
+                dsWithViewer(nav, app => dsApplyNav(app, nav));      // same PDF: navigate in place
+                dicRenderResults();
+            } else {
+                dicSelectFile(docId);                                // loads viewer at #page=N via dsViewerHash
+            }
+        }
+        function dsAfterViewerLoad(docId) {
+            if (!dsState) return;
+            const nav = dsState.nav;
+            if (dsState.active && nav && nav.docId === docId) dsWithViewer(nav, app => dsApplyNav(app, nav));
+        }
+        function dsWithViewer(nav, cb) {
+            const pdfEl = document.getElementById('dicViewerPdf'); const t0 = Date.now();
+            (function poll() {
+                if (!dsState.nav || dsState.nav.seq !== nav.seq || pdfEl.dataset.dsDoc !== nav.docId) return;   // superseded
+                let app = null; try { app = pdfEl.contentWindow && pdfEl.contentWindow.PDFViewerApplication; } catch (e) {}
+                const ready = app && app.pdfDocument && app.pdfViewer && app.pdfViewer.pagesCount > 0
+                              && String(app.url || '').includes(nav.docId);
+                if (ready) return cb(app);
+                if (Date.now() - t0 < 20000) setTimeout(poll, 100);
+            })();
+        }
+        function dsApplyNav(app, nav) {
+            if (nav.page && nav.page <= app.pagesCount) app.page = nav.page;
+            const key = nav.terms.join('\u0001');
+            if (nav.terms.length && app.__dsTerms !== key) {
+                app.__dsTerms = key;
+                app.eventBus.dispatch('find', { source: window, type: '', query: nav.terms.length === 1 ? nav.terms[0] : nav.terms,
+                    caseSensitive: false, entireWord: false, highlightAll: true, findPrevious: false, matchDiacritics: false });
+            }
+            // Highlighting must never override the explicitly selected page
+            [250, 800].forEach(ms => setTimeout(() => {
+                if (dsState.nav && dsState.nav.seq === nav.seq && nav.page && app.page !== nav.page) app.page = nav.page;
+            }, ms));
+        }
+
         // R1: Advanced Filters toggle + active-filter badge + result count
         function dicToggleAdvanced() {
             const panel = document.getElementById('dicAdvancedPanel');
@@ -7912,6 +8164,7 @@ async function dicIntdocsFolderChanged(sel) {
         }
 
         function dicApplyFilters() {
+            dsOnFiltersChanged();   // R2.3: no-op unless full-text search is enabled and a query is active
             const search = (document.getElementById('dicSearchInput').value || '').toLowerCase();
             const now = new Date();
 
@@ -7951,6 +8204,7 @@ async function dicIntdocsFolderChanged(sel) {
 
         function dicRenderResults() {
             const container = document.getElementById('dicResults');
+            if (dsIsActive()) return dsRender(container);   // R2.3 search results replace the cards
             dicUpdateR1Bar(dicFilteredFiles.length, false);
 
             // Legacy pack-grouped view
@@ -8250,7 +8504,9 @@ function dicBuildPdfViewerSrc(fileUrl) {
             document.getElementById('dicViewerEmpty').style.display = 'none';
             const pdfEl = document.getElementById('dicViewerPdf');
             pdfEl.style.display = 'block';
-            pdfEl.src = dicBuildPdfViewerSrc(`/api/di/download/${f.submission_id}`);
+            pdfEl.src = dsViewerSrc(dicBuildPdfViewerSrc(`/api/di/download/${f.submission_id}`), f.submission_id);
+            pdfEl.dataset.dsDoc = f.submission_id;
+            dsAfterViewerLoad(f.submission_id);
 
             // Intel panel
             document.getElementById('dicIntelPanel').style.display = 'block';
