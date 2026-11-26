@@ -766,6 +766,9 @@ app.post('/api/internal/workflow-event', apiKeyRetiredHandler);
 //   Decisions are logged as [R1B-ACCESS]. Guards run before every handler, so a
 //   denied request never reaches storage or signed-URL generation.
 const docGuards = require('./server/docAccess').makeGuards(pool);
+// GLP Vision R2.2: best-effort text indexing of new uploads (DOC_TEXT_INDEX_ENABLED, default OFF).
+const docText = require('./server/docText');
+docText.init(pool);
 function r1bRequireDownloadAuth(req, res, next) {
     if (req.session && req.session.user) return next();
     const retiredKey = !!String(req.headers['x-api-key'] || '').trim();
@@ -2191,6 +2194,7 @@ app.post('/api/di/legacy-upload', requireAuth, upload.single('file'), async (req
         );
 
         console.log(`[LEGACY] Draft uploaded: ${submissionResult.rows[0].submission_id} by ${user.researcher_id}`);
+        docText.enqueueFromUpload(submissionResult.rows[0].submission_id, file.buffer, 'server_upload_legacy');
         // NO webhook call for legacy uploads
 
         return res.json({
@@ -2587,6 +2591,7 @@ app.post('/api/di/upload', requireAuth, upload.single('file'), async (req, res) 
 
         // Optional PI notification (metadata only, sent after the response; n8n no longer used).
         notify.notifySubmissionReceived({ submissionId, researcherId: user.researcher_id, researcherName: user.name || user.researcher_id, fileType: normalizedType, resubmission: isResubmission });
+        docText.enqueueFromUpload(submissionId, file.buffer);
 
         return res.json({
             success: true,

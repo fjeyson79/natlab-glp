@@ -1307,6 +1307,14 @@ async function migrate() {
             }
         }
 
+        // GLP Vision R2.2 — document-text index (derived data). Isolated: failures are logged
+        // and never abort the migration run; the feature stays inactive if tables are missing.
+        try {
+            await require('../server/docText/schema').applyDocTextSchema(pool);
+        } catch (e) {
+            console.warn('  [docText] schema block skipped:', e && e.message ? e.message : String(e));
+        }
+
         if (process.env.ENABLE_SQL_MIGRATIONS === "1") {
             await runSqlFileMigrations(pool);
         } else {
