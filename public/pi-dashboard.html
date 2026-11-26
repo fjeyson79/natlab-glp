@@ -6462,7 +6462,7 @@ function dicInitEmbedModeFromUrl() {
             dicApplyFilters();
             if (key === 'researcher' && val) {
                 dicRenderQuickMetrics(val);
-                dicAutoSelectNewest();
+                if (!dsIsActive()) dicAutoSelectNewest();   // R2.4: during a search, refine results only
             } else {
                 document.getElementById('dicQuickMetrics').style.display = 'none';
             }
@@ -8032,7 +8032,9 @@ async function dicIntdocsFolderChanged(sel) {
             card.onclick = () => dsOpen(r.submission_id, r.excerpt_page || (r.pages[0] && r.pages[0].page) || null);
             const iconWrap = dsEl('div'); iconWrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;flex-shrink:0;';
             const t = r.file_type === 'SOP' ? ['sop', 'SOP'] : r.file_type === 'PRESENTATION' ? ['pres', 'PRES'] : r.file_type === 'REPORT' ? ['data', 'REPORT'] : ['data', 'DATA'];
-            iconWrap.appendChild(dsEl('div', 'dic-result-icon ' + t[0], t[1])); card.appendChild(iconWrap);
+            iconWrap.appendChild(dsEl('div', 'dic-result-icon ' + t[0], t[1]));
+            if (r.shared) iconWrap.appendChild(dsEl('div', 'dic-shared-pill', 'Shared'));   // same pill as R1 cards
+            card.appendChild(iconWrap);
             const body = dsEl('div', 'dic-result-body');
             const title = dsEl('div', 'dic-result-title', r.original_filename); title.title = r.original_filename; body.appendChild(title);
             body.appendChild(dsEl('div', 'dic-result-sub', `${dicFormatResearcherName(r.researcher_name || r.researcher_id)} · ${String(r.created_at || '').substring(0, 10)}`));

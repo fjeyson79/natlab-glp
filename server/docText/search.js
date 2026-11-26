@@ -99,23 +99,46 @@ async function capabilities(pool) {
     const r = await pool.query(`SELECT to_regclass('public.di_doc_text_index') IS NOT NULL AS idx,
         to_regclass('public.di_doc_text_pages') IS NOT NULL AS pages,
         EXISTS (SELECT 1 FROM pg_extension WHERE extname='pg_trgm') AS trgm,
-        EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='di_submissions' AND column_name='record_origin') AS legacy`);
-    const x = r.rows[0]; cap = { tables: !!(x.idx && x.pages), trgm: !!x.trgm, legacy: !!x.legacy }; capAt = Date.now();
+        EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='di_submissions' AND column_name='record_origin') AS legacy,
+        to_regclass('public.di_file_shares') IS NOT NULL AS shares`);
+    const x = r.rows[0]; cap = { tables: !!(x.idx && x.pages), trgm: !!x.trgm, legacy: !!x.legacy, shares: !!x.shares }; capAt = Date.now();
     return cap;
 }
 
-// ---------- filters shared by search + coverage (base = PI document list) ----------
+// ---------- filters shared by search + coverage ----------
+// Base = exactly the R1 PI document list (/api/di/lab-files-enriched): the union of
+//   owned:  workspace, not DISCARDED, not report NOTE, created within the months window
+//   shared: active share in the workspace to another researcher, shared within the window
+// R1 lists a shared document under the recipient with created_at = shared_at, so the
+// researcher, date and year filters use the recipient / shared_at on the shared branch.
 function baseFilters(f, P, c) {
-    const w = [`s.workspace_id = ${P(f.workspaceId)}`, `s.status <> 'DISCARDED'`, `COALESCE(s.report_thread_role,'') <> 'NOTE'`,
-               `s.created_at >= NOW() - make_interval(months => ${P(f.months)})`];
-    if (f.researcher) w.push(`s.researcher_id = ${P(f.researcher)}`);
+    const ws = P(f.workspaceId), months = P(f.months);
+    const days = f.days ? P(f.days) : null, year = (f.year && f.year !== 'legacy') ? P(f.year) : null;
+    const researcher = f.researcher ? P(f.researcher) : null;
+    const owned = [`COALESCE(s.report_thread_role,'') <> 'NOTE'`, `s.created_at >= NOW() - make_interval(months => ${months})`];
+    if (researcher) owned.push(`s.researcher_id = ${researcher}`);
+    if (days) owned.push(`s.created_at >= NOW() - make_interval(days => ${days})`);
+    if (year) owned.push(`EXTRACT(YEAR FROM s.created_at) = ${year}`);
+    const branches = ['(' + owned.join(' AND ') + ')'];
+    if (c.shares && f.year !== 'legacy') {   // shared entries never carry legacy origin in R1
+        const sh = [`fs.submission_id = s.submission_id`, `fs.is_active = TRUE`, `fs.recipient_researcher_id <> fs.owner_researcher_id`,
+                    `fs.workspace_id = ${ws}`, `fs.shared_at >= NOW() - make_interval(months => ${months})`];
+        if (researcher) sh.push(`fs.recipient_researcher_id = ${researcher}`);
+        if (days) sh.push(`fs.shared_at >= NOW() - make_interval(days => ${days})`);
+        if (year) sh.push(`EXTRACT(YEAR FROM fs.shared_at) = ${year}`);
+        branches.push(`EXISTS (SELECT 1 FROM di_file_shares fs WHERE ${sh.join(' AND ')})`);
+    }
+    const w = [`s.workspace_id = ${ws}`, `s.status <> 'DISCARDED'`, '(' + branches.join(' OR ') + ')'];
     if (f.type) w.push(`s.file_type = ${P(f.type)}`);
     if (f.status) w.push(`s.status = ${P(f.status)}`);
-    if (f.days) w.push(`s.created_at >= NOW() - make_interval(days => ${P(f.days)})`);
     if (f.dragon) w.push(`s.pi_dragon_seal = TRUE`);
     if (f.year === 'legacy') w.push(c.legacy ? `s.record_origin = 'legacy_pre2026'` : 'FALSE');
-    else if (f.year) w.push(`EXTRACT(YEAR FROM s.created_at) = ${P(f.year)}`);
     return w.join(' AND ');
+}
+function sharedToSql(f, P, c) {   // "shown as shared" for the current researcher filter (display only)
+    if (!c.shares || !f.researcher) return 'FALSE';
+    return `(s.researcher_id <> ${P(f.researcher)} AND EXISTS (SELECT 1 FROM di_file_shares fs2 WHERE fs2.submission_id = s.submission_id
+              AND fs2.is_active = TRUE AND fs2.recipient_researcher_id = ${P(f.researcher)}))`;
 }
 
 function readFilters(q, workspaceId) {
@@ -180,7 +203,7 @@ async function search(pool, reqQuery, workspaceId) {
           FROM page_hits GROUP BY submission_id
       )
       SELECT s.submission_id, s.original_filename, s.file_type, s.status, s.created_at, s.researcher_id,
-             s.pi_dragon_seal, a.name AS researcher_name,
+             s.pi_dragon_seal, a.name AS researcher_name, ${sharedToSql(f, P, c)} AS shared,
              i.status AS index_status, i.page_count, i.pages_indexed,
              (${wantName ? `(${nameGroups})${nameExcl}` : 'FALSE'}) AS name_match,
              (d.submission_id IS NOT NULL AND (${docGroups})${contentExcl}) AS content_match,
@@ -237,7 +260,7 @@ async function search(pool, reqQuery, workspaceId) {
         const pages = r.content_match && r.pages ? r.pages.map((p, k) => ({ page: p, occ: r.page_occ[k] })) : [];
         return {
             submission_id: r.submission_id, original_filename: r.original_filename, file_type: r.file_type, status: r.status,
-            created_at: r.created_at, researcher_id: r.researcher_id, researcher_name: r.researcher_name, pi_dragon_seal: r.pi_dragon_seal,
+            created_at: r.created_at, researcher_id: r.researcher_id, researcher_name: r.researcher_name, pi_dragon_seal: r.pi_dragon_seal, shared: !!r.shared,
             name_match: r.name_match, content_match: !!r.content_match,
             occurrences: r.content_match ? r.occ : 0,
             pages: pages.slice(0, LIMITS.maxPagesListed), pages_total: pages.length,
