@@ -239,7 +239,7 @@ async function inventory(db, args) {
                `lower(btrim(s.r2_object_key)) LIKE '%.pdf'`, `COALESCE(s.report_thread_role, '') <> 'NOTE'`];
     if (args.ids) w.push(`s.submission_id::text = ANY(${P(args.ids)})`);
     if (args.types) w.push(`s.file_type = ANY(${P(args.types)})`);
-    const rows = (await db.query(`SELECT s.submission_id, s.r2_object_key, s.signed_at, s.original_filename, s.file_type,
+    const rows = (await db.query(`SELECT s.submission_id, s.r2_object_key, s.signed_at::text AS signed_at_text, s.original_filename, s.file_type,
             i.status AS idx_status, i.source AS idx_source, i.attempts, i.started_at
           FROM di_submissions s JOIN workspaces w ON w.id = s.workspace_id
           LEFT JOIN di_doc_text_index i ON i.submission_id = s.submission_id
@@ -282,7 +282,8 @@ async function finishClaim(db, id, claimAt, status, code, message) {
 }
 const IDENTITY_SQL = `SELECT 1 FROM di_submissions s JOIN workspaces w ON w.id = s.workspace_id
      WHERE s.submission_id = $1 AND w.slug = 'natlab' AND s.status = 'APPROVED'
-       AND s.r2_object_key = $2 AND s.signed_at IS NOT DISTINCT FROM $3 AND COALESCE(s.report_thread_role, '') <> 'NOTE'`;
+       AND s.r2_object_key = $2 AND s.signed_at::text IS NOT DISTINCT FROM $3 AND COALESCE(s.report_thread_role, '') <> 'NOTE'`;
+// signed_at is compared as PostgreSQL's own text rendering (full microsecond precision, never parsed by JS).
 
 async function commitResult(db, row, claimAt, r) {
     const { status, code, message } = docText.deriveStatus(r);
@@ -290,7 +291,7 @@ async function commitResult(db, row, claimAt, r) {
     try {
         await c.query('BEGIN');
         // Identity/version check WITHOUT row locks (restricted role has no UPDATE on di_submissions).
-        if (!(await c.query(IDENTITY_SQL, [row.submission_id, row.r2_object_key, row.signed_at])).rowCount) {
+        if (!(await c.query(IDENTITY_SQL, [row.submission_id, row.r2_object_key, row.signed_at_text])).rowCount) {
             await c.query(`DELETE FROM di_doc_text_index WHERE submission_id = $1 AND source = '${SOURCE}' AND started_at = $2`, [row.submission_id, claimAt]);
             await c.query('COMMIT');
             return { status: 'skipped', code: 'IDENTITY_CHANGED' };
@@ -310,7 +311,7 @@ async function commitResult(db, row, claimAt, r) {
         await c.query('COMMIT');
     } catch (e) { try { await c.query('ROLLBACK'); } catch (_) {} throw e; } finally { c.release(); }
     // Post-commit re-check: if the submission changed meanwhile, withdraw our derived rows.
-    if (!(await db.query(IDENTITY_SQL, [row.submission_id, row.r2_object_key, row.signed_at])).rowCount) {
+    if (!(await db.query(IDENTITY_SQL, [row.submission_id, row.r2_object_key, row.signed_at_text])).rowCount) {
         await db.query(`DELETE FROM di_doc_text_index WHERE submission_id = $1 AND source = '${SOURCE}' AND started_at = $2`, [row.submission_id, claimAt]);
         return { status: 'skipped', code: 'IDENTITY_CHANGED' };
     }
