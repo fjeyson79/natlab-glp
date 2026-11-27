@@ -31,13 +31,95 @@
         function mountScope() {
             cfg.wrap.classList.add('gds-on');
             if (cfg.wrap.querySelector('.gds-scope')) return;
+            const tools = el('div', 'gds-tools'); cfg.wrap.appendChild(tools);
+            if (cfg.selector && S.status && (S.status.researchers || []).length > 1) mountSelector(tools);
             const box = el('div', 'gds-scope'); box.setAttribute('role', 'group'); box.setAttribute('aria-label', 'Search scope');
             [['all', 'All', 'All information: filename and PDF content'], ['filename', 'Filename', 'Filename only'], ['content', 'Content', 'PDF content only']].forEach(([v, t, tip]) => {
                 const b = el('button', v === S.scope ? 'active' : '', t); b.type = 'button'; b.dataset.scope = v; b.title = tip;
                 b.onclick = () => { S.scope = v; box.querySelectorAll('button').forEach(x => x.classList.toggle('active', x.dataset.scope === v)); if (isActive()) cfg.refresh(); };
                 box.appendChild(b);
             });
-            cfg.wrap.appendChild(box);
+            tools.appendChild(box);
+        }
+
+        // ---- R3.4 compact researcher multi-selector (supervisor portal; same design as the PI selector) ----
+        // The list is the server-resolved allowed set (status endpoint), refreshed whenever the panel opens.
+        // The host owns the applied selection (cfg.selector.getSelection / onApply); the server re-checks every request.
+        const RS = { pending: null, people: () => (S.status && S.status.researchers) || [] };
+        function mountSelector(tools) {
+            cfg.wrap.classList.add('gds-rs-on');
+            const root = el('div', 'gds-rs'); root.innerHTML =
+                '<button type="button" class="gds-rs-btn" aria-haspopup="true" aria-expanded="false" title="Researchers">' +
+                '<svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M7 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm6.5 0a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM1 16c0-2.8 2.7-5 6-5s6 2.2 6 5v1H1v-1Zm13 1v-1c0-1.4-.5-2.7-1.4-3.7.3-.1.6-.1.9-.1 2.8 0 5 1.8 5 4.1V17h-4.5Z"/></svg>' +
+                '<span class="gds-rs-count">All</span><span class="gds-rs-caret">&#9662;</span></button>' +
+                '<div class="gds-rs-panel" hidden role="dialog" aria-label="Filter by researcher">' +
+                '<input type="text" class="gds-rs-find" placeholder="Find researcher…">' +
+                '<button type="button" class="gds-rs-all">Select all</button>' +
+                '<div class="gds-rs-list"></div>' +
+                '<div class="gds-rs-foot"><button type="button" class="gds-rs-reset">Reset to all</button><span class="gds-rs-hint" hidden>Select at least one</span>' +
+                '<button type="button" class="gds-rs-apply">Apply</button></div></div>';
+            tools.appendChild(root); RS.root = root;
+            const q = sel => root.querySelector(sel);
+            q('.gds-rs-btn').onclick = () => q('.gds-rs-panel').hidden ? openSelector() : closeSelector();
+            q('.gds-rs-find').oninput = renderSelector;
+            q('.gds-rs-find').onkeydown = e => { if (e.key === 'Escape') { e.stopPropagation(); closeSelector(); } };
+            q('.gds-rs-all').onclick = () => { RS.people().forEach(r => RS.pending.add(r.id)); renderSelector(); };
+            q('.gds-rs-reset').onclick = () => { closeSelector(); cfg.selector.onApply(RS.people().map(r => r.id)); };
+            q('.gds-rs-apply').onclick = () => {
+                if (!RS.pending || !RS.pending.size) return;
+                const ids = RS.people().map(r => r.id).filter(id => RS.pending.has(id)); closeSelector(); cfg.selector.onApply(ids);
+            };
+            document.addEventListener('mousedown', e => { if (RS.pending && !root.contains(e.target)) closeSelector(); });
+            updateSelector();
+        }
+        async function openSelector() {
+            try {   // refresh the allowed set (supervision changes apply immediately)
+                const r = await fetch(cfg.statusUrl, { credentials: 'include' });
+                if (r.status === 401 && cfg.onAuthLost) return cfg.onAuthLost();
+                const j = r.ok ? await r.json() : null; if (j && j.enabled && Array.isArray(j.researchers)) S.status = j;
+            } catch (e) {}
+            const allowed = new Set(RS.people().map(r => r.id));
+            RS.pending = new Set((cfg.selector.getSelection() || []).filter(id => allowed.has(id)));
+            if (!RS.pending.size) RS.people().forEach(r => RS.pending.add(r.id));
+            const q = sel => RS.root.querySelector(sel);
+            q('.gds-rs-find').value = ''; q('.gds-rs-panel').hidden = false; q('.gds-rs-btn').setAttribute('aria-expanded', 'true');
+            renderSelector(); updateSelector(); setTimeout(() => q('.gds-rs-find').focus(), 0);
+        }
+        function closeSelector() {
+            if (!RS.root) return; RS.pending = null;
+            RS.root.querySelector('.gds-rs-panel').hidden = true; RS.root.querySelector('.gds-rs-btn').setAttribute('aria-expanded', 'false');
+        }
+        function renderSelector() {
+            const list = RS.root.querySelector('.gds-rs-list'), pend = RS.pending; if (!pend) return;
+            const f = (RS.root.querySelector('.gds-rs-find').value || '').trim().toLowerCase();
+            const vis = RS.people().filter(r => !f || (r.name || r.id).toLowerCase().includes(f));
+            list.textContent = '';
+            if (!vis.length) list.appendChild(el('div', 'gds-rs-empty', 'No matching researchers'));
+            [['Me', r => r.self], ['Supervised researchers', r => !r.self]].forEach(([g, test]) => {
+                const members = vis.filter(test); if (!members.length) return;
+                const on = members.filter(r => pend.has(r.id)).length;
+                const head = el('label', 'gds-rs-group');
+                const cb = el('input'); cb.type = 'checkbox'; cb.checked = on === members.length; cb.indeterminate = on > 0 && on < members.length;
+                cb.onchange = () => { members.forEach(r => cb.checked ? pend.add(r.id) : pend.delete(r.id)); renderSelector(); };
+                const n = el('span', 'gds-rs-n', `${on}/${members.length}`);
+                head.append(cb, el('span', null, g), n); list.appendChild(head);
+                members.forEach(r => {
+                    const row = el('label', 'gds-rs-item'), c = el('input'); c.type = 'checkbox'; c.checked = pend.has(r.id);
+                    c.onchange = () => { c.checked ? pend.add(r.id) : pend.delete(r.id); renderSelector(); };
+                    row.append(c, el('span', null, cfg.formatName ? cfg.formatName(r.name || r.id) : (r.name || r.id))); list.appendChild(row);
+                });
+            });
+            const none = pend.size === 0;
+            RS.root.querySelector('.gds-rs-apply').disabled = none; RS.root.querySelector('.gds-rs-hint').hidden = !none;
+        }
+        function updateSelector() {
+            if (!RS.root) return;
+            const people = RS.people(), allowed = new Set(people.map(r => r.id));
+            const sel = (cfg.selector.getSelection() || []).filter(id => allowed.has(id));
+            const all = sel.length >= people.length || !sel.length;
+            RS.root.querySelector('.gds-rs-count').textContent = all ? 'All' : (sel.length === 1 && people.find(r => r.id === sel[0] && r.self) ? 'Me' : String(sel.length));
+            RS.root.querySelector('.gds-rs-btn').classList.toggle('filtered', !all);
+            RS.root.querySelector('.gds-rs-btn').title = all ? 'All authorized researchers' : `${sel.length} of ${people.length} researchers`;
         }
         function isActive() { return !!(S.enabled && query().length >= MIN_CHARS && (!cfg.canSearch || cfg.canSearch())); }
 
@@ -213,7 +295,7 @@
             }, ms));
         }
 
-        return { init, isActive, onFiltersChanged, render: () => render(cfg.results()), reset, viewerSrc, afterViewerLoad, resultFile, open, state: S };
+        return { init, isActive, onFiltersChanged, render: () => render(cfg.results()), reset, viewerSrc, afterViewerLoad, resultFile, open, updateSelector, closeSelector, state: S };
     }
     window.GLPDocSearch = { create };
 })();

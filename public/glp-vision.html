@@ -579,7 +579,7 @@ function gvRenderScopeList() {
 
     if (gvUser.role === 'supervisor' && gvUser.assigned_researchers) {
         gvUser.assigned_researchers.forEach(r => {
-            html += `<div class="gv-scope-item" onclick="gvSetScopeFilter('${r.researcher_id}')">
+            html += `<div class="gv-scope-item" data-rid="${gvEsc(r.researcher_id)}" onclick="gvSetScopeFilter('${r.researcher_id}')">
                 <div class="gv-scope-avatar">${gvGetInitials(r.name || r.researcher_id)}</div>
                 <span class="gv-scope-name">${gvFormatName(r.name || r.researcher_id)}</span>
             </div>`;
@@ -590,15 +590,28 @@ function gvRenderScopeList() {
 
 async function gvSetScopeFilter(researcherId) {
     gvFilters.scopeResearcher = researcherId;
+    gvFilters.scopeResearchers = null;   // R3.4: a sidebar choice replaces a multi-selection
     gvIsOwnerView = !researcherId;
+    gvUpdateScopeActive();
+    if (gvDS) gvDS.updateSelector();
+    await gvLoadFiles();
+}
 
-    // Update active state
+// R3.4: sidebar highlight follows the applied selection (one or several people).
+function gvUpdateScopeActive() {
+    const sel = new Set(gvSelection()), self = gvUser.researcher_id;
     document.querySelectorAll('.gv-scope-item').forEach((el, i) => {
-        if (!researcherId && i === 0) el.classList.add('active');
-        else if (researcherId && el.onclick && el.onclick.toString().includes(researcherId)) el.classList.add('active');
-        else el.classList.remove('active');
+        const id = i === 0 ? self : (el.dataset.rid || '');
+        el.classList.toggle('active', sel.has(id));
     });
-
+}
+function gvSelection() { return gvFilters.scopeResearchers || [gvFilters.scopeResearcher || gvUser.researcher_id]; }
+// Selector Apply (ids = non-empty subset of the server-provided allowed set): one person = the sidebar choice.
+async function gvApplySelection(ids) {
+    const self = gvUser.researcher_id;
+    if (ids.length === 1) return gvSetScopeFilter(ids[0] === self ? null : ids[0]);
+    gvFilters.scopeResearchers = ids; gvFilters.scopeResearcher = null; gvIsOwnerView = false;
+    gvUpdateScopeActive(); if (gvDS) gvDS.updateSelector();
     await gvLoadFiles();
 }
 
@@ -609,6 +622,16 @@ async function gvSetScopeFilter(researcherId) {
 async function gvLoadFiles() {
     if (gvDS) gvDS.reset();   // R3.3: authorized scope changed -> drop stale results and in-flight responses
     try {
+        if (gvFilters.scopeResearchers) {   // R3.4 multi-selection: the existing per-researcher API (server-checked), merged
+            const self = gvUser.researcher_id;
+            const parts = await Promise.all(gvFilters.scopeResearchers.map(async id => {
+                const u = id === self ? '/api/di/vision/files?scope=my' : `/api/di/vision/files?scope=researcher&researcher_id=${encodeURIComponent(id)}`;
+                const r = await fetch(u, { credentials: 'include' }); if (!r.ok) return [];
+                const j = await r.json().catch(() => ({})); return j.files || [];
+            }));
+            gvAllFiles = parts.flat();
+            gvAssociationsCache = {}; gvRenderSidebar(); gvApplyFilters(); return;
+        }
         let url = '/api/di/vision/files?scope=my';
         if (gvFilters.scopeResearcher) {
             url = `/api/di/vision/files?scope=researcher&researcher_id=${encodeURIComponent(gvFilters.scopeResearcher)}`;
@@ -744,7 +767,7 @@ function gvRenderResults() {
             <div class="gv-result-icon ${ftClass}">${ftLabel}</div>
             <div class="gv-result-info">
                 <div class="gv-result-title" title="${gvEsc(f.original_filename)}">${gvEsc(gvTruncate(f.original_filename, 50))}</div>
-                <div class="gv-result-sub">${dateStr}</div>
+                <div class="gv-result-sub">${gvFilters.scopeResearchers ? gvEsc(gvFormatName(gvPersonName(f.researcher_id))) + ' · ' : ''}${dateStr}</div>
                 <div class="gv-result-meta">${statusBadge}${assocBadges}</div>
             </div>
         </div>`;
@@ -1038,7 +1061,9 @@ function gvInitDocSearch() {
         results: () => document.getElementById('gvResults'), hostRender: gvRenderResults, refresh: gvApplyFilters,
         // The server resolves the allowed set; this only follows the sidebar scope (own files, or one supervised researcher).
         getParams: () => ({ type: gvCurrentFileScope, status: gvFilters.status, days: gvFilters.time, year: gvFilters.year,
-                            researchers: [gvFilters.scopeResearcher || gvUser.researcher_id] }),
+                            researchers: gvSelection() }),
+        // R3.4: supervisor selector (shown only when the server-resolved allowed set has more than one person)
+        selector: { getSelection: gvSelection, onApply: ids => gvApplySelection(ids) }, formatName: gvFormatName,
         getSort: () => gvFilters.sort,
         setSort: v => { gvFilters.sort = v; document.querySelectorAll('.gv-chip[data-filter="sort"]').forEach(c => c.classList.toggle('active', c.dataset.val === v)); },
         onSearchState: on => { document.getElementById('gvRelevanceChip').hidden = !on; document.getElementById('gvResultCount').hidden = on;
@@ -1047,12 +1072,16 @@ function gvInitDocSearch() {
                            if (on) { document.getElementById('gvAdvPanel').hidden = true; gvUpdateCompactRow(); } },
         onAuthLost: () => { window.location.href = '/access.html'; },
         openFile: gvSelectFile, viewer: () => document.getElementById('gvViewerPdf'), selectedId: () => gvSelectedFileId,
-        formatSub: r => new Date(r.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+        formatSub: r => (gvSelection().length > 1 ? gvFormatName(r.researcher_name || r.researcher_id) + ' · ' : '') + new Date(r.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
         statusBadge: st => { const m = { PENDING: ['pending', 'PENDING'], APPROVED: ['approved', 'APPROVED'], REVISION_NEEDED: ['revision', 'REVISION'] }[st];
                              if (!m) return null; const b = document.createElement('span'); b.className = 'gv-badge ' + m[0]; b.textContent = m[1]; return b; },
         cls: { item: 'gv-result-item', icon: 'gv-result-icon', body: 'gv-result-info', title: 'gv-result-title', sub: 'gv-result-sub', meta: 'gv-result-meta', empty: 'gv-empty-state' },
     });
     gvDS.init();
+}
+function gvPersonName(id) {
+    if (id === gvUser.researcher_id) return gvUser.name || id;
+    const r = (gvUser.assigned_researchers || []).find(x => x.researcher_id === id); return (r && r.name) || id;
 }
 function gvToggleAdvanced() {
     const panel = document.getElementById('gvAdvPanel'), btn = document.getElementById('gvAdvToggle');
