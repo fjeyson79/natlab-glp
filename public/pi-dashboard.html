@@ -8082,7 +8082,8 @@ async function dicIntdocsFolderChanged(sel) {
             return q + '&_n=' + n.seq + (h || '#') + (n.page ? `&page=${n.page}` : '');
         }
         function dsOpen(docId, page) {
-            const terms = (dsState.data && dsState.data.query && dsState.data.query.terms) || [];
+            const qd = dsState.data && dsState.data.query;
+            const terms = (qd && (qd.highlight || qd.terms)) || [];   // includes equivalent identifier spellings
             const nav = { docId, page: page || null, terms, seq: ++dsState.navSeq };
             dsState.nav = nav;
             const pdfEl = document.getElementById('dicViewerPdf');

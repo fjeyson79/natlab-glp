@@ -12,10 +12,50 @@ const LIMITS = { maxQueryChars: 200, maxTerms: 8, minTermChars: 2, maxLimit: 50,
 
 const isSearchEnabled = () => flagOn('DOC_TEXT_SEARCH_ENABLED');
 
+// ---------- scientific identifier equivalence (controlled) ----------
+// For an UNQUOTED single-token identifier, joints are: an existing hyphen, a letter->digit boundary
+// (STM|14028, A|549, HEK|293T, RNase|1) or an uppercase prefix of >=2 letters before a lowercase run
+// of >=4 (TT|probe). Each joint may be written as nothing, a space or a hyphen. The original spelling
+// keeps substring semantics; the alternative spellings only match as whole tokens (not inside other
+// words). Quoted phrases never get variants. At most 3 joints (<= 26 alternatives).
+const HYPHEN = /[-\u2010\u2011]/;
+function identifierVariants(raw) {
+    const t = String(raw || '').trim();
+    if (t.length < 4 || t.length > 40 || !/^[\p{L}\p{N}]+(?:[-\u2010\u2011][\p{L}\p{N}]+)*$/u.test(t)) return [];
+    const ch = [...t], segs = []; let cur = '';
+    for (let i = 0; i < ch.length; i++) {
+        const c = ch[i];
+        if (HYPHEN.test(c)) { segs.push(cur); cur = ''; continue; }
+        if (cur) {
+            const p = ch[i - 1];
+            let joint = /\p{L}/u.test(p) && /\p{N}/u.test(c);
+            if (!joint && /\p{Lu}/u.test(p) && /\p{Ll}/u.test(c)) {
+                let u = 0; for (let k = i - 1; k >= 0 && /\p{Lu}/u.test(ch[k]); k--) u++;
+                let l = 0; for (let k = i; k < ch.length && /\p{Ll}/u.test(ch[k]); k++) l++;
+                joint = u >= 2 && l >= 4 && (i - u === 0 || !/\p{L}/u.test(ch[i - u - 1]));
+            }
+            if (joint) { segs.push(cur); cur = ''; }
+        }
+        cur += c;
+    }
+    segs.push(cur);
+    if (segs.length < 2 || segs.length > 4 || segs.some(x => !x)) return [];
+    const orig = normalizeQuery(t), out = new Set();
+    (function rec(i, acc) {
+        if (i === segs.length) { const v = normalizeQuery(acc); if (v !== orig && v.length >= LIMITS.minTermChars) out.add(v); return; }
+        for (const sep of ['', ' ', '-']) rec(i + 1, acc + sep + segs[i]);
+    })(1, segs[0]);
+    return [...out];
+}
+const reEsc = x => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// Postgres ARE (lookbehind needs PostgreSQL >= 9.6) and the equivalent JS RegExp
+const variantRegexSql = vs => vs.length ? `(?<![[:alnum:]])(?:${vs.map(reEsc).join('|')})(?![[:alnum:]])` : null;
+const variantRegexJs = vs => vs.length ? new RegExp(`(?<![\\p{L}\\p{N}])(?:${vs.map(reEsc).join('|')})(?![\\p{L}\\p{N}])`, 'gu') : null;
+
 // ---------- query parsing: "exact phrase", OR, -exclusion, plain terms ----------
 function parseQuery(input) {
     const q = String(input || '').slice(0, LIMITS.maxQueryChars);
-    const groups = [[]], exclude = [], display = [];
+    const groups = [[]], exclude = [], display = [], variants = {};
     const re = /(-?)"([^"]*)"?|(\S+)/g;
     let m, count = 0;
     while ((m = re.exec(q)) !== null && count < LIMITS.maxTerms) {
@@ -26,6 +66,7 @@ function parseQuery(input) {
         const norm = normalizeQuery(raw);
         if (norm.length < LIMITS.minTermChars) continue;
         count++;
+        if (m[2] === undefined && !variants[norm]) { const v = identifierVariants(raw); if (v.length) variants[norm] = v; }
         if (neg) exclude.push(norm);
         else { groups[groups.length - 1].push(norm); display.push(raw.trim()); }
     }
@@ -34,13 +75,13 @@ function parseQuery(input) {
     // websearch_to_tsquery input for ranking (normalized, same operators)
     const ws = g.map(grp => grp.map(t => (/\s/.test(t) ? `"${t}"` : t)).join(' ')).join(' or ')
              + exclude.map(t => ` -${/\s/.test(t) ? `"${t}"` : t}`).join('');
-    return { groups: g, exclude, terms, display, websearch: ws.trim() };
+    return { groups: g, exclude, terms, display, variants, websearch: ws.trim() };
 }
 
 const likeEsc = s => s.replace(/[\\%_]/g, c => '\\' + c);
 
 // ---------- excerpt: map normalized match positions back to raw text ----------
-function buildExcerpt(page, terms) {
+function buildExcerpt(page, matchers) {   // matchers: [{ lit, re }] (re = whole-token variants or null)
     const { raw_text: raw, norm_text: norm, raw_word_offsets: offs } = page;
     const words = norm.split(' ');
     const starts = []; { let p = 0; for (const w of words) { starts.push(p); p += w.length + 1; } }
@@ -55,7 +96,10 @@ function buildExcerpt(page, terms) {
         return isEnd ? re : rs;                                                 // otherwise whole raw word
     };
     const hits = [];
-    for (const t of terms) { let i = norm.indexOf(t); while (i !== -1) { hits.push([i, i + t.length]); i = norm.indexOf(t, i + t.length); } }
+    for (const mt of matchers) {
+        const t = mt.lit; let i = norm.indexOf(t); while (i !== -1) { hits.push([i, i + t.length]); i = norm.indexOf(t, i + t.length); }
+        if (mt.re) for (const x of norm.matchAll(mt.re)) hits.push([x.index, x.index + x[0].length]);
+    }
     if (!hits.length || !offs || !offs.length) return null;
     hits.sort((a, b) => a[0] - b[0]);
     const rawHits = hits.map(([a, b]) => [mapPos(a, false), mapPos(b, true)]);
@@ -170,19 +214,22 @@ async function search(pool, reqQuery, workspaceId) {
 
     const params = []; const P = v => { params.push(v); return '$' + params.length; };
     const where = baseFilters(f, P, c);
-    const termP = pq.terms.map(t => ({ like: P('%' + likeEsc(t) + '%'), lit: P(t) }));
-    const exclP = pq.exclude.map(t => P('%' + likeEsc(t) + '%'));
+    const termP = pq.terms.map(t => { const rx = variantRegexSql(pq.variants[t] || []); return { like: P('%' + likeEsc(t) + '%'), lit: P(t), re: rx ? P(rx) : null }; });
+    const exclP = pq.exclude.map(t => { const rx = variantRegexSql(pq.variants[t] || []); return { like: P('%' + likeEsc(t) + '%'), re: rx ? P(rx) : null }; });
+    const termCond = (col, t) => `(${col} LIKE ${t.like} ESCAPE '\\'${t.re ? ` OR ${col} ~ ${t.re}` : ''})`;
     const wsP = P(pq.websearch || pq.terms.join(' '));
     const groupIdx = pq.groups.map(g => g.map(t => pq.terms.indexOf(t)));
     const wantContent = f.scope !== 'filename', wantName = f.scope !== 'content';
 
-    const pageCols = termP.map((t, i) => `(p.norm_text LIKE ${t.like} ESCAPE '\\') AS t${i}`).join(', ');
-    const occExpr = termP.map(t => `(length(p.norm_text) - length(replace(p.norm_text, ${t.lit}, ''))) / length(${t.lit})`).join(' + ');
-    const anyTerm = termP.map(t => `p.norm_text LIKE ${t.like} ESCAPE '\\'`).join(' OR ');
+    const pageCols = termP.map((t, i) => `${termCond('p.norm_text', t)} AS t${i}`).join(', ');
+    // original spelling: substring count; alternative spellings: whole-token regex matches (disjoint)
+    const occExpr = termP.map(t => `(length(p.norm_text) - length(replace(p.norm_text, ${t.lit}, ''))) / length(${t.lit})`
+        + (t.re ? ` + (SELECT count(*) FROM regexp_matches(p.norm_text, ${t.re}, 'g'))` : '')).join(' + ');
+    const anyTerm = termP.map(t => termCond('p.norm_text', t)).join(' OR ');
     const docGroups = groupIdx.map(g => '(' + g.map(i => `d.t${i}`).join(' AND ') + ')').join(' OR ');
     const nameGroups = groupIdx.map(g => '(' + g.map(i => `lower(s.original_filename) LIKE ${termP[i].like} ESCAPE '\\'`).join(' AND ') + ')').join(' OR ');
-    const nameExcl = exclP.map(e => ` AND lower(s.original_filename) NOT LIKE ${e} ESCAPE '\\'`).join('');
-    const contentExcl = exclP.map(e => ` AND NOT EXISTS (SELECT 1 FROM di_doc_text_pages x WHERE x.submission_id = s.submission_id AND x.norm_text LIKE ${e} ESCAPE '\\')`).join('');
+    const nameExcl = exclP.map(e => ` AND lower(s.original_filename) NOT LIKE ${e.like} ESCAPE '\\'`).join('');
+    const contentExcl = exclP.map(e => ` AND NOT EXISTS (SELECT 1 FROM di_doc_text_pages x WHERE x.submission_id = s.submission_id AND ${termCond('x.norm_text', e)})`).join('');
 
     const order = { relevance: 'score DESC, s.created_at DESC', newest: 's.created_at DESC', oldest: 's.created_at ASC', name: 'lower(s.original_filename) ASC' }[f.sort];
     const sql = `
@@ -249,6 +296,7 @@ async function search(pool, reqQuery, workspaceId) {
     } catch (e) { try { await client.query('ROLLBACK'); } catch (_) {} throw e; } finally { client.release(); }
 
     const ex = new Map(excerptRows.map(r => [r.submission_id, r]));
+    const matchers = pq.terms.map(t => ({ lit: t, re: variantRegexJs(pq.variants[t] || []) }));
     const coverage = { ok: 0, partial: 0, unindexed: 0, unavailable: 0, failed: 0, pending: 0, other: 0 };
     for (const r of cov) {
         if (r.st in coverage) coverage[r.st] += r.n;
@@ -265,12 +313,13 @@ async function search(pool, reqQuery, workspaceId) {
             occurrences: r.content_match ? r.occ : 0,
             pages: pages.slice(0, LIMITS.maxPagesListed), pages_total: pages.length,
             excerpt_page: page ? page.page_no : null,
-            excerpt: page ? buildExcerpt(page, pq.terms) : null,
+            excerpt: page ? buildExcerpt(page, matchers) : null,
             index: { status: r.index_status || 'unindexed', page_count: r.page_count, pages_indexed: r.pages_indexed },
             score: Number(r.score),
         };
     });
-    return { available: true, trgm: c.trgm, query: { terms: pq.display, normalized: pq.terms, exclude: pq.exclude, groups: pq.groups },
+    return { available: true, trgm: c.trgm, query: { terms: pq.display, normalized: pq.terms, exclude: pq.exclude, groups: pq.groups,
+             variants: pq.variants, highlight: [...new Set([...pq.display, ...Object.values(pq.variants).flat()])] },
              scope: f.scope, sort: f.sort, total: rows.length ? Number(rows[0].total) : 0, limit: f.limit, offset: f.offset,
              coverage, ms: Date.now() - t0, results };
 }
@@ -280,4 +329,4 @@ async function status(pool, workspaceId) {
     return { enabled: true, available: c.tables, trgm: c.trgm };
 }
 
-module.exports = { search, status, parseQuery, buildExcerpt, isSearchEnabled, LIMITS, _resetCapabilities: () => { cap = null; } };
+module.exports = { search, status, parseQuery, buildExcerpt, identifierVariants, isSearchEnabled, LIMITS, _resetCapabilities: () => { cap = null; } };
