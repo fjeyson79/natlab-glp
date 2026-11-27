@@ -1,0 +1,32 @@
+/* GLP Vision R3.3 — shared scientific search styles (researcher / supervisor portal).
+   Visual reference: PI Portal R2 search. The scope control sits inside the search box: no extra height. */
+.gds-wrap { position: relative; }
+.gds-wrap.gds-on input { padding-right: 178px; }
+.gds-scope { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); display: flex; gap: 2px; background: #f3f4f6; border-radius: 8px; padding: 2px; }
+.gds-scope button { border: 0; background: transparent; font-size: 10.5px; font-weight: 600; color: #5a6578; padding: 3px 7px; border-radius: 6px; cursor: pointer; font-family: inherit; }
+.gds-scope button.active { background: #1a365d; color: #fff; }
+.gds-head { font-size: 11px; color: #5a6578; padding: 2px 4px 6px; display: flex; gap: 6px; align-items: baseline; }
+.gds-head b { color: #1a365d; }
+.gds-coverage { font-size: 10.5px; color: #8c95a1; cursor: help; border-bottom: 1px dotted #c3cad4; }
+.gds-card { flex-wrap: wrap; }
+.gds-card .gds-cbody { min-width: 0; flex: 1; }
+.gds-excerpt { font-size: 12px; line-height: 1.45; color: #374151; margin-top: 5px; overflow-wrap: anywhere; }
+.gds-excerpt mark { background: #fef3c7; color: #92400e; padding: 0 1px; border-radius: 2px; font-weight: 600; }
+.gds-hits { font-size: 10px; font-weight: 700; color: #1a365d; background: #eef2ff; border-radius: 8px; padding: 1px 7px; }
+.gds-idx { font-size: 10px; color: #6b7280; background: #f3f4f6; border-radius: 8px; padding: 1px 7px; }
+.gds-idx.warn { color: #92400e; background: #fef3c7; }
+.gds-pages { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.gds-page { font-size: 10.5px; font-weight: 600; color: #2d5a87; background: #fff; border: 1px solid #d1d5db; border-radius: 6px; padding: 1px 7px; cursor: pointer; font-family: inherit; }
+.gds-page:hover { border-color: #2d5a87; }
+.gds-page.active { background: #1a365d; border-color: #1a365d; color: #fff; }
+.gds-note { font-size: 11px; color: #6b7280; padding: 6px 4px 2px; }
+/* Compact control row + collapsible advanced filters (shown only when scientific search is enabled) */
+.gds-compact { display: none; align-items: center; gap: 6px; flex-wrap: wrap; }
+.gds-enabled .gds-compact { display: flex; }
+.gds-adv-toggle { border: 1px solid #dbe3ee; background: #fff; color: #1a365d; font-size: 11px; font-weight: 700; border-radius: 999px; padding: 4px 10px; cursor: pointer; font-family: inherit; }
+.gds-adv-toggle[aria-expanded="true"] { background: #eef2ff; }
+.gds-adv-badge { display: inline-block; min-width: 15px; padding: 0 4px; margin-left: 3px; border-radius: 8px; background: #1a365d; color: #fff; font-size: 9.5px; text-align: center; }
+.gds-adv-badge[hidden] { display: none; }
+.gds-count { font-size: 11px; color: #6b7280; }
+.gds-enabled .gds-adv[hidden] { display: none; }
+.gds-enabled .gds-sort-orig { display: none; }
