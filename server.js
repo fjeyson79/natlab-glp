@@ -3333,6 +3333,13 @@ app.get('/api/di/verify/:code', async (req, res) => {
 });
 
 // GET /api/di/download/:id
+// R4.3: authorization-only check with exactly the download route's guards (no R2 access, nothing streamed).
+// The mobile viewer calls it before reusing a PDF it already holds, so a retained document is never shown
+// again without a fresh server-side decision.
+app.get('/api/di/download/:id/access', r1bRequireDownloadAuth, docGuards.submission, (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ ok: true });
+});
 app.get('/api/di/download/:id', r1bRequireDownloadAuth, docGuards.submission, async (req, res) => {
     const { id } = req.params;
     const { download } = req.query;

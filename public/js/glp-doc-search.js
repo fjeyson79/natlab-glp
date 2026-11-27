@@ -279,7 +279,9 @@
             (function wait() {
                 if (!S.nav || S.nav.seq !== nav.seq || pdf.dataset.gdsDoc !== nav.docId) return;   // superseded
                 let app = null; try { app = pdf.contentWindow && pdf.contentWindow.PDFViewerApplication; } catch (e) {}
-                const ready = app && app.pdfDocument && app.pdfViewer && app.pdfViewer.pagesCount > 0 && String(app.url || '').includes(nav.docId);
+                let live = false;   // R4.3: the window must be the frame's latest navigation (never a stale one for the same document)
+                try { const want = new URL(pdf.getAttribute('src') || '', location.href), cur = pdf.contentWindow.location; live = cur.pathname === want.pathname && cur.search === want.search; } catch (e) {}
+                const ready = live && app && app.pdfDocument && app.pdfViewer && app.pdfViewer.pagesCount > 0 && String(app.url || '').includes(nav.docId);
                 if (ready) return cb(app);
                 if (Date.now() - t0 < 20000) setTimeout(wait, 100);
             })();

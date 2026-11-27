@@ -1,63 +1,114 @@
-/* GLP Vision R4.2 — iPhone / narrow-window layout for glp-vision.html (loaded only when GLP_MOBILE_VISION_ENABLED
-   is ON or ?mobile=preview). Every rule is scoped to html.gm-on AND a narrow / phone-landscape viewport, so
-   desktop and wide windows keep the existing layout. Touch targets >= 44 px; inputs >= 16 px (no iOS focus zoom). */
+/* GLP Vision R4.2/R4.3 — iPhone and iPad layouts for glp-vision.html (loaded only when GLP_MOBILE_VISION_ENABLED is ON
+   or ?mobile=preview). The adapter sets exactly one tier class on <html> from the window size:
+   gm-phone (< 820 px or phone landscape), gm-tablet (820–1099 px), gm-wide (>= 1100 px on touch). Desktop (>= 1100 px,
+   fine pointer) gets no tier class and keeps the existing layout. Touch targets >= 44 px; inputs >= 16 px. */
 .gm-menu, .gm-drawer-close, .gm-backdrop { display: none; }
-@media (max-width: 819.98px), (pointer: coarse) and (max-height: 520px) {
-    html.gm-on body { background: #f0f2f5; -webkit-text-size-adjust: 100%; }
+
+/* ---------- phone (R4.2) ---------- */
+
+    html.gm-on.gm-phone body { background: #f0f2f5; -webkit-text-size-adjust: 100%; }
     /* top bar + filters drawer */
-    html.gm-on .gv-topbar { position: sticky; top: 0; z-index: 60; min-height: calc(56px + env(safe-area-inset-top)); gap: 8px;
+    html.gm-on.gm-phone .gv-topbar { position: sticky; top: 0; z-index: 60; min-height: calc(56px + env(safe-area-inset-top)); gap: 8px;
         padding: env(safe-area-inset-top) calc(12px + env(safe-area-inset-right)) 0 calc(4px + env(safe-area-inset-left)); }
-    html.gm-on .gv-topbar-user { max-width: 38vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    html.gm-on .gm-menu { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border: 0; border-radius: 10px;
+    html.gm-on.gm-phone .gv-topbar-user { max-width: 38vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    html.gm-on.gm-phone .gm-menu { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border: 0; border-radius: 10px;
         background: transparent; color: #1a365d; cursor: pointer; -webkit-tap-highlight-color: transparent; }
-    html.gm-on .gm-menu svg { width: 22px; height: 22px; }
-    html.gm-on .gv-container { display: block; height: auto; overflow: visible; }
-    html.gm-on .gv-sidebar { display: block !important; position: fixed; top: 0; bottom: 0; left: 0; width: min(86vw, 340px); z-index: 900;
+    html.gm-on.gm-phone .gm-menu svg { width: 22px; height: 22px; }
+    html.gm-on.gm-phone .gv-container { display: block; height: auto; overflow: visible; }
+    html.gm-on.gm-phone .gv-sidebar { display: block !important; position: fixed; top: 0; bottom: 0; left: 0; width: min(86vw, 340px); z-index: 900;
         transform: translateX(-105%); transition: transform .22s ease; box-shadow: 0 0 32px rgba(15,32,60,.18);
         padding: calc(8px + env(safe-area-inset-top)) 0 calc(16px + env(safe-area-inset-bottom)) env(safe-area-inset-left); overscroll-behavior: contain; }
-    html.gm-on.gm-drawer .gv-sidebar { transform: none; }
-    html.gm-on.gm-drawer .gm-backdrop { display: block; position: fixed; inset: 0; z-index: 899; background: rgba(15,23,42,.35); }
-    html.gm-on .gm-drawer-close { display: block; margin: 0 8px 0 auto; width: 44px; height: 44px; border: 0; background: transparent; font-size: 26px; color: #5a6578; cursor: pointer; }
-    html.gm-on .gv-status-bucket, html.gm-on .gv-year-item, html.gm-on .gv-scope-item { min-height: 44px; display: flex; align-items: center; font-size: 14px; }
-    html.gm-on .gv-status-bucket { justify-content: space-between; }
+    html.gm-on.gm-phone.gm-drawer .gv-sidebar { transform: none; }
+    html.gm-on.gm-phone.gm-drawer .gm-backdrop { display: block; position: fixed; inset: 0; z-index: 899; background: rgba(15,23,42,.35); }
+    html.gm-on.gm-phone .gm-drawer-close { display: block; margin: 0 8px 0 auto; width: 44px; height: 44px; border: 0; background: transparent; font-size: 26px; color: #5a6578; cursor: pointer; }
+    html.gm-on.gm-phone .gv-status-bucket, html.gm-on.gm-phone .gv-year-item, html.gm-on.gm-phone .gv-scope-item { min-height: 44px; display: flex; align-items: center; font-size: 14px; }
+    html.gm-on.gm-phone .gv-status-bucket { justify-content: space-between; }
     /* finder: single column, sticky search */
-    html.gm-on .gv-finder { display: block; overflow: visible; border: 0; background: transparent; }
-    html.gm-on .gv-viewer { display: none !important; }
-    html.gm-on .gv-search-area { position: sticky; top: calc(56px + env(safe-area-inset-top)); z-index: 50; background: #f0f2f5;
+    html.gm-on.gm-phone .gv-finder { display: block; overflow: visible; border: 0; background: transparent; }
+    html.gm-on.gm-phone .gv-viewer { display: block; height: 0; min-height: 0; overflow: visible; border: 0; padding: 0; }
+    html.gm-on.gm-phone .gv-viewer > :not(.gpv) { display: none !important; }
+    html.gm-on.gm-phone .gv-search-area { position: sticky; top: calc(56px + env(safe-area-inset-top)); z-index: 50; background: #f0f2f5;
         padding: 10px calc(12px + env(safe-area-inset-right)) 4px calc(12px + env(safe-area-inset-left)); }
-    html.gm-on .gv-search-input, html.gm-on .gds-wrap.gds-on input, html.gm-on .gds-wrap.gds-on.gds-rs-on input {
+    html.gm-on.gm-phone .gv-search-input, html.gm-on.gm-phone .gds-wrap.gds-on input, html.gm-on.gm-phone .gds-wrap.gds-on.gds-rs-on input {
         font-size: 16px; min-height: 48px; padding: 12px 14px; border-radius: 12px; }
-    html.gm-on .gds-tools { position: static; transform: none; margin-top: 8px; gap: 8px; }
-    html.gm-on .gds-scope { flex: 1; border-radius: 12px; }
-    html.gm-on .gds-scope button { flex: 1; min-height: 44px; font-size: 14px; border-radius: 10px; }
-    html.gm-on .gds-rs-btn { height: 44px; padding: 0 12px; font-size: 14px; border-radius: 12px; }
-    html.gm-on .gds-rs-btn svg { width: 16px; height: 16px; }
+    html.gm-on.gm-phone .gds-tools { position: static; transform: none; margin-top: 8px; gap: 8px; }
+    html.gm-on.gm-phone .gds-scope { flex: 1; border-radius: 12px; }
+    html.gm-on.gm-phone .gds-scope button { flex: 1; min-height: 44px; font-size: 14px; border-radius: 10px; }
+    html.gm-on.gm-phone .gds-rs-btn { height: 44px; padding: 0 12px; font-size: 14px; border-radius: 12px; }
+    html.gm-on.gm-phone .gds-rs-btn svg { width: 16px; height: 16px; }
     /* researcher selector as a bottom sheet */
-    html.gm-on .gds-rs-panel { position: fixed; left: 0; right: 0; bottom: 0; top: auto; width: auto; max-height: 78dvh; z-index: 950;
+    html.gm-on.gm-phone .gds-rs-panel { position: fixed; left: 0; right: 0; bottom: 0; top: auto; width: auto; max-height: 78dvh; z-index: 950;
         border-radius: 18px 18px 0 0; padding-bottom: env(safe-area-inset-bottom); box-shadow: 0 -12px 40px rgba(15,32,60,.22); }
-    html.gm-on .gds-rs-find { font-size: 16px; min-height: 44px; margin: 14px 14px 4px; }
-    html.gm-on .gds-rs-all { min-height: 44px; margin: 0 14px; font-size: 14px; }
-    html.gm-on .gds-rs-list { max-height: none; flex: 1; padding: 0 10px 8px; }
-    html.gm-on .gds-rs-group, html.gm-on .gds-rs-item { min-height: 44px; font-size: 14px; }
-    html.gm-on .gds-rs-group { font-size: 12px; }
-    html.gm-on .gds-rs-panel input[type=checkbox] { width: 20px; height: 20px; }
-    html.gm-on .gds-rs-reset, html.gm-on .gds-rs-apply { min-height: 44px; font-size: 15px; padding: 0 16px; }
+    html.gm-on.gm-phone .gds-rs-find { font-size: 16px; min-height: 44px; margin: 14px 14px 4px; }
+    html.gm-on.gm-phone .gds-rs-all { min-height: 44px; margin: 0 14px; font-size: 14px; }
+    html.gm-on.gm-phone .gds-rs-list { max-height: none; flex: 1; padding: 0 10px 8px; }
+    html.gm-on.gm-phone .gds-rs-group, html.gm-on.gm-phone .gds-rs-item { min-height: 44px; font-size: 14px; }
+    html.gm-on.gm-phone .gds-rs-group { font-size: 12px; }
+    html.gm-on.gm-phone .gds-rs-panel input[type=checkbox] { width: 20px; height: 20px; }
+    html.gm-on.gm-phone .gds-rs-reset, html.gm-on.gm-phone .gds-rs-apply { min-height: 44px; font-size: 15px; padding: 0 16px; }
     /* type pills, compact row, advanced filters */
-    html.gm-on .gv-scope-pills { overflow-x: auto; padding: 8px 12px 0; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
-    html.gm-on .gv-scope-pill { flex: none; min-height: 44px; display: inline-flex; align-items: center; padding: 0 16px; font-size: 13px; border-radius: 22px; }
-    html.gm-on .gv-filter-row { gap: 6px; padding: 8px 12px; }
-    html.gm-on .gv-chip { min-height: 44px; display: inline-flex; align-items: center; padding: 0 14px; font-size: 13px; border-radius: 22px; }
-    html.gm-on .gds-adv-toggle { min-height: 44px; font-size: 13px; padding: 0 14px; }
-    html.gm-on .gds-count { font-size: 13px; }
+    html.gm-on.gm-phone .gv-scope-pills { overflow-x: auto; padding: 8px 12px 0; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+    html.gm-on.gm-phone .gv-scope-pill { flex: none; min-height: 44px; display: inline-flex; align-items: center; padding: 0 16px; font-size: 13px; border-radius: 22px; }
+    html.gm-on.gm-phone .gv-filter-row { gap: 6px; padding: 8px 12px; }
+    html.gm-on.gm-phone .gv-chip { min-height: 44px; display: inline-flex; align-items: center; padding: 0 14px; font-size: 13px; border-radius: 22px; }
+    html.gm-on.gm-phone .gds-adv-toggle { min-height: 44px; font-size: 13px; padding: 0 14px; }
+    html.gm-on.gm-phone .gds-count { font-size: 13px; }
     /* results */
-    html.gm-on .gv-results { overflow: visible; padding: 4px calc(12px + env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left)); }
-    html.gm-on .gv-result-item { min-height: 64px; padding: 12px; margin-bottom: 8px; background: #fff; border: 1px solid #e4e7eb; border-radius: 12px; }
-    html.gm-on .gv-result-title { font-size: 14px; white-space: normal; overflow-wrap: anywhere; }
-    html.gm-on .gds-excerpt { font-size: 13.5px; }
-    html.gm-on .gds-page { min-width: 44px; min-height: 44px; font-size: 13px; border-radius: 10px; }
-    html.gm-on .gds-pages { gap: 6px; margin-top: 8px; }
-    html.gm-on .gds-head { font-size: 13px; padding: 4px 4px 8px; align-items: center; }
-    html.gm-on .gds-coverage { display: inline-flex; align-items: center; min-height: 44px; font-size: 13px; cursor: pointer; border-bottom: 0; text-decoration: underline dotted; }
-    html.gm-on .gm-cov { white-space: pre-line; font-size: 13px; line-height: 1.5; color: #374151; background: #fff; border: 1px solid #e4e7eb; border-radius: 10px; padding: 10px 12px; margin: 0 0 10px; }
-    html.gm-on .gds-note { font-size: 13px; }
+    html.gm-on.gm-phone .gv-results { overflow: visible; padding: 4px calc(12px + env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left)); }
+    html.gm-on.gm-phone .gv-result-item { min-height: 64px; padding: 12px; margin-bottom: 8px; background: #fff; border: 1px solid #e4e7eb; border-radius: 12px; }
+    html.gm-on.gm-phone .gv-result-title { font-size: 14px; white-space: normal; overflow-wrap: anywhere; }
+    html.gm-on.gm-phone .gds-excerpt { font-size: 13.5px; }
+    html.gm-on.gm-phone .gds-page { min-width: 44px; min-height: 44px; font-size: 13px; border-radius: 10px; }
+    html.gm-on.gm-phone .gds-pages { gap: 6px; margin-top: 8px; }
+    html.gm-on.gm-phone .gds-head { font-size: 13px; padding: 4px 4px 8px; align-items: center; }
+    html.gm-on.gm-phone .gds-coverage { display: inline-flex; align-items: center; min-height: 44px; font-size: 13px; cursor: pointer; border-bottom: 0; text-decoration: underline dotted; }
+    html.gm-on.gm-phone .gm-cov { white-space: pre-line; font-size: 13px; line-height: 1.5; color: #374151; background: #fff; border: 1px solid #e4e7eb; border-radius: 10px; padding: 10px 12px; margin: 0 0 10px; }
+    html.gm-on.gm-phone .gds-note { font-size: 13px; }
+
+/* ---------- tablet (820–1099 px): finder + docked viewer, navigation drawer ---------- */
+html.gm-on.gm-tablet .gv-topbar, html.gm-on.gm-wide .gv-topbar { min-height: 56px; padding-top: env(safe-area-inset-top); padding-left: calc(10px + env(safe-area-inset-left)); padding-right: calc(16px + env(safe-area-inset-right)); }
+html.gm-on.gm-tablet .gm-menu { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border: 0; border-radius: 10px; background: transparent; color: #1a365d; cursor: pointer; }
+html.gm-on.gm-tablet .gm-menu svg { width: 22px; height: 22px; }
+html.gm-on.gm-tablet .gv-container { grid-template-columns: clamp(300px, 38vw, 380px) 1fr; height: calc(100dvh - 56px - env(safe-area-inset-top)); }
+html.gm-on.gm-tablet .gv-sidebar { display: block !important; position: fixed; top: 0; bottom: 0; left: 0; width: 320px; z-index: 900; transform: translateX(-105%);
+    transition: transform .22s ease; box-shadow: 0 0 32px rgba(15,32,60,.18); padding: calc(8px + env(safe-area-inset-top)) 0 calc(16px + env(safe-area-inset-bottom)) env(safe-area-inset-left); }
+html.gm-on.gm-tablet.gm-drawer .gv-sidebar { transform: none; }
+html.gm-on.gm-tablet.gm-drawer .gm-backdrop { display: block; position: fixed; inset: 0; z-index: 899; background: rgba(15,23,42,.3); }
+html.gm-on.gm-tablet .gm-drawer-close { display: block; margin: 0 8px 0 auto; width: 44px; height: 44px; border: 0; background: transparent; font-size: 26px; color: #5a6578; cursor: pointer; }
+/* ---------- wide touch (>= 1100 px): existing three columns, also between 1100 and 1200 px ---------- */
+html.gm-on.gm-wide .gv-container { grid-template-columns: 220px clamp(320px, 30vw, 380px) 1fr; height: calc(100dvh - 56px - env(safe-area-inset-top)); }
+html.gm-on.gm-wide .gv-sidebar { display: block !important; }
+/* ---------- tablet + wide: docked shared viewer replaces the desktop viewer panel ---------- */
+html.gm-on.gm-tablet .gv-viewer, html.gm-on.gm-wide .gv-viewer { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+html.gm-on.gm-tablet .gv-viewer > :not(.gpv), html.gm-on.gm-wide .gv-viewer > :not(.gpv) { display: none !important; }
+html.gm-on.gm-tablet .gv-finder, html.gm-on.gm-wide .gv-finder { min-width: 0; }
+/* touch sizing on iPad (coarse pointer) */
+@media (pointer: coarse) {
+    html.gm-on.gm-tablet .gv-search-input, html.gm-on.gm-wide .gv-search-input,
+    html.gm-on.gm-tablet .gds-wrap.gds-on input, html.gm-on.gm-wide .gds-wrap.gds-on input,
+    html.gm-on.gm-tablet .gds-wrap.gds-on.gds-rs-on input, html.gm-on.gm-wide .gds-wrap.gds-on.gds-rs-on input { font-size: 16px; min-height: 48px; padding: 12px 14px; border-radius: 12px; }
+    html.gm-on.gm-tablet .gds-tools, html.gm-on.gm-wide .gds-tools { position: static; transform: none; margin-top: 8px; gap: 8px; }
+    html.gm-on.gm-tablet .gds-scope, html.gm-on.gm-wide .gds-scope { flex: 1; border-radius: 12px; }
+    html.gm-on.gm-tablet .gds-scope button, html.gm-on.gm-wide .gds-scope button { flex: 1; min-height: 44px; font-size: 14px; border-radius: 10px; }
+    html.gm-on.gm-tablet .gds-rs-btn, html.gm-on.gm-wide .gds-rs-btn { height: 44px; padding: 0 12px; font-size: 14px; border-radius: 12px; }
+    html.gm-on.gm-tablet .gds-rs-panel, html.gm-on.gm-wide .gds-rs-panel { width: 320px; max-height: 70dvh; }
+    html.gm-on.gm-tablet .gds-rs-find, html.gm-on.gm-wide .gds-rs-find { font-size: 16px; min-height: 44px; }
+    html.gm-on.gm-tablet .gds-rs-all, html.gm-on.gm-wide .gds-rs-all,
+    html.gm-on.gm-tablet .gds-rs-group, html.gm-on.gm-wide .gds-rs-group,
+    html.gm-on.gm-tablet .gds-rs-item, html.gm-on.gm-wide .gds-rs-item,
+    html.gm-on.gm-tablet .gds-rs-reset, html.gm-on.gm-wide .gds-rs-reset,
+    html.gm-on.gm-tablet .gds-rs-apply, html.gm-on.gm-wide .gds-rs-apply { min-height: 44px; font-size: 14px; }
+    html.gm-on.gm-tablet .gds-rs-panel input[type=checkbox], html.gm-on.gm-wide .gds-rs-panel input[type=checkbox] { width: 20px; height: 20px; }
+    html.gm-on.gm-tablet .gv-scope-pills, html.gm-on.gm-wide .gv-scope-pills { overflow-x: auto; scrollbar-width: none; }
+    html.gm-on.gm-tablet .gv-scope-pill, html.gm-on.gm-wide .gv-scope-pill { flex: none; min-height: 44px; display: inline-flex; align-items: center; padding: 0 14px; font-size: 13px; border-radius: 22px; }
+    html.gm-on.gm-tablet .gv-chip, html.gm-on.gm-wide .gv-chip { min-height: 44px; display: inline-flex; align-items: center; padding: 0 14px; font-size: 13px; border-radius: 22px; }
+    html.gm-on.gm-tablet .gds-adv-toggle, html.gm-on.gm-wide .gds-adv-toggle { min-height: 44px; font-size: 13px; padding: 0 14px; }
+    html.gm-on.gm-tablet .gds-page, html.gm-on.gm-wide .gds-page { min-width: 44px; min-height: 44px; font-size: 13px; border-radius: 10px; }
+    html.gm-on.gm-tablet .gds-coverage, html.gm-on.gm-wide .gds-coverage { display: inline-flex; align-items: center; min-height: 44px; cursor: pointer; }
+    html.gm-on.gm-wide .gv-status-bucket, html.gm-on.gm-wide .gv-year-item, html.gm-on.gm-wide .gv-scope-item,
+    html.gm-on.gm-tablet .gv-status-bucket, html.gm-on.gm-tablet .gv-year-item, html.gm-on.gm-tablet .gv-scope-item { min-height: 44px; display: flex; align-items: center; }
 }
+html.gm-on .gm-cov { white-space: pre-line; font-size: 13px; line-height: 1.5; color: #374151; background: #fff; border: 1px solid #e4e7eb; border-radius: 10px; padding: 10px 12px; margin: 0 0 10px; }
+/* Back to Portal (iPhone top-level page) */
+html.gm-on .gm-portal { display: inline-flex; align-items: center; min-height: 44px; padding: 0 8px; font-size: 15px; font-weight: 600; color: #2d5a87; text-decoration: none; }
+html.gm-on .gm-menu, html.gm-on .gm-portal { flex: none; }   /* never shrink below 44 px in narrow windows (Slide Over) */

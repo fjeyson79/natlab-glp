@@ -2994,7 +2994,18 @@ credentials: 'include'
             }
         }
 
-        function switchSection(section) {
+        // R4.3: on narrow phone screens GLP Vision opens as a top-level page (no nested frames) when the
+        // mobile layout is enabled (GLP_MOBILE_VISION_ENABLED, or ?mobile=preview). Otherwise: unchanged frame.
+        const GV_PHONE_MQ = '(max-width: 819.98px), (pointer: coarse) and (max-height: 520px)';
+        async function glpVisionPhoneOpen() {
+            const preview = new URLSearchParams(location.search).get('mobile') === 'preview';
+            let mobile = preview;
+            if (!mobile) { try { const r = await fetch('/api/di/vision/doc-search/status', { credentials: 'include' }); const j = r.ok ? await r.json() : null; mobile = !!(j && j.mobile); } catch (e) {} }
+            if (mobile) { window.location.href = '/glp-vision.html?from=portal' + (preview ? '&mobile=preview' : ''); return; }
+            switchSection('glpVision', true);
+        }
+        function switchSection(section, noPhoneRedirect) {
+            if (section === 'glpVision' && !noPhoneRedirect && window.matchMedia && window.matchMedia(GV_PHONE_MQ).matches) { glpVisionPhoneOpen(); return; }
             document.querySelectorAll('.section-btn').forEach(b => b.classList.remove('active'));
             document.querySelector(`[data-section="${section}"]`).classList.add('active');
             document.getElementById('section-files').style.display = section === 'files' ? 'block' : 'none';
