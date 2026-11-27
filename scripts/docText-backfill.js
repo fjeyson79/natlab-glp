@@ -65,6 +65,7 @@ function parseArgs(argv) {
         else if (k === '--log') a.log = v();
         else if (k === '--mock-r2-dir') a.mockR2Dir = v();
         else if (k === '--verify') a.verify = v();
+        else if (k === '--env-file') a.envFile = v();
         else if (k === '--print-role-sql') { console.log(ROLE_SQL); process.exit(0); }
         else if (k === '--help' || k === '-h') { console.log(HELP); process.exit(0); }
         else throw new Error('Unknown option ' + k);
@@ -86,11 +87,100 @@ Options:
   --health-url URL       sample portal /health latency every 30 s; stop if > 2x baseline
   --log FILE             JSONL run log (default ~/glp-backfill-logs/run-<time>.jsonl)
   --verify "t1|t2"       after the run, print hits/pages per processed document for these terms
-  --print-role-sql       print the restricted PostgreSQL role definition`;
+  --env-file FILE        load the variables above from a chmod-600 file (keeps secrets out of shell history)
+  --print-role-sql       print the restricted PostgreSQL role definition
+TLS:  verified always. Default: certificate chain + hostname (system CAs, or BACKFILL_DB_CA_FILE=<pem>).
+      For a self-signed proxy certificate: BACKFILL_DB_CERT_SHA256=<64 hex> (pinned; mismatch = refuse).
+      sslmode=disable is accepted only for localhost / unix-socket test databases.`;
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const rssMb = () => Math.round(process.memoryUsage().rss / 1048576);
-const sanitize = m => String(m || '').replace(/(\/[\w.@-]+)+/g, '[path]').replace(/\s+/g, ' ').slice(0, 200);
+const SECRET_VARS = ['BACKFILL_DATABASE_URL', 'BACKFILL_R2_ACCESS_KEY_ID', 'BACKFILL_R2_SECRET_ACCESS_KEY'];
+function sanitize(m) {   // never let URLs, passwords or keys reach the terminal or the log
+    let t = String(m || '').replace(/postgres(ql)?:\/\/\S+/gi, '[db-url]');
+    for (const k of SECRET_VARS) { const v = process.env[k]; if (v && v.length >= 4) t = t.split(v).join('[secret]'); }
+    try { const pw = decodeURIComponent(new URL(process.env.BACKFILL_DATABASE_URL || '').password || ''); if (pw.length >= 4) t = t.split(pw).join('[secret]'); } catch (_) {}
+    return t.replace(/(\/[\w.@-]+)+/g, '[path]').replace(/\s+/g, ' ').slice(0, 200);
+}
+
+// Identical to normalizeR2Key() in server.js (kept in sync; verified by the validation suite).
+// Used ONLY for the retrieval key. The stored value is never changed and is what identity checks compare.
+function normalizeR2Key(k) {
+    if (!k) return null;
+    return k.trim().replace(/^r2:/i, '').trim() || null;
+}
+
+// ---------------------------------------------------------------- credentials file (optional)
+// KEY=VALUE lines; refused unless owned by the current user and not readable by group/others (chmod 600).
+function loadEnvFile(file) {
+    const st = fs.statSync(file);
+    if ((st.mode & 0o077) !== 0) throw new Error(`Credentials file must be chmod 600 (current ${(st.mode & 0o777).toString(8)})`);
+    if (typeof process.getuid === 'function' && st.uid !== process.getuid()) throw new Error('Credentials file must be owned by the current user');
+    for (const line of fs.readFileSync(file, 'utf8').split(/\r?\n/)) {
+        const m = /^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/.exec(line); if (!m || line.trim().startsWith('#')) continue;
+        process.env[m[1]] = m[2].replace(/^(['"])(.*)\1$/, '$2');
+    }
+}
+
+// ---------------------------------------------------------------- database TLS (no unverified mode)
+// 1. Default: standard certificate-chain + hostname verification (system CAs, or BACKFILL_DB_CA_FILE).
+// 2. BACKFILL_DB_CERT_SHA256 (pinning, for proxies with self-signed certificates): a credential-free
+//    TLS probe (PostgreSQL SSLRequest) fetches the server chain and checks the leaf fingerprint; the
+//    real connection then trusts exactly that chain and re-checks the fingerprint during the handshake,
+//    so nothing (not even the startup message) is sent to a server with a different certificate.
+//    Certificate rotation => mismatch => the tool refuses; obtain and independently confirm the new
+//    fingerprint before updating BACKFILL_DB_CERT_SHA256. There is never a silent fallback.
+// 3. Plain-text only for local test databases (localhost / unix socket) with sslmode=disable.
+const normFp = f => String(f || '').replace(/[^0-9a-f]/gi, '').toUpperCase();
+function probeServerChain(host, port, servername) {
+    const net = require('net'), tls = require('tls');
+    return new Promise((resolve, reject) => {
+        const sock = net.connect({ host, port }); const done = (e, v) => { sock.destroy(); e ? reject(e) : resolve(v); };
+        sock.setTimeout(10000, () => done(new Error('TLS probe timeout')));
+        sock.once('error', e => done(e));
+        sock.once('connect', () => sock.write(Buffer.from([0, 0, 0, 8, 0x04, 0xd2, 0x16, 0x2f])));   // SSLRequest
+        sock.once('data', b => {
+            if (b[0] !== 0x53) return done(new Error('Server does not offer TLS'));
+            const t = tls.connect({ socket: sock, servername, rejectUnauthorized: false });   // probe only: no credentials, no data
+            t.once('error', e => done(e));
+            t.once('secureConnect', () => {
+                const chain = []; let c = t.getPeerCertificate(true); const seen = new Set();
+                while (c && c.raw && !seen.has(c.fingerprint256)) { seen.add(c.fingerprint256); chain.push(c); c = c.issuerCertificate; }
+                t.destroy(); done(null, chain);
+            });
+        });
+    });
+}
+const toPem = raw => `-----BEGIN CERTIFICATE-----\n${raw.toString('base64').match(/.{1,64}/g).join('\n')}\n-----END CERTIFICATE-----\n`;
+async function buildDbConfig(urlStr) {
+    const u = new URL(urlStr);
+    const sslmode = (u.searchParams.get('sslmode') || '').toLowerCase();
+    const hostParam = u.searchParams.get('host');
+    const local = (hostParam && hostParam.startsWith('/')) || ['localhost', '127.0.0.1', '::1', '[::1]'].includes(u.hostname);
+    for (const k of [...u.searchParams.keys()]) if (/^ssl/i.test(k)) u.searchParams.delete(k);   // our ssl object is authoritative
+    const connectionString = u.toString();
+    if (sslmode === 'disable') {
+        if (!local) throw new Error('sslmode=disable is only allowed for local test databases');
+        return { connectionString, ssl: false, tls: 'disabled (local test database)' };
+    }
+    const host = u.hostname.replace(/^\[|\]$/g, ''), port = parseInt(u.port || '5432', 10);
+    const servername = require('net').isIP(host) ? undefined : host;
+    const pin = process.env.BACKFILL_DB_CERT_SHA256;
+    if (pin) {
+        const want = normFp(pin);
+        if (want.length !== 64) throw new Error('BACKFILL_DB_CERT_SHA256 must be a SHA-256 fingerprint (64 hex digits)');
+        const chain = await probeServerChain(host, port, servername);
+        if (!chain.length || normFp(chain[0].fingerprint256) !== want) throw new Error('Database certificate does not match BACKFILL_DB_CERT_SHA256 (refusing to connect)');
+        return { connectionString, tls: 'verified (pinned certificate)', ssl: {
+            ca: chain.map(c => toPem(c.raw)), rejectUnauthorized: true, servername,
+            checkServerIdentity: (_h, cert) => normFp(cert.fingerprint256) === want ? undefined : new Error('Database certificate fingerprint mismatch'),
+        } };
+    }
+    // Always verify against the host actually connected to (Node would otherwise check "localhost" for IPs).
+    const ssl = { rejectUnauthorized: true, servername, checkServerIdentity: (_h, cert) => require('tls').checkServerIdentity(host, cert) };
+    if (process.env.BACKFILL_DB_CA_FILE) ssl.ca = fs.readFileSync(process.env.BACKFILL_DB_CA_FILE, 'utf8');
+    return { connectionString, ssl, tls: process.env.BACKFILL_DB_CA_FILE ? 'verified (chain+hostname, CA file)' : 'verified (chain+hostname, system CAs)' };
+}
 
 // ---------------------------------------------------------------- R2 (read-only by construction)
 function makeObjectReader(args) {
@@ -99,8 +189,8 @@ function makeObjectReader(args) {
     if (args.mockR2Dir) {   // local validation only: object key -> file name in the directory
         return { ops, mock: true, async getObject(key) {
             ops.get++;
-            const f = path.join(args.mockR2Dir, path.basename(key));
-            if (!fs.existsSync(f)) { const e = new Error('NoSuchKey'); e.name = 'NoSuchKey'; throw e; }
+            const f = path.resolve(args.mockR2Dir, key);   // full object key under the mock directory
+            if (!f.startsWith(path.resolve(args.mockR2Dir) + path.sep) || !fs.existsSync(f)) { const e = new Error('NoSuchKey'); e.name = 'NoSuchKey'; throw e; }
             const st = fs.statSync(f); if (st.size > maxBytes) { const e = new Error('Object too large'); e.name = 'TooLarge'; throw e; }
             const body = fs.readFileSync(f);
             return { body, etag: '"' + crypto.createHash('md5').update(body).digest('hex') + '"', contentLength: st.size };
@@ -144,8 +234,9 @@ async function checkPrivileges(db) {
 // ---------------------------------------------------------------- inventory (PostgreSQL metadata only)
 async function inventory(db, args) {
     const p = [], P = v => { p.push(v); return '$' + p.length; };
+    // .pdf test on the key as normalizeR2Key() will use it (trimmed), so eligibility matches retrieval.
     const w = [`w.slug = 'natlab'`, `s.status = 'APPROVED'`, `s.r2_object_key IS NOT NULL`,
-               `lower(s.r2_object_key) LIKE '%.pdf'`, `COALESCE(s.report_thread_role, '') <> 'NOTE'`];
+               `lower(btrim(s.r2_object_key)) LIKE '%.pdf'`, `COALESCE(s.report_thread_role, '') <> 'NOTE'`];
     if (args.ids) w.push(`s.submission_id::text = ANY(${P(args.ids)})`);
     if (args.types) w.push(`s.file_type = ANY(${P(args.types)})`);
     const rows = (await db.query(`SELECT s.submission_id, s.r2_object_key, s.signed_at, s.original_filename, s.file_type,
@@ -229,14 +320,16 @@ async function commitResult(db, row, claimAt, r) {
 // ---------------------------------------------------------------- main
 async function main() {
     const args = parseArgs(process.argv.slice(2));
+    if (args.envFile) loadEnvFile(args.envFile);
     if (!process.env.BACKFILL_DATABASE_URL) throw new Error('BACKFILL_DATABASE_URL is required (restricted role)');
     if (process.env.R2_ACCESS_KEY_ID || process.env.R2_SECRET_ACCESS_KEY)
         throw new Error('Service R2 credentials (R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY) are present in this environment. Unset them; use the read-only BACKFILL_R2_* token.');
     if (!args.dryRun && !args.mockR2Dir && !['BACKFILL_R2_ENDPOINT', 'BACKFILL_R2_BUCKET', 'BACKFILL_R2_ACCESS_KEY_ID', 'BACKFILL_R2_SECRET_ACCESS_KEY'].every(k => process.env[k]))
         throw new Error('BACKFILL_R2_* variables are required (read-only token)');
 
-    const db = new Pool({ connectionString: process.env.BACKFILL_DATABASE_URL, max: 2,
-        ssl: /sslmode=disable/.test(process.env.BACKFILL_DATABASE_URL) ? false : { rejectUnauthorized: false } });
+    const dbc = await buildDbConfig(process.env.BACKFILL_DATABASE_URL);
+    console.log(`Database TLS: ${dbc.tls}`);
+    const db = new Pool({ connectionString: dbc.connectionString, ssl: dbc.ssl, max: 2 });
     const out = [];
     const logFile = args.log || path.join(os.homedir(), 'glp-backfill-logs', `run-${new Date().toISOString().replace(/[:.]/g, '-')}.jsonl`);
     fs.mkdirSync(path.dirname(logFile), { recursive: true });
@@ -289,7 +382,7 @@ async function main() {
             let res, bytes = 0, etag = null;
             try {
                 let obj;
-                try { obj = await reader.getObject(row.r2_object_key); }
+                try { obj = await reader.getObject(normalizeR2Key(row.r2_object_key)); }   // stored key stays untouched
                 catch (e) {
                     const code = e.name === 'NoSuchKey' ? 'R2_NOT_FOUND' : e.name === 'TooLarge' ? 'TOO_LARGE' : e.name === 'Truncated' ? 'R2_TRUNCATED' : 'R2_ERROR';
                     await finishClaim(db, row.submission_id, claimAt, 'failed', code, e.message);
@@ -356,4 +449,4 @@ async function main() {
 }
 
 if (require.main === module) main().catch(e => { console.error('Backfill error:', sanitize(e.message)); process.exitCode = 1; });
-module.exports = { claim, finishClaim, commitResult, checkPrivileges, inventory, makeObjectReader, ROLE_SQL, SOURCE, LOCK_KEY };
+module.exports = { claim, finishClaim, commitResult, checkPrivileges, inventory, makeObjectReader, normalizeR2Key, buildDbConfig, sanitize, ROLE_SQL, SOURCE, LOCK_KEY };
