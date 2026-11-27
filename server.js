@@ -770,7 +770,7 @@ const docGuards = require('./server/docAccess').makeGuards(pool);
 const docText = require('./server/docText');
 docText.init(pool);
 // GLP Vision R2.3: PI-only full-text search (DOC_TEXT_SEARCH_ENABLED, default OFF).
-require('./server/docText/routes').mountDocSearchRoutes(app, { pool, requirePIRead });
+require('./server/docText/routes').mountDocSearchRoutes(app, { pool, requirePIRead, requireAuth });
 function r1bRequireDownloadAuth(req, res, next) {
     if (req.session && req.session.user) return next();
     const retiredKey = !!String(req.headers['x-api-key'] || '').trim();
