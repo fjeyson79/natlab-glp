@@ -3337,10 +3337,11 @@ app.get('/api/di/verify/:code', async (req, res) => {
 // The mobile viewer calls it before reusing a PDF it already holds, so a retained document is never shown
 // again without a fresh server-side decision.
 app.get('/api/di/download/:id/access', r1bRequireDownloadAuth, docGuards.submission, (req, res) => {
-    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Cache-Control', 'private, no-store');
     res.json({ ok: true });
 });
 app.get('/api/di/download/:id', r1bRequireDownloadAuth, docGuards.submission, async (req, res) => {
+    res.setHeader('Cache-Control', 'private, no-store');   // R4.4: confidential PDFs are never kept in browser/proxy caches
     const { id } = req.params;
     const { download } = req.query;
 
