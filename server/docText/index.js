@@ -157,6 +157,16 @@ function runWorker(data) {
     });
 }
 
+// Shared by upload indexing and the historical backfill (scripts/docText-backfill.js).
+// no_text = no scientific text at all (blank/image-based pages, or only the system approval stamp)
+function deriveStatus(r) {
+    const status = r.limit ? 'partial' : r.pageCount === 0 ? 'empty' : !r.sciPages ? 'no_text' : 'ok';
+    const code = r.limit || (status === 'no_text' && r.stampPages ? 'STAMP_ONLY' : null);
+    const message = r.limit ? `Indexed ${r.pagesIndexed} of ${r.pageCount} pages (${r.limit})`
+        : code === 'STAMP_ONLY' ? 'Only system approval-stamp text; no scientific text (image-based pages)' : null;
+    return { status, code, message };
+}
+
 async function processJob(job, data) {
     const upd = await pool.query(
         `UPDATE di_doc_text_index SET status='processing', attempts=attempts+1, started_at=NOW()
@@ -168,11 +178,7 @@ async function processJob(job, data) {
         await setStatus(job.id, r.code === 'TIMEOUT' ? 'timeout' : 'failed', r.code, r.error);
         return;
     }
-    // no_text = no scientific text at all (blank/image-based pages, or only the system approval stamp)
-    const status = r.limit ? 'partial' : r.pageCount === 0 ? 'empty' : !r.sciPages ? 'no_text' : 'ok';
-    const code = r.limit || (status === 'no_text' && r.stampPages ? 'STAMP_ONLY' : null);
-    const message = r.limit ? `Indexed ${r.pagesIndexed} of ${r.pageCount} pages (${r.limit})`
-        : code === 'STAMP_ONLY' ? 'Only system approval-stamp text; no scientific text (image-based pages)' : null;
+    const { status, code, message } = deriveStatus(r);
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -206,4 +212,4 @@ function getState() {
     return { enabled: isEnabled(), inFlight: queuedIds.size, queued: queue.length, queuedBytes, running, ...stats, config: { ...CFG } };
 }
 
-module.exports = { init, enqueueFromUpload, purgeStale, getState, VISIBLE_SUBMISSION_SQL, flagOn, _CFG: CFG };
+module.exports = { init, enqueueFromUpload, purgeStale, getState, VISIBLE_SUBMISSION_SQL, flagOn, runWorker, deriveStatus, _CFG: CFG };
