@@ -166,7 +166,7 @@ function baseFilters(f, P, c) {
     if (days) owned.push(`s.created_at >= NOW() - make_interval(days => ${days})`);
     if (year) owned.push(`EXTRACT(YEAR FROM s.created_at) = ${year}`);
     const branches = ['(' + owned.join(' AND ') + ')'];
-    if (c.shares && f.year !== 'legacy') {   // shared entries never carry legacy origin in R1
+    if (c.shares && !f.restricted && f.year !== 'legacy') {   // shared entries never carry legacy origin in R1 (R3: never in restricted mode)
         const sh = [`fs.submission_id = s.submission_id`, `fs.is_active = TRUE`, `fs.recipient_researcher_id <> fs.owner_researcher_id`,
                     `fs.workspace_id = ${ws}`];
         if (months) sh.push(`fs.shared_at >= NOW() - make_interval(months => ${months})`);
@@ -175,7 +175,8 @@ function baseFilters(f, P, c) {
         if (year) sh.push(`EXTRACT(YEAR FROM fs.shared_at) = ${year}`);
         branches.push(`EXISTS (SELECT 1 FROM di_file_shares fs WHERE ${sh.join(' AND ')})`);
     }
-    const w = [`s.workspace_id = ${ws}`, `s.status <> 'DISCARDED'`, '(' + branches.join(' OR ') + ')'];
+    const w = [`s.workspace_id = ${ws}`, f.restricted ? `s.status NOT IN ('DISCARDED','ARCHIVED')` : `s.status <> 'DISCARDED'`, '(' + branches.join(' OR ') + ')'];
+    if (f.restricted && !f.researchers.length) w.push('FALSE');   // R3: restricted mode never runs without an allowed set
     if (f.type) w.push(`s.file_type = ${P(f.type)}`);
     if (f.status) w.push(`s.status = ${P(f.status)}`);
     if (f.dragon) w.push(`s.pi_dragon_seal = TRUE`);
@@ -183,7 +184,7 @@ function baseFilters(f, P, c) {
     return w.join(' AND ');
 }
 function sharedToSql(f, P, c) {   // "shown as shared" for the current researcher filter (display only)
-    if (!c.shares || !f.researchers.length) return 'FALSE';
+    if (f.restricted || !c.shares || !f.researchers.length) return 'FALSE';
     const r = P(f.researchers);
     return `(NOT (s.researcher_id = ANY(${r}::text[])) AND EXISTS (SELECT 1 FROM di_file_shares fs2 WHERE fs2.submission_id = s.submission_id
               AND fs2.is_active = TRUE AND fs2.recipient_researcher_id = ANY(${r}::text[])))`;
@@ -218,10 +219,18 @@ function readFilters(q, workspaceId) {
     };
 }
 
-async function search(pool, reqQuery, workspaceId) {
+// access: undefined = PI laboratory search (unchanged). { viewer: {researcher_id, role} } = R3 restricted search:
+// the allowed researcher set is resolved server-side on every call; requested researchers only narrow it.
+async function search(pool, reqQuery, workspaceId, access) {
     const c = await capabilities(pool);
     if (!c.tables) return { available: false, reason: 'index_tables_missing' };
     const f = readFilters(reqQuery, workspaceId);
+    if (access) {
+        const allowed = (await allowedResearchers(pool, access.viewer, workspaceId)).map(r => r.id);
+        const requested = f.researchers;
+        f.restricted = true; f.allTime = true;   // the researcher/supervisor document list has no months window
+        f.researchers = requested.length ? requested.filter(id => allowed.includes(id)) : allowed;
+    }
     const pq = parseQuery(reqQuery.q);
     if (!pq.terms.length) return { available: true, query: { terms: [], normalized: [], exclude: pq.exclude, groups: [] }, results: [], total: 0, coverage: null };
 
@@ -337,8 +346,35 @@ async function search(pool, reqQuery, workspaceId) {
              coverage, ms: Date.now() - t0, results };
 }
 
-async function status(pool, workspaceId) {
+// R3: researchers a restricted viewer may search, mirroring the document-opening rules (server/docAccess.js):
+//   owner always; supervised researchers only for role 'supervisor' with a formal assignment in
+//   di_supervisor_researchers AND an active LAB membership, and only in a LAB workspace.
+// Shares, groups, affiliation and meetings never add researchers. Resolved per call (no cache).
+async function allowedResearchers(pool, viewer, workspaceId) {
+    const id = viewer && viewer.researcher_id;
+    if (!id) return [];
+    const role = String(viewer.role || '').toLowerCase();
+    const r = await pool.query(`
+        WITH me AS (SELECT $1::text AS id),
+             ok AS (SELECT $2::text = 'supervisor'
+                       AND EXISTS (SELECT 1 FROM workspaces w WHERE w.id = $3 AND w.workspace_type = 'LAB')
+                       AND EXISTS (SELECT 1 FROM workspace_users wu JOIN workspaces w ON w.id = wu.workspace_id
+                                    WHERE wu.user_id = $1 AND wu.is_active = TRUE AND COALESCE(wu.status,'active') = 'active'
+                                      AND w.workspace_type = 'LAB') AS sup),
+             ids AS (SELECT id, TRUE AS self FROM me
+                     UNION SELECT sr.researcher_id, FALSE FROM di_supervisor_researchers sr, ok WHERE ok.sup AND sr.supervisor_id = $1)
+        SELECT ids.id, bool_or(ids.self) AS self, a.name, a.affiliation FROM ids LEFT JOIN di_allowlist a ON a.researcher_id = ids.id
+         GROUP BY ids.id, a.name, a.affiliation ORDER BY bool_or(ids.self) DESC, lower(COALESCE(a.name, ids.id))`, [id, role, workspaceId]);
+    return r.rows;
+}
+
+async function status(pool, workspaceId, access) {
     const c = await capabilities(pool);
+    if (access) {
+        const rows = await allowedResearchers(pool, access.viewer, workspaceId);
+        return { enabled: true, available: c.tables, trgm: c.trgm, restricted: true,
+                 researchers: rows.map(r => ({ id: r.id, name: r.name, affiliation: r.affiliation, self: r.self })) };
+    }
     // R2.25: researchers for the search selector: everyone who owns a listed document or received an active
     // share in this workspace (all history), with allowlist name/affiliation when known (null = former/legacy).
     let researchers = [];
@@ -353,4 +389,4 @@ async function status(pool, workspaceId) {
     return { enabled: true, available: c.tables, trgm: c.trgm, researchers };
 }
 
-module.exports = { search, status, parseQuery, buildExcerpt, identifierVariants, isSearchEnabled, LIMITS, _resetCapabilities: () => { cap = null; } };
+module.exports = { search, status, allowedResearchers, parseQuery, buildExcerpt, identifierVariants, isSearchEnabled, LIMITS, _resetCapabilities: () => { cap = null; } };
