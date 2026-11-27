@@ -8,7 +8,7 @@
 const { normalizeQuery } = require('./normalize');
 const { VISIBLE_SUBMISSION_SQL, flagOn } = require('./index');
 
-const LIMITS = { maxQueryChars: 200, maxTerms: 8, minTermChars: 2, maxLimit: 50, maxOffset: 500, maxPagesListed: 60, statementTimeoutMs: 4000, excerptRadius: 110 };
+const LIMITS = { maxQueryChars: 200, maxTerms: 8, minTermChars: 2, maxLimit: 50, maxOffset: 500, maxPagesListed: 60, maxResearchers: 200, statementTimeoutMs: 4000, excerptRadius: 110 };
 
 const isSearchEnabled = () => flagOn('DOC_TEXT_SEARCH_ENABLED');
 
@@ -156,18 +156,21 @@ async function capabilities(pool) {
 // R1 lists a shared document under the recipient with created_at = shared_at, so the
 // researcher, date and year filters use the recipient / shared_at on the shared branch.
 function baseFilters(f, P, c) {
-    const ws = P(f.workspaceId), months = P(f.months);
+    // R2.25: allTime (active scientific search) drops the browsing months window; explicit day/year filters still apply.
+    const ws = P(f.workspaceId), months = f.allTime ? null : P(f.months);
     const days = f.days ? P(f.days) : null, year = (f.year && f.year !== 'legacy') ? P(f.year) : null;
-    const researcher = f.researcher ? P(f.researcher) : null;
-    const owned = [`COALESCE(s.report_thread_role,'') <> 'NOTE'`, `s.created_at >= NOW() - make_interval(months => ${months})`];
-    if (researcher) owned.push(`s.researcher_id = ${researcher}`);
+    const researchers = f.researchers.length ? P(f.researchers) : null;   // R2.25: one or more researcher ids
+    const owned = [`COALESCE(s.report_thread_role,'') <> 'NOTE'`];
+    if (months) owned.push(`s.created_at >= NOW() - make_interval(months => ${months})`);
+    if (researchers) owned.push(`s.researcher_id = ANY(${researchers}::text[])`);
     if (days) owned.push(`s.created_at >= NOW() - make_interval(days => ${days})`);
     if (year) owned.push(`EXTRACT(YEAR FROM s.created_at) = ${year}`);
     const branches = ['(' + owned.join(' AND ') + ')'];
     if (c.shares && f.year !== 'legacy') {   // shared entries never carry legacy origin in R1
         const sh = [`fs.submission_id = s.submission_id`, `fs.is_active = TRUE`, `fs.recipient_researcher_id <> fs.owner_researcher_id`,
-                    `fs.workspace_id = ${ws}`, `fs.shared_at >= NOW() - make_interval(months => ${months})`];
-        if (researcher) sh.push(`fs.recipient_researcher_id = ${researcher}`);
+                    `fs.workspace_id = ${ws}`];
+        if (months) sh.push(`fs.shared_at >= NOW() - make_interval(months => ${months})`);
+        if (researchers) sh.push(`fs.recipient_researcher_id = ANY(${researchers}::text[])`);
         if (days) sh.push(`fs.shared_at >= NOW() - make_interval(days => ${days})`);
         if (year) sh.push(`EXTRACT(YEAR FROM fs.shared_at) = ${year}`);
         branches.push(`EXISTS (SELECT 1 FROM di_file_shares fs WHERE ${sh.join(' AND ')})`);
@@ -180,9 +183,18 @@ function baseFilters(f, P, c) {
     return w.join(' AND ');
 }
 function sharedToSql(f, P, c) {   // "shown as shared" for the current researcher filter (display only)
-    if (!c.shares || !f.researcher) return 'FALSE';
-    return `(s.researcher_id <> ${P(f.researcher)} AND EXISTS (SELECT 1 FROM di_file_shares fs2 WHERE fs2.submission_id = s.submission_id
-              AND fs2.is_active = TRUE AND fs2.recipient_researcher_id = ${P(f.researcher)}))`;
+    if (!c.shares || !f.researchers.length) return 'FALSE';
+    const r = P(f.researchers);
+    return `(NOT (s.researcher_id = ANY(${r}::text[])) AND EXISTS (SELECT 1 FROM di_file_shares fs2 WHERE fs2.submission_id = s.submission_id
+              AND fs2.is_active = TRUE AND fs2.recipient_researcher_id = ANY(${r}::text[])))`;
+}
+
+// R2.25: `researchers` (repeated query parameter, or one value) plus the legacy single `researcher`.
+// Invalid entries are dropped; an empty list means "no researcher restriction".
+function readResearchers(q) {
+    const raw = [].concat(q.researchers === undefined ? [] : q.researchers, q.researcher === undefined ? [] : q.researcher);
+    const ok = raw.filter(v => typeof v === 'string' && v.length > 0 && v.length <= 64);
+    return [...new Set(ok)].slice(0, LIMITS.maxResearchers);
 }
 
 function readFilters(q, workspaceId) {
@@ -192,7 +204,8 @@ function readFilters(q, workspaceId) {
     return {
         workspaceId,
         months: int(q.months, 6, 60, 12),
-        researcher: typeof q.researcher === 'string' && q.researcher.length <= 64 ? q.researcher : '',
+        researchers: readResearchers(q),
+        allTime: q.window === 'all',
         type: TYPES.includes(q.type) ? q.type : '',
         status: ST.includes(q.status) ? q.status : '',
         days: q.days ? int(q.days, 1, 3650, 0) : 0,
@@ -320,13 +333,24 @@ async function search(pool, reqQuery, workspaceId) {
     });
     return { available: true, trgm: c.trgm, query: { terms: pq.display, normalized: pq.terms, exclude: pq.exclude, groups: pq.groups,
              variants: pq.variants, highlight: [...new Set([...pq.display, ...Object.values(pq.variants).flat()])] },
-             scope: f.scope, sort: f.sort, total: rows.length ? Number(rows[0].total) : 0, limit: f.limit, offset: f.offset,
+             scope: f.scope, sort: f.sort, all_time: f.allTime, researchers: f.researchers.length, total: rows.length ? Number(rows[0].total) : 0, limit: f.limit, offset: f.offset,
              coverage, ms: Date.now() - t0, results };
 }
 
 async function status(pool, workspaceId) {
     const c = await capabilities(pool);
-    return { enabled: true, available: c.tables, trgm: c.trgm };
+    // R2.25: researchers for the search selector: everyone who owns a listed document or received an active
+    // share in this workspace (all history), with allowlist name/affiliation when known (null = former/legacy).
+    let researchers = [];
+    try {
+        researchers = (await pool.query(`
+            WITH ids AS (SELECT DISTINCT researcher_id FROM di_submissions
+                          WHERE workspace_id = $1 AND status <> 'DISCARDED' AND COALESCE(report_thread_role,'') <> 'NOTE'
+                          ${c.shares ? 'UNION SELECT recipient_researcher_id FROM di_file_shares WHERE workspace_id = $1 AND is_active = TRUE' : ''})
+            SELECT i.researcher_id AS id, a.name, a.affiliation FROM ids i LEFT JOIN di_allowlist a ON a.researcher_id = i.researcher_id
+             WHERE i.researcher_id IS NOT NULL ORDER BY lower(COALESCE(a.name, i.researcher_id))`, [workspaceId])).rows;
+    } catch (e) { researchers = []; }
+    return { enabled: true, available: c.tables, trgm: c.trgm, researchers };
 }
 
 module.exports = { search, status, parseQuery, buildExcerpt, identifierVariants, isSearchEnabled, LIMITS, _resetCapabilities: () => { cap = null; } };
