@@ -20,10 +20,11 @@ function restrictedAccess(req) {
 function mountDocSearchRoutes(app, { pool, requirePIRead, requireAuth }) {
     if (requireAuth) {
         app.get('/api/di/vision/doc-search/status', requireAuth, async (req, res) => {
+            const mobile = flagOn('GLP_MOBILE_VISION_ENABLED');   // R4.2: display-only flag for the mobile layout (default OFF)
             const a = restrictedAccess(req);
-            if (!a.access) return a.code === 404 ? res.json({ enabled: false }) : res.status(a.code).json({ error: a.error });
-            try { res.json(await docSearch.status(pool, req.workspace.id, a.access)); }
-            catch (e) { console.error('[vision-doc-search] status error:', e.message); res.json({ enabled: true, available: false }); }
+            if (!a.access) return a.code === 404 ? res.json({ enabled: false, mobile }) : res.status(a.code).json({ error: a.error });
+            try { res.json({ ...(await docSearch.status(pool, req.workspace.id, a.access)), mobile }); }
+            catch (e) { console.error('[vision-doc-search] status error:', e.message); res.json({ enabled: true, available: false, mobile }); }
         });
         app.get('/api/di/vision/doc-search', requireAuth, async (req, res) => {
             const a = restrictedAccess(req);
