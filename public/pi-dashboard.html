@@ -8045,6 +8045,11 @@ async function dicIntdocsFolderChanged(sel) {
             if (r.name_match) meta.appendChild(dsEl('span', 'ds-idx', 'Filename match'));
             const ix = r.index || {};
             if (ix.status === 'partial') meta.appendChild(dsEl('span', 'ds-idx warn', `Partial text (${ix.pages_indexed}/${ix.page_count} p.)`));
+            else if (ix.status === 'no_text') {   // image-based PDF or only the system approval stamp
+                const nt = dsEl('span', 'ds-idx', 'No searchable text · filename only');
+                nt.title = 'This PDF has no extractable scientific text (image-based pages or only the approval stamp). It can still be found by filename.';
+                meta.appendChild(nt);
+            }
             else if (ix.status !== 'ok') meta.appendChild(dsEl('span', 'ds-idx', 'Text not indexed'));
             body.appendChild(meta);
             if (r.excerpt) body.appendChild(dsRenderExcerpt(r.excerpt));

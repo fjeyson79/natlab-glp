@@ -51,9 +51,21 @@ function normalizePage(raw) {
     return { norm: out.join(' '), rawWordOffsets: offsets };
 }
 
+// Known system-generated text: the ALCOA approval stamp drawn by createStampedPdf() in server.js
+// on every page — "APPROVED by <signer>, YYYY-MM-DD HH:MM". Matched only in that exact format and
+// only where it ends a line (a whole line, or appended to a line sharing its baseline), so prose
+// that merely mentions an approval is never masked. Masking keeps the length (raw offsets stay
+// valid); the raw text itself is never changed.
+const STAMP_LINE_RE = /(^|[ \t])APPROVED by [^\n]{1,120}?, \d{4}-\d{2}-\d{2} \d{2}:\d{2}[ \t]*$/gm;
+function maskSystemStamps(raw) {
+    let stamps = 0;
+    const text = String(raw).replace(STAMP_LINE_RE, (m, lead) => { stamps++; return lead + ' '.repeat(m.length - lead.length); });
+    return { text, stamps };
+}
+
 // Same normalization for user queries (whitespace collapsed, no hyphen-join needed).
 function normalizeQuery(q) {
     return String(q || '').split(/\s+/).filter(Boolean).map(normToken).join(' ').trim();
 }
 
-module.exports = { normalizePage, normalizeQuery };
+module.exports = { normalizePage, normalizeQuery, maskSystemStamps };

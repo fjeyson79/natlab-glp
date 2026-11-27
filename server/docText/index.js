@@ -168,7 +168,11 @@ async function processJob(job, data) {
         await setStatus(job.id, r.code === 'TIMEOUT' ? 'timeout' : 'failed', r.code, r.error);
         return;
     }
-    const status = r.limit ? 'partial' : r.pageCount === 0 ? 'empty' : r.pages.length === 0 ? 'no_text' : 'ok';
+    // no_text = no scientific text at all (blank/image-based pages, or only the system approval stamp)
+    const status = r.limit ? 'partial' : r.pageCount === 0 ? 'empty' : !r.sciPages ? 'no_text' : 'ok';
+    const code = r.limit || (status === 'no_text' && r.stampPages ? 'STAMP_ONLY' : null);
+    const message = r.limit ? `Indexed ${r.pagesIndexed} of ${r.pageCount} pages (${r.limit})`
+        : code === 'STAMP_ONLY' ? 'Only system approval-stamp text; no scientific text (image-based pages)' : null;
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -190,7 +194,7 @@ async function processJob(job, data) {
                     pages_indexed=$6, char_count=$7, error_code=$8, error_message=$9, finished_at=NOW()
               WHERE submission_id=$1`,
             [job.id, status, r.sha256, r.extractor, r.pageCount, r.pagesIndexed, r.chars,
-             r.limit || null, r.limit ? `Indexed ${r.pagesIndexed} of ${r.pageCount} pages (${r.limit})` : null]);
+             code, message]);
         await client.query('COMMIT');
     } catch (e) {
         try { await client.query('ROLLBACK'); } catch (_) {}
