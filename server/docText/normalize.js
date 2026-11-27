@@ -63,9 +63,15 @@ function maskSystemStamps(raw) {
     return { text, stamps };
 }
 
+// PostgreSQL text cannot store U+0000. Replace each NUL with a space (length-preserving, so page text,
+// raw offsets and excerpts stay exact). Nothing else is altered.
+function sanitizeExtractedText(s) {
+    return String(s).replace(/\u0000/g, ' ');
+}
+
 // Same normalization for user queries (whitespace collapsed, no hyphen-join needed).
 function normalizeQuery(q) {
     return String(q || '').split(/\s+/).filter(Boolean).map(normToken).join(' ').trim();
 }
 
-module.exports = { normalizePage, normalizeQuery, maskSystemStamps };
+module.exports = { normalizePage, normalizeQuery, maskSystemStamps, sanitizeExtractedText };
