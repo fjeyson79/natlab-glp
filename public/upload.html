@@ -3004,8 +3004,18 @@ credentials: 'include'
         // R4.3: on narrow phone screens GLP Vision opens as a top-level page (no nested frames) when the
         // mobile layout is enabled (GLP_MOBILE_VISION_ENABLED, or ?mobile=preview). Otherwise: unchanged frame.
         const GV_PHONE_MQ = '(max-width: 819.98px), (pointer: coarse) and (max-height: 520px)';
+        // R4.7a: ?mobile=preview survives the login redirect and in-portal navigation: remembered for this browser tab only
+        // (sessionStorage, display preference, no document data; ?mobile=off clears it). Access rules are unaffected.
+        function glpMobilePreview() {
+            const m = new URLSearchParams(location.search).get('mobile');
+            try {
+                if (m === 'preview') sessionStorage.setItem('glpMobilePreview', '1'); else if (m === 'off') sessionStorage.removeItem('glpMobilePreview');
+                return sessionStorage.getItem('glpMobilePreview') === '1';
+            } catch (e) { return m === 'preview'; }
+        }
+        glpMobilePreview();
         async function glpVisionPhoneOpen() {
-            const preview = new URLSearchParams(location.search).get('mobile') === 'preview';
+            const preview = glpMobilePreview();
             let mobile = preview;
             if (!mobile) { try { const r = await fetch('/api/di/vision/doc-search/status', { credentials: 'include' }); const j = r.ok ? await r.json() : null; mobile = !!(j && j.mobile); } catch (e) {} }
             if (mobile) { window.location.href = '/glp-vision.html?from=portal' + (preview ? '&mobile=preview' : ''); return; }

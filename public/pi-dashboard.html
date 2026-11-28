@@ -7976,8 +7976,18 @@ async function dicIntdocsFolderChanged(sel) {
         }
         // R4.5: PI iPhone/iPad layout + shared mobile PDF viewer, loaded only when GLP_MOBILE_PI_ENABLED is ON
         // (or ?mobile=preview for personal acceptance: display only; every request stays authenticated/authorized).
+        // R4.7a: ?mobile=preview survives the login redirect and in-portal navigation: remembered for this browser tab only
+        // (sessionStorage, display preference, no document data; ?mobile=off clears it). Access rules are unaffected.
+        function glpMobilePreview() {
+            const m = new URLSearchParams(location.search).get('mobile');
+            try {
+                if (m === 'preview') sessionStorage.setItem('glpMobilePreview', '1'); else if (m === 'off') sessionStorage.removeItem('glpMobilePreview');
+                return sessionStorage.getItem('glpMobilePreview') === '1';
+            } catch (e) { return m === 'preview'; }
+        }
+        glpMobilePreview();
         function piLoadMobile(flag) {
-            const preview = new URLSearchParams(location.search).get('mobile') === 'preview';
+            const preview = glpMobilePreview();
             if (!(flag || preview) || window.piMobileLoading || document.body.classList.contains('embed-mode')) return;
             window.piMobileLoading = true;
             ['/css/glp-pdf-viewer.css', '/css/glp-mobile-pi.css'].forEach(h => { const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = h; document.head.appendChild(l); });
@@ -8938,6 +8948,7 @@ function dicBuildPdfViewerSrc(fileUrl) {
 
         function dicGlpPresentation() {
             if (!dicSelectedFileId) return;
+            if (window.piMobile && piMobile.active()) return piMobile.present();   // R4.7a: iPhone/iPad = shared full-screen touch viewer (pages, swipe, matches)
             gvPresEnter('/api/di/download/' + dicSelectedFileId);
         }
 
