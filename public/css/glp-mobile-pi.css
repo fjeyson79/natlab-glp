@@ -123,3 +123,10 @@ html.gm-on.gm-tablet #tab-lab-files .dic-intel-panel, html.gm-on.gm-wide #tab-la
 }
 /* phone sidebar items */
 html.gm-on.gm-phone #tab-lab-files .dic-status-bucket, html.gm-on.gm-phone #tab-lab-files .dic-year-item, html.gm-on.gm-phone #tab-lab-files .dic-researcher-item { min-height: 44px; display: flex; align-items: center; }
+
+/* ---------- R4.7c iPhone: document browser and document viewer are mutually exclusive views ---------- */
+html.gm-on.gm-phone.gm-viewing body > :not(#tab-lab-files):not(#gm-diag) { display: none !important; }
+html.gm-on.gm-phone.gm-viewing #tab-lab-files .dic-finder, html.gm-on.gm-phone.gm-viewing #tab-lab-files .dic-sidebar { display: none !important; }
+html.gm-on.gm-phone.gm-viewing, html.gm-on.gm-phone.gm-viewing body { overflow: hidden; height: 100%; }
+html.gm-on.gm-phone.gm-viewing #tab-lab-files .gpv { position: fixed; inset: 0; height: 100%; height: 100dvh; z-index: 1000; display: flex; }
+html.gm-on.gm-phone .gpv .gpv-back { white-space: nowrap; }
