@@ -3,6 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- R4.4: NAT-Lab Portal home-screen app (manifest + Apple metadata; no service worker) -->
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="NAT-Lab">
     <title>PI Dashboard: NATLAB GLP Portal</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -6508,7 +6515,7 @@ function dicInitEmbedModeFromUrl() {
             dicApplyFilters();
             if (key === 'researcher' && val) {
                 dicRenderQuickMetrics(val);
-                if (!dsIsActive()) dicAutoSelectNewest();   // R2.4: during a search, refine results only
+                if (!dsIsActive() && !(window.piMobile && piMobile.tier() === 'phone')) dicAutoSelectNewest();   // R2.4: during a search, refine results only (R4.5: no auto-open on iPhone)
             } else {
                 document.getElementById('dicQuickMetrics').style.display = 'none';
             }
@@ -7868,6 +7875,7 @@ function dicOpenInternalDoc(key) {
     dicRenderInternalDocs(dicInternalDocsItems);
 
     dicSetViewerHeaderForInternalDoc(key);
+    if (window.piMobile && piMobile.active()) return piMobile.openInternal(key);   // R4.5: iPhone/iPad shared viewer
     const iframe = dicEnsureViewerIframe();
     if (iframe) {
       iframe.src = fileUrl;
@@ -7958,11 +7966,24 @@ async function dicIntdocsFolderChanged(sel) {
                 const j = r.ok ? await r.json() : null;
                 dsState.enabled = !!(j && j.enabled && j.available);
                 dsState.people = (j && Array.isArray(j.researchers)) ? j.researchers : [];
+                dsState.mobile = !!(j && j.mobile);
             } catch (e) { dsState.enabled = false; }
+            piLoadMobile(dsState.mobile);
             document.getElementById('dsSearchWrap').classList.toggle('ds-on', dsState.enabled);
             document.getElementById('dsSearchWrap').classList.toggle('ds-rs-on', dsState.enabled && dsState.people.length > 0);
             dsRsUpdateButton();
             if (dsState.enabled && dsQuery()) dicApplyFilters();
+        }
+        // R4.5: PI iPhone/iPad layout + shared mobile PDF viewer, loaded only when GLP_MOBILE_PI_ENABLED is ON
+        // (or ?mobile=preview for personal acceptance: display only; every request stays authenticated/authorized).
+        function piLoadMobile(flag) {
+            const preview = new URLSearchParams(location.search).get('mobile') === 'preview';
+            if (!(flag || preview) || window.piMobileLoading || document.body.classList.contains('embed-mode')) return;
+            window.piMobileLoading = true;
+            ['/css/glp-pdf-viewer.css', '/css/glp-mobile-pi.css'].forEach(h => { const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = h; document.head.appendChild(l); });
+            const load = src => new Promise((ok, no) => { const e = document.createElement('script'); e.src = src; e.onload = ok; e.onerror = no; document.head.appendChild(e); });
+            load('/js/glp-pdf-viewer.js').then(() => load('/js/glp-mobile-pi.js')).then(() => { window.piMobile = GLPMobilePI.init(); })
+                .catch(e => console.error('[DIC] mobile assets failed:', e));
         }
         const dsQuery = () => (document.getElementById('dicSearchInput').value || '').trim();
         function dsIsActive() {
@@ -8249,7 +8270,7 @@ async function dicIntdocsFolderChanged(sel) {
             if (dsState.active && nav && nav.docId === docId) dsWithViewer(nav, app => dsApplyNav(app, nav));
         }
         function dsWithViewer(nav, cb) {
-            const pdfEl = document.getElementById('dicViewerPdf'); const t0 = Date.now();
+            const pdfEl = (window.piMobile && piMobile.active()) ? piMobile.frame() : document.getElementById('dicViewerPdf'); const t0 = Date.now();   // R4.5
             (function poll() {
                 if (!dsState.nav || dsState.nav.seq !== nav.seq || pdfEl.dataset.dsDoc !== nav.docId) return;   // superseded
                 let app = null; try { app = pdfEl.contentWindow && pdfEl.contentWindow.PDFViewerApplication; } catch (e) {}
@@ -8664,6 +8685,13 @@ function dicBuildPdfViewerSrc(fileUrl) {
             btns += `<a class="dic-toolbar-icon" style="background:#ffffff;border:1px solid #e5e7eb;" href="/api/di/download/${f.submission_id}" target="_blank" title="Download" aria-label="Download"><svg viewBox="0 0 20 20" fill="none"><path d="M10 3v10M10 13l-3.5-3.5M10 13l3.5-3.5M4 16h12" stroke="#111827" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></a>`;
             toolbar.innerHTML = `<span class="dic-viewer-filename" title="${(f.original_filename || '').replace(/"/g, '&quot;')}">${f.original_filename}</span>
                 <span class="dic-badge ${statusClass}">${statusLabel}</span>${btns}`;
+
+            if (window.piMobile && piMobile.active()) {   // R4.5: iPhone/iPad shared viewer (fresh authorization before reuse)
+                document.getElementById('dicIntelPanel').style.display = 'block';
+                dicLoadAssociations(fileId, f);
+                piMobile.openFile(f.submission_id, f);
+                return;
+            }
 
             // PDF viewer — always route through PDF.js (no native browser PDF rendering)
             document.getElementById('dicViewerEmpty').style.display = 'none';

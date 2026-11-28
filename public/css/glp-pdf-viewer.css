@@ -1,0 +1,37 @@
+/* GLP Vision R4.2 — shared full-screen PDF viewer shell (iPhone / narrow windows). */
+.gpv { position: fixed; inset: 0; z-index: 1000; display: flex; flex-direction: column; background: #eef1f5;
+       height: 100dvh; padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left); }
+.gpv[hidden] { display: none; }
+html.gpv-open, html.gpv-open body { overflow: hidden; }
+.gpv-top { display: flex; align-items: center; gap: 6px; min-height: 52px; padding: 4px 10px 4px 4px; background: #fff; border-bottom: 1px solid #e4e7eb; }
+.gpv-title { flex: 1; min-width: 0; font-size: 14px; font-weight: 700; color: #1a365d; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gpv-stage { position: relative; flex: 1; min-height: 0; }
+.gpv-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #eef1f5; }
+.gpv-loading { position: absolute; top: 40%; left: 0; right: 0; text-align: center; font-size: 13px; color: #8c95a1; pointer-events: none; }
+.gpv-loading[hidden] { display: none; }
+.gpv-bar { background: #fff; border-top: 1px solid #e4e7eb; padding: 2px 8px calc(2px + env(safe-area-inset-bottom)); }
+.gpv-row { display: flex; align-items: center; gap: 2px; min-height: 48px; }
+.gpv-row[hidden] { display: none; }
+.gpv-match { justify-content: center; border-bottom: 1px solid #f0f2f5; }
+.gpv-sp { flex: 1; }
+.gpv-btn { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 2px;
+           border: 0; border-radius: 10px; background: transparent; color: #1a365d; font: 600 18px/1 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+           cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.gpv-btn:active { background: #eef2ff; }
+.gpv-btn svg { width: 22px; height: 22px; }
+.gpv-back { padding: 0 10px 0 4px; font-size: 16px; }
+.gpv-back svg { width: 20px; height: 20px; }
+.gpv-fit { font-size: 14px; padding: 0 10px; }
+.gpv-pages, .gpv-count { min-width: 64px; text-align: center; font-size: 14px; font-weight: 600; color: #374151; font-variant-numeric: tabular-nums; }
+.gpv-count { min-width: 120px; }
+/* R4.3: docked mode (iPad viewer column), expand control, empty state, download */
+.gpv.gpv-dock { position: relative; inset: auto; z-index: auto; height: 100%; min-height: 0; flex: 1; padding: 0; }
+.gpv.gpv-dock .gpv-back { display: none; }
+.gpv .gpv-expand { display: none; }
+.gpv.gpv-dock .gpv-expand, html.gm-expanded .gpv .gpv-expand { display: inline-flex; }
+.gpv .gpv-dl { text-decoration: none; }
+.gpv .gpv-dl[hidden] { display: none; }
+.gpv .gpv-empty { display: none; position: absolute; top: 40%; left: 0; right: 0; text-align: center; font-size: 14px; color: #8c95a1; }
+.gpv:not(.gpv-has-doc) .gpv-empty { display: block; }
+.gpv:not(.gpv-has-doc) .gpv-frame, .gpv:not(.gpv-has-doc) .gpv-loading, .gpv:not(.gpv-has-doc) .gpv-bar, .gpv:not(.gpv-has-doc) .gpv-expand { visibility: hidden; }
+.gpv.gpv-dock .gpv-top { padding-left: 12px; }

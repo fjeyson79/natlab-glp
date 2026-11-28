@@ -3,6 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- R4.4: NAT-Lab Portal home-screen app (manifest + Apple metadata; no service worker) -->
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="NAT-Lab">
 <title>GLP Vision</title>
 <style>
 /* =====================================================
@@ -621,6 +628,7 @@ async function gvApplySelection(ids) {
 
 async function gvLoadFiles() {
     if (gvDS) gvDS.reset();   // R3.3: authorized scope changed -> drop stale results and in-flight responses
+    if (window.gvMobile) gvMobile.release();   // R4.2: never reuse a retained PDF across scope changes
     try {
         if (gvFilters.scopeResearchers) {   // R3.4 multi-selection: the existing per-researcher API (server-checked), merged
             const self = gvUser.researcher_id;
@@ -824,6 +832,7 @@ function gvSelectFile(fileId) {
     gvSelectedFileId = fileId;
     const file = gvAllFiles.find(f => f.submission_id === fileId) || (gvDS && gvDS.resultFile(fileId));
     if (!file) return;
+    if (window.gvMobile && gvMobile.active()) return gvMobile.openFile(fileId, file);   // R4.2: full-screen mobile viewer
 
     // Update active state in list
     document.querySelectorAll('.gv-result-item').forEach(el => el.classList.remove('active'));
@@ -1068,10 +1077,13 @@ function gvInitDocSearch() {
         setSort: v => { gvFilters.sort = v; document.querySelectorAll('.gv-chip[data-filter="sort"]').forEach(c => c.classList.toggle('active', c.dataset.val === v)); },
         onSearchState: on => { document.getElementById('gvRelevanceChip').hidden = !on; document.getElementById('gvResultCount').hidden = on;
                                document.querySelectorAll('.gv-chip[data-filter="sort"][data-val="oldest"]').forEach(c => { if (!c.classList.contains('gds-sort-orig')) c.hidden = on; }); },
-        onEnabled: on => { const fd = document.querySelector('.gv-finder'); fd.classList.toggle('gds-enabled', on);
-                           if (on) { document.getElementById('gvAdvPanel').hidden = true; gvUpdateCompactRow(); } },
+        onEnabled: (on, st, raw) => { const fd = document.querySelector('.gv-finder'); fd.classList.toggle('gds-enabled', on);
+                           if (on) { document.getElementById('gvAdvPanel').hidden = true; gvUpdateCompactRow(); }
+                           gvLoadMobile(!!(raw && raw.mobile)); },
         onAuthLost: () => { window.location.href = '/access.html'; },
-        openFile: gvSelectFile, viewer: () => document.getElementById('gvViewerPdf'), selectedId: () => gvSelectedFileId,
+        openFile: gvSelectFile, selectedId: () => gvSelectedFileId,
+        viewer: () => (window.gvMobile && gvMobile.active()) ? gvMobile.frame() : document.getElementById('gvViewerPdf'),
+        beforeOpen: id => { if (window.gvMobile && gvMobile.active()) gvMobile.beforeOpen(id); },
         formatSub: r => (gvSelection().length > 1 ? gvFormatName(r.researcher_name || r.researcher_id) + ' · ' : '') + new Date(r.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
         statusBadge: st => { const m = { PENDING: ['pending', 'PENDING'], APPROVED: ['approved', 'APPROVED'], REVISION_NEEDED: ['revision', 'REVISION'] }[st];
                              if (!m) return null; const b = document.createElement('span'); b.className = 'gv-badge ' + m[0]; b.textContent = m[1]; return b; },
@@ -1082,6 +1094,17 @@ function gvInitDocSearch() {
 function gvPersonName(id) {
     if (id === gvUser.researcher_id) return gvUser.name || id;
     const r = (gvUser.assigned_researchers || []).find(x => x.researcher_id === id); return (r && r.name) || id;
+}
+// R4.2: mobile layout + shared mobile PDF viewer, loaded only when GLP_MOBILE_VISION_ENABLED is ON
+// (or ?mobile=preview for personal acceptance: display only; every request stays authenticated/authorized).
+function gvLoadMobile(flag) {
+    const preview = new URLSearchParams(location.search).get('mobile') === 'preview';
+    if (!(flag || preview) || window.gvMobileLoading) return;
+    window.gvMobileLoading = true;
+    ['/css/glp-pdf-viewer.css', '/css/glp-mobile-vision.css'].forEach(h => { const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = h; document.head.appendChild(l); });
+    const load = src => new Promise((ok, ko) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = ko; document.head.appendChild(s); });
+    load('/js/glp-pdf-viewer.js').then(() => load('/js/glp-mobile-vision.js')).then(() => { window.gvMobile = GLPMobileVision.init(); })
+        .catch(e => console.error('[GV] mobile assets failed:', e));
 }
 function gvToggleAdvanced() {
     const panel = document.getElementById('gvAdvPanel'), btn = document.getElementById('gvAdvToggle');

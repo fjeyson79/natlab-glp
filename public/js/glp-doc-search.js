@@ -22,9 +22,10 @@
                 if (r.status === 401 && cfg.onAuthLost) return cfg.onAuthLost();
                 const j = r.ok ? await r.json() : null;
                 S.enabled = !!(j && j.enabled && j.available); S.status = S.enabled ? j : null;
+                S.raw = j;
             } catch (e) { S.enabled = false; }
             if (S.enabled) mountScope();
-            if (cfg.onEnabled) cfg.onEnabled(S.enabled, S.status);
+            if (cfg.onEnabled) cfg.onEnabled(S.enabled, S.status, S.raw || null);
             if (S.enabled && query()) cfg.refresh();
             return S.enabled;
         }
@@ -260,6 +261,7 @@
             const terms = (qd && (qd.highlight || qd.terms)) || [];   // includes equivalent identifier spellings
             const nav = { docId, page: page || null, terms, seq: ++S.navSeq };
             S.nav = nav;
+            if (cfg.beforeOpen) cfg.beforeOpen(docId, page);   // R4.2: e.g. show the mobile viewer overlay
             const pdf = cfg.viewer();
             if (cfg.selectedId() === docId && pdf.dataset.gdsDoc === docId && pdf.style.display !== 'none') {
                 withViewer(nav, app => applyNav(app, nav)); render(cfg.results());   // same PDF: navigate in place
@@ -277,7 +279,9 @@
             (function wait() {
                 if (!S.nav || S.nav.seq !== nav.seq || pdf.dataset.gdsDoc !== nav.docId) return;   // superseded
                 let app = null; try { app = pdf.contentWindow && pdf.contentWindow.PDFViewerApplication; } catch (e) {}
-                const ready = app && app.pdfDocument && app.pdfViewer && app.pdfViewer.pagesCount > 0 && String(app.url || '').includes(nav.docId);
+                let live = false;   // R4.3: the window must be the frame's latest navigation (never a stale one for the same document)
+                try { const want = new URL(pdf.getAttribute('src') || '', location.href), cur = pdf.contentWindow.location; live = cur.pathname === want.pathname && cur.search === want.search; } catch (e) {}
+                const ready = live && app && app.pdfDocument && app.pdfViewer && app.pdfViewer.pagesCount > 0 && String(app.url || '').includes(nav.docId);
                 if (ready) return cb(app);
                 if (Date.now() - t0 < 20000) setTimeout(wait, 100);
             })();

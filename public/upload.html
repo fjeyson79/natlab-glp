@@ -3,6 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- R4.4: NAT-Lab Portal home-screen app (manifest + Apple metadata; no service worker) -->
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="NAT-Lab">
     <title>Upload: NATLAB GLP Portal</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -2994,7 +3001,18 @@ credentials: 'include'
             }
         }
 
-        function switchSection(section) {
+        // R4.3: on narrow phone screens GLP Vision opens as a top-level page (no nested frames) when the
+        // mobile layout is enabled (GLP_MOBILE_VISION_ENABLED, or ?mobile=preview). Otherwise: unchanged frame.
+        const GV_PHONE_MQ = '(max-width: 819.98px), (pointer: coarse) and (max-height: 520px)';
+        async function glpVisionPhoneOpen() {
+            const preview = new URLSearchParams(location.search).get('mobile') === 'preview';
+            let mobile = preview;
+            if (!mobile) { try { const r = await fetch('/api/di/vision/doc-search/status', { credentials: 'include' }); const j = r.ok ? await r.json() : null; mobile = !!(j && j.mobile); } catch (e) {} }
+            if (mobile) { window.location.href = '/glp-vision.html?from=portal' + (preview ? '&mobile=preview' : ''); return; }
+            switchSection('glpVision', true);
+        }
+        function switchSection(section, noPhoneRedirect) {
+            if (section === 'glpVision' && !noPhoneRedirect && window.matchMedia && window.matchMedia(GV_PHONE_MQ).matches) { glpVisionPhoneOpen(); return; }
             document.querySelectorAll('.section-btn').forEach(b => b.classList.remove('active'));
             document.querySelector(`[data-section="${section}"]`).classList.add('active');
             document.getElementById('section-files').style.display = section === 'files' ? 'block' : 'none';
