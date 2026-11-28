@@ -42,9 +42,10 @@ function mountDocSearchRoutes(app, { pool, requirePIRead, requireAuth }) {
 
     app.get('/api/di/doc-search/status', requirePIRead, async (req, res) => {
         res.setHeader('Cache-Control', 'private, no-store');   // R4.5: confidential search/list response, never stored by browsers or proxies
-        if (!docSearch.isSearchEnabled()) return res.json({ enabled: false });
-        try { res.json(await docSearch.status(pool, req.workspace.id)); }
-        catch (e) { console.error('[doc-search] status error:', e.message); res.json({ enabled: true, available: false }); }
+        const mobile = flagOn('GLP_MOBILE_PI_ENABLED');   // R4.5: display-only flag for the PI mobile layout (default OFF)
+        if (!docSearch.isSearchEnabled()) return res.json({ enabled: false, mobile });
+        try { res.json({ ...(await docSearch.status(pool, req.workspace.id)), mobile }); }
+        catch (e) { console.error('[doc-search] status error:', e.message); res.json({ enabled: true, available: false, mobile }); }
     });
     app.get('/api/di/doc-search', requirePIRead, async (req, res) => {
         res.setHeader('Cache-Control', 'private, no-store');   // R4.5: confidential search/list response, never stored by browsers or proxies
