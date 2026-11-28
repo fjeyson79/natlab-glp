@@ -85,6 +85,15 @@
         held = { kind: 'int', id: key };
     }
 
+    // Host hook (dicGlpPresentation): on iPhone/iPad, presentation = the shared full-screen viewer (page controls,
+    // touch scrolling, pinch, matches) instead of the keyboard-driven desktop presentation. Same authorization path.
+    async function present() {
+        const id = typeof dicSelectedFileId !== 'undefined' ? dicSelectedFileId : null;
+        const f = id && dicFindFile(id); if (!f) return;
+        await openFile(id, f);
+        if (docked() && viewer.docId() === id && !h.classList.contains('gm-expanded')) expand(true);
+    }
+
     function placeMenu() {   // phone: beside the search box; tablet: in the GLP Vision bar (visible in every mode)
         const btn = document.querySelector('.gm-menu'); if (!btn) return;
         const host = cur === 'tablet' ? document.getElementById('dicVisionBar') : document.querySelector('.dic-finder .dic-search-area');
@@ -183,7 +192,7 @@
 
         Object.values(MQ).forEach(m => m.addEventListener('change', applyTier));
         applyTier();
-        return { active, openFile, openInternal, frame: () => viewer.frame, release, viewer, tier: () => cur, expand, held: () => held };
+        return { active, openFile, openInternal, present, frame: () => viewer.frame, release, viewer, tier: () => cur, expand, held: () => held };
     }
     window.GLPMobilePI = { init };
 })();
