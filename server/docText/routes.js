@@ -20,6 +20,7 @@ function restrictedAccess(req) {
 function mountDocSearchRoutes(app, { pool, requirePIRead, requireAuth }) {
     if (requireAuth) {
         app.get('/api/di/vision/doc-search/status', requireAuth, async (req, res) => {
+            res.setHeader('Cache-Control', 'private, no-store');   // R4.5: confidential search/list response, never stored by browsers or proxies
             const mobile = flagOn('GLP_MOBILE_VISION_ENABLED');   // R4.2: display-only flag for the mobile layout (default OFF)
             const a = restrictedAccess(req);
             if (!a.access) return a.code === 404 ? res.json({ enabled: false, mobile }) : res.status(a.code).json({ error: a.error });
@@ -27,6 +28,7 @@ function mountDocSearchRoutes(app, { pool, requirePIRead, requireAuth }) {
             catch (e) { console.error('[vision-doc-search] status error:', e.message); res.json({ enabled: true, available: false, mobile }); }
         });
         app.get('/api/di/vision/doc-search', requireAuth, async (req, res) => {
+            res.setHeader('Cache-Control', 'private, no-store');   // R4.5: confidential search/list response, never stored by browsers or proxies
             const a = restrictedAccess(req);
             if (!a.access) return res.status(a.code).json({ error: a.error });
             try { res.json(await docSearch.search(pool, req.query, req.workspace.id, a.access)); }
@@ -39,11 +41,13 @@ function mountDocSearchRoutes(app, { pool, requirePIRead, requireAuth }) {
     }
 
     app.get('/api/di/doc-search/status', requirePIRead, async (req, res) => {
+        res.setHeader('Cache-Control', 'private, no-store');   // R4.5: confidential search/list response, never stored by browsers or proxies
         if (!docSearch.isSearchEnabled()) return res.json({ enabled: false });
         try { res.json(await docSearch.status(pool, req.workspace.id)); }
         catch (e) { console.error('[doc-search] status error:', e.message); res.json({ enabled: true, available: false }); }
     });
     app.get('/api/di/doc-search', requirePIRead, async (req, res) => {
+        res.setHeader('Cache-Control', 'private, no-store');   // R4.5: confidential search/list response, never stored by browsers or proxies
         if (!docSearch.isSearchEnabled()) return res.status(404).json({ error: 'Search disabled' });
         try { res.json(await docSearch.search(pool, req.query, req.workspace.id)); }
         catch (e) {

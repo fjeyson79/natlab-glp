@@ -4949,6 +4949,7 @@ app.post('/api/di/transfer-to-workspace', requirePI, async (req, res) => {
 
 // GET /api/di/lab-files-enriched — Performance-bounded with association counts
 app.get('/api/di/lab-files-enriched', requirePIRead, async (req, res) => {
+    res.setHeader('Cache-Control', 'private, no-store');   // R4.5: confidential search/list response, never stored by browsers or proxies
     try {
         const months = Math.min(Math.max(parseInt(req.query.months) || 12, 6), 60);
         const hasAssoc = await checkAssociationsTable();
@@ -5234,6 +5235,7 @@ app.delete('/api/di/file-associations/:id', requirePI, async (req, res) => {
 
 // GET /api/di/vision/me — Current user + assigned researchers (if supervisor)
 app.get('/api/di/vision/me', requireAuth, async (req, res) => {
+    res.setHeader('Cache-Control', 'private, no-store');   // R4.5: confidential search/list response, never stored by browsers or proxies
     try {
         const user = req.session.user;
         const result = { researcher_id: user.researcher_id, name: user.name, role: user.role || 'researcher', affiliation: user.affiliation };
@@ -5259,6 +5261,7 @@ app.get('/api/di/vision/me', requireAuth, async (req, res) => {
 
 // GET /api/di/vision/files — List files (own or assigned researcher)
 app.get('/api/di/vision/files', requireAuth, async (req, res) => {
+    res.setHeader('Cache-Control', 'private, no-store');   // R4.5: confidential search/list response, never stored by browsers or proxies
     try {
         const workspaceId = req.workspace.id;
 
