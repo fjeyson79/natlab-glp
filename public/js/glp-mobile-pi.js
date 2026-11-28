@@ -17,7 +17,11 @@
     const h = document.documentElement;
     let viewer = null, cur = null, savedScroll = 0, pushed = false, ignorePop = 0, openToken = 0, held = null;   // held: { kind: 'sub'|'int', id }
 
-    const tier = () => MQ.phone.matches ? 'phone' : MQ.tablet.matches ? 'tablet' : MQ.wide.matches ? 'wide' : null;
+    // R4.7c: an iPhone is a phone whatever layout width Safari reports (shrink-to-fit after overflow, "Request Desktop
+    // Website"): touch screen whose shorter side is < 600 CSS px. iPads (>= 744 px) and desktops (fine pointer) unaffected.
+    const COARSE = window.matchMedia('(pointer: coarse)');
+    const phoneScreen = () => COARSE.matches && Math.min(screen.width, screen.height) < 600;
+    const tier = () => (MQ.phone.matches || phoneScreen()) ? 'phone' : MQ.tablet.matches ? 'tablet' : MQ.wide.matches ? 'wide' : null;
     const active = () => h.classList.contains('gm-on') && cur !== null;
     const docked = () => cur === 'tablet' || cur === 'wide';
     const tab = () => document.getElementById('tab-lab-files');
@@ -27,9 +31,12 @@
 
     function push() { if (!pushed) { history.pushState({ gpv: 1 }, ''); pushed = true; } }
     function unpush() { if (pushed) { pushed = false; ignorePop++; history.back(); } }
-    function overlayOpen() { if (!viewer.isOpen() || viewer.mode() !== 'overlay') savedScroll = window.scrollY; viewer.setMode('overlay'); viewer.show(); push(); }
+    // R4.7c iPhone: two mutually exclusive views. While a document is shown the file browser (portal header, tabs, search,
+    // results) is display:none, so the viewer is the only content on screen; "Back to files" restores the untouched browser.
+    function syncViewing() { h.classList.toggle('gm-viewing', cur === 'phone' && viewer.isOpen() && !!viewer.docId() && viewer.mode() === 'overlay' && onTab()); diag(); }
+    function overlayOpen() { if (!h.classList.contains('gm-viewing')) savedScroll = window.scrollY; viewer.setMode('overlay'); viewer.show(); push(); syncViewing(); window.scrollTo(0, 0); }
     function overlayClose(fromPop) {
-        viewer.hide(); if (!fromPop) unpush(); else pushed = false;
+        viewer.hide(); if (!fromPop) unpush(); else pushed = false; syncViewing();
         requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo(0, savedScroll)));
     }
     function expand(on, fromPop) {
@@ -46,6 +53,7 @@
             viewer.setMode(exp ? 'overlay' : 'dock'); viewer.show();
             if (!exp && pushed) unpush();
         }
+        syncViewing();
     }
     const show = () => { if (cur === 'phone') overlayOpen(); else placeViewer(); };
     function release() { viewer.release(); viewer.frame.dataset.dsDoc = ''; held = null; }
@@ -70,7 +78,7 @@
         }
         show();
         viewer.open({ ...o, src: dsViewerSrc(dicBuildPdfViewerSrc('/api/di/download/' + id), id) });
-        held = { kind: 'sub', id }; viewer.frame.dataset.dsDoc = id;
+        held = { kind: 'sub', id }; viewer.frame.dataset.dsDoc = id; syncViewing();
         dsAfterViewerLoad(id);
     }
     // Host hook (dicOpenInternalDoc, mobile branch): PDFs through PDF.js, always a fresh server request (no reuse).
@@ -82,7 +90,7 @@
         const i = src.indexOf('?');
         show();
         viewer.open({ docId, title: String(key).split('/').pop(), terms: [], src: src.slice(0, i + 1) + '_d=' + docId + '&' + src.slice(i + 1) });
-        held = { kind: 'int', id: key };
+        held = { kind: 'int', id: key }; syncViewing();
     }
 
     // Host hook (dicGlpPresentation): on iPhone/iPad, presentation = the shared full-screen viewer (page controls,
@@ -92,6 +100,15 @@
         const f = id && dicFindFile(id); if (!f) return;
         await openFile(id, f);
         if (docked() && viewer.docId() === id && !h.classList.contains('gm-expanded')) expand(true);
+    }
+
+    // R4.7c: on-device diagnostics for genuine Safari, only with &diag=1 (shows layout facts, no document data).
+    const DIAG = /[?&]diag=1\b/.test(location.search);
+    function diag() {
+        if (!DIAG || !viewer) return;
+        let d = document.getElementById('gm-diag'); if (!d) { d = document.createElement('div'); d.id = 'gm-diag'; d.style.cssText = 'position:fixed;left:4px;bottom:4px;z-index:2147483647;background:rgba(0,0,0,.75);color:#fff;font:11px/1.35 monospace;padding:4px 6px;border-radius:6px;pointer-events:none;white-space:pre'; document.body.appendChild(d); }
+        const r = viewer.el.getBoundingClientRect(), cs = getComputedStyle(viewer.el);
+        d.textContent = `tier=${cur} viewing=${h.classList.contains('gm-viewing')} mode=${viewer.mode()} open=${viewer.isOpen()}\nwin=${innerWidth}x${innerHeight} screen=${screen.width}x${screen.height} dpr=${devicePixelRatio} coarse=${COARSE.matches}\nviewer=${cs.position} ${Math.round(r.x)},${Math.round(r.y)} ${Math.round(r.width)}x${Math.round(r.height)} css=${cs.position === 'fixed' || viewer.mode() === 'dock'}`;
     }
 
     function placeMenu() {   // phone: beside the search box; tablet: in the GLP Vision bar (visible in every mode)
@@ -109,7 +126,7 @@
     function applyTier() {
         const prev = cur; cur = tier();
         ['phone', 'tablet', 'wide'].forEach(t => h.classList.toggle('gm-' + t, cur === t));
-        placeMenu(); requestAnimationFrame(size);
+        placeMenu(); requestAnimationFrame(size); diag();
         if (prev === cur) return;
         if (cur === null) {   // to desktop: continue in the existing desktop viewer
             const was = held;
@@ -127,7 +144,7 @@
             const sel = typeof dicSelectedFileId !== 'undefined' ? dicSelectedFileId : null;
             const hadDesktop = dsk && dsk.dataset.dsDoc && dsk.dataset.dsDoc === sel;
             if (dsk && dsk.src && dsk.src !== 'about:blank' && !/about:blank$/.test(dsk.src)) { dsk.src = 'about:blank'; dsk.dataset.dsDoc = ''; }
-            if (hadDesktop && cur !== 'phone') { const f = dicFindFile(sel); if (f) { openFile(sel, f); return; } }
+            if (hadDesktop) { const f = dicFindFile(sel); if (f) { openFile(sel, f); return; } }   // R4.7c: also on iPhone (tap before the adapter was ready)
         }
         if (cur !== 'phone') h.classList.remove('gm-drawer');
         placeViewer();
@@ -137,13 +154,14 @@
         h.classList.add('gm-on');
         const vp = document.querySelector('meta[name="viewport"]');
         if (vp && !/viewport-fit/.test(vp.content)) vp.content += ', viewport-fit=cover';
+        if (vp && phoneScreen() && !/shrink-to-fit/.test(vp.content)) vp.content += ', shrink-to-fit=no';   // R4.7c: iPhone keeps the device-width layout
         viewer = GLPPdfViewer.create({
             container: document.querySelector('#tab-lab-files .dic-viewer'),
             onBack: () => { if (cur === 'phone') overlayClose(false); else expand(false); },
             onExpand: () => { if (docked()) expand(!h.classList.contains('gm-expanded')); },
             onEscape: () => { if (cur === 'phone' && viewer.isOpen()) { overlayClose(false); return true; } if (h.classList.contains('gm-expanded')) { expand(false); return true; } return false; },
             onSlash: () => { if (h.classList.contains('gm-expanded')) expand(false); else if (cur === 'phone' && viewer.isOpen()) overlayClose(false); setTimeout(() => document.getElementById('dicSearchInput').focus(), 0); },
-            backLabel: () => cur === 'phone' ? 'Back' : 'Collapse',
+            backLabel: () => cur === 'phone' ? 'Back to files' : 'Collapse',
         });
         if (cur === null) viewer.el.hidden = true;
         window.addEventListener('popstate', () => {
@@ -183,6 +201,7 @@
 
         // Leaving the GLP Vision tab closes full-screen views (the PDF stays held; reuse is re-authorized).
         new MutationObserver(() => {
+            syncViewing();
             if (onTab()) { requestAnimationFrame(size); return; }
             setDrawer(false);
             if (cur === 'phone' && viewer.isOpen()) overlayClose(false);

@@ -7986,13 +7986,14 @@ async function dicIntdocsFolderChanged(sel) {
             } catch (e) { return m === 'preview'; }
         }
         glpMobilePreview();
+        if (glpMobilePreview()) document.addEventListener('DOMContentLoaded', () => piLoadMobile(false));   // R4.7c: preview known at load → adapter ready before the file list can be tapped
         function piLoadMobile(flag) {
             const preview = glpMobilePreview();
             if (!(flag || preview) || window.piMobileLoading || document.body.classList.contains('embed-mode')) return;
             window.piMobileLoading = true;
-            ['/css/glp-pdf-viewer.css', '/css/glp-mobile-pi.css'].forEach(h => { const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = h; document.head.appendChild(l); });
+            const css = ['/css/glp-pdf-viewer.css', '/css/glp-mobile-pi.css'].map(h => new Promise(ok => { const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = h; l.onload = l.onerror = ok; document.head.appendChild(l); }));   // R4.7c: styles applied before the adapter starts
             const load = src => new Promise((ok, no) => { const e = document.createElement('script'); e.src = src; e.onload = ok; e.onerror = no; document.head.appendChild(e); });
-            load('/js/glp-pdf-viewer.js').then(() => load('/js/glp-mobile-pi.js')).then(() => { window.piMobile = GLPMobilePI.init(); })
+            Promise.all([load('/js/glp-pdf-viewer.js').then(() => load('/js/glp-mobile-pi.js')), ...css]).then(() => { window.piMobile = GLPMobilePI.init(); })
                 .catch(e => console.error('[DIC] mobile assets failed:', e));
         }
         const dsQuery = () => (document.getElementById('dicSearchInput').value || '').trim();
